@@ -1,9 +1,50 @@
 import { DevOverlayController } from './ui/dev-overlay';
+import {
+  DEFAULT_POSITION,
+  RulesAdapter,
+  validateChessFen,
+} from './core/rules';
+import { GameTree, nagToGlyph, resolveNagCode } from './core/game-tree';
+import {
+  parseCommentAnnotations,
+  parsePgn,
+  parsePgnGames,
+  writePgn,
+} from './core/pgn';
+import {
+  LATEST_SCHEMA_VERSION,
+  WizardChessStorage,
+  deleteWizardChessDB,
+  openWizardChessDB,
+} from './storage/db';
 
 export interface AppShellEnvironment {
   crossOriginIsolated: boolean;
   hardwareConcurrency: number;
   offlineReady: boolean;
+}
+
+export interface WizardChessCoreApi {
+  DEFAULT_POSITION: typeof DEFAULT_POSITION;
+  RulesAdapter: typeof RulesAdapter;
+  validateChessFen: typeof validateChessFen;
+  GameTree: typeof GameTree;
+  nagToGlyph: typeof nagToGlyph;
+  resolveNagCode: typeof resolveNagCode;
+  parseCommentAnnotations: typeof parseCommentAnnotations;
+  parsePgn: typeof parsePgn;
+  parsePgnGames: typeof parsePgnGames;
+  writePgn: typeof writePgn;
+  LATEST_SCHEMA_VERSION: typeof LATEST_SCHEMA_VERSION;
+  WizardChessStorage: typeof WizardChessStorage;
+  openWizardChessDB: typeof openWizardChessDB;
+  deleteWizardChessDB: typeof deleteWizardChessDB;
+}
+
+declare global {
+  interface Window {
+    __wizardChessCore?: WizardChessCoreApi;
+  }
 }
 
 export function detectEnvironment(): AppShellEnvironment {
@@ -30,6 +71,25 @@ export function mountAppShell(container: HTMLElement): {
     ? `Multi-threaded Capable (${env.hardwareConcurrency} cores)`
     : 'Single-threaded Fallback';
 
+  if (typeof window !== 'undefined') {
+    window.__wizardChessCore = {
+      DEFAULT_POSITION,
+      RulesAdapter,
+      validateChessFen,
+      GameTree,
+      nagToGlyph,
+      resolveNagCode,
+      parseCommentAnnotations,
+      parsePgn,
+      parsePgnGames,
+      writePgn,
+      LATEST_SCHEMA_VERSION,
+      WizardChessStorage,
+      openWizardChessDB,
+      deleteWizardChessDB,
+    };
+  }
+
   container.innerHTML = `
     <div class="wc-shell" data-testid="app-shell">
       <header class="wc-header">
@@ -49,6 +109,10 @@ export function mountAppShell(container: HTMLElement): {
             <span class="wc-dot"></span>
             <span>Zero-Network Offline Shell</span>
           </span>
+          <span class="wc-badge" data-testid="core-badge">
+            <span class="wc-dot"></span>
+            <span>Core Rules · PGN · IDB v${LATEST_SCHEMA_VERSION}</span>
+          </span>
           <button
             type="button"
             class="wc-badge wc-badge-button"
@@ -64,9 +128,9 @@ export function mountAppShell(container: HTMLElement): {
 
       <main class="wc-main">
         <section class="wc-card" aria-labelledby="shell-heading">
-          <h2 id="shell-heading" class="wc-card-title">Phase 0 — Architecture &amp; Offline Foundation</h2>
+          <h2 id="shell-heading" class="wc-card-title">Phase 1 — Core Rules, Game Tree, PGN &amp; IndexedDB</h2>
           <p class="wc-card-desc">
-            Engine, rules, opening book, 20,000 stratified Lichess puzzles, and curated endgame positions are bundled locally with zero runtime network requests. Press <kbd class="wc-kbd">\`</kbd> at any time to inspect live frame timing and engine telemetry.
+            Engine, rules adapter (standard + Chess960), recursive variation game tree, custom PGN parser/writer (<code class="wc-kbd">[%eval]</code>, <code class="wc-kbd">[%cal]</code>, <code class="wc-kbd">[%csl]</code>), IndexedDB v${LATEST_SCHEMA_VERSION} schema migrations, opening book, 20,000 stratified Lichess puzzles, and curated endgame positions are bundled locally with zero runtime network requests. Press <kbd class="wc-kbd">\`</kbd> at any time to inspect live frame timing and engine telemetry.
           </p>
           <div class="wc-grid">
             <div class="wc-stat">
@@ -80,6 +144,18 @@ export function mountAppShell(container: HTMLElement): {
             <div class="wc-stat">
               <div class="wc-stat-label">Bundled Datasets</div>
               <div class="wc-stat-value" data-testid="stat-datasets">Openings · 20k Puzzles · Endgames</div>
+            </div>
+            <div class="wc-stat">
+              <div class="wc-stat-label">Rules &amp; Variants</div>
+              <div class="wc-stat-value" data-testid="stat-rules">Standard + Chess960 (Perft Verified)</div>
+            </div>
+            <div class="wc-stat">
+              <div class="wc-stat-label">PGN &amp; GameTree</div>
+              <div class="wc-stat-value" data-testid="stat-pgn">RAVs · NAGs · [%eval/%cal/%csl]</div>
+            </div>
+            <div class="wc-stat">
+              <div class="wc-stat-label">Local Storage</div>
+              <div class="wc-stat-value" data-testid="stat-storage">IndexedDB Schema v${LATEST_SCHEMA_VERSION}</div>
             </div>
           </div>
         </section>
@@ -105,3 +181,4 @@ export function mountAppShell(container: HTMLElement): {
 
   return { devOverlay, env };
 }
+
