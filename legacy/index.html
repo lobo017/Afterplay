@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Offline Chess Learning Tool — Turn 2: Rules &amp; Engine Self-Tests</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #1e293b;
+      --panel-dark: #0b1120;
+      --border: #334155;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --accent: #f59e0b;
+      --pass: #10b981;
+      --fail: #ef4444;
+      --info: #38bdf8;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 28px 20px 48px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      line-height: 1.5;
+    }
+    .container {
+      max-width: 980px;
+      margin: 0 auto;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 16px;
+      padding-bottom: 18px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 22px;
+    }
+    h1 {
+      margin: 0;
+      font-size: 1.35rem;
+      letter-spacing: 0.02em;
+    }
+    .subtitle {
+      color: var(--muted);
+      font-size: 0.875rem;
+      margin-top: 4px;
+    }
+    button {
+      background: var(--accent);
+      color: #0f172a;
+      border: none;
+      border-radius: 8px;
+      padding: 9px 18px;
+      font-size: 0.875rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: opacity 0.15s ease;
+    }
+    button:hover { opacity: 0.92; }
+    button:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+    .btn-secondary {
+      background: #334155;
+      color: var(--text);
+      font-weight: 600;
+      padding: 6px 12px;
+      font-size: 0.8rem;
+    }
+    .btn-danger {
+      background: var(--fail);
+      color: #fff;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 18px 20px;
+      margin-bottom: 20px;
+    }
+    .card h2 {
+      margin: 0 0 12px 0;
+      font-size: 0.95rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+    }
+    th, td {
+      text-align: left;
+      padding: 9px 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    th {
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+    }
+    .mono {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 700;
+    }
+    .badge-pass {
+      background: rgba(16, 185, 129, 0.18);
+      color: var(--pass);
+      border: 1px solid rgba(16, 185, 129, 0.4);
+    }
+    .badge-fail {
+      background: rgba(239, 68, 68, 0.18);
+      color: var(--fail);
+      border: 1px solid rgba(239, 68, 68, 0.4);
+    }
+    .badge-info {
+      background: rgba(56, 189, 248, 0.16);
+      color: var(--info);
+      border: 1px solid rgba(56, 189, 248, 0.35);
+    }
+    .status-bar {
+      margin-bottom: 14px;
+      font-size: 0.875rem;
+      color: var(--muted);
+    }
+    .controls-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    input[type="text"], input[type="number"], select {
+      background: var(--panel-dark);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 11px;
+      font-size: 0.85rem;
+    }
+    input[type="text"] {
+      flex: 1;
+      min-width: 280px;
+    }
+    label {
+      font-size: 0.8rem;
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .preset-bar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .search-summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+      background: var(--panel-dark);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 14px;
+      margin-bottom: 12px;
+      font-size: 0.875rem;
+    }
+    .stream-log {
+      max-height: 260px;
+      overflow-y: auto;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--panel-dark);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div>
+        <h1>Offline Chess Learning Tool — Rules &amp; Engine Test Bench</h1>
+        <div class="subtitle">0x88 Rules + PeSTO/PVS/SEE/LMR Engine running inside a serialized Blob Web Worker</div>
+      </div>
+      <button id="btn-run-tests">Run self-tests</button>
+    </header>
+
+    <!-- Interactive "Find best move" Live Search Box -->
+    <div class="card">
+      <h2>Find Best Move (Live Worker Search Stream)</h2>
+      <div class="preset-bar">
+        <span style="font-size: 0.8rem; color: var(--muted); align-self: center;">Presets:</span>
+        <button type="button" class="btn-secondary preset-fen" data-fen="4kb1r/p2n1ppp/4q3/4p1B1/4P3/1Q6/PPP2PPP/2KR4 w k - 1 16">Morphy Mate-in-2 (Qb8+)</button>
+        <button type="button" class="btn-secondary preset-fen" data-fen="r1bqkbnr/pppp1ppp/2n5/4p3/4n3/3B1N2/PPPP1PPP/RNBQK2R w KQkq - 0 4">Wins a Piece (Bxe4)</button>
+        <button type="button" class="btn-secondary preset-fen" data-fen="r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1">Kiwipete Tactical</button>
+        <button type="button" class="btn-secondary preset-fen" data-fen="rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1">Start Position</button>
+      </div>
+
+      <div class="controls-row">
+        <input id="fen-input" type="text" class="mono" value="4kb1r/p2n1ppp/4q3/4p1B1/4P3/1Q6/PPP2PPP/2KR4 w k - 1 16" placeholder="Enter FEN string..." />
+      </div>
+
+      <div class="controls-row">
+        <label>
+          Mode:
+          <select id="search-mode">
+            <option value="depth" selected>Fixed Depth</option>
+            <option value="movetime">Move Time (ms)</option>
+            <option value="infinite">Infinite (until Stop)</option>
+          </select>
+        </label>
+        <label id="limit-label">
+          Value:
+          <input id="search-limit" type="number" min="1" max="30000" value="6" style="width: 84px;" class="mono" />
+        </label>
+        <label>
+          Multi-PV:
+          <select id="search-multipv">
+            <option value="1" selected>1 Line</option>
+            <option value="2">2 Lines</option>
+            <option value="3">3 Lines</option>
+            <option value="4">4 Lines</option>
+            <option value="5">5 Lines</option>
+          </select>
+        </label>
+        <label>
+          TT Size:
+          <select id="search-ttsize">
+            <option value="8">8 MB</option>
+            <option value="16" selected>16 MB</option>
+            <option value="32">32 MB</option>
+            <option value="64">64 MB</option>
+          </select>
+        </label>
+        <button id="btn-find-best" type="button">Find best move</button>
+        <button id="btn-stop-search" type="button" class="btn-danger" disabled>Stop</button>
+      </div>
+
+      <div class="search-summary">
+        <div id="best-move-banner">Best Move: <span class="mono" style="color: var(--accent); font-weight: 700;">—</span></div>
+        <div id="search-telemetry" class="mono" style="color: var(--muted); font-size: 0.8rem;">Worker: Idle</div>
+      </div>
+
+      <div class="stream-log">
+        <table>
+          <thead>
+            <tr>
+              <th>Depth</th>
+              <th>PV #</th>
+              <th>Score</th>
+              <th>Nodes</th>
+              <th>NPS</th>
+              <th>Time</th>
+              <th>Principal Variation (SAN)</th>
+            </tr>
+          </thead>
+          <tbody id="live-info-tbody">
+            <tr>
+              <td colspan="7" style="color: var(--muted); text-align: center; padding: 18px;">
+                Click <b>Find best move</b> to stream live PVS iterative-deepening evaluations.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Automated Engine Tactical Self-Tests -->
+    <div class="card">
+      <h2>Engine Tactical Self-Tests (Mate-in-2 &amp; Wins-a-Piece)</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Test Position</th>
+            <th>Expected</th>
+            <th>Found Move</th>
+            <th>Eval</th>
+            <th>PV (SAN)</th>
+            <th>Time / NPS</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="engine-tbody">
+          <tr>
+            <td colspan="7" style="color: var(--muted); text-align: center; padding: 18px;">
+              Click <b>Run self-tests</b> above to verify tactical search accuracy.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Turn 1 Perft Verification Suite -->
+    <div class="card">
+      <h2>Perft Verification Suite (Worker Thread)</h2>
+      <div id="status-text" class="status-bar">Click <b>Run self-tests</b> to run Perft, Rules Invariants, and Engine Tactical Suites.</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Position</th>
+            <th>Depth</th>
+            <th>Expected</th>
+            <th>Actual</th>
+            <th>Time</th>
+            <th>Speed</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="perft-tbody">
+          <tr>
+            <td colspan="7" style="color: var(--muted); text-align: center; padding: 18px;">
+              Ready to run 7 Perft benchmarks.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Turn 1 Rules Invariants -->
+    <div class="card">
+      <h2>Rules Invariants (SAN Disambiguation, Zobrist 3-Fold, 50-Move, Checkmate)</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Rule / Invariant Test</th>
+            <th>Details</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="unit-tbody">
+          <tr>
+            <td colspan="3" style="color: var(--muted); text-align: center; padding: 18px;">
+              Waiting for test run...
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Plain script tags (works directly when index.html is opened from disk via file://) -->
+  <script src="rules.js"></script>
+  <script src="engine.js"></script>
+  <script>
+    (function () {
+      'use strict';
+
+      const btnRunTests = document.getElementById('btn-run-tests');
+      const statusText = document.getElementById('status-text');
+      const perftTbody = document.getElementById('perft-tbody');
+      const unitTbody = document.getElementById('unit-tbody');
+      const engineTbody = document.getElementById('engine-tbody');
+
+      const fenInput = document.getElementById('fen-input');
+      const searchModeSelect = document.getElementById('search-mode');
+      const searchLimitInput = document.getElementById('search-limit');
+      const searchMultiPvSelect = document.getElementById('search-multipv');
+      const searchTtSizeSelect = document.getElementById('search-ttsize');
+      const btnFindBest = document.getElementById('btn-find-best');
+      const btnStopSearch = document.getElementById('btn-stop-search');
+      const bestMoveBanner = document.getElementById('best-move-banner');
+      const searchTelemetry = document.getElementById('search-telemetry');
+      const liveInfoTbody = document.getElementById('live-info-tbody');
+
+      const PERFT_TESTS = [
+        { name: 'Start position', fen: WC.Rules.START_FEN, depth: 1, expected: 20 },
+        { name: 'Start position', fen: WC.Rules.START_FEN, depth: 2, expected: 400 },
+        { name: 'Start position', fen: WC.Rules.START_FEN, depth: 3, expected: 8902 },
+        { name: 'Start position', fen: WC.Rules.START_FEN, depth: 4, expected: 197281 },
+        { name: 'Kiwipete', fen: WC.Rules.KIWIPETE_FEN, depth: 1, expected: 48 },
+        { name: 'Kiwipete', fen: WC.Rules.KIWIPETE_FEN, depth: 2, expected: 2039 },
+        { name: 'Kiwipete', fen: WC.Rules.KIWIPETE_FEN, depth: 3, expected: 97862 }
+      ];
+
+      let worker = WC.makeWorker(['rules', 'engine']);
+      let latestStreamInfo = null;
+
+      document.querySelectorAll('.preset-fen').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          fenInput.value = btn.getAttribute('data-fen');
+        });
+      });
+
+      searchModeSelect.addEventListener('change', function () {
+        const mode = searchModeSelect.value;
+        if (mode === 'depth') {
+          searchLimitInput.disabled = false;
+          searchLimitInput.value = '6';
+        } else if (mode === 'movetime') {
+          searchLimitInput.disabled = false;
+          searchLimitInput.value = '800';
+        } else {
+          searchLimitInput.disabled = true;
+        }
+      });
+
+      btnFindBest.addEventListener('click', async function () {
+        const fen = fenInput.value.trim();
+        try {
+          new WC.Rules.ChessBoard(fen);
+        } catch (err) {
+          bestMoveBanner.innerHTML =
+            '<span style="color: var(--fail); font-weight: 700;">Invalid FEN: ' + err.message + '</span>';
+          return;
+        }
+
+        btnFindBest.disabled = true;
+        btnRunTests.disabled = true;
+        btnStopSearch.disabled = false;
+        liveInfoTbody.innerHTML = '';
+        latestStreamInfo = null;
+        bestMoveBanner.innerHTML = 'Searching...';
+
+        const mode = searchModeSelect.value;
+        const limitVal = parseInt(searchLimitInput.value, 10) || 6;
+        const multipv = parseInt(searchMultiPvSelect.value, 10) || 1;
+        const ttSizeMB = parseInt(searchTtSizeSelect.value, 10) || 16;
+
+        try {
+          await worker.request('ttsize', { mb: ttSizeMB });
+          await worker.request('multipv', { value: multipv });
+          await worker.request('position', { fen: fen });
+
+          const goParams = { multipv: multipv };
+          if (mode === 'depth') goParams.depth = Math.max(1, Math.min(20, limitVal));
+          else if (mode === 'movetime') goParams.movetime = Math.max(50, limitVal);
+          else if (mode === 'infinite') goParams.infinite = true;
+
+          const res = await worker.request('go', goParams, function onInfo(info) {
+            if (info.multipv === 1) {
+              latestStreamInfo = info;
+              bestMoveBanner.innerHTML =
+                'Best Move: <span class="mono" style="color: var(--accent); font-weight: 700;">' +
+                info.bestMoveSan + '</span> <span class="badge badge-info mono">' +
+                info.scoreText + '</span>';
+            }
+
+            searchTelemetry.textContent =
+              'D' + info.depth + '/' + info.seldepth +
+              ' • ' + info.nodes.toLocaleString() + ' nodes • ' +
+              info.nps.toLocaleString() + ' nps • ' + info.timeMs + ' ms';
+
+            const tr = document.createElement('tr');
+            tr.innerHTML =
+              '<td class="mono">D' + info.depth + '</td>' +
+              '<td class="mono">#' + info.multipv + '</td>' +
+              '<td class="mono"><b>' + info.scoreText + '</b></td>' +
+              '<td class="mono">' + info.nodes.toLocaleString() + '</td>' +
+              '<td class="mono">' + info.nps.toLocaleString() + '</td>' +
+              '<td class="mono">' + info.timeMs + ' ms</td>' +
+              '<td class="mono">' + info.pvSan.join(' ') + '</td>';
+            liveInfoTbody.insertBefore(tr, liveInfoTbody.firstChild);
+          });
+
+          bestMoveBanner.innerHTML =
+            'Best Move: <span class="mono" style="color: var(--pass); font-weight: 700;">' +
+            (res.bestMoveSan || '—') + '</span> <span class="badge badge-pass mono">' +
+            (res.scoreText || '0.00') + '</span> <span style="color: var(--muted); font-size: 0.8rem;">(Depth ' +
+            res.depth + ', ' + res.timeMs + ' ms)</span>';
+        } catch (err) {
+          if (latestStreamInfo) {
+            bestMoveBanner.innerHTML =
+              'Best Move (Stopped): <span class="mono" style="color: var(--pass); font-weight: 700;">' +
+              latestStreamInfo.bestMoveSan + '</span> <span class="badge badge-pass mono">' +
+              latestStreamInfo.scoreText + '</span>';
+          } else {
+            bestMoveBanner.innerHTML =
+              '<span style="color: var(--fail); font-weight: 700;">Search Stopped</span>';
+          }
+        } finally {
+          btnFindBest.disabled = false;
+          btnRunTests.disabled = false;
+          btnStopSearch.disabled = true;
+        }
+      });
+
+      btnStopSearch.addEventListener('click', function () {
+        worker.request('stop');
+      });
+
+      // Run All Self-Tests (Engine Tactical Suite + Perft Suite + Rules Invariants)
+      btnRunTests.addEventListener('click', async function () {
+        btnRunTests.disabled = true;
+        btnFindBest.disabled = true;
+        perftTbody.innerHTML = '';
+        unitTbody.innerHTML = '';
+        engineTbody.innerHTML = '';
+        statusText.textContent = 'Running Engine Tactical Self-Tests & Perft Suite inside Worker...';
+
+        try {
+          if (worker) worker.terminate();
+          worker = WC.makeWorker(['rules', 'engine']);
+
+          const tStart = performance.now();
+
+          // 1. Engine Tactical Self-Tests (Mate-in-2 & Wins a Piece)
+          const engRes = await worker.request('engineSuite', {}, function onEngineProgress(prog) {
+            const r = prog.row;
+            const tr = document.createElement('tr');
+            tr.innerHTML =
+              '<td><b>' + r.name + '</b></td>' +
+              '<td class="mono">' + r.expectedDesc + '</td>' +
+              '<td class="mono"><b>' + r.bestMoveSan + '</b></td>' +
+              '<td class="mono">' + r.scoreText + '</td>' +
+              '<td class="mono">' + r.pvSan + '</td>' +
+              '<td class="mono">' + r.elapsedMs + ' ms (' + r.nps.toLocaleString() + ' nps)</td>' +
+              '<td><span class="badge ' + (r.passed ? 'badge-pass' : 'badge-fail') + '">' +
+              (r.passed ? 'PASS' : 'FAIL') + '</span></td>';
+            engineTbody.appendChild(tr);
+          });
+
+          // 2. Perft & Rules Invariant Suite
+          const perftRes = await worker.request(
+            'perftSuite',
+            { tests: PERFT_TESTS },
+            function onPerftProgress(prog) {
+              const r = prog.row;
+              statusText.textContent =
+                'Running Perft (' + (prog.index + 1) + '/' + prog.total + '): ' +
+                r.name + ' Depth ' + r.depth + '...';
+
+              const tr = document.createElement('tr');
+              tr.innerHTML =
+                '<td><b>' + r.name + '</b></td>' +
+                '<td class="mono">D' + r.depth + '</td>' +
+                '<td class="mono">' + r.expected.toLocaleString() + '</td>' +
+                '<td class="mono">' + r.actual.toLocaleString() + '</td>' +
+                '<td class="mono">' + r.elapsedMs.toFixed(2) + ' ms</td>' +
+                '<td class="mono">' + r.nps.toLocaleString() + ' nps</td>' +
+                '<td><span class="badge ' + (r.passed ? 'badge-pass' : 'badge-fail') + '">' +
+                (r.passed ? 'PASS' : 'FAIL') + '</span></td>';
+              perftTbody.appendChild(tr);
+            }
+          );
+
+          const totalMs = (performance.now() - tStart).toFixed(2);
+          const allEnginePass = engRes.engineResults.every(function (r) { return r.passed; });
+          const allPerftPass = perftRes.perftResults.every(function (r) { return r.passed; });
+          const allUnitPass = perftRes.unitChecks.every(function (u) { return u.passed; });
+
+          perftRes.unitChecks.forEach(function (u) {
+            const tr = document.createElement('tr');
+            tr.innerHTML =
+              '<td><b>' + u.name + '</b></td>' +
+              '<td class="mono">' + u.detail + '</td>' +
+              '<td><span class="badge ' + (u.passed ? 'badge-pass' : 'badge-fail') + '">' +
+              (u.passed ? 'PASS' : 'FAIL') + '</span></td>';
+            unitTbody.appendChild(tr);
+          });
+
+          statusText.innerHTML =
+            allEnginePass && allPerftPass && allUnitPass
+              ? '<span style="color: var(--pass); font-weight: 700;">✓ All 2 Engine Tactical Tests, 7 Perft Benchmarks, and 4 Rules Invariants PASSED in ' + totalMs + ' ms.</span>'
+              : '<span style="color: var(--fail); font-weight: 700;">✗ One or more self-tests failed. Check tables above.</span>';
+        } catch (err) {
+          statusText.innerHTML =
+            '<span style="color: var(--fail); font-weight: 700;">Error: ' + err.message + '</span>';
+        } finally {
+          btnRunTests.disabled = false;
+          btnFindBest.disabled = false;
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

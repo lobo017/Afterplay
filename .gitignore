@@ -6,6 +6,9 @@ playwright-report/
 blob-report/
 playwright/.cache/
 data/.cache/
+*.zst
+*.csv
+*.tsv
 *.tsbuildinfo
 .DS_Store
 Thumbs.db
