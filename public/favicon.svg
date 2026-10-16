@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="obsidian" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e2436" />
+      <stop offset="100%" stop-color="#0b0d12" />
+    </linearGradient>
+    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f3d678" />
+      <stop offset="100%" stop-color="#b88928" />
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="56" height="56" rx="12" fill="url(#obsidian)" stroke="url(#gold)" stroke-width="2.5" />
+  <path d="M22 48h20l-2-5H24l-2 5zm3-8h14l2-14-5 4-4-9-4 9-5-4 2 14zm7-27a3 3 0 1 0 0 6 3 3 0 0 0 0-6z" fill="url(#gold)" />
+</svg>

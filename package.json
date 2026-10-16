@@ -1,0 +1,42 @@
+{
+  "name": "wizards-chess",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Wizard's Chess — Offline Chess Learning and Stockfish Analysis Tool",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "serve": "node scripts/serve.mjs",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings=0",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "data:openings": "node scripts/build-openings.mjs",
+    "data:puzzles": "node scripts/build-puzzles.mjs",
+    "data:endgames": "node scripts/build-endgames.mjs",
+    "data:all": "npm run data:openings && npm run data:endgames && npm run data:puzzles"
+  },
+  "dependencies": {
+    "chess.js": "^1.0.0",
+    "idb": "^8.0.2",
+    "preact": "^10.26.4",
+    "stockfish": "^17.1.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.21.0",
+    "@playwright/test": "^1.51.0",
+    "@types/node": "^22.13.9",
+    "eslint": "^9.21.0",
+    "prettier": "^3.5.3",
+    "typescript": "^5.8.2",
+    "typescript-eslint": "^8.26.0",
+    "vite": "^6.2.0",
+    "vite-plugin-pwa": "^0.21.1",
+    "vitest": "^3.0.7"
+  }
+}

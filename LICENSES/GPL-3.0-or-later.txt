@@ -1,0 +1,6 @@
+GNU GENERAL PUBLIC LICENSE Version 3, 29 June 2007
+
+Stockfish and stockfish.js are distributed under the GNU General Public License
+version 3 or later (GPL-3.0-or-later). See the root LICENSE file for full terms.
+
+SPDX-License-Identifier: GPL-3.0-or-later
