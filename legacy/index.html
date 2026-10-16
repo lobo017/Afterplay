@@ -1,582 +1,3130 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Offline Chess Learning Tool — Turn 2: Rules &amp; Engine Self-Tests</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Wizard's Chess 3D — Gothic Cathedral Edition</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Google Fonts: Cinzel for Gothic atmosphere, Inter & JetBrains Mono for Material HUD -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <!-- Three.js, OrbitControls, GSAP, and Chess.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+
   <style>
     :root {
-      --bg: #0f172a;
-      --panel: #1e293b;
-      --panel-dark: #0b1120;
-      --border: #334155;
-      --text: #f8fafc;
-      --muted: #94a3b8;
-      --accent: #f59e0b;
-      --pass: #10b981;
-      --fail: #ef4444;
-      --info: #38bdf8;
+      --font-display: 'Cinzel', serif;
+      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
     }
-    * { box-sizing: border-box; }
-    body {
+
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    body, html {
       margin: 0;
-      padding: 28px 20px 48px;
-      background: var(--bg);
-      color: var(--text);
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      line-height: 1.5;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #07080c;
+      font-family: var(--font-sans);
+      color: #f1f5f9;
     }
-    .container {
-      max-width: 980px;
-      margin: 0 auto;
+
+    #canvas-container {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
     }
-    header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      flex-wrap: wrap;
-      gap: 16px;
-      padding-bottom: 18px;
-      border-bottom: 1px solid var(--border);
-      margin-bottom: 22px;
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      outline: none;
     }
-    h1 {
-      margin: 0;
-      font-size: 1.35rem;
-      letter-spacing: 0.02em;
+
+    /* Material Dark Glass Surface */
+    .md-glass {
+      background: rgba(15, 18, 26, 0.78);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.11);
+      box-shadow: 0 12px 32px -4px rgba(0, 0, 0, 0.6), 0 2px 6px rgba(0, 0, 0, 0.4);
     }
-    .subtitle {
-      color: var(--muted);
-      font-size: 0.875rem;
-      margin-top: 4px;
+
+    .md-glass-subtle {
+      background: rgba(22, 26, 38, 0.65);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
     }
-    button {
-      background: var(--accent);
-      color: #0f172a;
-      border: none;
-      border-radius: 8px;
-      padding: 9px 18px;
-      font-size: 0.875rem;
-      font-weight: 700;
-      cursor: pointer;
-      transition: opacity 0.15s ease;
+
+    .md-btn {
+      transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
     }
-    button:hover { opacity: 0.92; }
-    button:disabled {
-      opacity: 0.45;
+    .md-btn:hover:not(:disabled) {
+      background: rgba(255, 255, 255, 0.12);
+      transform: translateY(-1px);
+    }
+    .md-btn:active:not(:disabled) {
+      transform: translateY(0px) scale(0.97);
+    }
+    .md-btn:disabled {
+      opacity: 0.4;
       cursor: not-allowed;
     }
-    .btn-secondary {
-      background: #334155;
-      color: var(--text);
-      font-weight: 600;
-      padding: 6px 12px;
-      font-size: 0.8rem;
+
+    .md-chip-active {
+      background: rgba(245, 158, 11, 0.22) !important;
+      border-color: rgba(245, 158, 11, 0.65) !important;
+      color: #fcd34d !important;
     }
-    .btn-danger {
-      background: var(--fail);
-      color: #fff;
+
+    /* Custom Scrollbar for Move History */
+    ::-webkit-scrollbar {
+      width: 5px;
+      height: 5px;
     }
-    .card {
-      background: var(--panel);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      padding: 18px 20px;
-      margin-bottom: 20px;
+    ::-webkit-scrollbar-track {
+      background: rgba(15, 23, 42, 0.3);
+      border-radius: 8px;
     }
-    .card h2 {
-      margin: 0 0 12px 0;
-      font-size: 0.95rem;
-      color: var(--muted);
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
+    ::-webkit-scrollbar-thumb {
+      background: rgba(148, 163, 184, 0.35);
+      border-radius: 8px;
     }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      font-size: 0.875rem;
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(245, 158, 11, 0.6);
     }
-    th, td {
-      text-align: left;
-      padding: 9px 10px;
-      border-bottom: 1px solid var(--border);
-    }
-    th {
-      color: var(--muted);
-      font-weight: 600;
-      font-size: 0.75rem;
-      text-transform: uppercase;
-    }
-    .mono {
-      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    }
-    .badge {
-      display: inline-block;
-      padding: 2px 8px;
+
+    /* Custom Range Slider */
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      background: rgba(255, 255, 255, 0.12);
+      height: 6px;
       border-radius: 999px;
-      font-size: 0.75rem;
-      font-weight: 700;
+      outline: none;
     }
-    .badge-pass {
-      background: rgba(16, 185, 129, 0.18);
-      color: var(--pass);
-      border: 1px solid rgba(16, 185, 129, 0.4);
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      background: #f59e0b;
+      border: 2px solid #fffbeb;
+      cursor: pointer;
+      box-shadow: 0 0 10px rgba(245, 158, 11, 0.6);
+      transition: transform 0.15s ease;
     }
-    .badge-fail {
-      background: rgba(239, 68, 68, 0.18);
-      color: var(--fail);
-      border: 1px solid rgba(239, 68, 68, 0.4);
+    input[type="range"]::-webkit-slider-thumb:hover {
+      transform: scale(1.15);
     }
-    .badge-info {
-      background: rgba(56, 189, 248, 0.16);
-      color: var(--info);
-      border: 1px solid rgba(56, 189, 248, 0.35);
+
+    .font-cinzel {
+      font-family: var(--font-display);
     }
-    .status-bar {
-      margin-bottom: 14px;
-      font-size: 0.875rem;
-      color: var(--muted);
+    .font-mono-code {
+      font-family: var(--font-mono);
     }
-    .controls-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      align-items: center;
-      margin-bottom: 12px;
+
+    @keyframes pulseGlow {
+      0%, 100% { box-shadow: 0 0 12px rgba(239, 68, 68, 0.55); }
+      50% { box-shadow: 0 0 24px rgba(239, 68, 68, 0.95); }
     }
-    input[type="text"], input[type="number"], select {
-      background: var(--panel-dark);
-      color: var(--text);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 8px 11px;
-      font-size: 0.85rem;
-    }
-    input[type="text"] {
-      flex: 1;
-      min-width: 280px;
-    }
-    label {
-      font-size: 0.8rem;
-      color: var(--muted);
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-    .preset-bar {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-bottom: 12px;
-    }
-    .search-summary {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      flex-wrap: wrap;
-      gap: 12px;
-      background: var(--panel-dark);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 10px 14px;
-      margin-bottom: 12px;
-      font-size: 0.875rem;
-    }
-    .stream-log {
-      max-height: 260px;
-      overflow-y: auto;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      background: var(--panel-dark);
+    .check-alert-pulse {
+      animation: pulseGlow 1.4s infinite ease-in-out;
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <header>
-      <div>
-        <h1>Offline Chess Learning Tool — Rules &amp; Engine Test Bench</h1>
-        <div class="subtitle">0x88 Rules + PeSTO/PVS/SEE/LMR Engine running inside a serialized Blob Web Worker</div>
+
+  <!-- 3D Viewport Container -->
+  <div id="canvas-container"></div>
+
+  <!-- Vignette & Subtle Atmospheric Overlay -->
+  <div class="pointer-events-none fixed inset-0 z-10" style="background: radial-gradient(circle at center, transparent 55%, rgba(3, 5, 10, 0.68) 100%);"></div>
+
+  <!-- ==================== MATERIAL DESIGN 3 HUD ==================== -->
+  <div class="pointer-events-none fixed inset-0 z-20 flex flex-col justify-between p-2.5 sm:p-4">
+
+    <!-- TOP NAVIGATION & CONTROL BAR -->
+    <header class=" flex flex-wrap items-center justify-between gap-2 w-full max-w-[1600px] mx-auto">
+
+      <!-- Left: Brand + Turn & Status Pill -->
+      <div class="pointer-events-auto md-glass rounded-2xl px-3.5 py-2 flex items-center gap-3">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-xl bg-amber-500/20 border border-amber-400/40 flex items-center justify-center text-amber-300 shadow-inner">
+            <!-- Chess King SVG -->
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M11 2h2v3h3v2h-3v2.18C15.84 9.65 18 12.08 18 15c0 1.65-.67 3.15-1.76 4.24L17 21H7l.76-1.76C6.67 18.15 6 16.65 6 15c0-2.92 2.16-5.35 5-5.82V7H8V5h3V2zm-4 20h10v2H7v-2z"/>
+            </svg>
+          </div>
+          <div class="hidden sm:block">
+            <h1 class="font-cinzel text-sm font-bold tracking-wider text-amber-100 leading-tight">WIZARD'S CHESS</h1>
+            <p class="text-[10px] text-slate-400 uppercase tracking-widest">Cathedral Sanctum</p>
+          </div>
+        </div>
+
+        <div class="h-6 w-[1px] bg-white/10"></div>
+
+        <!-- Turn Indicator -->
+        <div class="flex items-center gap-2.5">
+          <div id="turn-gem" class="w-3.5 h-3.5 rounded-full bg-slate-100 shadow-[0_0_10px_#fff] border border-white/60 transition-all duration-300"></div>
+          <div>
+            <div class="flex items-center gap-1.5">
+              <span id="turn-text" class="text-xs sm:text-sm font-semibold text-slate-100">White's Turn</span>
+              <span id="check-badge" class="hidden px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-red-600/90 text-white rounded-full check-alert-pulse">CHECK</span>
+              <button id="premove-badge" class="hidden pointer-events-auto px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-emerald-500/25 border border-emerald-400/60 text-emerald-300 rounded-full flex items-center gap-1 hover:bg-red-500/30 hover:border-red-400/60 hover:text-red-200 transition-colors" title="Click or Right-Click Board to Cancel Premove">
+                <span id="premove-badge-text">PREMOVE</span>
+                <span>✕</span>
+              </button>
+            </div>
+            <div id="bot-thinking-bar" class="hidden flex items-center gap-1.5 text-[11px] text-amber-300/90">
+              <span class="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping"></span>
+              <span id="bot-thinking-text">Arcane Automaton contemplating...</span>
+            </div>
+          </div>
+        </div>
       </div>
-      <button id="btn-run-tests">Run self-tests</button>
+
+      <!-- Center: Bot Difficulty Selector & Player Color Toggle -->
+      <div class="pointer-events-auto md-glass rounded-2xl px-2.5 py-1.5 flex items-center gap-1.5 sm:gap-2 relative">
+        <!-- Bot Difficulty Trigger -->
+        <button id="elo-popover-btn" class="md-btn px-3 py-1.5 rounded-xl bg-amber-500/15 border border-amber-400/35 flex items-center gap-2 text-left" title="Adjust Bot Elo Rating & Thinking Speed">
+          <svg class="w-4 h-4 text-amber-400 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+          </svg>
+          <div>
+            <div class="text-[10px] uppercase tracking-wider text-slate-400 leading-none">Automaton</div>
+            <div class="text-xs font-semibold text-amber-200 flex items-center gap-1">
+              <span id="hud-tier-name">Club</span>
+              <span class="font-mono-code text-amber-400">(<span id="hud-elo-val">1400</span>)</span>
+              <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+            </div>
+          </div>
+        </button>
+
+        <!-- Player Color Toggle -->
+        <div class="flex items-center bg-slate-900/70 p-1 rounded-xl border border-white/10">
+          <button id="play-white-btn" class="md-btn px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5 md-chip-active" title="Play as White (Marble)">
+            <span class="w-2.5 h-2.5 rounded-full bg-slate-100 border border-slate-400"></span>
+            <span class="hidden md:inline">White</span>
+          </button>
+          <button id="play-black-btn" class="md-btn px-2.5 py-1 rounded-lg text-xs font-medium text-slate-300 flex items-center gap-1.5" title="Play as Black (Obsidian)">
+            <span class="w-2.5 h-2.5 rounded-full bg-slate-950 border border-purple-400/60"></span>
+            <span class="hidden md:inline">Black</span>
+          </button>
+        </div>
+
+        <!-- Camera Presets -->
+        <div class="hidden lg:flex items-center bg-slate-900/70 p-1 rounded-xl border border-white/10 gap-0.5">
+          <button data-cam="white" class="cam-preset-btn md-btn px-2.5 py-1 rounded-lg text-xs font-medium text-slate-300 md-chip-active" title="White Perspective">White</button>
+          <button data-cam="black" class="cam-preset-btn md-btn px-2.5 py-1 rounded-lg text-xs font-medium text-slate-300" title="Black Perspective">Black</button>
+          <button data-cam="iso" class="cam-preset-btn md-btn px-2.5 py-1 rounded-lg text-xs font-medium text-slate-300" title="Isometric Cathedral View">Iso</button>
+          <button data-cam="top" class="cam-preset-btn md-btn px-2.5 py-1 rounded-lg text-xs font-medium text-slate-300" title="Top-Down Tactical View">Top</button>
+        </div>
+
+        <!-- ELO DIFFICULTY POPOVER PANEL -->
+        <div id="elo-popover" class="hidden absolute left-0 top-full mt-2 w-80 sm:w-96 md-glass rounded-2xl p-4 z-50 border border-amber-400/30 shadow-2xl">
+          <div class="flex items-center justify-between mb-3">
+            <div>
+              <h3 class="text-sm font-semibold text-white">Arcane Automaton Calibration</h3>
+              <p class="text-[11px] text-slate-400">Web Worker Alpha-Beta + Quiescence Search</p>
+            </div>
+            <span id="popover-elo-badge" class="px-2.5 py-1 rounded-lg bg-amber-500/20 border border-amber-400/40 font-mono-code text-xs font-bold text-amber-300">1400 ELO</span>
+          </div>
+
+          <!-- Elo Slider -->
+          <div class="mb-4">
+            <div class="flex justify-between text-[11px] text-slate-400 mb-1.5 font-mono-code">
+              <span>400 (Beginner)</span>
+              <span>1400 (Club)</span>
+              <span>2400 (GM)</span>
+            </div>
+            <input id="elo-slider" type="range" min="400" max="2400" step="50" value="1400" class="w-full" />
+          </div>
+
+          <!-- Calibrated Tier Quick-Select Chips -->
+          <div class="grid grid-cols-5 gap-1.5 mb-4">
+            <button data-elo="600" class="tier-chip md-btn py-1.5 px-1 rounded-xl border border-white/10 bg-slate-800/60 text-center">
+              <div class="text-[11px] font-semibold text-slate-200">Novice</div>
+              <div class="text-[10px] font-mono-code text-slate-400">600</div>
+            </button>
+            <button data-elo="1000" class="tier-chip md-btn py-1.5 px-1 rounded-xl border border-white/10 bg-slate-800/60 text-center">
+              <div class="text-[11px] font-semibold text-slate-200">Casual</div>
+              <div class="text-[10px] font-mono-code text-slate-400">1000</div>
+            </button>
+            <button data-elo="1400" class="tier-chip md-btn py-1.5 px-1 rounded-xl border border-white/10 bg-slate-800/60 text-center md-chip-active">
+              <div class="text-[11px] font-semibold text-slate-200">Club</div>
+              <div class="text-[10px] font-mono-code text-slate-400">1400</div>
+            </button>
+            <button data-elo="1800" class="tier-chip md-btn py-1.5 px-1 rounded-xl border border-white/10 bg-slate-800/60 text-center">
+              <div class="text-[11px] font-semibold text-slate-200">Expert</div>
+              <div class="text-[10px] font-mono-code text-slate-400">1800</div>
+            </button>
+            <button data-elo="2200" class="tier-chip md-btn py-1.5 px-1 rounded-xl border border-white/10 bg-slate-800/60 text-center">
+              <div class="text-[11px] font-semibold text-slate-200">Master</div>
+              <div class="text-[10px] font-mono-code text-slate-400">2200</div>
+            </button>
+          </div>
+
+          <!-- Thinking Delay Slider -->
+          <div class="pt-3 border-t border-white/10">
+            <div class="flex justify-between items-center mb-1.5">
+              <span class="text-xs text-slate-300 font-medium">Minimum Bot Pacing Delay</span>
+              <span id="delay-label" class="font-mono-code text-xs text-amber-300">0.7s</span>
+            </div>
+            <input id="delay-slider" type="range" min="400" max="1500" step="100" value="700" class="w-full" />
+            <p id="tier-desc" class="mt-2.5 text-[11px] text-slate-400 leading-relaxed">
+              Club (1400 Elo): Balanced tactical search (3-ply + Quiescence) with positional piece-square tables and occasional human inaccuracies.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: Action Buttons (Undo, New Game, Audio, Side Panel Toggle) -->
+      <div class="pointer-events-auto md-glass rounded-2xl px-2.5 py-1.5 flex items-center gap-1.5">
+        <button id="undo-btn" class="md-btn px-2.5 py-1.5 rounded-xl text-xs font-medium text-slate-200 flex items-center gap-1.5" title="Undo Last Move Pair">
+          <svg class="w-4 h-4 text-slate-300" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"/>
+          </svg>
+          <span class="hidden sm:inline">Undo</span>
+        </button>
+
+        <button id="new-game-btn" class="md-btn px-2.5 py-1.5 rounded-xl text-xs font-medium text-amber-300 bg-amber-500/10 border border-amber-400/25 flex items-center gap-1.5" title="Reset & Start New Game">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </svg>
+          <span class="hidden sm:inline">New Game</span>
+        </button>
+
+        <button id="sfx-btn" class="md-btn p-2 rounded-xl text-slate-200" title="Toggle Cathedral Sound Effects">
+          <svg id="sfx-icon-on" class="w-4 h-4 text-amber-300" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/>
+          </svg>
+          <svg id="sfx-icon-off" class="w-4 h-4 text-slate-500 hidden" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15zM17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2"/>
+          </svg>
+        </button>
+
+        <button id="toggle-panel-btn" class="md-btn p-2 rounded-xl text-slate-200" title="Toggle Move Log & Telemetry Panel">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h7"/>
+          </svg>
+        </button>
+      </div>
     </header>
 
-    <!-- Interactive "Find best move" Live Search Box -->
-    <div class="card">
-      <h2>Find Best Move (Live Worker Search Stream)</h2>
-      <div class="preset-bar">
-        <span style="font-size: 0.8rem; color: var(--muted); align-self: center;">Presets:</span>
-        <button type="button" class="btn-secondary preset-fen" data-fen="4kb1r/p2n1ppp/4q3/4p1B1/4P3/1Q6/PPP2PPP/2KR4 w k - 1 16">Morphy Mate-in-2 (Qb8+)</button>
-        <button type="button" class="btn-secondary preset-fen" data-fen="r1bqkbnr/pppp1ppp/2n5/4p3/4n3/3B1N2/PPPP1PPP/RNBQK2R w KQkq - 0 4">Wins a Piece (Bxe4)</button>
-        <button type="button" class="btn-secondary preset-fen" data-fen="r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1">Kiwipete Tactical</button>
-        <button type="button" class="btn-secondary preset-fen" data-fen="rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1">Start Position</button>
-      </div>
+    <!-- MIDDLE AREA: COLLAPSIBLE SIDE PANEL (CHRONICLE & TELEMETRY) -->
+    <div class="flex-1 flex items-center justify-end my-2 overflow-hidden pointer-events-none">
+      <aside id="side-panel" class="pointer-events-auto md-glass rounded-2xl w-72 sm:w-80 max-h-[72vh] flex flex-col overflow-hidden transition-all duration-300">
+        <!-- Evaluation Bar & Engine Telemetry -->
+        <div class="p-3.5 border-b border-white/10">
+          <div class="flex items-center justify-between text-xs mb-1.5">
+            <span class="font-semibold text-slate-300 uppercase tracking-wider text-[10px]">Sanctum Evaluation</span>
+            <span id="eval-score" class="font-mono-code font-bold text-amber-300">0.0</span>
+          </div>
+          <!-- Visual Eval Bar -->
+          <div class="w-full h-2.5 bg-slate-950 rounded-full overflow-hidden border border-white/15 flex">
+            <div id="eval-bar-white" class="h-full bg-gradient-to-r from-slate-300 to-white transition-all duration-500" style="width: 50%;"></div>
+          </div>
+          <div class="flex items-center justify-between mt-2 text-[10px] font-mono-code text-slate-400">
+            <span>Depth: <strong id="telemetry-depth" class="text-slate-200">-</strong></span>
+            <span>Nodes: <strong id="telemetry-nodes" class="text-slate-200">0</strong></span>
+            <span>60 FPS Locked</span>
+          </div>
+        </div>
 
-      <div class="controls-row">
-        <input id="fen-input" type="text" class="mono" value="4kb1r/p2n1ppp/4q3/4p1B1/4P3/1Q6/PPP2PPP/2KR4 w k - 1 16" placeholder="Enter FEN string..." />
-      </div>
+        <!-- Captured Pieces & Material Advantage -->
+        <div class="px-3.5 py-2.5 border-b border-white/10 space-y-2 bg-slate-950/30">
+          <!-- White Captures (Black pieces shattered) -->
+          <div class="flex items-center justify-between min-h-[22px]">
+            <div class="flex items-center gap-1 flex-wrap text-sm leading-none" id="captured-by-white">
+              <span class="text-[11px] text-slate-500 italic">No obsidian shattered</span>
+            </div>
+            <span id="adv-white" class="hidden px-1.5 py-0.5 rounded bg-slate-100/15 text-slate-100 font-mono-code text-[10px] font-semibold">+0</span>
+          </div>
+          <!-- Black Captures (White pieces shattered) -->
+          <div class="flex items-center justify-between min-h-[22px]">
+            <div class="flex items-center gap-1 flex-wrap text-sm leading-none" id="captured-by-black">
+              <span class="text-[11px] text-slate-500 italic">No marble shattered</span>
+            </div>
+            <span id="adv-black" class="hidden px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-200 font-mono-code text-[10px] font-semibold">+0</span>
+          </div>
+        </div>
 
-      <div class="controls-row">
-        <label>
-          Mode:
-          <select id="search-mode">
-            <option value="depth" selected>Fixed Depth</option>
-            <option value="movetime">Move Time (ms)</option>
-            <option value="infinite">Infinite (until Stop)</option>
-          </select>
-        </label>
-        <label id="limit-label">
-          Value:
-          <input id="search-limit" type="number" min="1" max="30000" value="6" style="width: 84px;" class="mono" />
-        </label>
-        <label>
-          Multi-PV:
-          <select id="search-multipv">
-            <option value="1" selected>1 Line</option>
-            <option value="2">2 Lines</option>
-            <option value="3">3 Lines</option>
-            <option value="4">4 Lines</option>
-            <option value="5">5 Lines</option>
-          </select>
-        </label>
-        <label>
-          TT Size:
-          <select id="search-ttsize">
-            <option value="8">8 MB</option>
-            <option value="16" selected>16 MB</option>
-            <option value="32">32 MB</option>
-            <option value="64">64 MB</option>
-          </select>
-        </label>
-        <button id="btn-find-best" type="button">Find best move</button>
-        <button id="btn-stop-search" type="button" class="btn-danger" disabled>Stop</button>
-      </div>
+        <!-- Move History Header -->
+        <div class="px-3.5 py-2 border-b border-white/10 flex items-center justify-between">
+          <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Move Chronicle (SAN)</span>
+          <span id="move-count-badge" class="text-[10px] font-mono-code text-slate-400">Turn 1</span>
+        </div>
 
-      <div class="search-summary">
-        <div id="best-move-banner">Best Move: <span class="mono" style="color: var(--accent); font-weight: 700;">—</span></div>
-        <div id="search-telemetry" class="mono" style="color: var(--muted); font-size: 0.8rem;">Worker: Idle</div>
-      </div>
-
-      <div class="stream-log">
-        <table>
-          <thead>
-            <tr>
-              <th>Depth</th>
-              <th>PV #</th>
-              <th>Score</th>
-              <th>Nodes</th>
-              <th>NPS</th>
-              <th>Time</th>
-              <th>Principal Variation (SAN)</th>
-            </tr>
-          </thead>
-          <tbody id="live-info-tbody">
-            <tr>
-              <td colspan="7" style="color: var(--muted); text-align: center; padding: 18px;">
-                Click <b>Find best move</b> to stream live PVS iterative-deepening evaluations.
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+        <!-- Scrollable Move List -->
+        <div id="move-history-container" class="flex-1 overflow-y-auto p-2.5 space-y-1 font-mono-code text-xs max-h-60 sm:max-h-72">
+          <div class="text-center text-slate-500 py-8 text-xs font-sans">
+            Select any sculpted piece to command your forces.
+          </div>
+        </div>
+      </aside>
     </div>
 
-    <!-- Automated Engine Tactical Self-Tests -->
-    <div class="card">
-      <h2>Engine Tactical Self-Tests (Mate-in-2 &amp; Wins-a-Piece)</h2>
-      <table>
-        <thead>
-          <tr>
-            <th>Test Position</th>
-            <th>Expected</th>
-            <th>Found Move</th>
-            <th>Eval</th>
-            <th>PV (SAN)</th>
-            <th>Time / NPS</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody id="engine-tbody">
-          <tr>
-            <td colspan="7" style="color: var(--muted); text-align: center; padding: 18px;">
-              Click <b>Run self-tests</b> above to verify tactical search accuracy.
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+    <!-- BOTTOM BAR: MOBILE CAMERA PRESETS & INTERACTION HINT -->
+    <footer class="flex items-center justify-between gap-2 w-full max-w-[1600px] mx-auto">
+      <!-- Mobile/Tablet Camera Presets -->
+      <div class="pointer-events-auto lg:hidden md-glass rounded-xl p-1 flex items-center gap-1">
+        <button data-cam="white" class="cam-preset-btn md-btn px-2.5 py-1 rounded-lg text-xs font-medium text-slate-300 md-chip-active">White</button>
+        <button data-cam="black" class="cam-preset-btn md-btn px-2.5 py-1 rounded-lg text-xs font-medium text-slate-300">Black</button>
+        <button data-cam="iso" class="cam-preset-btn md-btn px-2.5 py-1 rounded-lg text-xs font-medium text-slate-300">Iso</button>
+        <button data-cam="top" class="cam-preset-btn md-btn px-2.5 py-1 rounded-lg text-xs font-medium text-slate-300">Top</button>
+      </div>
 
-    <!-- Turn 1 Perft Verification Suite -->
-    <div class="card">
-      <h2>Perft Verification Suite (Worker Thread)</h2>
-      <div id="status-text" class="status-bar">Click <b>Run self-tests</b> to run Perft, Rules Invariants, and Engine Tactical Suites.</div>
-      <table>
-        <thead>
-          <tr>
-            <th>Position</th>
-            <th>Depth</th>
-            <th>Expected</th>
-            <th>Actual</th>
-            <th>Time</th>
-            <th>Speed</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody id="perft-tbody">
-          <tr>
-            <td colspan="7" style="color: var(--muted); text-align: center; padding: 18px;">
-              Ready to run 7 Perft benchmarks.
-            </td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
+      <!-- Subtle Controls Hint -->
+      <div class="pointer-events-auto md-glass-subtle rounded-xl px-3 py-1.5 text-[11px] text-slate-400 hidden sm:flex items-center gap-3 ml-auto">
+        <span><strong class="text-slate-200">Drag & Drop / Click:</strong> Move or Premove</span>
+        <span>•</span>
+        <span><strong class="text-slate-200">Right-Click:</strong> Cancel Premove</span>
+        <span>•</span>
+        <span><strong class="text-slate-200">Drag Background:</strong> Orbit Camera</span>
+      </div>
+    </footer>
 
-    <!-- Turn 1 Rules Invariants -->
-    <div class="card">
-      <h2>Rules Invariants (SAN Disambiguation, Zobrist 3-Fold, 50-Move, Checkmate)</h2>
-      <table>
-        <thead>
-          <tr>
-            <th>Rule / Invariant Test</th>
-            <th>Details</th>
-            <th>Status</th>
-          </tr>
-        </thead>
-        <tbody id="unit-tbody">
-          <tr>
-            <td colspan="3" style="color: var(--muted); text-align: center; padding: 18px;">
-              Waiting for test run...
-            </td>
-          </tr>
-        </tbody>
-      </table>
+  </div>
+
+  <!-- ==================== PAWN PROMOTION MODAL ==================== -->
+  <div id="promotion-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+    <div class="md-glass rounded-3xl p-6 max-w-sm w-full border border-amber-400/40 text-center shadow-2xl">
+      <h2 class="font-cinzel text-lg font-bold text-amber-200 mb-1">Ascension Ritual</h2>
+      <p class="text-xs text-slate-400 mb-5">Choose the form your Pawn shall take upon the 8th rank:</p>
+      <div class="grid grid-cols-4 gap-2.5">
+        <button data-promo="q" class="promo-btn md-btn p-3 rounded-2xl bg-slate-800/80 border border-white/15 flex flex-col items-center gap-1.5 hover:border-amber-400">
+          <span class="text-2xl">♛</span>
+          <span class="text-[11px] font-semibold text-slate-200">Queen</span>
+        </button>
+        <button data-promo="r" class="promo-btn md-btn p-3 rounded-2xl bg-slate-800/80 border border-white/15 flex flex-col items-center gap-1.5 hover:border-amber-400">
+          <span class="text-2xl">♜</span>
+          <span class="text-[11px] font-semibold text-slate-200">Rook</span>
+        </button>
+        <button data-promo="b" class="promo-btn md-btn p-3 rounded-2xl bg-slate-800/80 border border-white/15 flex flex-col items-center gap-1.5 hover:border-amber-400">
+          <span class="text-2xl">♝</span>
+          <span class="text-[11px] font-semibold text-slate-200">Bishop</span>
+        </button>
+        <button data-promo="n" class="promo-btn md-btn p-3 rounded-2xl bg-slate-800/80 border border-white/15 flex flex-col items-center gap-1.5 hover:border-amber-400">
+          <span class="text-2xl">♞</span>
+          <span class="text-[11px] font-semibold text-slate-200">Knight</span>
+        </button>
+      </div>
     </div>
   </div>
 
-  <!-- Plain script tags (works directly when index.html is opened from disk via file://) -->
-  <script src="rules.js"></script>
-  <script src="engine.js"></script>
+  <!-- ==================== GAME OVER MODAL ==================== -->
+  <div id="gameover-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+    <div class="md-glass rounded-3xl p-6 sm:p-8 max-w-md w-full border border-amber-400/40 text-center shadow-2xl">
+      <div id="gameover-icon" class="w-14 h-14 rounded-2xl bg-amber-500/20 border border-amber-400/40 flex items-center justify-center mx-auto mb-4 text-3xl text-amber-300">
+        ♔
+      </div>
+      <h2 id="gameover-title" class="font-cinzel text-2xl font-bold text-white mb-1">Checkmate</h2>
+      <p id="gameover-subtitle" class="text-sm text-slate-300 mb-6">White triumphs in the Cathedral Sanctum.</p>
+
+      <div class="grid grid-cols-3 gap-2 mb-6 p-3 rounded-2xl bg-slate-950/60 border border-white/10 text-xs">
+        <div>
+          <div class="text-slate-400 text-[10px] uppercase">Total Moves</div>
+          <div id="gameover-moves" class="font-mono-code font-bold text-slate-100 text-sm mt-0.5">34</div>
+        </div>
+        <div>
+          <div class="text-slate-400 text-[10px] uppercase">Automaton</div>
+          <div id="gameover-elo" class="font-mono-code font-bold text-amber-300 text-sm mt-0.5">1400 Elo</div>
+        </div>
+        <div>
+          <div class="text-slate-400 text-[10px] uppercase">Shattered</div>
+          <div id="gameover-shattered" class="font-mono-code font-bold text-slate-100 text-sm mt-0.5">18 Pieces</div>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-3">
+        <button id="gameover-review-btn" class="md-btn flex-1 py-2.5 px-4 rounded-xl bg-slate-800/80 border border-white/15 text-xs font-semibold text-slate-200">
+          Inspect Board
+        </button>
+        <button id="gameover-rematch-btn" class="md-btn flex-1 py-2.5 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold shadow-lg shadow-amber-500/25">
+          Play Again
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ==================== APPLICATION SCRIPT ==================== -->
   <script>
-    (function () {
-      'use strict';
+    /**
+     * ============================================================================
+     * 1. PROCEDURAL WEB AUDIO SYNTHESIZER (Cathedral Acoustics & Stone Physics)
+     * ============================================================================
+     */
+    class CathedralAudioEngine {
+      constructor() {
+        this.ctx = null;
+        this.enabled = true;
+      }
 
-      const btnRunTests = document.getElementById('btn-run-tests');
-      const statusText = document.getElementById('status-text');
-      const perftTbody = document.getElementById('perft-tbody');
-      const unitTbody = document.getElementById('unit-tbody');
-      const engineTbody = document.getElementById('engine-tbody');
+      init() {
+        if (!this.ctx) {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          if (AudioCtx) this.ctx = new AudioCtx();
+        }
+        if (this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
 
-      const fenInput = document.getElementById('fen-input');
-      const searchModeSelect = document.getElementById('search-mode');
-      const searchLimitInput = document.getElementById('search-limit');
-      const searchMultiPvSelect = document.getElementById('search-multipv');
-      const searchTtSizeSelect = document.getElementById('search-ttsize');
-      const btnFindBest = document.getElementById('btn-find-best');
-      const btnStopSearch = document.getElementById('btn-stop-search');
-      const bestMoveBanner = document.getElementById('best-move-banner');
-      const searchTelemetry = document.getElementById('search-telemetry');
-      const liveInfoTbody = document.getElementById('live-info-tbody');
+      playSelect() {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
 
-      const PERFT_TESTS = [
-        { name: 'Start position', fen: WC.Rules.START_FEN, depth: 1, expected: 20 },
-        { name: 'Start position', fen: WC.Rules.START_FEN, depth: 2, expected: 400 },
-        { name: 'Start position', fen: WC.Rules.START_FEN, depth: 3, expected: 8902 },
-        { name: 'Start position', fen: WC.Rules.START_FEN, depth: 4, expected: 197281 },
-        { name: 'Kiwipete', fen: WC.Rules.KIWIPETE_FEN, depth: 1, expected: 48 },
-        { name: 'Kiwipete', fen: WC.Rules.KIWIPETE_FEN, depth: 2, expected: 2039 },
-        { name: 'Kiwipete', fen: WC.Rules.KIWIPETE_FEN, depth: 3, expected: 97862 }
-      ];
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(528, now);
+        osc.frequency.exponentialRampToValueAtTime(792, now + 0.14);
 
-      let worker = WC.makeWorker(['rules', 'engine']);
-      let latestStreamInfo = null;
+        gain.gain.setValueAtTime(0.11, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
 
-      document.querySelectorAll('.preset-fen').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-          fenInput.value = btn.getAttribute('data-fen');
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.17);
+      }
+
+      playSlide(isLevitate = false) {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
+
+        const now = this.ctx.currentTime;
+        if (isLevitate) {
+          // Ethereal arcane hum for Knights & Queens
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(190, now);
+          osc.frequency.exponentialRampToValueAtTime(280, now + 0.25);
+          osc.frequency.exponentialRampToValueAtTime(160, now + 0.55);
+
+          gain.gain.setValueAtTime(0.01, now);
+          gain.gain.linearRampToValueAtTime(0.12, now + 0.18);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.58);
+
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now);
+          osc.stop(now + 0.6);
+        } else {
+          // Heavy carved stone grinding across slate + final thud
+          const bufferSize = this.ctx.sampleRate * 0.45;
+          const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+          const data = buffer.getChannelData(0);
+          for (let i = 0; i < bufferSize; i++) {
+            data[i] = (Math.random() * 2 - 1) * 0.6;
+          }
+
+          const noise = this.ctx.createBufferSource();
+          noise.buffer = buffer;
+
+          const filter = this.ctx.createBiquadFilter();
+          filter.type = 'bandpass';
+          filter.frequency.setValueAtTime(140, now);
+          filter.frequency.linearRampToValueAtTime(210, now + 0.35);
+          filter.Q.value = 2.2;
+
+          const gain = this.ctx.createGain();
+          gain.gain.setValueAtTime(0.01, now);
+          gain.gain.linearRampToValueAtTime(0.22, now + 0.08);
+          gain.gain.exponentialRampToValueAtTime(0.005, now + 0.44);
+
+          noise.connect(filter);
+          filter.connect(gain);
+          gain.connect(this.ctx.destination);
+          noise.start(now);
+
+          // Settling stone thud
+          const thud = this.ctx.createOscillator();
+          const thudGain = this.ctx.createGain();
+          thud.type = 'sine';
+          thud.frequency.setValueAtTime(95, now + 0.36);
+          thud.frequency.exponentialRampToValueAtTime(38, now + 0.52);
+          thudGain.gain.setValueAtTime(0.24, now + 0.36);
+          thudGain.gain.exponentialRampToValueAtTime(0.001, now + 0.54);
+          thud.connect(thudGain);
+          thudGain.connect(this.ctx.destination);
+          thud.start(now + 0.36);
+          thud.stop(now + 0.55);
+        }
+      }
+
+      playShatter() {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
+
+        const now = this.ctx.currentTime;
+
+        // 1. Heavy impact bass boom
+        const boom = this.ctx.createOscillator();
+        const boomGain = this.ctx.createGain();
+        boom.type = 'sawtooth';
+        boom.frequency.setValueAtTime(130, now);
+        boom.frequency.exponentialRampToValueAtTime(28, now + 0.45);
+        boomGain.gain.setValueAtTime(0.35, now);
+        boomGain.gain.exponentialRampToValueAtTime(0.001, now + 0.48);
+        boom.connect(boomGain);
+        boomGain.connect(this.ctx.destination);
+        boom.start(now);
+        boom.stop(now + 0.5);
+
+        // 2. Crystalline / stone fracture bursts (multiple staggered high-resonant clatters)
+        for (let i = 0; i < 9; i++) {
+          const delay = i * 0.038 + Math.random() * 0.025;
+          const osc = this.ctx.createOscillator();
+          const g = this.ctx.createGain();
+          osc.type = i % 2 === 0 ? 'triangle' : 'sine';
+          const baseFreq = 700 + Math.random() * 1900;
+          osc.frequency.setValueAtTime(baseFreq, now + delay);
+          osc.frequency.exponentialRampToValueAtTime(baseFreq * 0.45, now + delay + 0.14);
+
+          g.gain.setValueAtTime(0.14 / (1 + i * 0.25), now + delay);
+          g.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.15);
+
+          osc.connect(g);
+          g.connect(this.ctx.destination);
+          osc.start(now + delay);
+          osc.stop(now + delay + 0.16);
+        }
+      }
+
+      playCheck() {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
+
+        const now = this.ctx.currentTime;
+        // Dramatic cathedral tubular bell minor second interval
+        [440, 466.16, 880].forEach((freq, idx) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, now + idx * 0.04);
+          gain.gain.setValueAtTime(0.15, now + idx * 0.04);
+          gain.gain.exponentialRampToValueAtTime(0.0008, now + 1.1);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now + idx * 0.04);
+          osc.stop(now + 1.15);
         });
+      }
+
+      playGameOver(victory = true) {
+        if (!this.enabled) return;
+        this.init();
+        if (!this.ctx) return;
+
+        const now = this.ctx.currentTime;
+        const chord = victory ? [261.63, 329.63, 392.00, 523.25] : [220.00, 261.63, 329.63, 415.30];
+        chord.forEach((freq, i) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(freq, now + i * 0.12);
+          gain.gain.setValueAtTime(0.12, now + i * 0.12);
+          gain.gain.exponentialRampToValueAtTime(0.0008, now + 2.0);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now + i * 0.12);
+          osc.stop(now + 2.05);
+        });
+      }
+    }
+
+    const sfx = new CathedralAudioEngine();
+
+    /**
+     * ============================================================================
+     * 2. DEDICATED WEB WORKER CHESS ENGINE (Calibrated 400 - 2400 Elo)
+     *    Runs strictly off the main thread so animations stay locked at 60 FPS.
+     * ============================================================================
+     */
+    function createChessAIWorker() {
+      const workerCode = `
+        importScripts('https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js');
+
+        // Piece base values in centipawns
+        const PIECE_VALUES = { p: 100, n: 320, b: 330, r: 500, q: 900, k: 20000 };
+
+        // Positional Piece-Square Tables (from White's perspective; mirrored for Black)
+        const PST = {
+          p: [
+             0,  0,  0,  0,  0,  0,  0,  0,
+            50, 50, 50, 50, 50, 50, 50, 50,
+            10, 10, 20, 30, 30, 20, 10, 10,
+             5,  5, 10, 25, 25, 10,  5,  5,
+             0,  0,  0, 20, 20,  0,  0,  0,
+             5, -5,-10,  0,  0,-10, -5,  5,
+             5, 10, 10,-20,-20, 10, 10,  5,
+             0,  0,  0,  0,  0,  0,  0,  0
+          ],
+          n: [
+            -50,-40,-30,-30,-30,-30,-40,-50,
+            -40,-20,  0,  0,  0,  0,-20,-40,
+            -30,  0, 10, 15, 15, 10,  0,-30,
+            -30,  5, 15, 20, 20, 15,  5,-30,
+            -30,  0, 15, 20, 20, 15,  0,-30,
+            -30,  5, 10, 15, 15, 10,  5,-30,
+            -40,-20,  0,  5,  5,  0,-20,-40,
+            -50,-40,-30,-30,-30,-30,-40,-50
+          ],
+          b: [
+            -20,-10,-10,-10,-10,-10,-10,-20,
+            -10,  0,  0,  0,  0,  0,  0,-10,
+            -10,  0,  5, 10, 10,  5,  0,-10,
+            -10,  5,  5, 10, 10,  5,  5,-10,
+            -10,  0, 10, 10, 10, 10,  0,-10,
+            -10, 10, 10, 10, 10, 10, 10,-10,
+            -10,  5,  0,  0,  0,  0,  5,-10,
+            -20,-10,-10,-10,-10,-10,-10,-20
+          ],
+          r: [
+              0,  0,  0,  0,  0,  0,  0,  0,
+              5, 10, 10, 10, 10, 10, 10,  5,
+             -5,  0,  0,  0,  0,  0,  0, -5,
+             -5,  0,  0,  0,  0,  0,  0, -5,
+             -5,  0,  0,  0,  0,  0,  0, -5,
+             -5,  0,  0,  0,  0,  0,  0, -5,
+             -5,  0,  0,  0,  0,  0,  0, -5,
+              0,  0,  0,  5,  5,  0,  0,  0
+          ],
+          q: [
+            -20,-10,-10, -5, -5,-10,-10,-20,
+            -10,  0,  0,  0,  0,  0,  0,-10,
+            -10,  0,  5,  5,  5,  5,  0,-10,
+             -5,  0,  5,  5,  5,  5,  0, -5,
+              0,  0,  5,  5,  5,  5,  0, -5,
+            -10,  5,  5,  5,  5,  5,  0,-10,
+            -10,  0,  5,  0,  0,  0,  0,-10,
+            -20,-10,-10, -5, -5,-10,-10,-20
+          ],
+          k_mid: [
+            -30,-40,-40,-50,-50,-40,-40,-30,
+            -30,-40,-40,-50,-50,-40,-40,-30,
+            -30,-40,-40,-50,-50,-40,-40,-30,
+            -30,-40,-40,-50,-50,-40,-40,-30,
+            -20,-30,-30,-40,-40,-30,-30,-20,
+            -10,-20,-20,-20,-20,-20,-20,-10,
+             20, 20,  0,  0,  0,  0, 20, 20,
+             20, 30, 10,  0,  0, 10, 30, 20
+          ],
+          k_end: [
+            -50,-40,-30,-20,-20,-30,-40,-50,
+            -30,-20,-10,  0,  0,-10,-20,-30,
+            -30,-10, 20, 30, 30, 20,-10,-30,
+            -30,-10, 30, 40, 40, 30,-10,-30,
+            -30,-10, 30, 40, 40, 30,-10,-30,
+            -30,-10, 20, 30, 30, 20,-10,-30,
+            -30,-30,  0,  0,  0,  0,-30,-30,
+            -50,-30,-30,-30,-30,-30,-30,-50
+          ]
+        };
+
+        let nodesSearched = 0;
+
+        // Static board evaluation from White's perspective (in centipawns)
+        function evaluateBoard(game) {
+          if (game.in_checkmate()) {
+            return game.turn() === 'w' ? -99999 : 99999;
+          }
+          if (game.in_draw() || game.in_stalemate() || game.in_threefold_repetition()) {
+            return 0;
+          }
+
+          const board = game.board();
+          let score = 0;
+          let nonPawnMaterial = 0;
+
+          for (let r = 0; r < 8; r++) {
+            for (let c = 0; c < 8; c++) {
+              const piece = board[r][c];
+              if (!piece) continue;
+              if (piece.type !== 'p' && piece.type !== 'k') {
+                nonPawnMaterial += PIECE_VALUES[piece.type];
+              }
+            }
+          }
+
+          const isEndgame = nonPawnMaterial < 2600;
+
+          for (let r = 0; r < 8; r++) {
+            for (let c = 0; c < 8; c++) {
+              const piece = board[r][c];
+              if (!piece) continue;
+
+              const sqIndex = piece.color === 'w' ? (r * 8 + c) : ((7 - r) * 8 + c);
+              let val = PIECE_VALUES[piece.type];
+
+              if (piece.type === 'k') {
+                val += isEndgame ? PST.k_end[sqIndex] : PST.k_mid[sqIndex];
+              } else {
+                val += PST[piece.type][sqIndex];
+              }
+
+              score += piece.color === 'w' ? val : -val;
+            }
+          }
+
+          return score;
+        }
+
+        // MVV-LVA Move Ordering for strong Alpha-Beta pruning efficiency
+        function orderMoves(moves) {
+          return moves.sort((a, b) => {
+            let scoreA = 0;
+            let scoreB = 0;
+            if (a.captured) scoreA += 10 * PIECE_VALUES[a.captured] - (PIECE_VALUES[a.piece] / 10);
+            if (a.promotion) scoreA += PIECE_VALUES[a.promotion];
+            if (a.san.includes('+')) scoreA += 60;
+
+            if (b.captured) scoreB += 10 * PIECE_VALUES[b.captured] - (PIECE_VALUES[b.piece] / 10);
+            if (b.promotion) scoreB += PIECE_VALUES[b.promotion];
+            if (b.san.includes('+')) scoreB += 60;
+
+            return scoreB - scoreA;
+          });
+        }
+
+        // Quiescence Search to resolve tactical capture sequences at leaf nodes
+        function quiescence(game, alpha, beta, maximizingPlayer, qDepth) {
+          nodesSearched++;
+          const standPat = evaluateBoard(game);
+
+          if (qDepth <= 0) return standPat;
+
+          if (maximizingPlayer) {
+            if (standPat >= beta) return beta;
+            if (alpha < standPat) alpha = standPat;
+
+            const captures = orderMoves(
+              game.moves({ verbose: true }).filter(m => m.captured || m.promotion)
+            );
+
+            for (let i = 0; i < captures.length; i++) {
+              game.move(captures[i]);
+              const score = quiescence(game, alpha, beta, false, qDepth - 1);
+              game.undo();
+              if (score >= beta) return beta;
+              if (score > alpha) alpha = score;
+            }
+            return alpha;
+          } else {
+            if (standPat <= alpha) return alpha;
+            if (beta > standPat) beta = standPat;
+
+            const captures = orderMoves(
+              game.moves({ verbose: true }).filter(m => m.captured || m.promotion)
+            );
+
+            for (let i = 0; i < captures.length; i++) {
+              game.move(captures[i]);
+              const score = quiescence(game, alpha, beta, true, qDepth - 1);
+              game.undo();
+              if (score <= alpha) return alpha;
+              if (score < beta) beta = score;
+            }
+            return beta;
+          }
+        }
+
+        // Alpha-Beta Search
+        function alphaBeta(game, depth, alpha, beta, maximizingPlayer, useQuiescence) {
+          nodesSearched++;
+          if (depth === 0 || game.game_over()) {
+            if (useQuiescence && !game.game_over()) {
+              return quiescence(game, alpha, beta, maximizingPlayer, 3);
+            }
+            return evaluateBoard(game);
+          }
+
+          const moves = orderMoves(game.moves({ verbose: true }));
+
+          if (maximizingPlayer) {
+            let maxEval = -Infinity;
+            for (let i = 0; i < moves.length; i++) {
+              game.move(moves[i]);
+              const evaluation = alphaBeta(game, depth - 1, alpha, beta, false, useQuiescence);
+              game.undo();
+              if (evaluation > maxEval) maxEval = evaluation;
+              if (evaluation > alpha) alpha = evaluation;
+              if (beta <= alpha) break;
+            }
+            return maxEval;
+          } else {
+            let minEval = Infinity;
+            for (let i = 0; i < moves.length; i++) {
+              game.move(moves[i]);
+              const evaluation = alphaBeta(game, depth - 1, alpha, beta, true, useQuiescence);
+              game.undo();
+              if (evaluation < minEval) minEval = evaluation;
+              if (evaluation < beta) beta = evaluation;
+              if (beta <= alpha) break;
+            }
+            return minEval;
+          }
+        }
+
+        // Map Elo (400..2400) to search depth, quiescence usage, and centipawn temperature noise
+        function getEloParameters(elo) {
+          if (elo <= 650) {
+            return { maxDepth: 1, useQuiescence: false, noiseCp: 240, blunderChance: 0.30 };
+          } else if (elo <= 1050) {
+            return { maxDepth: 2, useQuiescence: false, noiseCp: 115, blunderChance: 0.12 };
+          } else if (elo <= 1450) {
+            return { maxDepth: 3, useQuiescence: true, noiseCp: 48, blunderChance: 0.04 };
+          } else if (elo <= 1850) {
+            return { maxDepth: 3, useQuiescence: true, noiseCp: 16, blunderChance: 0.0 };
+          } else {
+            return { maxDepth: 4, useQuiescence: true, noiseCp: 0, blunderChance: 0.0 };
+          }
+        }
+
+        self.onmessage = function(e) {
+          const { fen, elo } = e.data;
+          const game = new Chess(fen);
+          const legalMoves = orderMoves(game.moves({ verbose: true }));
+
+          if (legalMoves.length === 0) {
+            self.postMessage({ move: null, evalCp: 0, depth: 0, nodes: 0 });
+            return;
+          }
+
+          nodesSearched = 0;
+          const params = getEloParameters(elo);
+          const isWhite = game.turn() === 'w';
+
+          // Adaptive depth boost in simplified endgames for Master/GM levels
+          let targetDepth = params.maxDepth;
+          if (elo >= 2100 && legalMoves.length <= 14) {
+            targetDepth = 5;
+          }
+
+          let scoredMoves = [];
+
+          // Iterative Deepening loop
+          for (let d = 1; d <= targetDepth; d++) {
+            const currentIteration = [];
+            for (let i = 0; i < legalMoves.length; i++) {
+              const m = legalMoves[i];
+              game.move(m);
+              const rawScore = alphaBeta(
+                game,
+                d - 1,
+                -Infinity,
+                Infinity,
+                !isWhite,
+                params.useQuiescence
+              );
+              game.undo();
+
+              // Convert score to mover's perspective so higher is always better for the bot
+              const moverScore = isWhite ? rawScore : -rawScore;
+              currentIteration.push({ move: m, rawScore, moverScore });
+            }
+
+            // Sort moves best-first for the next deeper iteration
+            currentIteration.sort((a, b) => b.moverScore - a.moverScore);
+            scoredMoves = currentIteration;
+          }
+
+          // Apply calibrated human-like Elo selection from candidate moves
+          let chosenEntry = scoredMoves[0];
+
+          if (scoredMoves.length > 1) {
+            if (Math.random() < params.blunderChance) {
+              // Pick a sub-optimal move from top 4 candidates
+              const poolSize = Math.min(scoredMoves.length, 4);
+              chosenEntry = scoredMoves[Math.floor(Math.random() * poolSize)];
+            } else if (params.noiseCp > 0) {
+              // Perturb candidate evaluations with Gaussian-like centipawn noise
+              let bestNoisyScore = -Infinity;
+              for (let i = 0; i < scoredMoves.length; i++) {
+                const noise = (Math.random() - 0.5) * 2 * params.noiseCp;
+                const noisyScore = scoredMoves[i].moverScore + noise;
+                if (noisyScore > bestNoisyScore) {
+                  bestNoisyScore = noisyScore;
+                  chosenEntry = scoredMoves[i];
+                }
+              }
+            }
+          }
+
+          self.postMessage({
+            move: chosenEntry.move,
+            evalCp: chosenEntry.rawScore,
+            depth: targetDepth,
+            nodes: nodesSearched
+          });
+        };
+      `;
+
+      const blob = new Blob([workerCode], { type: 'application/javascript' });
+      return new Worker(URL.createObjectURL(blob));
+    }
+
+    /**
+     * ============================================================================
+     * 3. PROCEDURAL TEXTURES (Veined Marble, Obsidian Runes, Coordinate Frame)
+     * ============================================================================
+     */
+    function createMarbleTexture(isWhiteTile = true) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 512;
+      canvas.height = 512;
+      const ctx = canvas.getContext('2d');
+
+      // High-contrast base color for unmistakable square distinction
+      ctx.fillStyle = isWhiteTile ? '#f2ede4' : '#121620';
+      ctx.fillRect(0, 0, 512, 512);
+
+      // Subtle mineral grain
+      for (let i = 0; i < 4500; i++) {
+        const x = Math.random() * 512;
+        const y = Math.random() * 512;
+        const r = Math.random() * 2.2;
+        ctx.fillStyle = isWhiteTile
+          ? `rgba(150, 140, 125, ${Math.random() * 0.075})`
+          : `rgba(255, 255, 255, ${Math.random() * 0.03})`;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Organic marble / obsidian veins
+      const veinCount = isWhiteTile ? 14 : 10;
+      for (let v = 0; v < eachVeinCount(veinCount); v++) {
+        ctx.beginPath();
+        let x = Math.random() * 512;
+        let y = Math.random() * 512;
+        ctx.moveTo(x, y);
+
+        const segments = 18;
+        for (let s = 0; s < segments; s++) {
+          x += (Math.random() - 0.45) * 65;
+          y += (Math.random() - 0.45) * 65;
+          ctx.lineTo(x, y);
+        }
+
+        ctx.strokeStyle = isWhiteTile
+          ? `rgba(110, 102, 90, ${0.09 + Math.random() * 0.14})`
+          : `rgba(139, 92, 246, ${0.07 + Math.random() * 0.11})`;
+        ctx.lineWidth = 0.8 + Math.random() * 2.5;
+        ctx.stroke();
+      }
+
+      // Crisp chamfered inner tile border & dark outer seam for grid clarity
+      ctx.strokeStyle = isWhiteTile ? 'rgba(255, 255, 255, 0.65)' : 'rgba(148, 163, 184, 0.22)';
+      ctx.lineWidth = 10;
+      ctx.strokeRect(12, 12, 488, 488);
+
+      ctx.strokeStyle = isWhiteTile ? 'rgba(120, 105, 85, 0.35)' : 'rgba(212, 175, 55, 0.22)';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(24, 24, 464, 464);
+
+      ctx.strokeStyle = 'rgba(8, 10, 15, 0.85)';
+      ctx.lineWidth = 14;
+      ctx.strokeRect(0, 0, 512, 512);
+
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.wrapT = THREE.RepeatWrapping;
+      return tex;
+    }
+
+    function eachVeinCount(n) { return n; }
+
+    function createLabelTexture(char) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 128;
+      canvas.height = 128;
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, 128, 128);
+      ctx.font = 'bold 64px Cinzel, serif';
+      ctx.fillStyle = '#d4af37';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(char, 64, 66);
+      return new THREE.CanvasTexture(canvas);
+    }
+
+    /**
+     * ============================================================================
+     * 4. THREE.JS SCENE, CATHEDRAL ARCHITECTURE & SCULPTED PIECES
+     * ============================================================================
+     */
+    const TILE_SIZE = 1.35;
+    const BOARD_OFFSET = (TILE_SIZE * 7) / 2;
+
+    // Convert algebraic square (e.g., "e4") to 3D world coordinates on the board surface
+    function squareToWorld(sq) {
+      const file = sq.charCodeAt(0) - 97; // 0..7 (a..h)
+      const rank = parseInt(sq[1], 10) - 1; // 0..7 (1..8)
+      const x = file * TILE_SIZE - BOARD_OFFSET;
+      const z = (7 - rank) * TILE_SIZE - BOARD_OFFSET;
+      return new THREE.Vector3(x, 0, z);
+    }
+
+    function coordsToSquare(file, rank) {
+      return String.fromCharCode(97 + file) + (rank + 1);
+    }
+
+    // Convert 3D world (x, z) coordinates on the board plane to an algebraic square ("a1".."h8") or null
+    function worldToSquare(x, z) {
+      const file = Math.round((x + BOARD_OFFSET) / TILE_SIZE);
+      const rankFromTop = Math.round((z + BOARD_OFFSET) / TILE_SIZE);
+      const rank = 7 - rankFromTop;
+      if (file < 0 || file > 7 || rank < 0 || rank > 7) return null;
+      return coordsToSquare(file, rank);
+    }
+
+    // Initialize Scene, Camera, Renderer
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x06080e);
+    scene.fog = new THREE.FogExp2(0x06080e, 0.022);
+
+    const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.1, 120);
+    camera.position.set(0, 11.2, 13.0);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.12;
+    container.appendChild(renderer.domElement);
+
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.06;
+    controls.maxPolarAngle = Math.PI / 2 - 0.06;
+    controls.minDistance = 6.5;
+    controls.maxDistance = 26;
+    controls.target.set(0, 0.4, 0);
+
+    // -------------------- CATHEDRAL LIGHTING --------------------
+    const ambientLight = new THREE.HemisphereLight(0x64748b, 0x0f172a, 0.55);
+    scene.add(ambientLight);
+
+    // Cool Moonlight Key Light from high cathedral clerestory window
+    const moonLight = new THREE.DirectionalLight(0xcbd5e1, 1.35);
+    moonLight.position.set(9, 22, 11);
+    moonLight.castShadow = true;
+    moonLight.shadow.mapSize.width = 2048;
+    moonLight.shadow.mapSize.height = 2048;
+    moonLight.shadow.camera.near = 4;
+    moonLight.shadow.camera.far = 45;
+    const d = 8.5;
+    moonLight.shadow.camera.left = -d;
+    moonLight.shadow.camera.right = d;
+    moonLight.shadow.camera.top = d;
+    moonLight.shadow.camera.bottom = -d;
+    moonLight.shadow.bias = -0.0005;
+    scene.add(moonLight);
+
+    // Warm Torch Rim Lights at the 4 corners of the sanctum
+    const torchLights = [];
+    const torchPositions = [
+      [-9.5, 5.5, -9.5],
+      [9.5, 5.5, -9.5],
+      [-9.5, 5.5, 9.5],
+      [9.5, 5.5, 9.5]
+    ];
+
+    torchPositions.forEach((pos, idx) => {
+      const light = new THREE.PointLight(0xff8c24, 1.45, 24, 1.8);
+      light.position.set(pos[0], pos[1], pos[2]);
+      scene.add(light);
+      torchLights.push({ light, baseIntensity: 1.45, phase: idx * 1.7 });
+    });
+
+    // Dynamic Impact Light (flashes during magical duel/capture)
+    const clashLight = new THREE.PointLight(0xf59e0b, 0, 12, 2);
+    clashLight.position.set(0, 2, 0);
+    scene.add(clashLight);
+
+    // -------------------- GOTHIC CATHEDRAL ARCHITECTURE --------------------
+    const cathedralGroup = new THREE.Group();
+    scene.add(cathedralGroup);
+
+    const darkStoneMat = new THREE.MeshStandardMaterial({
+      color: 0x161922,
+      roughness: 0.88,
+      metalness: 0.12
+    });
+
+    const carvedStoneMat = new THREE.MeshStandardMaterial({
+      color: 0x1f2430,
+      roughness: 0.78,
+      metalness: 0.18
+    });
+
+    const bronzeTrimMat = new THREE.MeshStandardMaterial({
+      color: 0x926c2c,
+      roughness: 0.35,
+      metalness: 0.82
+    });
+
+    // 1. Grand Sanctum Stone Pedestal under the Chessboard
+    const pedestalTop = new THREE.Mesh(new THREE.BoxGeometry(12.8, 0.7, 12.8), carvedStoneMat);
+    pedestalTop.position.y = -0.45;
+    pedestalTop.receiveShadow = true;
+    cathedralGroup.add(pedestalTop);
+
+    const pedestalPillar = new THREE.Mesh(new THREE.CylinderGeometry(4.2, 5.4, 7.5, 8), darkStoneMat);
+    pedestalPillar.position.y = -4.5;
+    pedestalPillar.rotation.y = Math.PI / 8;
+    cathedralGroup.add(pedestalPillar);
+
+    // 2. Cathedral Floor
+    const floorMesh = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), darkStoneMat);
+    floorMesh.rotation.x = -Math.PI / 2;
+    floorMesh.position.y = -8.2;
+    floorMesh.receiveShadow = true;
+    cathedralGroup.add(floorMesh);
+
+    // 3. Clustered Gothic Pillars & Vaulted Ribs
+    const pillarCoords = [
+      [-11, -11], [11, -11], [-11, 11], [11, 11],
+      [-18, 0], [18, 0], [0, -18], [0, 18]
+    ];
+
+    pillarCoords.forEach(([px, pz]) => {
+      const pGroup = new THREE.Group();
+      pGroup.position.set(px, -8.2, pz);
+
+      // Main column shaft
+      const shaft = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.25, 28, 12), carvedStoneMat);
+      shaft.position.y = 14;
+      pGroup.add(shaft);
+
+      // 4 clustered colonnettes around each pillar
+      for (let a = 0; a < 4; a++) {
+        const angle = (a * Math.PI) / 2;
+        const subShaft = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.35, 28, 8), darkStoneMat);
+        subShaft.position.set(Math.cos(angle) * 1.05, 14, Math.sin(angle) * 1.05);
+        pGroup.add(subShaft);
+      }
+
+      // Octagonal Base & Capital
+      const base = new THREE.Mesh(new THREE.CylinderGeometry(1.7, 2.0, 1.8, 8), carvedStoneMat);
+      base.position.y = 0.9;
+      pGroup.add(base);
+
+      const capital = new THREE.Mesh(new THREE.CylinderGeometry(1.9, 1.3, 1.6, 8), carvedStoneMat);
+      capital.position.y = 14.5;
+      pGroup.add(capital);
+
+      cathedralGroup.add(pGroup);
+    });
+
+    // Pointed Vaulted Arches spanning overhead
+    for (let i = -1; i <= 1; i++) {
+      const archGeo = new THREE.TorusGeometry(15.5, 0.38, 8, 48, Math.PI);
+      const arch = new THREE.Mesh(archGeo, carvedStoneMat);
+      arch.position.set(0, 7.5, i * 11);
+      cathedralGroup.add(arch);
+
+      const crossArch = new THREE.Mesh(archGeo, carvedStoneMat);
+      crossArch.rotation.y = Math.PI / 2;
+      crossArch.position.set(i * 11, 7.5, 0);
+      cathedralGroup.add(crossArch);
+    }
+
+    // Glowing Brazier Sconces at the 4 inner pillars
+    const flameMat = new THREE.MeshBasicMaterial({ color: 0xffaa33 });
+    torchPositions.forEach(([tx, ty, tz]) => {
+      const sconce = new THREE.Mesh(new THREE.ConeGeometry(0.45, 0.9, 8), bronzeTrimMat);
+      sconce.position.set(tx, ty - 0.5, tz);
+      sconce.rotation.x = Math.PI;
+      cathedralGroup.add(sconce);
+
+      const emberCore = new THREE.Mesh(new THREE.SphereGeometry(0.28, 8, 8), flameMat);
+      emberCore.position.set(tx, ty + 0.05, tz);
+      cathedralGroup.add(emberCore);
+    });
+
+    // Subtle Volumetric-Style Moonlight Shafts
+    const shaftGeo = new THREE.ConeGeometry(5.5, 28, 16, 1, true);
+    const shaftMat = new THREE.MeshBasicMaterial({
+      color: 0x94a3b8,
+      transparent: true,
+      opacity: 0.032,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending
+    });
+    const lightShaft = new THREE.Mesh(shaftGeo, shaftMat);
+    lightShaft.position.set(2.2, 10, 1.8);
+    lightShaft.rotation.z = 0.28;
+    lightShaft.rotation.x = -0.22;
+    cathedralGroup.add(lightShaft);
+
+    // Floating Cathedral Dust Motes
+    const dustCount = 260;
+    const dustGeo = new THREE.BufferGeometry();
+    const dustPositions = new Float32Array(dustCount * 3);
+    for (let i = 0; i < dustCount; i++) {
+      dustPositions[i * 3] = (Math.random() - 0.5) * 24;
+      dustPositions[i * 3 + 1] = Math.random() * 12 - 1;
+      dustPositions[i * 3 + 2] = (Math.random() - 0.5) * 24;
+    }
+    dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPositions, 3));
+    const dustMat = new THREE.PointsMaterial({
+      color: 0xfde68a,
+      size: 0.065,
+      transparent: true,
+      opacity: 0.45,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    });
+    const dustSystem = new THREE.Points(dustGeo, dustMat);
+    scene.add(dustSystem);
+
+    // -------------------- CHESSBOARD & INTERACTIVE HIGHLIGHTS --------------------
+    const boardGroup = new THREE.Group();
+    scene.add(boardGroup);
+
+    const whiteMarbleTex = createMarbleTexture(true);
+    const blackObsidianTex = createMarbleTexture(false);
+
+    const whiteTileMat = new THREE.MeshStandardMaterial({
+      map: whiteMarbleTex,
+      roughness: 0.22,
+      metalness: 0.06
+    });
+
+    const blackTileMat = new THREE.MeshStandardMaterial({
+      map: blackObsidianTex,
+      roughness: 0.16,
+      metalness: 0.28
+    });
+
+    // Ornate Board Border Frame
+    const outerFrame = new THREE.Mesh(new THREE.BoxGeometry(11.9, 0.34, 11.9), bronzeTrimMat);
+    outerFrame.position.y = -0.18;
+    outerFrame.receiveShadow = true;
+    boardGroup.add(outerFrame);
+
+    const innerFrame = new THREE.Mesh(new THREE.BoxGeometry(11.55, 0.36, 11.55), darkStoneMat);
+    innerFrame.position.y = -0.17;
+    innerFrame.receiveShadow = true;
+    boardGroup.add(innerFrame);
+
+    // Recessed Dark Grout Bed under the 8x8 grid
+    const groutBed = new THREE.Mesh(
+      new THREE.BoxGeometry(TILE_SIZE * 8 + 0.12, 0.21, TILE_SIZE * 8 + 0.12),
+      new THREE.MeshStandardMaterial({ color: 0x090b10, roughness: 0.9, metalness: 0.2 })
+    );
+    groutBed.position.y = -0.115;
+    boardGroup.add(groutBed);
+
+    // Crisp Inlaid Brass/Gold Grid Lines between all 8x8 files and ranks
+    const gridInlayMat = new THREE.MeshStandardMaterial({
+      color: 0xc59b27,
+      roughness: 0.32,
+      metalness: 0.85,
+      emissive: 0x785610,
+      emissiveIntensity: 0.18
+    });
+    const gridSpan = TILE_SIZE * 8;
+    const gridLineThickness = 0.036;
+    for (let i = 0; i <= 8; i++) {
+      const offset = (i - 4) * TILE_SIZE;
+
+      // File divider line (along Z)
+      const vLine = new THREE.Mesh(
+        new THREE.BoxGeometry(gridLineThickness, 0.016, gridSpan + gridLineThickness),
+        gridInlayMat
+      );
+      vLine.position.set(offset, 0.002, 0);
+      boardGroup.add(vLine);
+
+      // Rank divider line (along X)
+      const hLine = new THREE.Mesh(
+        new THREE.BoxGeometry(gridSpan + gridLineThickness, 0.016, gridLineThickness),
+        gridInlayMat
+      );
+      hLine.position.set(0, 0.002, offset);
+      boardGroup.add(hLine);
+    }
+
+    // Coordinate Labels (A-H, 1-8) along the frame
+    const files = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+    for (let i = 0; i < 8; i++) {
+      const pos = i * TILE_SIZE - BOARD_OFFSET;
+      const fileMat = new THREE.MeshBasicMaterial({ map: createLabelTexture(files[i]), transparent: true });
+      const rankMat = new THREE.MeshBasicMaterial({ map: createLabelTexture(String(8 - i)), transparent: true });
+
+      const fLabelBottom = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.42), fileMat);
+      fLabelBottom.rotation.x = -Math.PI / 2;
+      fLabelBottom.position.set(pos, 0.02, 5.56);
+      boardGroup.add(fLabelBottom);
+
+      const fLabelTop = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.42), fileMat);
+      fLabelTop.rotation.x = -Math.PI / 2;
+      fLabelTop.rotation.z = Math.PI;
+      fLabelTop.position.set(pos, 0.02, -5.56);
+      boardGroup.add(fLabelTop);
+
+      const rLabelLeft = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.42), rankMat);
+      rLabelLeft.rotation.x = -Math.PI / 2;
+      rLabelLeft.position.set(-5.56, 0.02, pos);
+      boardGroup.add(rLabelLeft);
+
+      const rLabelRight = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.42), rankMat);
+      rLabelRight.rotation.x = -Math.PI / 2;
+      rLabelRight.position.set(5.56, 0.02, pos);
+      boardGroup.add(rLabelRight);
+    }
+
+    // 64 Checkered Tiles + Raycast Targets
+    const tileMeshes = [];
+    const tileMap = {}; // sq -> tileMesh
+    const tileGeo = new THREE.BoxGeometry(TILE_SIZE * 0.955, 0.22, TILE_SIZE * 0.955);
+
+    for (let r = 0; r < 8; r++) {
+      for (let f = 0; f < 8; f++) {
+        const isLight = (r + f) % 2 === 1;
+        const sq = coordsToSquare(f, r);
+        const tile = new THREE.Mesh(tileGeo, isLight ? whiteTileMat : blackTileMat);
+        const worldPos = squareToWorld(sq);
+        tile.position.set(worldPos.x, -0.11, worldPos.z);
+        tile.receiveShadow = true;
+        tile.userData = { square: sq, isLight };
+        boardGroup.add(tile);
+        tileMeshes.push(tile);
+        tileMap[sq] = tile;
+      }
+    }
+
+    // Interactive Overlay Beacons (Selection, Legal Moves, Captures, Last Move, Check)
+    const markersGroup = new THREE.Group();
+    scene.add(markersGroup);
+
+    const selectedRingGeo = new THREE.RingGeometry(0.42, 0.56, 32);
+    selectedRingGeo.rotateX(-Math.PI / 2);
+    const selectedRingMat = new THREE.MeshBasicMaterial({ color: 0xfbbf24, side: THREE.DoubleSide, transparent: true, opacity: 0.9 });
+    const selectedRing = new THREE.Mesh(selectedRingGeo, selectedRingMat);
+    selectedRing.position.y = 0.015;
+    selectedRing.visible = false;
+    scene.add(selectedRing);
+
+    const hoverSquareGeo = new THREE.PlaneGeometry(TILE_SIZE * 0.95, TILE_SIZE * 0.95);
+    hoverSquareGeo.rotateX(-Math.PI / 2);
+    const hoverSquareMat = new THREE.MeshBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.22 });
+    const hoverSquare = new THREE.Mesh(hoverSquareGeo, hoverSquareMat);
+    hoverSquare.position.y = 0.012;
+    hoverSquare.visible = false;
+    scene.add(hoverSquare);
+
+    // King in Check Crimson Halo
+    const checkHaloGeo = new THREE.RingGeometry(0.35, 0.62, 32);
+    checkHaloGeo.rotateX(-Math.PI / 2);
+    const checkHaloMat = new THREE.MeshBasicMaterial({ color: 0xef4444, side: THREE.DoubleSide, transparent: true, opacity: 0.85 });
+    const checkHalo = new THREE.Mesh(checkHaloGeo, checkHaloMat);
+    checkHalo.position.y = 0.02;
+    checkHalo.visible = false;
+    scene.add(checkHalo);
+
+    // Shockwave Ring for Capture Impacts
+    const shockwaveGeo = new THREE.RingGeometry(0.2, 0.38, 36);
+    shockwaveGeo.rotateX(-Math.PI / 2);
+    const shockwaveMat = new THREE.MeshBasicMaterial({ color: 0xf59e0b, side: THREE.DoubleSide, transparent: true, opacity: 0 });
+    const shockwaveMesh = new THREE.Mesh(shockwaveGeo, shockwaveMat);
+    shockwaveMesh.position.y = 0.04;
+    shockwaveMesh.visible = false;
+    scene.add(shockwaveMesh);
+
+    /**
+     * ============================================================================
+     * 5. SCULPTED 3D WIZARD'S CHESS PIECES (Veined Marble & Volcanic Obsidian)
+     * ============================================================================
+     */
+    const whitePieceMat = new THREE.MeshStandardMaterial({
+      map: whiteMarbleTex,
+      color: 0xf8f5f0,
+      roughness: 0.22,
+      metalness: 0.10,
+      emissive: 0x38bdf8,
+      emissiveIntensity: 0.03
+    });
+
+    const blackPieceMat = new THREE.MeshStandardMaterial({
+      map: blackObsidianTex,
+      color: 0x161925,
+      roughness: 0.14,
+      metalness: 0.48,
+      emissive: 0x9333ea,
+      emissiveIntensity: 0.08
+    });
+
+    const whiteAccentMat = new THREE.MeshStandardMaterial({
+      color: 0xd4af37,
+      roughness: 0.3,
+      metalness: 0.85
+    });
+
+    const blackAccentMat = new THREE.MeshStandardMaterial({
+      color: 0xa855f7,
+      roughness: 0.25,
+      metalness: 0.75,
+      emissive: 0x7e22ce,
+      emissiveIntensity: 0.35
+    });
+
+    // Helper to build Lathe profiles
+    function makeLathe(pointsArr, segments = 24) {
+      const pts = pointsArr.map(([r, y]) => new THREE.Vector2(r, y));
+      return new THREE.LatheGeometry(pts, segments);
+    }
+
+    function createChessPieceMesh(type, color) {
+      const group = new THREE.Group();
+      const mainMat = color === 'w' ? whitePieceMat : blackPieceMat;
+      const accentMat = color === 'w' ? whiteAccentMat : blackAccentMat;
+
+      // Pedestal Rune Ring on every piece base
+      const baseRing = new THREE.Mesh(new THREE.TorusGeometry(0.43, 0.03, 8, 24), accentMat);
+      baseRing.rotation.x = Math.PI / 2;
+      baseRing.position.y = 0.08;
+      group.add(baseRing);
+
+      if (type === 'p') {
+        // PAWN: Armored Sentinel with Shielded Collar & Orb Head
+        const bodyGeo = makeLathe([
+          [0, 0], [0.44, 0], [0.44, 0.09], [0.37, 0.16],
+          [0.24, 0.35], [0.19, 0.68], [0.31, 0.74], [0.18, 0.82], [0, 0.82]
+        ]);
+        const body = new THREE.Mesh(bodyGeo, mainMat);
+        body.castShadow = true;
+        body.receiveShadow = true;
+        group.add(body);
+
+        const head = new THREE.Mesh(new THREE.SphereGeometry(0.24, 20, 20), mainMat);
+        head.position.y = 1.03;
+        head.castShadow = true;
+        group.add(head);
+
+        const collar = new THREE.Mesh(new THREE.TorusGeometry(0.24, 0.028, 8, 20), accentMat);
+        collar.rotation.x = Math.PI / 2;
+        collar.position.y = 0.75;
+        group.add(collar);
+
+      } else if (type === 'r') {
+        // ROOK: Gothic Citadel Tower with Crenelated Battlements
+        const towerGeo = makeLathe([
+          [0, 0], [0.48, 0], [0.48, 0.11], [0.41, 0.22],
+          [0.33, 0.55], [0.31, 1.05], [0.40, 1.15], [0.40, 1.32],
+          [0.26, 1.32], [0.26, 1.20], [0, 1.20]
+        ]);
+        const tower = new THREE.Mesh(towerGeo, mainMat);
+        tower.castShadow = true;
+        tower.receiveShadow = true;
+        group.add(tower);
+
+        // 6 Crenelated Merlons around top rim
+        for (let i = 0; i < 6; i++) {
+          const angle = (i * Math.PI * 2) / 6;
+          const merlon = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.20, 0.14), mainMat);
+          merlon.position.set(Math.cos(angle) * 0.32, 1.40, Math.sin(angle) * 0.32);
+          merlon.rotation.y = -angle;
+          merlon.castShadow = true;
+          group.add(merlon);
+        }
+
+      } else if (type === 'n') {
+        // KNIGHT: Sculpted Warhorse Bust with Armored Mane & Ears
+        const baseGeo = makeLathe([
+          [0, 0], [0.48, 0], [0.48, 0.11], [0.40, 0.22],
+          [0.32, 0.42], [0, 0.42]
+        ]);
+        const base = new THREE.Mesh(baseGeo, mainMat);
+        base.castShadow = true;
+        base.receiveShadow = true;
+        group.add(base);
+
+        const horseGroup = new THREE.Group();
+        // Neck
+        const neck = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.78, 0.44), mainMat);
+        neck.position.set(0, 0.78, -0.04);
+        neck.rotation.x = 0.22;
+        neck.castShadow = true;
+        horseGroup.add(neck);
+
+        // Snout / Head
+        const snout = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.30, 0.56), mainMat);
+        snout.position.set(0, 1.16, 0.14);
+        snout.rotation.x = 0.38;
+        snout.castShadow = true;
+        horseGroup.add(snout);
+
+        // Armored Crest Mane
+        const mane = new THREE.Mesh(new THREE.BoxGeometry(0.10, 0.75, 0.18), accentMat);
+        mane.position.set(0, 0.88, -0.24);
+        mane.rotation.x = 0.18;
+        horseGroup.add(mane);
+
+        // Pointed Ears
+        [-0.09, 0.09].forEach(ex => {
+          const ear = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.22, 6), mainMat);
+          ear.position.set(ex, 1.40, -0.06);
+          ear.rotation.x = -0.15;
+          horseGroup.add(ear);
+        });
+
+        // Orient Knight to face enemy ranks
+        horseGroup.rotation.y = color === 'w' ? Math.PI : 0;
+        group.add(horseGroup);
+
+      } else if (type === 'b') {
+        // BISHOP: Tall Mitre Cleric with Golden Orb Finial
+        const bishopGeo = makeLathe([
+          [0, 0], [0.47, 0], [0.47, 0.11], [0.39, 0.20],
+          [0.25, 0.55], [0.20, 0.98], [0.31, 1.05], [0.22, 1.12], [0, 1.12]
+        ]);
+        const body = new THREE.Mesh(bishopGeo, mainMat);
+        body.castShadow = true;
+        body.receiveShadow = true;
+        group.add(body);
+
+        const mitre = new THREE.Mesh(new THREE.SphereGeometry(0.26, 20, 20), mainMat);
+        mitre.scale.set(0.88, 1.45, 0.88);
+        mitre.position.y = 1.32;
+        mitre.castShadow = true;
+        group.add(mitre);
+
+        const sash = new THREE.Mesh(new THREE.TorusGeometry(0.23, 0.025, 8, 20), accentMat);
+        sash.rotation.x = Math.PI / 2.4;
+        sash.position.y = 1.32;
+        group.add(sash);
+
+        const finial = new THREE.Mesh(new THREE.SphereGeometry(0.08, 12, 12), accentMat);
+        finial.position.y = 1.72;
+        group.add(finial);
+
+      } else if (type === 'q') {
+        // QUEEN: Regal Sorceress with Spiked Coronet Crown
+        const queenGeo = makeLathe([
+          [0, 0], [0.51, 0], [0.51, 0.12], [0.42, 0.24],
+          [0.27, 0.68], [0.22, 1.18], [0.35, 1.34],
+          [0.28, 1.44], [0.38, 1.66], [0, 1.56]
+        ]);
+        const body = new THREE.Mesh(queenGeo, mainMat);
+        body.castShadow = true;
+        body.receiveShadow = true;
+        group.add(body);
+
+        // 8 Coronet Crown Pearls
+        for (let i = 0; i < 8; i++) {
+          const angle = (i * Math.PI * 2) / 8;
+          const spike = new THREE.Mesh(new THREE.ConeGeometry(0.055, 0.22, 8), accentMat);
+          spike.position.set(Math.cos(angle) * 0.33, 1.74, Math.sin(angle) * 0.33);
+          group.add(spike);
+        }
+
+        const crownOrb = new THREE.Mesh(new THREE.SphereGeometry(0.14, 16, 16), mainMat);
+        crownOrb.position.y = 1.68;
+        group.add(crownOrb);
+
+      } else if (type === 'k') {
+        // KING: Grand Wizard Monarch with Broad Shoulders & Imperial Cross
+        const kingGeo = makeLathe([
+          [0, 0], [0.53, 0], [0.53, 0.13], [0.45, 0.26],
+          [0.31, 0.72], [0.26, 1.24], [0.41, 1.42],
+          [0.33, 1.56], [0.42, 1.78], [0, 1.74]
+        ]);
+        const body = new THREE.Mesh(kingGeo, mainMat);
+        body.castShadow = true;
+        body.receiveShadow = true;
+        group.add(body);
+
+        const crownBand = new THREE.Mesh(new THREE.TorusGeometry(0.38, 0.035, 8, 24), accentMat);
+        crownBand.rotation.x = Math.PI / 2;
+        crownBand.position.y = 1.76;
+        group.add(crownBand);
+
+        // Imperial Cross Finial
+        const crossVert = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.36, 0.09), accentMat);
+        crossVert.position.y = 1.98;
+        group.add(crossVert);
+
+        const crossHoriz = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.09, 0.09), accentMat);
+        crossHoriz.position.y = 2.02;
+        group.add(crossHoriz);
+      }
+
+      return group;
+    }
+
+    /**
+     * ============================================================================
+     * 6. GPU-FRIENDLY POOLED SHATTER PARTICLE SYSTEM (Zero GC / 60 FPS Locked)
+     * ============================================================================
+     */
+    class PooledShatterSystem {
+      constructor(scene) {
+        this.maxShards = 180;
+        this.shards = [];
+
+        // Jagged irregular tetrahedron/dodecahedron geometry for realistic stone fragments
+        const shardGeo = new THREE.DodecahedronGeometry(0.14, 0);
+        // Slightly stretch vertices to look like fractured stone splinters
+        const posAttr = shardGeo.attributes.position;
+        for (let i = 0; i < posAttr.count; i++) {
+          posAttr.setXYZ(
+            i,
+            posAttr.getX(i) * 1.35,
+            posAttr.getY(i) * 0.75,
+            posAttr.getZ(i) * 1.15
+          );
+        }
+        shardGeo.computeVertexNormals();
+
+        this.whiteInstanced = new THREE.InstancedMesh(shardGeo, whitePieceMat, this.maxShards);
+        this.blackInstanced = new THREE.InstancedMesh(shardGeo, blackPieceMat, this.maxShards);
+        this.emberInstanced = new THREE.InstancedMesh(
+          new THREE.OctahedronGeometry(0.06, 0),
+          new THREE.MeshBasicMaterial({ color: 0xf59e0b }),
+          this.maxShards
+        );
+
+        this.whiteInstanced.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        this.blackInstanced.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+        this.emberInstanced.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+
+        this.whiteInstanced.castShadow = true;
+        this.blackInstanced.castShadow = true;
+
+        scene.add(this.whiteInstanced);
+        scene.add(this.blackInstanced);
+        scene.add(this.emberInstanced);
+
+        this.dummy = new THREE.Object3D();
+
+        for (let i = 0; i < this.maxShards; i++) {
+          this.shards.push({
+            active: false,
+            color: 'w',
+            isEmber: false,
+            pos: new THREE.Vector3(),
+            vel: new THREE.Vector3(),
+            rot: new THREE.Euler(),
+            rotVel: new THREE.Vector3(),
+            scale: 1,
+            life: 0,
+            maxLife: 1.5
+          });
+          // Hide all instances initially
+          this.dummy.scale.set(0, 0, 0);
+          this.dummy.updateMatrix();
+          this.whiteInstanced.setMatrixAt(i, this.dummy.matrix);
+          this.blackInstanced.setMatrixAt(i, this.dummy.matrix);
+          this.emberInstanced.setMatrixAt(i, this.dummy.matrix);
+        }
+      }
+
+      triggerShatter(worldPos, pieceColor, attackDir) {
+        let spawned = 0;
+        const targetCount = 54;
+
+        for (let i = 0; i < this.maxShards && spawned < targetCount; i++) {
+          const s = this.shards[i];
+          if (s.active) continue;
+
+          s.active = true;
+          s.color = pieceColor;
+          s.isEmber = spawned % 3 === 0;
+          s.life = 0;
+          s.maxLife = 1.25 + Math.random() * 0.85;
+          s.scale = s.isEmber ? (0.6 + Math.random() * 0.8) : (0.55 + Math.random() * 0.95);
+
+          // Spawn throughout the piece's vertical column
+          s.pos.set(
+            worldPos.x + (Math.random() - 0.5) * 0.45,
+            0.2 + Math.random() * 1.25,
+            worldPos.z + (Math.random() - 0.5) * 0.45
+          );
+
+          // Explosive radial + directional impulse from attacker
+          const radialAngle = Math.random() * Math.PI * 2;
+          const radialSpeed = 1.5 + Math.random() * 3.8;
+          s.vel.set(
+            Math.cos(radialAngle) * radialSpeed + attackDir.x * 2.6,
+            2.2 + Math.random() * 4.2,
+            Math.sin(radialAngle) * radialSpeed + attackDir.z * 2.6
+          );
+
+          s.rot.set(Math.random() * 6, Math.random() * 6, Math.random() * 6);
+          s.rotVel.set(
+            (Math.random() - 0.5) * 14,
+            (Math.random() - 0.5) * 14,
+            (Math.random() - 0.5) * 14
+          );
+
+          spawned++;
+        }
+      }
+
+      update(dt) {
+        let dirtyWhite = false;
+        let dirtyBlack = false;
+        let dirtyEmber = false;
+
+        for (let i = 0; i < this.maxShards; i++) {
+          const s = this.shards[i];
+          if (!s.active) continue;
+
+          s.life += dt;
+          if (s.life >= s.maxLife) {
+            s.active = false;
+            this.dummy.scale.set(0, 0, 0);
+            this.dummy.updateMatrix();
+            if (s.isEmber) {
+              this.emberInstanced.setMatrixAt(i, this.dummy.matrix);
+              dirtyEmber = true;
+            } else if (s.color === 'w') {
+              this.whiteInstanced.setMatrixAt(i, this.dummy.matrix);
+              dirtyWhite = true;
+            } else {
+              this.blackInstanced.setMatrixAt(i, this.dummy.matrix);
+              dirtyBlack = true;
+            }
+            continue;
+          }
+
+          // Gravity & Air Drag
+          s.vel.y -= (s.isEmber ? 5.5 : 13.5) * dt;
+          s.pos.addScaledVector(s.vel, dt);
+
+          // Bounce on board surface
+          if (s.pos.y < 0.06) {
+            s.pos.y = 0.06;
+            s.vel.y *= -0.42;
+            s.vel.x *= 0.72;
+            s.vel.z *= 0.72;
+            s.rotVel.multiplyScalar(0.75);
+          }
+
+          s.rot.x += s.rotVel.x * dt;
+          s.rot.y += s.rotVel.y * dt;
+          s.rot.z += s.rotVel.z * dt;
+
+          // Smooth shrink in final 35% of life
+          const lifeRatio = s.life / s.maxLife;
+          const currentScale = lifeRatio > 0.65
+            ? s.scale * (1 - (lifeRatio - 0.65) / 0.35)
+            : s.scale;
+
+          this.dummy.position.copy(s.pos);
+          this.dummy.rotation.copy(s.rot);
+          this.dummy.scale.setScalar(Math.max(0.001, currentScale));
+          this.dummy.updateMatrix();
+
+          if (s.isEmber) {
+            this.emberInstanced.setMatrixAt(i, this.dummy.matrix);
+            dirtyEmber = true;
+          } else if (s.color === 'w') {
+            this.whiteInstanced.setMatrixAt(i, this.dummy.matrix);
+            dirtyWhite = true;
+          } else {
+            this.blackInstanced.setMatrixAt(i, this.dummy.matrix);
+            dirtyBlack = true;
+          }
+        }
+
+        if (dirtyWhite) this.whiteInstanced.instanceMatrix.needsUpdate = true;
+        if (dirtyBlack) this.blackInstanced.instanceMatrix.needsUpdate = true;
+        if (dirtyEmber) this.emberInstanced.instanceMatrix.needsUpdate = true;
+      }
+    }
+
+    const shatterSystem = new PooledShatterSystem(scene);
+
+    /**
+     * ============================================================================
+     * 7. GAME STATE, PIECE REGISTRY & ANIMATION ORCHESTRATION
+     * ============================================================================
+     */
+    const chess = new Chess();
+    const aiWorker = createChessAIWorker();
+
+    let playerColor = 'w';
+    let botElo = 1400;
+    let botMinDelayMs = 700;
+    let isAnimating = false;
+    let isBotThinking = false;
+    let selectedSquare = null;
+    let legalMovesForSelected = [];
+    let pendingPromotionMove = null;
+    let queuedPremove = null; // { from, to, promotion }
+    let lastMoveSquares = [];
+    let shatteredCount = 0;
+
+    // Map of square ("e4") -> Three.Group piece mesh
+    const pieceMeshes = {};
+    const piecesGroup = new THREE.Group();
+    scene.add(piecesGroup);
+
+    // Compute pseudo-legal premove destinations for a player's piece during the bot's turn
+    function getPremoveTargetsForSquare(sq) {
+      const piece = chess.get(sq);
+      if (!piece || piece.color !== playerColor) return [];
+
+      const f0 = sq.charCodeAt(0) - 97;
+      const r0 = parseInt(sq[1], 10) - 1;
+      const targets = [];
+
+      const addTarget = (f, r) => {
+        if (f < 0 || f > 7 || r < 0 || r > 7) return;
+        const toSq = coordsToSquare(f, r);
+        const isPromo = piece.type === 'p' && ((piece.color === 'w' && r === 7) || (piece.color === 'b' && r === 0));
+        targets.push({
+          from: sq,
+          to: toSq,
+          piece: piece.type,
+          color: piece.color,
+          promotion: isPromo ? 'q' : undefined,
+          isPremove: true
+        });
+      };
+
+      if (piece.type === 'p') {
+        const dir = piece.color === 'w' ? 1 : -1;
+        const startRank = piece.color === 'w' ? 1 : 6;
+        addTarget(f0, r0 + dir);
+        if (r0 === startRank) addTarget(f0, r0 + dir * 2);
+        addTarget(f0 - 1, r0 + dir);
+        addTarget(f0 + 1, r0 + dir);
+      } else if (piece.type === 'n') {
+        [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]].forEach(([df, dr]) => addTarget(f0 + df, r0 + dr));
+      } else if (piece.type === 'k') {
+        for (let df = -1; df <= 1; df++) {
+          for (let dr = -1; dr <= 1; dr++) {
+            if (df !== 0 || dr !== 0) addTarget(f0 + df, r0 + dr);
+          }
+        }
+        // Include castling squares
+        if (f0 === 4 && (r0 === 0 || r0 === 7)) {
+          addTarget(6, r0);
+          addTarget(2, r0);
+        }
+      } else {
+        const dirs = [];
+        if (piece.type === 'r' || piece.type === 'q') dirs.push([1,0],[-1,0],[0,1],[0,-1]);
+        if (piece.type === 'b' || piece.type === 'q') dirs.push([1,1],[1,-1],[-1,1],[-1,-1]);
+        dirs.forEach(([df, dr]) => {
+          for (let step = 1; step < 8; step++) {
+            addTarget(f0 + df * step, r0 + dr * step);
+          }
+        });
+      }
+
+      return targets;
+    }
+
+    function setQueuedPremove(fromSq, toSq, promotion = 'q') {
+      queuedPremove = { from: fromSq, to: toSq, promotion };
+      selectedSquare = null;
+      legalMovesForSelected = [];
+      sfx.playSelect();
+      updateBoardMarkers();
+      updateHUD();
+    }
+
+    function clearQueuedPremove() {
+      if (!queuedPremove) return;
+      queuedPremove = null;
+      updateBoardMarkers();
+      updateHUD();
+    }
+
+    // Build / Sync 3D pieces from current chess.js board state
+    function syncBoardMeshesFromState() {
+      Object.keys(pieceMeshes).forEach(sq => {
+        piecesGroup.remove(pieceMeshes[sq]);
+        delete pieceMeshes[sq];
       });
 
-      searchModeSelect.addEventListener('change', function () {
-        const mode = searchModeSelect.value;
-        if (mode === 'depth') {
-          searchLimitInput.disabled = false;
-          searchLimitInput.value = '6';
-        } else if (mode === 'movetime') {
-          searchLimitInput.disabled = false;
-          searchLimitInput.value = '800';
+      const board = chess.board();
+      for (let r = 0; r < 8; r++) {
+        for (let f = 0; f < 8; f++) {
+          const cell = board[7 - r][f];
+          if (!cell) continue;
+          const sq = coordsToSquare(f, r);
+          const mesh = createChessPieceMesh(cell.type, cell.color);
+          const worldPos = squareToWorld(sq);
+          mesh.position.copy(worldPos);
+          mesh.userData = {
+            square: sq,
+            type: cell.type,
+            color: cell.color,
+            phase: Math.random() * Math.PI * 2
+          };
+          piecesGroup.add(mesh);
+          pieceMeshes[sq] = mesh;
+        }
+      }
+    }
+
+    // Clear and rebuild visual markers for legal moves, captures, premoves, and last move
+    function updateBoardMarkers() {
+      while (markersGroup.children.length > 0) {
+        markersGroup.remove(markersGroup.children[0]);
+      }
+
+      // Highlight Last Move Squares
+      lastMoveSquares.forEach(sq => {
+        const pos = squareToWorld(sq);
+        const highlightGeo = new THREE.PlaneGeometry(TILE_SIZE * 0.93, TILE_SIZE * 0.93);
+        highlightGeo.rotateX(-Math.PI / 2);
+        const highlightMat = new THREE.MeshBasicMaterial({
+          color: 0xf59e0b,
+          transparent: true,
+          opacity: 0.25
+        });
+        const mesh = new THREE.Mesh(highlightGeo, highlightMat);
+        mesh.position.set(pos.x, 0.008, pos.z);
+        markersGroup.add(mesh);
+      });
+
+      // Highlight Queued Premove Squares (Emerald / Cyan Arcane Glow)
+      if (queuedPremove) {
+        [queuedPremove.from, queuedPremove.to].forEach((sq, idx) => {
+          const pos = squareToWorld(sq);
+          const pmGeo = new THREE.PlaneGeometry(TILE_SIZE * 0.93, TILE_SIZE * 0.93);
+          pmGeo.rotateX(-Math.PI / 2);
+          const pmMat = new THREE.MeshBasicMaterial({
+            color: 0x10b981,
+            transparent: true,
+            opacity: idx === 1 ? 0.42 : 0.26
+          });
+          const pmMesh = new THREE.Mesh(pmGeo, pmMat);
+          pmMesh.position.set(pos.x, 0.014, pos.z);
+          markersGroup.add(pmMesh);
+        });
+
+        const toPos = squareToWorld(queuedPremove.to);
+        const pmRingGeo = new THREE.RingGeometry(0.38, 0.54, 32);
+        pmRingGeo.rotateX(-Math.PI / 2);
+        const pmRingMat = new THREE.MeshBasicMaterial({
+          color: 0x34d399,
+          side: THREE.DoubleSide,
+          transparent: true,
+          opacity: 0.95
+        });
+        const pmRing = new THREE.Mesh(pmRingGeo, pmRingMat);
+        pmRing.position.set(toPos.x, 0.025, toPos.z);
+        markersGroup.add(pmRing);
+      }
+
+      // Selected Square Ring
+      if (selectedSquare) {
+        const sPos = squareToWorld(selectedSquare);
+        selectedRing.position.set(sPos.x, 0.018, sPos.z);
+        selectedRing.visible = true;
+      } else {
+        selectedRing.visible = false;
+      }
+
+      // Valid Destination Beacons & Capture Target Rings
+      legalMovesForSelected.forEach(m => {
+        const tPos = squareToWorld(m.to);
+        const isPremoveTarget = Boolean(m.isPremove);
+        const isCapture = !isPremoveTarget && (m.captured || (m.flags && m.flags.includes('e')));
+
+        if (isCapture) {
+          const capRingGeo = new THREE.RingGeometry(0.42, 0.57, 32);
+          capRingGeo.rotateX(-Math.PI / 2);
+          const capRingMat = new THREE.MeshBasicMaterial({
+            color: 0xef4444,
+            side: THREE.DoubleSide,
+            transparent: true,
+            opacity: 0.88
+          });
+          const ring = new THREE.Mesh(capRingGeo, capRingMat);
+          ring.position.set(tPos.x, 0.022, tPos.z);
+          markersGroup.add(ring);
         } else {
-          searchLimitInput.disabled = true;
+          const dotGeo = new THREE.CircleGeometry(isPremoveTarget ? 0.16 : 0.20, 24);
+          dotGeo.rotateX(-Math.PI / 2);
+          const dotMat = new THREE.MeshBasicMaterial({
+            color: isPremoveTarget ? 0x10b981 : 0x38bdf8,
+            transparent: true,
+            opacity: isPremoveTarget ? 0.65 : 0.82
+          });
+          const dot = new THREE.Mesh(dotGeo, dotMat);
+          dot.position.set(tPos.x, 0.02, tPos.z);
+          markersGroup.add(dot);
         }
       });
 
-      btnFindBest.addEventListener('click', async function () {
-        const fen = fenInput.value.trim();
-        try {
-          new WC.Rules.ChessBoard(fen);
-        } catch (err) {
-          bestMoveBanner.innerHTML =
-            '<span style="color: var(--fail); font-weight: 700;">Invalid FEN: ' + err.message + '</span>';
+      // King in Check Crimson Halo
+      if (chess.in_check()) {
+        const turnColor = chess.turn();
+        const board = chess.board();
+        for (let r = 0; r < 8; r++) {
+          for (let f = 0; f < 8; f++) {
+            const p = board[7 - r][f];
+            if (p && p.type === 'k' && p.color === turnColor) {
+              const kPos = squareToWorld(coordsToSquare(f, r));
+              checkHalo.position.set(kPos.x, 0.024, kPos.z);
+              checkHalo.visible = true;
+            }
+          }
+        }
+      } else {
+        checkHalo.visible = false;
+      }
+    }
+
+    // Attempt to execute a queued premove immediately after the bot's move finishes
+    function tryExecuteQueuedPremove() {
+      if (!queuedPremove || chess.game_over() || chess.turn() !== playerColor) return false;
+
+      const pm = queuedPremove;
+      queuedPremove = null;
+
+      const legalMoves = chess.moves({ verbose: true });
+      const matched = legalMoves.find(
+        m => m.from === pm.from && m.to === pm.to && (!m.promotion || m.promotion === (pm.promotion || 'q'))
+      );
+
+      if (matched) {
+        updateBoardMarkers();
+        updateHUD();
+        executeAnimatedMove(matched, () => {
+          requestBotMoveIfNeeded();
+        });
+        return true;
+      } else {
+        // Premove is no longer legal in the resulting board position
+        updateBoardMarkers();
+        updateHUD();
+        return false;
+      }
+    }
+
+    // Animate a Move with Kinetic Gliding/Levitation + Duel & Shatter on Capture
+    function executeAnimatedMove(moveObj, onComplete, isDropMove = false) {
+      isAnimating = true;
+      selectedSquare = null;
+      legalMovesForSelected = [];
+
+      const fromSq = moveObj.from;
+      const toSq = moveObj.to;
+      const attackerMesh = pieceMeshes[fromSq];
+      const targetPos = squareToWorld(toSq);
+      const startPos = squareToWorld(fromSq);
+
+      // Reset any rotation tilt from dragging
+      if (attackerMesh) {
+        attackerMesh.rotation.set(0, 0, 0);
+      }
+
+      // Determine if this move captures a piece (including En Passant)
+      let capturedSq = null;
+      if (moveObj.flags && moveObj.flags.includes('e')) {
+        const capRank = moveObj.color === 'w' ? parseInt(toSq[1], 10) - 1 : parseInt(toSq[1], 10) + 1;
+        capturedSq = toSq[0] + capRank;
+      } else if (moveObj.captured) {
+        capturedSq = toSq;
+      }
+
+      const victimMesh = capturedSq ? pieceMeshes[capturedSq] : null;
+      const isLevitator = ['n', 'q', 'b'].includes(moveObj.piece);
+
+      // Update internal chess.js state
+      const executed = chess.move(moveObj);
+      if (!executed) {
+        isAnimating = false;
+        if (onComplete) onComplete();
+        return;
+      }
+
+      lastMoveSquares = [fromSq, toSq];
+      updateBoardMarkers();
+
+      // Handle Castling Rook movement simultaneously
+      if (moveObj.flags.includes('k') || moveObj.flags.includes('q')) {
+        const rankChar = moveObj.color === 'w' ? '1' : '8';
+        const rookFrom = moveObj.flags.includes('k') ? ('h' + rankChar) : ('a' + rankChar);
+        const rookTo = moveObj.flags.includes('k') ? ('f' + rankChar) : ('d' + rankChar);
+        const rookMesh = pieceMeshes[rookFrom];
+        if (rookMesh) {
+          const rTarget = squareToWorld(rookTo);
+          delete pieceMeshes[rookFrom];
+          pieceMeshes[rookTo] = rookMesh;
+          rookMesh.userData.square = rookTo;
+          gsap.to(rookMesh.position, {
+            x: rTarget.x,
+            z: rTarget.z,
+            duration: 0.45,
+            ease: 'power2.inOut'
+          });
+        }
+      }
+
+      const finishMoveSequence = () => {
+        delete pieceMeshes[fromSq];
+        if (capturedSq && pieceMeshes[capturedSq] && pieceMeshes[capturedSq] !== attackerMesh) {
+          piecesGroup.remove(pieceMeshes[capturedSq]);
+          delete pieceMeshes[capturedSq];
+        }
+
+        // Handle Pawn Promotion mesh swap
+        if (moveObj.promotion) {
+          piecesGroup.remove(attackerMesh);
+          const promotedMesh = createChessPieceMesh(moveObj.promotion, moveObj.color);
+          promotedMesh.position.copy(targetPos);
+          promotedMesh.userData = {
+            square: toSq,
+            type: moveObj.promotion,
+            color: moveObj.color,
+            phase: Math.random() * Math.PI * 2
+          };
+          piecesGroup.add(promotedMesh);
+          pieceMeshes[toSq] = promotedMesh;
+          promotedMesh.scale.set(0.2, 1.8, 0.2);
+          gsap.to(promotedMesh.scale, { x: 1, y: 1, z: 1, duration: 0.45, ease: 'back.out(1.8)' });
+        } else {
+          pieceMeshes[toSq] = attackerMesh;
+          attackerMesh.userData.square = toSq;
+        }
+
+        if (chess.in_check()) {
+          sfx.playCheck();
+        }
+
+        updateBoardMarkers();
+        updateHUD();
+        isAnimating = false;
+
+        if (chess.game_over()) {
+          clearQueuedPremove();
+          showGameOverModal();
           return;
         }
 
-        btnFindBest.disabled = true;
-        btnRunTests.disabled = true;
-        btnStopSearch.disabled = false;
-        liveInfoTbody.innerHTML = '';
-        latestStreamInfo = null;
-        bestMoveBanner.innerHTML = 'Searching...';
+        // If it is now the player's turn and a premove is queued, fire it immediately!
+        if (chess.turn() === playerColor && queuedPremove) {
+          const fired = tryExecuteQueuedPremove();
+          if (fired) return;
+        }
 
-        const mode = searchModeSelect.value;
-        const limitVal = parseInt(searchLimitInput.value, 10) || 6;
-        const multipv = parseInt(searchMultiPvSelect.value, 10) || 1;
-        const ttSizeMB = parseInt(searchTtSizeSelect.value, 10) || 16;
+        if (onComplete) {
+          onComplete();
+        }
+      };
 
-        try {
-          await worker.request('ttsize', { mb: ttSizeMB });
-          await worker.request('multipv', { value: multipv });
-          await worker.request('position', { fen: fen });
+      if (victimMesh) {
+        // ==================== DRAMATIC WIZARD'S CHESS CAPTURE SEQUENCE ====================
+        shatteredCount++;
+        const victimPos = victimMesh.position.clone();
+        const attackDir = new THREE.Vector3().subVectors(victimPos, startPos).normalize();
+        if (attackDir.lengthSq() < 0.001) attackDir.set(0, 0, -1);
+        const stagingPos = new THREE.Vector3().copy(victimPos).addScaledVector(attackDir, -0.78);
 
-          const goParams = { multipv: multipv };
-          if (mode === 'depth') goParams.depth = Math.max(1, Math.min(20, limitVal));
-          else if (mode === 'movetime') goParams.movetime = Math.max(50, limitVal);
-          else if (mode === 'infinite') goParams.infinite = true;
+        sfx.playSlide(isLevitator);
 
-          const res = await worker.request('go', goParams, function onInfo(info) {
-            if (info.multipv === 1) {
-              latestStreamInfo = info;
-              bestMoveBanner.innerHTML =
-                'Best Move: <span class="mono" style="color: var(--accent); font-weight: 700;">' +
-                info.bestMoveSan + '</span> <span class="badge badge-info mono">' +
-                info.scoreText + '</span>';
-            }
+        const tl = gsap.timeline({ onComplete: finishMoveSequence });
 
-            searchTelemetry.textContent =
-              'D' + info.depth + '/' + info.seldepth +
-              ' • ' + info.nodes.toLocaleString() + ' nodes • ' +
-              info.nps.toLocaleString() + ' nps • ' + info.timeMs + ' ms';
+        // 1. Approach victim square (faster if dropped right next to victim)
+        tl.to(attackerMesh.position, {
+          x: stagingPos.x,
+          y: isLevitator ? 0.65 : 0.08,
+          z: stagingPos.z,
+          duration: isDropMove ? 0.16 : 0.36,
+          ease: 'power2.out'
+        });
 
-            const tr = document.createElement('tr');
-            tr.innerHTML =
-              '<td class="mono">D' + info.depth + '</td>' +
-              '<td class="mono">#' + info.multipv + '</td>' +
-              '<td class="mono"><b>' + info.scoreText + '</b></td>' +
-              '<td class="mono">' + info.nodes.toLocaleString() + '</td>' +
-              '<td class="mono">' + info.nps.toLocaleString() + '</td>' +
-              '<td class="mono">' + info.timeMs + ' ms</td>' +
-              '<td class="mono">' + info.pvSan.join(' ') + '</td>';
-            liveInfoTbody.insertBefore(tr, liveInfoTbody.firstChild);
-          });
+        // 2. Wind-up tilt backward
+        tl.to(attackerMesh.rotation, {
+          x: -attackDir.z * 0.38,
+          z: attackDir.x * 0.38,
+          duration: 0.13,
+          ease: 'power1.inOut'
+        });
 
-          bestMoveBanner.innerHTML =
-            'Best Move: <span class="mono" style="color: var(--pass); font-weight: 700;">' +
-            (res.bestMoveSan || '—') + '</span> <span class="badge badge-pass mono">' +
-            (res.scoreText || '0.00') + '</span> <span style="color: var(--muted); font-size: 0.8rem;">(Depth ' +
-            res.depth + ', ' + res.timeMs + ' ms)</span>';
-        } catch (err) {
-          if (latestStreamInfo) {
-            bestMoveBanner.innerHTML =
-              'Best Move (Stopped): <span class="mono" style="color: var(--pass); font-weight: 700;">' +
-              latestStreamInfo.bestMoveSan + '</span> <span class="badge badge-pass mono">' +
-              latestStreamInfo.scoreText + '</span>';
-          } else {
-            bestMoveBanner.innerHTML =
-              '<span style="color: var(--fail); font-weight: 700;">Search Stopped</span>';
+        // 3. Fierce lunge strike + Shatter Explosion!
+        tl.to(attackerMesh.rotation, {
+          x: attackDir.z * 0.52,
+          z: -attackDir.x * 0.52,
+          duration: 0.09,
+          ease: 'power4.in',
+          onStart: () => {
+            sfx.playShatter();
+            piecesGroup.remove(victimMesh);
+            shatterSystem.triggerShatter(victimPos, victimMesh.userData.color, attackDir);
+
+            shockwaveMesh.position.set(victimPos.x, 0.05, victimPos.z);
+            shockwaveMesh.scale.set(0.3, 0.3, 0.3);
+            shockwaveMat.opacity = 0.95;
+            shockwaveMesh.visible = true;
+            gsap.to(shockwaveMesh.scale, { x: 4.2, y: 4.2, z: 4.2, duration: 0.55, ease: 'power2.out' });
+            gsap.to(shockwaveMat, {
+              opacity: 0,
+              duration: 0.55,
+              onComplete: () => { shockwaveMesh.visible = false; }
+            });
+
+            clashLight.position.set(victimPos.x, 1.4, victimPos.z);
+            clashLight.intensity = 6.5;
+            gsap.to(clashLight, { intensity: 0, duration: 0.48, ease: 'power2.out' });
           }
-        } finally {
-          btnFindBest.disabled = false;
-          btnRunTests.disabled = false;
-          btnStopSearch.disabled = true;
+        });
+
+        // 4. Settle smoothly onto conquered square
+        tl.to(attackerMesh.position, {
+          x: targetPos.x,
+          y: 0,
+          z: targetPos.z,
+          duration: 0.22,
+          ease: 'power2.out'
+        }, '-=0.05');
+
+        tl.to(attackerMesh.rotation, {
+          x: 0,
+          z: 0,
+          duration: 0.20,
+          ease: 'power2.out'
+        }, '<');
+
+      } else {
+        // ==================== STANDARD KINETIC GLIDE / LEVITATION / DROP ====================
+        sfx.playSlide(isLevitator);
+
+        const tl = gsap.timeline({ onComplete: finishMoveSequence });
+
+        if (isDropMove) {
+          // Snappy tactile settle when user drags and drops directly onto square
+          tl.to(attackerMesh.position, {
+            x: targetPos.x,
+            y: 0,
+            z: targetPos.z,
+            duration: 0.16,
+            ease: 'power3.out'
+          }, 0);
+        } else if (isLevitator) {
+          tl.to(attackerMesh.position, {
+            x: targetPos.x,
+            z: targetPos.z,
+            duration: 0.52,
+            ease: 'power2.inOut'
+          }, 0);
+          tl.to(attackerMesh.position, {
+            y: moveObj.piece === 'n' ? 1.35 : 0.68,
+            duration: 0.26,
+            ease: 'sine.out',
+            yoyo: true,
+            repeat: 1
+          }, 0);
+        } else {
+          tl.to(attackerMesh.position, {
+            x: targetPos.x,
+            z: targetPos.z,
+            duration: 0.44,
+            ease: 'power3.inOut'
+          }, 0);
         }
+      }
+    }
+
+    /**
+     * ============================================================================
+     * 8. BOT AI COORDINATION (Non-Blocking Web Worker + Realistic Pacing)
+     * ============================================================================
+     */
+    let botRequestTimestamp = 0;
+
+    function requestBotMoveIfNeeded() {
+      if (chess.game_over() || isAnimating || isBotThinking) return;
+      if (chess.turn() === playerColor) return;
+
+      isBotThinking = true;
+      botRequestTimestamp = performance.now();
+      document.getElementById('bot-thinking-bar').classList.remove('hidden');
+
+      aiWorker.postMessage({
+        fen: chess.fen(),
+        elo: botElo
       });
+    }
 
-      btnStopSearch.addEventListener('click', function () {
-        worker.request('stop');
-      });
+    aiWorker.onmessage = function(e) {
+      const { move, evalCp, depth, nodes } = e.data;
+      const elapsed = performance.now() - botRequestTimestamp;
+      const remainingDelay = Math.max(50, botMinDelayMs - elapsed);
 
-      // Run All Self-Tests (Engine Tactical Suite + Perft Suite + Rules Invariants)
-      btnRunTests.addEventListener('click', async function () {
-        btnRunTests.disabled = true;
-        btnFindBest.disabled = true;
-        perftTbody.innerHTML = '';
-        unitTbody.innerHTML = '';
-        engineTbody.innerHTML = '';
-        statusText.textContent = 'Running Engine Tactical Self-Tests & Perft Suite inside Worker...';
+      setTimeout(() => {
+        isBotThinking = false;
+        document.getElementById('bot-thinking-bar').classList.add('hidden');
 
-        try {
-          if (worker) worker.terminate();
-          worker = WC.makeWorker(['rules', 'engine']);
+        // Update Telemetry HUD
+        document.getElementById('telemetry-depth').textContent = `${depth} ply`;
+        document.getElementById('telemetry-nodes').textContent = nodes.toLocaleString();
+        updateEvalBar(evalCp);
 
-          const tStart = performance.now();
+        if (move && !chess.game_over() && chess.turn() !== playerColor) {
+          executeAnimatedMove(move);
+        }
+      }, remainingDelay);
+    };
 
-          // 1. Engine Tactical Self-Tests (Mate-in-2 & Wins a Piece)
-          const engRes = await worker.request('engineSuite', {}, function onEngineProgress(prog) {
-            const r = prog.row;
-            const tr = document.createElement('tr');
-            tr.innerHTML =
-              '<td><b>' + r.name + '</b></td>' +
-              '<td class="mono">' + r.expectedDesc + '</td>' +
-              '<td class="mono"><b>' + r.bestMoveSan + '</b></td>' +
-              '<td class="mono">' + r.scoreText + '</td>' +
-              '<td class="mono">' + r.pvSan + '</td>' +
-              '<td class="mono">' + r.elapsedMs + ' ms (' + r.nps.toLocaleString() + ' nps)</td>' +
-              '<td><span class="badge ' + (r.passed ? 'badge-pass' : 'badge-fail') + '">' +
-              (r.passed ? 'PASS' : 'FAIL') + '</span></td>';
-            engineTbody.appendChild(tr);
-          });
+    function updateEvalBar(evalCp) {
+      const clamped = Math.max(-1500, Math.min(1500, evalCp));
+      const pawns = (evalCp / 100).toFixed(1);
+      const sign = evalCp > 0 ? '+' : '';
+      document.getElementById('eval-score').textContent = Math.abs(evalCp) > 9000 ? 'MATE' : `${sign}${pawns}`;
 
-          // 2. Perft & Rules Invariant Suite
-          const perftRes = await worker.request(
-            'perftSuite',
-            { tests: PERFT_TESTS },
-            function onPerftProgress(prog) {
-              const r = prog.row;
-              statusText.textContent =
-                'Running Perft (' + (prog.index + 1) + '/' + prog.total + '): ' +
-                r.name + ' Depth ' + r.depth + '...';
+      // Sigmoid-like percentage mapping for the visual evaluation bar
+      const pct = 50 + (clamped / 1500) * 45;
+      document.getElementById('eval-bar-white').style.width = `${Math.max(5, Math.min(95, pct))}%`;
+    }
 
-              const tr = document.createElement('tr');
-              tr.innerHTML =
-                '<td><b>' + r.name + '</b></td>' +
-                '<td class="mono">D' + r.depth + '</td>' +
-                '<td class="mono">' + r.expected.toLocaleString() + '</td>' +
-                '<td class="mono">' + r.actual.toLocaleString() + '</td>' +
-                '<td class="mono">' + r.elapsedMs.toFixed(2) + ' ms</td>' +
-                '<td class="mono">' + r.nps.toLocaleString() + ' nps</td>' +
-                '<td><span class="badge ' + (r.passed ? 'badge-pass' : 'badge-fail') + '">' +
-                (r.passed ? 'PASS' : 'FAIL') + '</span></td>';
-              perftTbody.appendChild(tr);
+    /**
+     * ============================================================================
+     * 9. RAYCASTING INTERACTION (Drag & Drop, Click-to-Move, and Premoving)
+     * ============================================================================
+     */
+    const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2();
+    const boardPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+    const planeIntersect = new THREE.Vector3();
+
+    const dragState = {
+      isDownOnPiece: false,
+      isDragging: false,
+      startSq: null,
+      mesh: null,
+      originalPos: new THREE.Vector3(),
+      startClientX: 0,
+      startClientY: 0,
+      lastX: 0,
+      lastZ: 0
+    };
+
+    function getBoardPlanePoint(clientX, clientY) {
+      pointer.x = (clientX / window.innerWidth) * 2 - 1;
+      pointer.y = -(clientY / window.innerHeight) * 2 + 1;
+      raycaster.setFromCamera(pointer, camera);
+      const hit = raycaster.ray.intersectPlane(boardPlane, planeIntersect);
+      return hit ? planeIntersect : null;
+    }
+
+    function getHoveredSquare(clientX, clientY, ignorePieces = false) {
+      pointer.x = (clientX / window.innerWidth) * 2 - 1;
+      pointer.y = -(clientY / window.innerHeight) * 2 + 1;
+      raycaster.setFromCamera(pointer, camera);
+
+      if (!ignorePieces) {
+        const targets = [...tileMeshes, ...piecesGroup.children];
+        const intersects = raycaster.intersectObjects(targets, true);
+        if (intersects.length > 0) {
+          let obj = intersects[0].object;
+          while (obj && !obj.userData.square) {
+            obj = obj.parent;
+          }
+          if (obj && obj.userData.square) return obj.userData.square;
+        }
+      }
+
+      // Fallback / Drag plane mathematical square lookup
+      const pt = getBoardPlanePoint(clientX, clientY);
+      if (!pt) return null;
+      return worldToSquare(pt.x, pt.z);
+    }
+
+    function selectPlayerPiece(sq) {
+      const pieceOnSq = chess.get(sq);
+      if (!pieceOnSq || pieceOnSq.color !== playerColor) return false;
+
+      sfx.playSelect();
+      selectedSquare = sq;
+      if (chess.turn() === playerColor && !isAnimating && !isBotThinking) {
+        legalMovesForSelected = chess.moves({ square: sq, verbose: true });
+      } else {
+        // Premove mode: show pseudo-legal premove targets
+        legalMovesForSelected = getPremoveTargetsForSquare(sq);
+      }
+      updateBoardMarkers();
+      return true;
+    }
+
+    function attemptMoveOrPremove(fromSq, toSq, isDropMove = false) {
+      if (!fromSq || !toSq || fromSq === toSq) return false;
+
+      const isPlayerTurnReady = chess.turn() === playerColor && !isAnimating && !isBotThinking;
+
+      if (isPlayerTurnReady) {
+        const legalMoves = chess.moves({ square: fromSq, verbose: true });
+        const matchingMoves = legalMoves.filter(m => m.to === toSq);
+        if (matchingMoves.length > 0) {
+          if (matchingMoves[0].promotion) {
+            pendingPromotionMove = { from: fromSq, to: toSq, isDropMove, legalList: matchingMoves };
+            document.getElementById('promotion-modal').classList.remove('hidden');
+            return true;
+          }
+          executeAnimatedMove(matchingMoves[0], () => {
+            requestBotMoveIfNeeded();
+          }, isDropMove);
+          return true;
+        }
+        return false;
+      } else {
+        // Queue a Premove during the bot's turn or while animating
+        const premoveTargets = getPremoveTargetsForSquare(fromSq);
+        const matchPremove = premoveTargets.find(m => m.to === toSq);
+        if (matchPremove) {
+          setQueuedPremove(fromSq, toSq, matchPremove.promotion || 'q');
+          return true;
+        }
+        return false;
+      }
+    }
+
+    // Prevent context menu on right-click and use it to cancel premove / selection
+    renderer.domElement.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      clearQueuedPremove();
+      selectedSquare = null;
+      legalMovesForSelected = [];
+      updateBoardMarkers();
+    });
+
+    renderer.domElement.addEventListener('pointerdown', (e) => {
+      if (e.button === 2) {
+        clearQueuedPremove();
+        selectedSquare = null;
+        legalMovesForSelected = [];
+        updateBoardMarkers();
+        return;
+      }
+      if (e.button !== 0 || chess.game_over()) return;
+
+      dragState.startClientX = e.clientX;
+      dragState.startClientY = e.clientY;
+      dragState.isDragging = false;
+      dragState.isDownOnPiece = false;
+
+      const sq = getHoveredSquare(e.clientX, e.clientY, false);
+      if (!sq) return;
+
+      const pieceOnSq = chess.get(sq);
+      const mesh = pieceMeshes[sq];
+
+      // If the user pressed down on one of their own pieces, prepare for potential drag-and-drop
+      if (pieceOnSq && pieceOnSq.color === playerColor && mesh) {
+        // Lock camera orbit while manipulating a chess piece
+        controls.enabled = false;
+        dragState.isDownOnPiece = true;
+        dragState.startSq = sq;
+        dragState.mesh = mesh;
+        dragState.originalPos.copy(squareToWorld(sq));
+        dragState.lastX = dragState.originalPos.x;
+        dragState.lastZ = dragState.originalPos.z;
+      }
+    });
+
+    window.addEventListener('pointermove', (e) => {
+      if (chess.game_over()) {
+        hoverSquare.visible = false;
+        return;
+      }
+
+      // Handle active piece dragging
+      if (dragState.isDownOnPiece && dragState.mesh) {
+        const moveDist = Math.hypot(e.clientX - dragState.startClientX, e.clientY - dragState.startClientY);
+        if (!dragState.isDragging && moveDist > 5) {
+          dragState.isDragging = true;
+          selectPlayerPiece(dragState.startSq);
+          gsap.killTweensOf(dragState.mesh.position);
+        }
+
+        if (dragState.isDragging) {
+          const pt = getBoardPlanePoint(e.clientX, e.clientY);
+          if (pt) {
+            const maxBound = BOARD_OFFSET + TILE_SIZE * 0.65;
+            const clampedX = Math.max(-maxBound, Math.min(maxBound, pt.x));
+            const clampedZ = Math.max(-maxBound, Math.min(maxBound, pt.z));
+
+            // Subtle kinetic tilt based on drag velocity
+            const vx = clampedX - dragState.lastX;
+            const vz = clampedZ - dragState.lastZ;
+            dragState.lastX = clampedX;
+            dragState.lastZ = clampedZ;
+
+            dragState.mesh.position.set(clampedX, 0.85, clampedZ);
+            dragState.mesh.rotation.z = THREE.MathUtils.clamp(-vx * 1.4, -0.35, 0.35);
+            dragState.mesh.rotation.x = THREE.MathUtils.clamp(vz * 1.4, -0.35, 0.35);
+
+            const overSq = worldToSquare(clampedX, clampedZ);
+            if (overSq) {
+              const overPos = squareToWorld(overSq);
+              hoverSquare.position.set(overPos.x, 0.015, overPos.z);
+              hoverSquare.visible = true;
+            } else {
+              hoverSquare.visible = false;
             }
-          );
+          }
+          renderer.domElement.style.cursor = 'grabbing';
+          return;
+        }
+      }
 
-          const totalMs = (performance.now() - tStart).toFixed(2);
-          const allEnginePass = engRes.engineResults.every(function (r) { return r.passed; });
-          const allPerftPass = perftRes.perftResults.every(function (r) { return r.passed; });
-          const allUnitPass = perftRes.unitChecks.every(function (u) { return u.passed; });
+      // Standard hover highlight when not dragging
+      const sq = getHoveredSquare(e.clientX, e.clientY, false);
+      if (sq) {
+        const pos = squareToWorld(sq);
+        hoverSquare.position.set(pos.x, 0.012, pos.z);
+        hoverSquare.visible = true;
+        const p = chess.get(sq);
+        const isTarget = legalMovesForSelected.some(m => m.to === sq);
+        renderer.domElement.style.cursor = (p && p.color === playerColor) || isTarget ? 'pointer' : 'grab';
+      } else {
+        hoverSquare.visible = false;
+        renderer.domElement.style.cursor = 'grab';
+      }
+    });
 
-          perftRes.unitChecks.forEach(function (u) {
-            const tr = document.createElement('tr');
-            tr.innerHTML =
-              '<td><b>' + u.name + '</b></td>' +
-              '<td class="mono">' + u.detail + '</td>' +
-              '<td><span class="badge ' + (u.passed ? 'badge-pass' : 'badge-fail') + '">' +
-              (u.passed ? 'PASS' : 'FAIL') + '</span></td>';
-            unitTbody.appendChild(tr);
+    window.addEventListener('pointerup', (e) => {
+      controls.enabled = true;
+
+      if (dragState.isDownOnPiece && dragState.isDragging && dragState.mesh) {
+        const dropPt = getBoardPlanePoint(e.clientX, e.clientY);
+        const dropSq = dropPt ? worldToSquare(dropPt.x, dropPt.z) : getHoveredSquare(e.clientX, e.clientY, true);
+        const startSq = dragState.startSq;
+        const draggedMesh = dragState.mesh;
+        const origPos = dragState.originalPos.clone();
+
+        dragState.isDownOnPiece = false;
+        dragState.isDragging = false;
+        dragState.mesh = null;
+        renderer.domElement.style.cursor = 'pointer';
+
+        const isPlayerTurnReady = chess.turn() === playerColor && !isAnimating && !isBotThinking;
+        const success = attemptMoveOrPremove(startSq, dropSq, true);
+
+        // If it was an invalid drop OR a queued premove (where the piece must stay on its origin until the bot moves), snap piece back to origin
+        if (!success || !isPlayerTurnReady) {
+          gsap.to(draggedMesh.position, {
+            x: origPos.x,
+            y: 0,
+            z: origPos.z,
+            duration: 0.22,
+            ease: 'power2.out'
           });
+          gsap.to(draggedMesh.rotation, {
+            x: 0,
+            z: 0,
+            duration: 0.2,
+            ease: 'power2.out'
+          });
+        }
+        return;
+      }
 
-          statusText.innerHTML =
-            allEnginePass && allPerftPass && allUnitPass
-              ? '<span style="color: var(--pass); font-weight: 700;">✓ All 2 Engine Tactical Tests, 7 Perft Benchmarks, and 4 Rules Invariants PASSED in ' + totalMs + ' ms.</span>'
-              : '<span style="color: var(--fail); font-weight: 700;">✗ One or more self-tests failed. Check tables above.</span>';
-        } catch (err) {
-          statusText.innerHTML =
-            '<span style="color: var(--fail); font-weight: 700;">Error: ' + err.message + '</span>';
-        } finally {
-          btnRunTests.disabled = false;
-          btnFindBest.disabled = false;
+      dragState.isDownOnPiece = false;
+      dragState.isDragging = false;
+      dragState.mesh = null;
+
+      // Ignore camera orbit drags
+      const dist = Math.hypot(e.clientX - dragState.startClientX, e.clientY - dragState.startClientY);
+      if (dist > 7 || chess.game_over()) return;
+
+      const clickedSq = getHoveredSquare(e.clientX, e.clientY, false);
+      if (!clickedSq) {
+        selectedSquare = null;
+        legalMovesForSelected = [];
+        updateBoardMarkers();
+        return;
+      }
+
+      // 1. If a piece is currently selected and clickedSq is a valid move or premove destination
+      if (selectedSquare && legalMovesForSelected.some(m => m.to === clickedSq)) {
+        attemptMoveOrPremove(selectedSquare, clickedSq, false);
+        return;
+      }
+
+      // 2. Otherwise, check if the player clicked one of their own pieces to select it (works on both player turn & bot turn for premoving)
+      const pieceOnSq = chess.get(clickedSq);
+      if (pieceOnSq && pieceOnSq.color === playerColor) {
+        selectPlayerPiece(clickedSq);
+      } else {
+        clearQueuedPremove();
+        selectedSquare = null;
+        legalMovesForSelected = [];
+        updateBoardMarkers();
+      }
+    });
+
+    // Pawn Promotion Modal Handlers
+    document.querySelectorAll('.promo-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const promoType = btn.getAttribute('data-promo');
+        document.getElementById('promotion-modal').classList.add('hidden');
+        if (!pendingPromotionMove) return;
+
+        const list = pendingPromotionMove.legalList || legalMovesForSelected;
+        const moveCand = list.find(
+          m => m.to === pendingPromotionMove.to && m.promotion === promoType
+        );
+        const isDrop = Boolean(pendingPromotionMove.isDropMove);
+        pendingPromotionMove = null;
+        if (moveCand) {
+          executeAnimatedMove(moveCand, () => {
+            requestBotMoveIfNeeded();
+          }, isDrop);
         }
       });
-    })();
+    });
+
+    /**
+     * ============================================================================
+     * 10. HUD UPDATES, CAMERA PRESETS & UI CONTROLS
+     * ============================================================================
+     */
+    const PIECE_UNICODE = {
+      w: { p: '♙', n: '♘', b: '♗', r: '♖', q: '♕' },
+      b: { p: '♟', n: '♞', b: '♝', r: '♜', q: '♛' }
+    };
+    const MAT_VAL = { p: 1, n: 3, b: 3, r: 5, q: 9 };
+
+    function updateHUD() {
+      const turn = chess.turn();
+      const turnGem = document.getElementById('turn-gem');
+      const turnText = document.getElementById('turn-text');
+      const checkBadge = document.getElementById('check-badge');
+      const premoveBadge = document.getElementById('premove-badge');
+      const premoveBadgeText = document.getElementById('premove-badge-text');
+
+      if (turn === 'w') {
+        turnGem.className = 'w-3.5 h-3.5 rounded-full bg-slate-100 shadow-[0_0_10px_#fff] border border-white/60 transition-all duration-300';
+        turnText.textContent = playerColor === 'w' ? "Your Turn (White)" : "Automaton (White)";
+      } else {
+        turnGem.className = 'w-3.5 h-3.5 rounded-full bg-purple-950 shadow-[0_0_10px_#a855f7] border border-purple-400 transition-all duration-300';
+        turnText.textContent = playerColor === 'b' ? "Your Turn (Black)" : "Automaton (Black)";
+      }
+
+      if (chess.in_check()) {
+        checkBadge.classList.remove('hidden');
+      } else {
+        checkBadge.classList.add('hidden');
+      }
+
+      if (queuedPremove) {
+        premoveBadgeText.textContent = `PREMOVE: ${queuedPremove.from.toUpperCase()}→${queuedPremove.to.toUpperCase()}`;
+        premoveBadge.classList.remove('hidden');
+      } else {
+        premoveBadge.classList.add('hidden');
+      }
+
+      // Compute Captured Pieces & Material Advantage
+      const startCounts = { p: 8, n: 2, b: 2, r: 2, q: 1 };
+      const currentCounts = {
+        w: { p: 0, n: 0, b: 0, r: 0, q: 0 },
+        b: { p: 0, n: 0, b: 0, r: 0, q: 0 }
+      };
+
+      const board = chess.board();
+      let whiteMat = 0;
+      let blackMat = 0;
+
+      for (let r = 0; r < 8; r++) {
+        for (let f = 0; f < 8; f++) {
+          const p = board[r][f];
+          if (p && p.type !== 'k') {
+            currentCounts[p.color][p.type]++;
+            if (p.color === 'w') whiteMat += MAT_VAL[p.type];
+            else blackMat += MAT_VAL[p.type];
+          }
+        }
+      }
+
+      const capByWhiteIcons = [];
+      const capByBlackIcons = [];
+      ['q', 'r', 'b', 'n', 'p'].forEach(t => {
+        const missingBlack = Math.max(0, startCounts[t] - currentCounts.b[t]);
+        for (let i = 0; i < missingBlack; i++) capByWhiteIcons.push(PIECE_UNICODE.b[t]);
+
+        const missingWhite = Math.max(0, startCounts[t] - currentCounts.w[t]);
+        for (let i = 0; i < missingWhite; i++) capByBlackIcons.push(PIECE_UNICODE.w[t]);
+      });
+
+      const capWhiteEl = document.getElementById('captured-by-white');
+      const capBlackEl = document.getElementById('captured-by-black');
+
+      capWhiteEl.innerHTML = capByWhiteIcons.length
+        ? capByWhiteIcons.map(ic => `<span class="text-purple-300 drop-shadow">${ic}</span>`).join('')
+        : '<span class="text-[11px] text-slate-500 italic">No obsidian shattered</span>';
+
+      capBlackEl.innerHTML = capByBlackIcons.length
+        ? capByBlackIcons.map(ic => `<span class="text-slate-200 drop-shadow">${ic}</span>`).join('')
+        : '<span class="text-[11px] text-slate-500 italic">No marble shattered</span>';
+
+      const advWhiteEl = document.getElementById('adv-white');
+      const advBlackEl = document.getElementById('adv-black');
+      const diff = whiteMat - blackMat;
+      if (diff > 0) {
+        advWhiteEl.textContent = `+${diff}`;
+        advWhiteEl.classList.remove('hidden');
+        advBlackEl.classList.add('hidden');
+      } else if (diff < 0) {
+        advBlackEl.textContent = `+${Math.abs(diff)}`;
+        advBlackEl.classList.remove('hidden');
+        advWhiteEl.classList.add('hidden');
+      } else {
+        advWhiteEl.classList.add('hidden');
+        advBlackEl.classList.add('hidden');
+      }
+
+      // Update Move Chronicle (SAN)
+      const history = chess.history({ verbose: true });
+      const moveContainer = document.getElementById('move-history-container');
+      const fullMoveNum = Math.floor(history.length / 2) + 1;
+      document.getElementById('move-count-badge').textContent = `Turn ${fullMoveNum}`;
+
+      if (history.length === 0) {
+        moveContainer.innerHTML = `<div class="text-center text-slate-500 py-8 text-xs font-sans">Select any sculpted piece to command your forces.</div>`;
+      } else {
+        let rowsHtml = '';
+        for (let i = 0; i < history.length; i += 2) {
+          const moveNum = Math.floor(i / 2) + 1;
+          const wMove = history[i];
+          const bMove = history[i + 1];
+          const isLatestRow = i + 2 >= history.length;
+
+          rowsHtml += `
+            <div class="grid grid-cols-7 items-center px-2.5 py-1 rounded-lg ${isLatestRow ? 'bg-amber-500/15 border border-amber-400/25' : 'hover:bg-white/5'}">
+              <span class="col-span-1 text-slate-500">${moveNum}.</span>
+              <span class="col-span-3 font-medium ${wMove.captured ? 'text-amber-300' : 'text-slate-200'}">${wMove.san}</span>
+              <span class="col-span-3 font-medium ${bMove && bMove.captured ? 'text-amber-300' : 'text-slate-300'}">${bMove ? bMove.san : ''}</span>
+            </div>
+          `;
+        }
+        moveContainer.innerHTML = rowsHtml;
+        moveContainer.scrollTop = moveContainer.scrollHeight;
+      }
+    }
+
+    // Camera Presets using GSAP
+    const CAMERA_PRESETS = {
+      white: { pos: [0, 11.2, 13.0], target: [0, 0.3, 0] },
+      black: { pos: [0, 11.2, -13.0], target: [0, 0.3, 0] },
+      iso:   { pos: [11.8, 10.5, 11.8], target: [0, 0.2, 0] },
+      top:   { pos: [0, 17.5, 0.01], target: [0, 0, 0] }
+    };
+
+    function moveCameraToPreset(presetName) {
+      const preset = CAMERA_PRESETS[presetName];
+      if (!preset) return;
+
+      document.querySelectorAll('.cam-preset-btn').forEach(btn => {
+        if (btn.getAttribute('data-cam') === presetName) {
+          btn.classList.add('md-chip-active');
+        } else {
+          btn.classList.remove('md-chip-active');
+        }
+      });
+
+      gsap.to(camera.position, {
+        x: preset.pos[0],
+        y: preset.pos[1],
+        z: preset.pos[2],
+        duration: 1.05,
+        ease: 'power3.inOut'
+      });
+
+      gsap.to(controls.target, {
+        x: preset.target[0],
+        y: preset.target[1],
+        z: preset.target[2],
+        duration: 1.05,
+        ease: 'power3.inOut'
+      });
+    }
+
+    document.querySelectorAll('.cam-preset-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        moveCameraToPreset(btn.getAttribute('data-cam'));
+      });
+    });
+
+    // Calibrated Elo Difficulty UI
+    const TIER_INFO = [
+      { max: 750, name: 'Novice', desc: 'Novice (~600 Elo): Fast 1-ply lookahead with high centipawn temperature and frequent tactical oversights.' },
+      { max: 1150, name: 'Casual', desc: 'Casual (~1000 Elo): 2-ply search with basic piece development and occasional tactical blunders.' },
+      { max: 1550, name: 'Club', desc: 'Club (~1400 Elo): 3-ply Alpha-Beta + Quiescence search with positional piece-square evaluation.' },
+      { max: 1950, name: 'Expert', desc: 'Expert (~1800 Elo): Sharp tactical calculation, MVV-LVA move ordering, and strong endgame king activation.' },
+      { max: 2500, name: 'Master', desc: 'Grandmaster (2200+ Elo): Deep iterative Alpha-Beta + Quiescence search with zero artificial noise.' }
+    ];
+
+    function setBotElo(val) {
+      botElo = parseInt(val, 10);
+      document.getElementById('elo-slider').value = botElo;
+      document.getElementById('hud-elo-val').textContent = botElo;
+      document.getElementById('popover-elo-badge').textContent = `${botElo} ELO`;
+
+      const tier = TIER_INFO.find(t => botElo <= t.max) || TIER_INFO[TIER_INFO.length - 1];
+      document.getElementById('hud-tier-name').textContent = tier.name;
+      document.getElementById('tier-desc').textContent = tier.desc;
+
+      document.querySelectorAll('.tier-chip').forEach(chip => {
+        const chipElo = parseInt(chip.getAttribute('data-elo'), 10);
+        if (Math.abs(chipElo - botElo) <= 150) {
+          chip.classList.add('md-chip-active');
+        } else {
+          chip.classList.remove('md-chip-active');
+        }
+      });
+    }
+
+    const eloPopoverBtn = document.getElementById('elo-popover-btn');
+    const eloPopover = document.getElementById('elo-popover');
+
+    eloPopoverBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      eloPopover.classList.toggle('hidden');
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!eloPopover.contains(e.target) && !eloPopoverBtn.contains(e.target)) {
+        eloPopover.classList.add('hidden');
+      }
+    });
+
+    document.getElementById('elo-slider').addEventListener('input', (e) => {
+      setBotElo(e.target.value);
+    });
+
+    document.querySelectorAll('.tier-chip').forEach(chip => {
+      chip.addEventListener('click', () => {
+        setBotElo(chip.getAttribute('data-elo'));
+      });
+    });
+
+    document.getElementById('delay-slider').addEventListener('input', (e) => {
+      botMinDelayMs = parseInt(e.target.value, 10);
+      document.getElementById('delay-label').textContent = `${(botMinDelayMs / 1000).toFixed(1)}s`;
+    });
+
+    // Player Color Selection
+    function startNewGame(newPlayerColor = playerColor) {
+      playerColor = newPlayerColor;
+      chess.reset();
+      selectedSquare = null;
+      legalMovesForSelected = [];
+      queuedPremove = null;
+      lastMoveSquares = [];
+      shatteredCount = 0;
+      isAnimating = false;
+      isBotThinking = false;
+      document.getElementById('bot-thinking-bar').classList.add('hidden');
+      document.getElementById('gameover-modal').classList.add('hidden');
+
+      syncBoardMeshesFromState();
+      updateBoardMarkers();
+      updateHUD();
+      updateEvalBar(0);
+
+      moveCameraToPreset(playerColor === 'w' ? 'white' : 'black');
+
+      if (playerColor === 'b') {
+        setTimeout(() => requestBotMoveIfNeeded(), 650);
+      }
+    }
+
+    document.getElementById('premove-badge').addEventListener('click', () => {
+      clearQueuedPremove();
+    });
+
+    document.getElementById('play-white-btn').addEventListener('click', () => {
+      document.getElementById('play-white-btn').classList.add('md-chip-active');
+      document.getElementById('play-black-btn').classList.remove('md-chip-active');
+      startNewGame('w');
+    });
+
+    document.getElementById('play-black-btn').addEventListener('click', () => {
+      document.getElementById('play-black-btn').classList.add('md-chip-active');
+      document.getElementById('play-white-btn').classList.remove('md-chip-active');
+      startNewGame('b');
+    });
+
+    document.getElementById('new-game-btn').addEventListener('click', () => {
+      startNewGame(playerColor);
+    });
+
+    // Undo Move Pair
+    document.getElementById('undo-btn').addEventListener('click', () => {
+      if (isAnimating || isBotThinking || chess.history().length === 0) return;
+
+      // Undo bot move + player move so it returns to player's turn
+      chess.undo();
+      if (chess.turn() !== playerColor && chess.history().length > 0) {
+        chess.undo();
+      }
+
+      selectedSquare = null;
+      legalMovesForSelected = [];
+      const hist = chess.history({ verbose: true });
+      lastMoveSquares = hist.length > 0 ? [hist[hist.length - 1].from, hist[hist.length - 1].to] : [];
+
+      syncBoardMeshesFromState();
+      updateBoardMarkers();
+      updateHUD();
+    });
+
+    // Audio Toggle
+    document.getElementById('sfx-btn').addEventListener('click', () => {
+      sfx.enabled = !sfx.enabled;
+      document.getElementById('sfx-icon-on').classList.toggle('hidden', !sfx.enabled);
+      document.getElementById('sfx-icon-off').classList.toggle('hidden', sfx.enabled);
+    });
+
+    // Side Panel Toggle
+    document.getElementById('toggle-panel-btn').addEventListener('click', () => {
+      const panel = document.getElementById('side-panel');
+      panel.classList.toggle('hidden');
+    });
+
+    // Game Over Modal
+    function showGameOverModal() {
+      const modal = document.getElementById('gameover-modal');
+      const title = document.getElementById('gameover-title');
+      const subtitle = document.getElementById('gameover-subtitle');
+      const icon = document.getElementById('gameover-icon');
+
+      const totalMoves = Math.ceil(chess.history().length / 2);
+      document.getElementById('gameover-moves').textContent = totalMoves;
+      document.getElementById('gameover-elo').textContent = `${botElo} Elo`;
+      document.getElementById('gameover-shattered').textContent = `${shatteredCount} Pieces`;
+
+      if (chess.in_checkmate()) {
+        const winnerColor = chess.turn() === 'w' ? 'b' : 'w';
+        const playerWon = winnerColor === playerColor;
+        sfx.playGameOver(playerWon);
+        icon.textContent = winnerColor === 'w' ? '♔' : '♚';
+        title.textContent = playerWon ? 'Victory by Checkmate!' : 'Checkmate — Automaton Prevails';
+        subtitle.textContent = winnerColor === 'w'
+          ? 'The White Marble host commands the Cathedral Sanctum.'
+          : 'The Volcanic Obsidian forces conquer the Sanctum.';
+      } else {
+        sfx.playGameOver(false);
+        icon.textContent = '⚖';
+        title.textContent = 'Sanctum Draw';
+        if (chess.in_stalemate()) subtitle.textContent = 'Stalemate — No legal moves remain.';
+        else if (chess.in_threefold_repetition()) subtitle.textContent = 'Draw by Threefold Repetition.';
+        else if (chess.insufficient_material()) subtitle.textContent = 'Draw by Insufficient Material.';
+        else subtitle.textContent = 'Draw by 50-Move Rule.';
+      }
+
+      modal.classList.remove('hidden');
+    }
+
+    document.getElementById('gameover-review-btn').addEventListener('click', () => {
+      document.getElementById('gameover-modal').classList.add('hidden');
+    });
+
+    document.getElementById('gameover-rematch-btn').addEventListener('click', () => {
+      startNewGame(playerColor);
+    });
+
+    // Responsive Resize Handler
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    /**
+     * ============================================================================
+     * 11. MAIN 60 FPS RENDER & PHYSICS LOOP
+     * ============================================================================
+     */
+    const clock = new THREE.Clock();
+
+    function animate() {
+      requestAnimationFrame(animate);
+
+      const dt = Math.min(clock.getDelta(), 0.05);
+      const elapsed = clock.getElapsedTime();
+
+      controls.update();
+
+      // 1. Update Pooled GPU Shatter Shards
+      shatterSystem.update(dt);
+
+      // 2. Subtle Torchlight Flicker in the Gothic Cathedral
+      for (let i = 0; i < torchLights.length; i++) {
+        const t = torchLights[i];
+        t.light.intensity = t.baseIntensity
+          + Math.sin(elapsed * 7.5 + t.phase) * 0.14
+          + Math.cos(elapsed * 13.0 + t.phase) * 0.08;
+      }
+
+      // 3. Gently Drift Cathedral Dust Motes
+      const posAttr = dustGeo.attributes.position;
+      for (let i = 0; i < dustCount; i++) {
+        let y = posAttr.getY(i) + dt * 0.18;
+        let x = posAttr.getX(i) + Math.sin(elapsed * 0.5 + i) * dt * 0.06;
+        if (y > 11) y = -1;
+        posAttr.setY(i, y);
+        posAttr.setX(i, x);
+      }
+      posAttr.needsUpdate = true;
+
+      // 4. Subtle Arcane Breathing on Selected Piece & Pulsing Rings
+      if (selectedRing.visible) {
+        selectedRing.rotation.z = elapsed * 0.8;
+        const pulse = 1 + Math.sin(elapsed * 4.5) * 0.06;
+        selectedRing.scale.set(pulse, pulse, 1);
+      }
+
+      if (checkHalo.visible) {
+        const checkPulse = 1 + Math.sin(elapsed * 7.0) * 0.12;
+        checkHalo.scale.set(checkPulse, checkPulse, 1);
+      }
+
+      renderer.render(scene, camera);
+    }
+
+    window.onload = function() {
+      syncBoardMeshesFromState();
+      updateBoardMarkers();
+      updateHUD();
+      animate();
+    };
   </script>
 </body>
 </html>

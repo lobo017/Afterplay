@@ -4,7 +4,7 @@
 
 | Phase | Name | Status | Summary |
 |-------|------|--------|---------|
-| **Phase 0** | Audit and scaffold | **Done** | Legacy audit from `legacy/index.html`, Vite + TS strict scaffold, GPL-3.0 licensing, dataset scripts & generated data (`openings.json`, `puzzles.json`, `endgames.json`) |
+| **Phase 0** | Audit and scaffold | **Done** | Legacy audit from `legacy/index.html` (3D Gothic Cathedral Edition), Vite + TS strict scaffold, GPL-3.0 licensing, dataset scripts & generated data (`openings.json`, `puzzles.json`, `endgames.json`) |
 | **Phase 1** | Core | Pending | Rules adapter (chess.js + perft), game tree, PGN parser/writer, IndexedDB migrations |
 | **Phase 2** | Engine | Pending | Stockfish WASM worker client, MultiPV, priority queue, cache, human-like bot (400–2400) |
 | **Phase 3** | 2D board and play mode | Pending | Imperative SVG board, Web Animations, SVG overlay, canvas capture particles, Web Audio synth |
@@ -19,82 +19,96 @@
 
 ## Phase 0 — Audit and Scaffold
 
-### 1. Legacy Audit (`legacy/index.html`)
+### 1. Legacy Audit (`legacy/index.html` — *Wizard's Chess 3D: Gothic Cathedral Edition*)
 
-> **Note on Audit Revision:** The previous version of this audit was written before `legacy/index.html` existed in the repository (inferred solely from `AGENTS.md` and `docs/SPEC.md`). The audit below replaces that placeholder analysis and is based directly on inspecting the actual 582-line (`21,650`-byte) `legacy/index.html` file.
+> **Note on Audit Revision:** The initial Phase 0 audit was written before `legacy/index.html` existed in the repository, and an intermediate revision audited a test-bench file that had been placed in `legacy/` by mistake. The audit below replaces both and is based strictly on the actual 3,130-line (`126,322`-byte) original `legacy/index.html` (*"Wizard's Chess 3D — Gothic Cathedral Edition"*).
 
-#### Overview of the Actual `legacy/index.html` File
-- `legacy/index.html` is titled **"Offline Chess Learning Tool — Turn 2: Rules & Engine Self-Tests"** (`Offline Chess Learning Tool — Rules & Engine Test Bench`, lines `1–582`).
-- It is an HTML/CSS/JS test-bench interface that loads two external plain scripts (`<script src="rules.js"></script>` and `<script src="engine.js"></script>`, lines `358–359`) and spawns a serialized Blob Web Worker via `WC.makeWorker(['rules', 'engine'])` (line `391`) to run:
-  1. An interactive **"Find Best Move (Live Worker Search Stream)"** card (lines `205–282`) with 4 tactical preset buttons, a FEN text input, Search Mode (`depth`, `movetime`, `infinite`), Multi-PV (`1–5`), TT Size (`8 / 16 / 32 / 64 MB`), and a live streaming table of iterative-deepening Principal Variations.
-  2. An **"Engine Tactical Self-Tests (Mate-in-2 & Wins-a-Piece)"** card (lines `285–307`, driven by `worker.request('engineSuite')` at line `513`).
-  3. A **"Perft Verification Suite (Worker Thread)"** card (lines `310–333`, driven by `worker.request('perftSuite')` at line `529`).
-  4. A **"Rules Invariants (SAN Disambiguation, Zobrist 3-Fold, 50-Move, Checkmate)"** card (lines `336–354`).
+#### Overview of `legacy/index.html`
+- A single-file 3D chess application (`3,130` lines) built with Three.js (`r128`), `OrbitControls`, GSAP (`3.12.5`), `chess.js` (`0.10.3`), Tailwind CDN, a procedural Web Audio API synthesizer (`CathedralAudioEngine`), procedural 2D canvas marble/obsidian textures, a Three.js `InstancedMesh` capture shatter particle pool (`PooledShatterSystem`), and an inline Blob Web Worker running a 1–5 ply Alpha-Beta + Quiescence search calibrated to 400–2400 Elo.
 
-#### What to Port from `legacy/index.html` (and What Must Be Built Fresh per `docs/SPEC.md`)
+#### What to Port into the New Architecture
 
-1. **Theme Colors, Materials & UI Tokens (`legacy/index.html` lines `8–191`)**:
-   - **Exact CSS Custom Properties (`:root`, lines `8–19`)**:
-     - `--bg: #0f172a` — deep obsidian-slate page background.
-     - `--panel: #1e293b` — elevated card container surface (`border-radius: 12px`, `padding: 18px 20px`, `border: 1px solid var(--border)`).
-     - `--panel-dark: #0b1120` — recessed dark surface for text/number/select inputs (`border-radius: 8px`, `padding: 8px 11px`), `.search-summary` bar (`padding: 10px 14px`), and `.stream-log` container (`max-height: 260px`).
-     - `--border: #334155` — `1px solid` structural border for cards, headers, controls, and table cell dividers (`th, td`), plus `.btn-secondary` background (`#334155`, `padding: 6px 12px`, `font-size: 0.8rem`, `font-weight: 600`).
-     - `--text: #f8fafc` — high-contrast marble-white primary text.
-     - `--muted: #94a3b8` — secondary slate text for subtitles, card `h2` headers (`uppercase`, `letter-spacing: 0.05em`), table headers (`0.75rem`), labels, and worker telemetry.
-     - `--accent: #f59e0b` — warm amber-gold primary button fill (`color: #0f172a`, `border-radius: 8px`, `padding: 9px 18px`, `font-weight: 700`) and live best-move SAN highlight (line `256`, `449`).
-     - `--pass: #10b981` — emerald success color used in `.badge-pass` (`background: rgba(16, 185, 129, 0.18)`, `border: 1px solid rgba(16, 185, 129, 0.4)`) and completed search banner (line `472`).
-     - `--fail: #ef4444` — crimson error/stop color used in `.badge-fail` (`background: rgba(239, 68, 68, 0.18)`, `border: 1px solid rgba(239, 68, 68, 0.4)`) and `.btn-danger` (`#btn-stop-search`, line `76–79`).
-     - `--info: #38bdf8` — arcane sky-blue used in `.badge-info` (`background: rgba(56, 189, 248, 0.16)`, `border: 1px solid rgba(56, 189, 248, 0.35)`) for live evaluation score pills.
-   - **Typography Stacks (lines `26`, `110–112`)**:
-     - Sans-serif UI font: `-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`.
-     - Monospace data/chess font (`.mono`): `ui-monospace, SFMono-Regular, Menlo, Consolas, monospace`.
-   - **Board Materials Note**: `legacy/index.html` has no 2D/3D chessboard DOM or canvas/SVG material definitions. For Phase 3's Marble & Obsidian board theme (`docs/SPEC.md`), we will pair `legacy/index.html`'s dark obsidian-slate chrome (`#0b1120` / `#0f172a` / `#1e293b` / `#334155`) and amber/sky-blue accents (`#f59e0b` / `#38bdf8`) with veined marble light squares (`#e2e8f0`–`#cbd5e1`) and polished obsidian dark squares (`#1e293b`–`#0f172a`), plus Classic Wood and High-Contrast board themes.
+1. **Procedural Web Audio Synthesizer (`CathedralAudioEngine`, lines `478–664`) $\rightarrow$ Port to `src/render/audio.ts` (Phase 3)**:
+   - **Initialization (`init()`, lines `484–492`)**:
+     - Lazily instantiates `window.AudioContext || window.webkitAudioContext` on the first user gesture and calls `this.ctx.resume()` when `this.ctx.state === 'suspended'`.
+     - *Phase 3 addition*: Route all synth outputs through a master `GainNode` wired to a persistent volume slider (`0.0–1.0`) in addition to the mute toggle (`this.enabled`).
+   - **`playSelect()` (lines `494–513` — piece selection chime)**:
+     - Waveform: `sine` oscillator.
+     - Frequency sweep: `528 Hz` at `now` $\rightarrow$ exponential ramp to `792 Hz` at `now + 0.14s` (a $3:2$ perfect fifth).
+     - Gain envelope: `0.11` at `now` $\rightarrow$ exponential ramp to `0.001` at `now + 0.16s`; oscillator stops at `now + 0.17s`.
+   - **`playSlide(isLevitate = false)` (lines `515–579` — piece movement)**:
+     - **Levitation branch (`isLevitate === true`, lines `521–537`, used for Knights, Bishops, and Queens)**:
+       - Waveform: `triangle` oscillator (ethereal arcane hum).
+       - Frequency contour: `190 Hz` at `now` $\rightarrow$ exponential ramp to `280 Hz` at `now + 0.25s` $\rightarrow$ exponential ramp to `160 Hz` at `now + 0.55s`.
+       - Gain envelope: `0.01` at `now` $\rightarrow$ linear ramp to `0.12` at `now + 0.18s` $\rightarrow$ exponential ramp to `0.001` at `now + 0.58s`; stops at `now + 0.60s`.
+     - **Stone slide + thud branch (`isLevitate === false`, lines `538–578`, used for Pawns, Rooks, and Kings)**:
+       - **Grinding stone noise (`lines 540–565`)**: `0.45s` mono `AudioBuffer` (`sampleRate * 0.45`) filled with white noise `(Math.random() * 2 - 1) * 0.6`, passed through a `bandpass` `BiquadFilterNode` (`frequency`: `140 Hz` at `now` $\rightarrow$ linear ramp to `210 Hz` at `now + 0.35s`; `Q.value = 2.2`) and `GainNode` (`0.01` at `now` $\rightarrow$ linear ramp to `0.22` at `now + 0.08s` $\rightarrow$ exponential ramp to `0.005` at `now + 0.44s`). *(In Phase 3, pre-allocate and reuse the white-noise `AudioBuffer` once on `AudioContext` init instead of regenerating per move.)*
+       - **Settling stone thud (`lines 567–577`)**: `sine` oscillator starting at `now + 0.36s`, frequency `95 Hz` $\rightarrow$ exponential ramp to `38 Hz` at `now + 0.52s`, `thudGain` `0.24` at `now + 0.36s` $\rightarrow$ exponential ramp to `0.001` at `now + 0.54s`; stops at `now + 0.55s`.
+   - **`playShatter()` (lines `581–619` — capture impact & stone fracture)**:
+     - **1. Heavy impact bass boom (`lines 588–599`)**: `sawtooth` oscillator at `130 Hz` (`now`) $\rightarrow$ exponential ramp to `28 Hz` (`now + 0.45s`); `boomGain` `0.35` (`now`) $\rightarrow$ exponential ramp to `0.001` (`now + 0.48s`); stops at `now + 0.50s`.
+     - **2. Crystalline / stone fracture bursts (`lines 601–618`)**: `9` staggered oscillators (`i = 0..8`), each delayed by `delay = i * 0.038 + Math.random() * 0.025` s:
+       - Waveform: alternates `i % 2 === 0 ? 'triangle' : 'sine'`.
+       - Frequency: `baseFreq = 700 + Math.random() * 1900` Hz at `now + delay` $\rightarrow$ exponential ramp to `baseFreq * 0.45` at `now + delay + 0.14s`.
+       - Gain: `0.14 / (1 + i * 0.25)` at `now + delay` $\rightarrow$ exponential ramp to `0.001` at `now + delay + 0.15s`; stops at `now + delay + 0.16s`.
+   - **`playCheck()` (lines `621–640` — cathedral tubular bell alert)**:
+     - 3 `sine` oscillators at `[440, 466.16, 880]` Hz (`A4`, `Bb4` minor second dissonance, `A5` octave), staggered by `idx * 0.04s`.
+     - Gain: `0.15` at `now + idx * 0.04s` $\rightarrow$ exponential ramp to `0.0008` at `now + 1.1s`; stops at `now + 1.15s`.
+   - **`playGameOver(victory = true)` (lines `642–661` — endgame chord)**:
+     - 4 `triangle` oscillators staggered by `i * 0.12s`:
+       - `victory === true`: C-major arpeggio `[261.63, 329.63, 392.00, 523.25]` Hz (`C4, E4, G4, C5`).
+       - `victory === false`: A-minor / harmonic inflection `[220.00, 261.63, 329.63, 415.30]` Hz (`A3, C4, E4, Ab4`).
+     - Gain: `0.12` at `now + i * 0.12s` $\rightarrow$ exponential ramp to `0.0008` at `now + 2.0s`; stops at `now + 2.05s`.
 
-2. **Audio Synthesizer Inspection & Exact Parameters for Phase 3**:
-   - **Inspection Finding**: `legacy/index.html` contains **no Web Audio API code** (zero occurrences of `AudioContext`, `webkitAudioContext`, `createOscillator`, `createGain`, `createBiquadFilter`, or `<audio>`).
-   - Because `docs/SPEC.md` (Phase 3) requires a procedural Web Audio synthesizer started on the first user gesture with a volume slider, we will implement `src/render/audio.ts` in Phase 3 using these exact procedural Web Audio parameters:
-     - **Master Chain**: Lazy `AudioContext` created/resumed on first `pointerdown` / `keydown` gesture $\rightarrow$ master `GainNode` (`gain.value` controlled by volume slider `0.0–1.0`, default `0.7`) $\rightarrow$ `ctx.destination`.
-     - **Move (`playMove`)**: `triangle` oscillator sweeping `180 Hz` $\rightarrow$ `65 Hz` exponentially over `75 ms` (`gain`: `0.28` $\rightarrow$ `0.001`) layered with a `25 ms` white-noise transient through a `bandpass` `BiquadFilterNode` (`frequency: 900 Hz`, `Q: 2.5`, `gain`: `0.15` $\rightarrow$ `0.001`).
-     - **Capture (`playCapture`)**: `sawtooth`/`triangle` impact sweeping `140 Hz` $\rightarrow$ `42 Hz` over `110 ms` (`gain`: `0.42` $\rightarrow$ `0.001`) layered with an `85 ms` noise burst through a `bandpass` filter sweeping `1200 Hz` $\rightarrow$ `400 Hz` (`Q: 1.8`, `gain`: `0.32` $\rightarrow$ `0.001`).
-     - **Check (`playCheck`)**: Dual `sine` + `triangle` harmonic fifth (`880 Hz` A5 + `1318.5 Hz` E6) with `5 ms` attack to `0.25` gain and `220 ms` exponential decay to `0.001`.
-     - **Castle (`playCastle`)**: Double stone-slide thud triggering two `Move` envelopes offset by `65 ms` (`180 Hz` $\rightarrow$ `65 Hz`, then `150 Hz` $\rightarrow$ `55 Hz`).
-     - **Promotion (`playPromotion`)**: 4-note ascending C-major triad arpeggio (`523.25 Hz`, `659.25 Hz`, `783.99 Hz`, `1046.50 Hz`) spaced at `55 ms` intervals, each decaying over `160 ms` (`triangle` wave, `gain`: `0.22` $\rightarrow$ `0.001`).
-     - **Low Time / Game Start / Game End**: Two-tone status chimes (`440 Hz` $\rightarrow$ `554.37 Hz` start; `554.37 Hz` $\rightarrow$ `440 Hz` end; `987.77 Hz` double-pulse low-time warning).
-
-3. **Tactical FEN Presets, Perft Fixtures & Engine Telemetry UI (`legacy/index.html` lines `209–271`, `381–389`, `445–475`)**:
-   - **Tactical Presets (`lines 209–212`)** — to port into Phase 2 engine E2E tests and Phase 4 analysis presets:
-     - *Morphy Mate-in-2 (`Qb8+`)*: `4kb1r/p2n1ppp/4q3/4p1B1/4P3/1Q6/PPP2PPP/2KR4 w k - 1 16`
-     - *Wins a Piece (`Bxe4`)*: `r1bqkbnr/pppp1ppp/2n5/4p3/4n3/3B1N2/PPPP1PPP/RNBQK2R w KQkq - 0 4`
-     - *Kiwipete Tactical*: `r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1`
-     - *Start Position*: `rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1`
-   - **Perft Benchmark Suite (`PERFT_TESTS`, `lines 381–389`)** — to port directly into Phase 1 `tests/unit/perft.test.ts`:
-     - Start position depths `1–4`: `20`, `400`, `8902`, `197281`.
-     - Kiwipete depths `1–3`: `48`, `2039`, `97862`.
-   - **Engine Search Controls & Live Telemetry Pattern (`lines 219–271`, `445–475`)**:
-     - Multi-PV (`1–5` lines), Hash/TT size (`8–64 MB`), search limit mode (`depth`, `movetime`, `infinite`), live telemetry string (`D<depth>/<seldepth> • <nodes> nodes • <nps> nps • <timeMs> ms`), and SAN PV line formatting.
+2. **Visual Theme Colors, Materials & Procedural Textures (`lines 23–163`, `1000–1078`, `1181–1506`, `2007–2109`) $\rightarrow$ Port to `src/styles/` & `src/render/` (Phase 3)**:
+   - **Cathedral Dark Glass HUD & Chrome (`lines 41–96`, `1113`, `162`)**:
+     - App background: `#07080c` (`body, html`), scene backdrop `#06080e`, radial vignette `rgba(3, 5, 10, 0.68)` at edges, primary text `#f1f5f9`.
+     - `.md-glass`: `background: rgba(15, 18, 26, 0.78)`, `backdrop-filter: blur(16px)`, `border: 1px solid rgba(255, 255, 255, 0.11)`, `box-shadow: 0 12px 32px -4px rgba(0, 0, 0, 0.6), 0 2px 6px rgba(0, 0, 0, 0.4)`.
+     - `.md-glass-subtle`: `background: rgba(22, 26, 38, 0.65)`, `backdrop-filter: blur(12px)`, `border: 1px solid rgba(255, 255, 255, 0.08)`.
+     - `.md-chip-active`: fill `rgba(245, 158, 11, 0.22)`, border `rgba(245, 158, 11, 0.65)`, text `#fcd34d`; range slider thumb `#f59e0b` with `2px solid #fffbeb` border and `0 0 10px rgba(245, 158, 11, 0.6)` glow.
+   - **Marble & Obsidian Board Surface Palette (`createMarbleTexture`, lines `1000–1078`, `1181–1381`)**:
+     - **Light Squares (Veined Marble)**: base `#f2ede4`, mineral grain `rgba(150, 140, 125, 0..0.075)`, `14` organic veins in `rgba(110, 102, 90, 0.09..0.23)`, inner chamfer highlight `rgba(255, 255, 255, 0.65)`, inner frame line `rgba(120, 105, 85, 0.35)`, outer tile seam `rgba(8, 10, 15, 0.85)`.
+     - **Dark Squares (Volcanic Obsidian)**: base `#121620`, mineral grain `rgba(255, 255, 255, 0..0.03)`, `10` arcane violet veins in `rgba(139, 92, 246, 0.07..0.18)` (`#8b5cf6`), inner chamfer `rgba(148, 163, 184, 0.22)`, inner gold hairline `rgba(212, 175, 55, 0.22)`, outer tile seam `rgba(8, 10, 15, 0.85)`.
+     - **Board Frame, Grout & Inlays**: outer bronze trim `#926c2c`, dark stone frame `#161922`, carved stone `#1f2430`, recessed grout bed `#090b10`, inlaid brass/gold grid dividers `#c59b27` (emissive `#785610`), and `#d4af37` gold `A–H` / `1–8` coordinates.
+   - **Marble & Obsidian Piece Palette (`lines 1475–1505`)**:
+     - **White Pieces (Marble & Gold)**: body `#f8f5f0` with subtle `#38bdf8` cool sheen; trim/accents `#d4af37` metallic gold.
+     - **Black Pieces (Obsidian & Arcane Amethyst)**: body `#161925` with `#9333ea` emissive sheen; trim/accents `#a855f7` purple (emissive `#7e22ce`, turn gem `#a855f7` glow).
+   - **Board Markers & Highlights (`lines 1436–1468`, `2007–2109`)**:
+     - Selected square ring: `#fbbf24` (`opacity: 0.90`).
+     - Hover square highlight: `#38bdf8` (`opacity: 0.22`).
+     - Last-move square highlight: `#f59e0b` (`opacity: 0.25`).
+     - Legal move dot: `#38bdf8` (`opacity: 0.82`); legal capture ring: `#ef4444` (`opacity: 0.88`).
+     - King-in-check halo & badge: `#ef4444` (`opacity: 0.85`, pulsing `1.4s`).
+     - Queued premove squares: `#10b981` (`opacity: 0.26` origin / `0.42` target), target ring `#34d399` (`opacity: 0.95`), and premove target dots `#10b981` (`opacity: 0.65`).
+   - **Fixed-Pool Capture Shatter Physics (`PooledShatterSystem`, lines `1696–1871`)**:
+     - Fixed pool of `180` shards (`54` triggered per capture: $2/3$ piece-colored stone fragments `#f8f5f0`/`#161925`, $1/3$ glowing `#f59e0b` embers) with radial + attacker-direction impulse, gravity, surface bounce (`restitution: 0.42`, `friction: 0.72`), and scale fade over the final `35%` of life (`1.25–2.10s`) — to port as a zero-allocation 2D `<canvas>` particle pool in Phase 3.
+   - **Bot Rating Tiers (`lines 265–286`, `898–910`, `2885–2891`)**:
+     - 5 rating presets across `400–2400` Elo (`Novice` 600, `Casual` 1000, `Club` 1400, `Expert` 1800, `Master` 2200) and candidate perturbation concept — to combine with Stockfish `UCI_Elo` / `Skill Level` and MultiPV weighting in Phase 2.
 
 #### Concrete Bugs Found in `legacy/index.html`
-1. **Broken External Script References (`rules.js` & `engine.js`, lines `358–359`, `382–391`)**:
-   - Lines `358–359` load `<script src="rules.js"></script>` and `<script src="engine.js"></script>`, neither of which exists in `legacy/`. On page load, line `382` immediately throws `Uncaught ReferenceError: WC is not defined` when evaluating `WC.Rules.START_FEN` and `WC.makeWorker(['rules', 'engine'])` (line `391`).
-2. **Unescaped `.innerHTML` Injection / DOM XSS (`lines 418–419`, `448–451`, `460–467`, `471–485`, `516–524`, `539–547`, `559–563`, `572–573`)**:
-   - Error messages from invalid FEN input (`err.message`, line `419` and line `573`) and worker payload strings are interpolated directly into `.innerHTML` without escaping (`'<span ...>Invalid FEN: ' + err.message + '</span>'`). Any `<` or `>` characters corrupt the DOM or execute injected markup.
-3. **Uncoordinated `worker.request('stop')` Without Await or Error Handling (`lines 493–495`)**:
-   - Clicking `#btn-stop-search` fires `worker.request('stop')` without awaiting completion, disabling `#btn-stop-search`, or attaching a `.catch()` handler, allowing duplicate `stop` requests or unhandled promise rejections.
-4. **Swallowed Engine Errors Masked as User Stop (`lines 476–485`)**:
-   - In `btnFindBest`'s `catch (err)` block (line `476`), if `latestStreamInfo` was set at depth 1 and the worker subsequently crashes or throws an exception at a deeper ply, the UI renders `"Best Move (Stopped)"` with a green `.badge-pass` badge (lines `478–481`) instead of surfacing the error.
-5. **Sequential Un-cancellable `ttsize` / `multipv` / `position` / `go` IPC Round-Trips (`lines 436–445`)**:
-   - Every search performs 4 sequential `await worker.request(...)` calls without a request priority queue or cancellation token before `go` starts.
+1. **Runtime CDN Requests Break Offline Operation (`lines 9–20`, `674`)**:
+   - Loads Tailwind CSS (`cdn.tailwindcss.com`), Google Fonts (`fonts.googleapis.com`), `three.min.js`, `OrbitControls.js`, `gsap.min.js`, and `chess.min.js` (both in `<head>` at line `20` and inside the Web Worker via `importScripts(...)` at line `674`) over the internet at runtime. With network disabled, the app cannot render, animate, validate moves, or start the AI worker.
+2. **Pawn Drag-Promotion Leaves Mesh Floating & Modal Uncancellable (`lines 411–434`, `2494–2498`, `2588–2590`, `2637–2654`)**:
+   - Dragging a pawn onto the promotion rank sets the mesh position to `y = 0.85` with velocity tilt (`lines 2588–2590`) and calls `attemptMoveOrPremove(startSq, dropSq, true)` (`line 2637`). When `matchingMoves[0].promotion` is truthy (`line 2494`), `attemptMoveOrPremove` opens `#promotion-modal` and returns `true` (`line 2497`), skipping the snap-back block (`line 2640`). The pawn stays frozen in mid-air while the modal is open, and `#promotion-modal` has no close/cancel button, backdrop click handler, or `Escape` key handler.
+3. **Premove Promotion Hardcoded to Queen (`lines 1912–1920`, `2507–2511`)**:
+   - `getPremoveTargetsForSquare` (`line 1918`) and `attemptMoveOrPremove` (`line 2510`) hardcode `promotion: 'q'` for all promotion premoves, making underpromotion impossible when premoving.
+4. **In-Flight AI Worker Race Condition Across "New Game" / Color Switch (`lines 2371–2403`, `2943–2966`)**:
+   - Starting a new game or switching colors while `isBotThinking === true` resets `isBotThinking = false` (`line 2952`) without cancelling the worker search or checking a game/request generation ID in `aiWorker.onmessage` (`line 2385`). When the stale worker search finishes, its `setTimeout` callback overwrites `#telemetry-depth`, `#telemetry-nodes`, and the eval bar (`lines 2395–2397`) and, if `chess.turn() !== playerColor` (e.g., after clicking "Play as Black"), executes the stale move from the previous position if legal (`line 2399`).
+5. **Captured Pieces Tray Miscounts Promoted Pawns (`lines 2754–2783`)**:
+   - `updateHUD()` computes captured pieces as `Math.max(0, startCounts[t] - currentCounts[color][t])` (`lines 2778, 2781`). When a pawn promotes to a Queen, `currentCounts[color].p` decreases by 1 even though the pawn was promoted rather than captured, falsely adding a shattered pawn icon to the opponent's capture tray (and masking captures of promoted pieces).
+6. **Stale Evaluation Bar After Undo (`lines 2989–3006`)**:
+   - Clicking `#undo-btn` reverts the moves on the board and updates the move list, but never updates `#eval-score` or `#eval-bar-white`, leaving the undone position's evaluation displayed.
+7. **Three.js Geometry & Material GPU Memory Leak (`lines 1974–1999`, `2002–2091`, `2208`)**:
+   - `updateBoardMarkers()` (called on every click, move, premove, and right-click) and `syncBoardMeshesFromState()` (called on Undo and New Game) remove meshes from the scene and allocate new `PlaneGeometry`, `RingGeometry`, `CircleGeometry`, `LatheGeometry`, and `MeshBasicMaterial` instances without calling `.dispose()`, leaking WebGL buffers over consecutive games.
 
 #### Performance Hotspots Found in `legacy/index.html`
-1. **Unbounded Table Row Prepending & Synchronous HTML Parsing on Every `onInfo` Stream Event (`lines 445–469`)**:
-   - For every single depth and Multi-PV info message from the worker, `onInfo` allocates a new `<tr>`, parses 7 `<td>` cells via `tr.innerHTML = ...` (lines `459–467`), and prepends it into `#live-info-tbody` via `liveInfoTbody.insertBefore(tr, liveInfoTbody.firstChild)` (line `468`).
-   - There is **no row limit** (accumulating hundreds of DOM nodes during deep or infinite Multi-PV searches) and **no `requestAnimationFrame` coalescing**, causing repeated style/table-layout recalculations on the main thread during fast low-depth bursts.
-2. **Repeated `bestMoveBanner.innerHTML` Re-parsing on Every `multipv === 1` Info Event (`lines 446–452`)**:
-   - Rebuilds and parses `bestMoveBanner.innerHTML` on every depth tick instead of mutating `.textContent` on persistent DOM elements.
-3. **Full Worker Teardown & Re-instantiation on Self-Test Runs (`lines 507–508`)**:
-   - Clicking `#btn-run-tests` unconditionally calls `worker.terminate()` and `worker = WC.makeWorker(['rules', 'engine'])`, throwing away the worker thread, JIT warm-up state, and allocated transposition table buffers instead of reusing a persistent worker via a request queue.
-4. **Main-Thread `WC.Rules.ChessBoard(fen)` Allocation for Validation (`line 416`)**:
-   - Instantiates a full board object synchronously on the main thread on button click before delegating to the worker.
+1. **Perpetual 60 FPS WebGL Render Loop When Idle (`animate()`, lines `3077–3120`)**:
+   - Runs `requestAnimationFrame(animate)` unconditionally forever, updating 4 `PointLight` intensities, mutating all `260` dust particle vertices (`posAttr.needsUpdate = true` uploading to the GPU every frame), iterating all `180` shatter shard slots even when `0` shards are active (`shatterSystem.update(dt)`), and rendering the full shadow-mapped (`2048x2048` `PCFSoftShadowMap`) 3D cathedral scene every frame when nothing on the chessboard is changing.
+2. **Unthrottled Recursive 3D Raycasting on Every `pointermove` Event (`lines 2446–2467`, `2560–2619`)**:
+   - Whenever the pointer moves while not dragging (`line 2607`), `getHoveredSquare(e.clientX, e.clientY, false)` allocates a new array `[...tileMeshes, ...piecesGroup.children]` (`line 2452`) and runs `raycaster.intersectObjects(targets, true)` across all 64 tiles and all 32 multi-mesh 3D piece groups on every raw `pointermove` event.
+3. **Full Move History DOM Rebuild via `.innerHTML` on Every Move (`updateHUD()`, lines `2813–2838`)**:
+   - Calls `chess.history({ verbose: true })` and regenerates the entire `#move-history-container.innerHTML` HTML string from move 1 on every half-move instead of incrementally appending/updating move nodes.
+4. **Per-Move Main-Thread `AudioBuffer` Allocation & PRNG Loop (`playSlide()`, lines `540–545`)**:
+   - Allocates a fresh `0.45s` `AudioBuffer` (`~20,000` floats) and populates it with `Math.random()` on the UI thread on every non-levitating move instead of reusing a cached noise buffer.
 
 ---
 
@@ -122,7 +136,7 @@
 - `data/openings.json`: **994,077 bytes** (`970.78 KiB` / `0.95 MiB`) — 3,865 unique opening positions keyed by 4-field EPD.
 - `data/puzzles.json`: **4,031,832 bytes** (`3,937.34 KiB` / `3.85 MiB`) — 20,000 stratified Lichess puzzles across 5 rating bands (`<1000` to `2200+`) and 20 tactical themes.
 - **Total `data/` Directory Size**: **5,028,150 bytes** (`4.80 MiB`); raw `.csv.zst` download is streamed in memory and not stored on disk or tracked by git.
-- **Total Git-Tracked Files Size**: **~5.17 MiB** (`~6.74 MiB` including `.git` object store, excluding `node_modules/` and `dist/`).
+- **Total Git-Tracked Files Size**: **~5.28 MiB** (`~6.86 MiB` including `.git` object store, excluding `node_modules/` and `dist/`).
 - **Build Size (`dist/`)**: `index.html` `0.70 kB`, CSS `3.81 kB` (`1.34 kB` gzip), JS `8.29 kB` (`2.87 kB` gzip), built in `292 ms`.
 - **Runtime Network Requests**: `0` external requests (verified by Playwright request interceptor).
 - **Idle CPU / Frame Budget**: `0` active `requestAnimationFrame` loops when Dev Overlay is closed; `60 fps` / `16.7 ms` p95 when Dev Overlay is open.
