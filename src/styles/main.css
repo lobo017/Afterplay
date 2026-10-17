@@ -461,75 +461,94 @@ body {
   z-index: 5;
 }
 
-/* Promotion Picker Modal */
+/* Promotion Picker Vertical Column (12.5% width x 50% height on promotion file) */
 .wc-promotion-backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(7, 8, 12, 0.62);
-  z-index: 50;
+  background: rgba(7, 9, 14, 0.48);
+  z-index: 60;
 }
 
 .wc-promotion-backdrop[hidden] {
   display: none !important;
 }
 
-.wc-promotion-dialog {
+.wc-promotion-column {
   position: absolute;
-  width: 13.5rem;
-  background: rgba(15, 18, 26, 0.96);
-  border: 1.5px solid var(--accent-gold);
-  border-radius: 0.75rem;
-  padding: 0.75rem;
-  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.85);
+  width: 12.5%;
+  height: 50%;
   display: flex;
   flex-direction: column;
-  gap: 0.55rem;
+  z-index: 65;
+  border-radius: 0.35rem;
+  overflow: hidden;
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.78),
+    inset 0 0 0 1.5px var(--accent-gold);
+  background: rgba(20, 24, 36, 0.96);
 }
 
-.wc-promotion-title {
-  font-size: 0.78rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--accent-gold);
-  text-align: center;
+.wc-promotion-column[data-color='b'] {
+  background: rgba(232, 226, 213, 0.96);
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.78),
+    inset 0 0 0 1.5px #8b5cf6;
 }
 
-.wc-promotion-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 0.45rem;
+.wc-promotion-column-top {
+  flex-direction: column;
+}
+
+.wc-promotion-column-bottom {
+  flex-direction: column-reverse;
 }
 
 .wc-promotion-choice {
+  flex: 1 1 25%;
+  width: 100%;
+  height: 25%;
+  margin: 0;
+  padding: 6%;
+  border: none;
+  border-bottom: 1px solid rgba(212, 175, 55, 0.24);
+  background: transparent;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 0.2rem;
-  padding: 0.4rem;
-  border-radius: 0.5rem;
-  background: var(--bg-elevated);
-  border: 1px solid var(--border-carved);
-  color: var(--text-marble);
-  font-size: 0.74rem;
-  font-weight: 600;
+  justify-content: center;
   cursor: pointer;
+  transition:
+    background-color 100ms ease,
+    transform 100ms ease;
+}
+
+.wc-promotion-column[data-color='b'] .wc-promotion-choice {
+  border-bottom: 1px solid rgba(22, 25, 37, 0.16);
 }
 
 .wc-promotion-choice:hover,
 .wc-promotion-choice:focus-visible {
-  border-color: var(--accent-gold);
-  background: rgba(212, 175, 55, 0.18);
+  background: rgba(245, 158, 11, 0.28);
   outline: none;
 }
 
-.wc-promotion-piece-icon {
-  width: 2.6rem;
-  height: 2.6rem;
+.wc-promotion-column[data-color='b'] .wc-promotion-choice:hover,
+.wc-promotion-column[data-color='b'] .wc-promotion-choice:focus-visible {
+  background: rgba(168, 85, 247, 0.24);
 }
 
-.wc-promotion-cancel {
+.wc-promotion-piece-icon {
+  width: 88%;
+  height: 88%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.wc-promotion-piece-icon svg {
   width: 100%;
+  height: 100%;
+  display: block;
 }
 
 /* Confirm Move Bar */

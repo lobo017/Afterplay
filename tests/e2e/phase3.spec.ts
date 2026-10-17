@@ -371,4 +371,295 @@ test.describe('Phase 3 — 2D Board, Play Mode vs Bot & Legacy Bug Regression Su
     expect(externalRequests).toEqual([]);
     expect(consoleErrors).toEqual([]);
   });
+
+  test('queues a premove while the bot is thinking (human-like delay) and executes it immediately after the bot moves', async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/');
+    await expect(page.getByTestId('chess-board')).toBeVisible();
+
+    // Configure human-like bot delay via the UI settings (0.7s min, 1.4s max)
+    const minInput = page.getByTestId('input-bot-min-delay');
+    const maxInput = page.getByTestId('input-bot-max-delay');
+    await expect(minInput).toBeVisible();
+    await expect(maxInput).toBeVisible();
+
+    await minInput.fill('0.7');
+    await minInput.dispatchEvent('change');
+    await maxInput.fill('1.4');
+    await maxInput.dispatchEvent('change');
+
+    // Play 1. e4 as White
+    const movePlayedAt = Date.now();
+    await page.getByTestId('square-e2').click();
+    await page.getByTestId('square-e4').click();
+    await expect(page.getByTestId('move-ply-1')).toHaveText('e4');
+
+    // Confirm the bot is currently in its non-blocking human-like thinking delay
+    const isThinkingImmediately = await page.evaluate(() =>
+      window.__wizardChessPlay!.controller.isBotCurrentlyThinking(),
+    );
+    expect(isThinkingImmediately).toBe(true);
+
+    // Queue a premove 2. d4 (d2 -> d4) while the bot is still thinking
+    await page.getByTestId('square-d2').click();
+    await page.getByTestId('square-d4').click();
+
+    // Confirm the premove is queued on the board while the bot is still thinking
+    const premoveStateWhileThinking = await page.evaluate(() => {
+      const play = window.__wizardChessPlay!;
+      return {
+        isBotThinking: play.controller.isBotCurrentlyThinking(),
+        premove: play.controller.getBoard().getPremove(),
+        plyCount: play.controller.getGameTree().getMainLine().length,
+      };
+    });
+    expect(premoveStateWhileThinking.isBotThinking).toBe(true);
+    expect(premoveStateWhileThinking.premove).toEqual({
+      from: 'd2',
+      to: 'd4',
+      promotion: undefined,
+    });
+    expect(premoveStateWhileThinking.plyCount).toBe(1);
+
+    // Wait for the bot's reply (ply 2) AND confirm our queued premove (ply 3: d4) executes immediately after
+    await expect(page.getByTestId('move-ply-2')).not.toHaveText('', {
+      timeout: 15_000,
+    });
+    await expect(page.getByTestId('move-ply-3')).toHaveText('d4', {
+      timeout: 2_000,
+    });
+    const elapsedTotalMs = Date.now() - movePlayedAt;
+
+    const afterPremoveExec = await page.evaluate(() => {
+      const play = window.__wizardChessPlay!;
+      return {
+        lastBotThinkTimeMs: play.controller.getLastBotThinkTimeMs(),
+        delayRange: play.controller.getBotDelayRangeMs(),
+        premoveAfter: play.controller.getBoard().getPremove(),
+      };
+    });
+
+    expect(afterPremoveExec.delayRange).toEqual({ minMs: 700, maxMs: 1400 });
+    expect(afterPremoveExec.lastBotThinkTimeMs).toBeGreaterThanOrEqual(700);
+    expect(afterPremoveExec.lastBotThinkTimeMs).toBeLessThanOrEqual(1400);
+    expect(elapsedTotalMs).toBeGreaterThanOrEqual(650);
+    expect(afterPremoveExec.premoveAfter).toBeNull();
+  });
+
+  test('renders unclipped vertical-column promotion picker with 4 piece icons across both colors × both orientations × files a, d, h (drag, click, premove, outside-click & Esc cancel)', async ({
+    page,
+  }) => {
+    test.setTimeout(90_000);
+
+    await page.setViewportSize({ width: 1280, height: 860 });
+    await page.goto('/');
+    const board = page.getByTestId('chess-board');
+    await expect(board).toBeVisible();
+
+    const promoPicker = page.getByTestId('promotion-picker');
+
+    const colors = ['w', 'b'] as const;
+    const orientations = [false, true] as const; // false = unflipped, true = flipped
+    const files = [
+      { file: 'a', fileIndex: 0, mode: 'drag' as const },
+      { file: 'd', fileIndex: 3, mode: 'click' as const },
+      { file: 'h', fileIndex: 7, mode: 'premove' as const },
+    ];
+
+    for (const color of colors) {
+      for (const flipped of orientations) {
+        for (const { file, fileIndex, mode } of files) {
+          const fromRank = color === 'w' ? '7' : '2';
+          const toRank = color === 'w' ? '8' : '1';
+          const fromSq = `${file}${fromRank}`;
+          const toSq = `${file}${toRank}`;
+
+          // Construct a legal FEN where `color` has a pawn on `fromSq` with `toSq` empty
+          // Kings are placed safely on e1/e8 (or f1/f8 when testing file d so d8/d1 are empty and unguarded)
+          const fen = (() => {
+            const emptyRow = () => Array<string>(8).fill('1');
+            const rows = Array.from({ length: 8 }, emptyRow);
+            // Safe kings on f1 (White) and f8 (Black), plus a pawn on g3/g6 so opponent has a quiet move for premove mode
+            rows[0]![5] = 'k';
+            rows[7]![5] = 'K';
+            rows[2]![6] = 'p';
+            rows[5]![6] = 'P';
+            const pawnRowIdx = color === 'w' ? 1 : 6;
+            rows[pawnRowIdx]![fileIndex] = color === 'w' ? 'P' : 'p';
+
+            const encodeRow = (r: string[]) => {
+              let out = '';
+              let count = 0;
+              for (const cell of r) {
+                if (cell === '1') {
+                  count++;
+                } else {
+                  if (count > 0) {
+                    out += String(count);
+                    count = 0;
+                  }
+                  out += cell;
+                }
+              }
+              if (count > 0) out += String(count);
+              return out;
+            };
+            const boardPart = rows.map(encodeRow).join('/');
+            // For premove mode, it is the opponent's turn to move while `color` queues a promotion premove
+            const turn =
+              mode === 'premove' ? (color === 'w' ? 'b' : 'w') : color;
+            return `${boardPart} ${turn} - - 0 1`;
+          })();
+
+          await page.evaluate(
+            ({ testFen, playerColor, isFlipped }) => {
+              const play = window.__wizardChessPlay!;
+              play.controller.setBotDelayRangeMs(1500, 2000);
+              play.controller.loadPosition(testFen, playerColor);
+              play.controller.getBoard().setFlipped(isFlipped);
+            },
+            { testFen: fen, playerColor: color, isFlipped: flipped },
+          );
+
+          const boardBox = await board.boundingBox();
+          expect(boardBox).not.toBeNull();
+
+          const visualCol = flipped ? 7 - fileIndex : fileIndex;
+          const toRankIndex = color === 'w' ? 0 : 7;
+          const visualToRow = flipped ? 7 - toRankIndex : toRankIndex;
+          const fromRankIndex = color === 'w' ? 1 : 6;
+          const visualFromRow = flipped ? 7 - fromRankIndex : fromRankIndex;
+
+          const sqCenter = (col: number, row: number) => ({
+            x: boardBox!.x + (col + 0.5) * (boardBox!.width / 8),
+            y: boardBox!.y + (row + 0.5) * (boardBox!.height / 8),
+          });
+
+          if (mode === 'drag') {
+            const start = sqCenter(visualCol, visualFromRow);
+            const end = sqCenter(visualCol, visualToRow);
+            await page.mouse.move(start.x, start.y);
+            await page.mouse.down();
+            await page.mouse.move(end.x, end.y, { steps: 6 });
+            await page.mouse.up();
+          } else {
+            await page.getByTestId(`square-${fromSq}`).click();
+            await page.getByTestId(`square-${toSq}`).click();
+          }
+
+          await expect(promoPicker).toBeVisible();
+
+          // Verify 4 piece buttons with SVG icons and zero text labels, and verify no clipping
+          const layoutMetrics = await page.evaluate(() => {
+            const boardEl = document.querySelector(
+              '[data-testid="chess-board"]',
+            )!;
+            const colEl = document.querySelector(
+              '[data-testid="promotion-picker"]',
+            )!;
+            const qEl = document.querySelector('[data-testid="promote-q"]')!;
+            const nEl = document.querySelector('[data-testid="promote-n"]')!;
+            const rEl = document.querySelector('[data-testid="promote-r"]')!;
+            const bEl = document.querySelector('[data-testid="promote-b"]')!;
+
+            const bRect = boardEl.getBoundingClientRect();
+            const cRect = colEl.getBoundingClientRect();
+            const qRect = qEl.getBoundingClientRect();
+            const bBtnRect = bEl.getBoundingClientRect();
+
+            const buttons = [qEl, nEl, rEl, bEl];
+            return {
+              boardRect: {
+                left: bRect.left,
+                top: bRect.top,
+                right: bRect.right,
+                bottom: bRect.bottom,
+                width: bRect.width,
+                height: bRect.height,
+              },
+              colRect: {
+                left: cRect.left,
+                top: cRect.top,
+                right: cRect.right,
+                bottom: cRect.bottom,
+                width: cRect.width,
+                height: cRect.height,
+              },
+              qCenterY: (qRect.top + qRect.bottom) / 2,
+              bCenterY: (bBtnRect.top + bBtnRect.bottom) / 2,
+              buttonCount: colEl.querySelectorAll('button').length,
+              allHaveSvgAndNoText: buttons.every(
+                (btn) =>
+                  btn.querySelector('svg') !== null &&
+                  (btn.textContent ?? '').trim() === '',
+              ),
+            };
+          });
+
+          expect(layoutMetrics.buttonCount).toBe(4);
+          expect(layoutMetrics.allHaveSvgAndNoText).toBe(true);
+
+          // Must sit inside the board with zero clipping on any edge (1.5px float tolerance)
+          expect(layoutMetrics.colRect.left).toBeGreaterThanOrEqual(
+            layoutMetrics.boardRect.left - 1.5,
+          );
+          expect(layoutMetrics.colRect.right).toBeLessThanOrEqual(
+            layoutMetrics.boardRect.right + 1.5,
+          );
+          expect(layoutMetrics.colRect.top).toBeGreaterThanOrEqual(
+            layoutMetrics.boardRect.top - 1.5,
+          );
+          expect(layoutMetrics.colRect.bottom).toBeLessThanOrEqual(
+            layoutMetrics.boardRect.bottom + 1.5,
+          );
+
+          // Column width is 1/8th of board width and height is 4/8ths (50%) of board height
+          expect(
+            Math.abs(
+              layoutMetrics.colRect.width - layoutMetrics.boardRect.width / 8,
+            ),
+          ).toBeLessThan(2.5);
+          expect(
+            Math.abs(
+              layoutMetrics.colRect.height - layoutMetrics.boardRect.height / 2,
+            ),
+          ).toBeLessThan(2.5);
+
+          // Queen ('q') must be closest to the board edge (top edge when visualToRow === 0, bottom edge when visualToRow === 7)
+          if (visualToRow === 0) {
+            expect(layoutMetrics.qCenterY).toBeLessThan(layoutMetrics.bCenterY);
+          } else {
+            expect(layoutMetrics.qCenterY).toBeGreaterThan(
+              layoutMetrics.bCenterY,
+            );
+          }
+
+          if (process.env.SCREENSHOT_DIR) {
+            const orientLabel = flipped ? 'flipped' : 'unflipped';
+            await board.screenshot({
+              path: path.join(
+                process.env.SCREENSHOT_DIR,
+                `promo-${color}-${orientLabel}-file-${file}.png`,
+              ),
+            });
+          }
+
+          // Cancel the promotion picker via outside click on file 'a' (using square-e4) or Escape on other files
+          if (file === 'a') {
+            const outsidePos = sqCenter(4, 4);
+            await page.mouse.click(outsidePos.x, outsidePos.y);
+          } else {
+            await page.keyboard.press('Escape');
+          }
+          await expect(promoPicker).toBeHidden();
+          await expect(page.getByTestId(`piece-${fromSq}`)).toBeVisible();
+        }
+      }
+    }
+  });
 });
+

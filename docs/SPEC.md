@@ -150,12 +150,44 @@ confirms the engine finds a mate-in-2 and wins a hanging piece.
   something changes.
 - **Input:** drag and click-to-move, legal-move dots, a promotion picker (with auto-queen
   option), premoves, board flip, and an optional confirm-move setting.
+- **Promotion picker:**
+  - Compact vertical column of 4 piece icons (no text) sitting directly on the promotion
+    file, starting at the promotion square and extending toward the center of the board,
+    with the queen closest to the edge.
+  - Dim the rest of the board slightly. `Esc` or clicking outside cancels the promotion
+    and returns the pawn to its square.
+  - Renders on top of everything and is never clipped across both colors, both board
+    orientations, and every file `a–h` (including edge files), for drag, click, and
+    premove promotions.
+  - Covered by Playwright screenshot tests for both colors × both orientations × files
+    `a`, `d`, and `h`.
 - **Theme:** marble and obsidian look (palette and materials from the legacy audit in
   PROGRESS.md). 2–3 piece sets and board themes, including high contrast.
 - **Capture effect:** optional particle effect on one canvas, using a fixed pool (no new
   objects created per frame).
 - **Audio:** port the Web Audio synthesizer from legacy/. Start audio on the first
   gesture; add a volume slider.
+- **Bot strength scaling & calibration:**
+  - Every bot level runs its own limited search on a separate engine instance (or a fully
+    reset one), never reusing full-strength infinite analysis or cached results.
+  - Uses node limits (`go nodes`) and `Skill Level` for low levels, and `UCI_Elo` only
+    where it is valid (`≥ 1320`).
+  - Uses `MultiPV` 6–8 at low levels, sampling moves with a rating-scaled temperature
+    weighted by centipawn loss.
+  - Includes a rating-dependent chance of a "human blunder": a plausible move that misses
+    the opponent's threat or leaves a piece hanging (never a random-looking move).
+  - Calibrated via `npm run calibrate:bots` (kept outside `npm test` since it is slow),
+    measuring average centipawn loss (ACPL) and blunder rate per level in self-play
+    against reference levels from 400 to 2400.
+- **Bot human-like thinking time:**
+  - Varies with the time control, position complexity (number of legal moves, captures,
+    and checks available), and game phase; replies quickly to forced and obvious moves and
+    pauses longer in sharp positions.
+  - Respects the bot's own clock in timed games and provides UI settings for minimum and
+    maximum delay (default `0.5–3.0 s` in untimed games).
+  - Never blocks the main thread, and premoves work during the thinking delay (verified by
+    an end-to-end test that queues a premove while the bot is thinking and confirms it
+    executes immediately after the bot moves).
 - **Play mode:**
   - time controls with increment, using clocks based on performance.now()
   - takebacks (toggleable), resign, draw offers
@@ -164,8 +196,10 @@ confirms the engine finds a mate-in-2 and wins a hanging piece.
 - **Legacy regression tests:** for each legacy bug in PROGRESS.md that applies to this
   phase, write a test that would have failed on the old app.
 
-**Done when:** an end-to-end test plays a full game against the bot, the legacy
-regression tests pass, and the perf numbers are recorded.
+**Done when:** an end-to-end test plays a full game against the bot, premoves during bot
+thinking time and promotion picker screenshot tests pass, `npm run calibrate:bots` hits
+the documented targets, the legacy regression tests pass, and the perf numbers are
+recorded.
 
 ### Phase 4 — Analysis board
 - **Eval bar:** animated, mate-aware, flips with the board.

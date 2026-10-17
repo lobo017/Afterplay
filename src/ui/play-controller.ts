@@ -14,14 +14,15 @@ import {
   BOT_TIERS,
   ChessBot,
   clampBotRating,
+  computeBotThinkTimeMs,
   getTierForRating,
   type BotStyleId,
   type BotTierId,
 } from '../engine/bot';
 import {
   EngineCancelledError,
+  EngineClient,
   type EngineAnalysisResult,
-  type EngineClient,
 } from '../engine/engine-client';
 import { formatScore, type UciScore } from '../engine/uci-parser';
 import { CathedralAudio } from '../render/audio';
@@ -139,12 +140,16 @@ interface PlySnapshot {
 export interface PlayControllerOptions {
   container: HTMLElement;
   engine: EngineClient;
+  /** Separate engine instance for bot moves so the bot never reuses full-strength analysis state. */
+  botEngine?: EngineClient;
   devOverlay?: DevOverlayController;
   initialBotRating?: number;
   initialBotStyle?: BotStyleId;
   initialTimeControl?: TimeControlPresetId;
   maxHintsPerGame?: number;
   botMoveDelayMs?: number;
+  botMinDelayMs?: number;
+  botMaxDelayMs?: number;
 }
 
 /**
@@ -155,6 +160,8 @@ export interface PlayControllerOptions {
 export class PlayController {
   private readonly container: HTMLElement;
   private readonly engine: EngineClient;
+  private readonly botEngine: EngineClient;
+  private readonly ownsBotEngine: boolean;
   private readonly audio: CathedralAudio;
   private readonly clock: ChessClock;
   private readonly bot: ChessBot;
@@ -173,7 +180,9 @@ export class PlayController {
   private allowTakebacks = true;
   private maxHintsPerGame: number;
   private hintsRemaining: number;
-  private botMoveDelayMs: number;
+  private botMinDelayMs: number;
+  private botMaxDelayMs: number;
+  private lastBotThinkTimeMs = 0;
 
   private gameOver = false;
   private gameResult: GameTermination = '*';
@@ -207,17 +216,38 @@ export class PlayController {
   constructor(options: PlayControllerOptions) {
     this.container = options.container;
     this.engine = options.engine;
+    if (options.botEngine) {
+      this.botEngine = options.botEngine;
+      this.ownsBotEngine = false;
+    } else {
+      this.botEngine = new EngineClient({
+        variant: 'single-threaded',
+        hashMb: 16,
+      });
+      this.ownsBotEngine = true;
+    }
+
     this.botRating = clampBotRating(options.initialBotRating ?? 1400);
     this.botStyle = options.initialBotStyle ?? 'solid';
     this.timeControlId = options.initialTimeControl ?? '5+3';
     this.maxHintsPerGame = options.maxHintsPerGame ?? 3;
     this.hintsRemaining = this.maxHintsPerGame;
-    this.botMoveDelayMs = options.botMoveDelayMs ?? 30;
+
+    if (typeof options.botMoveDelayMs === 'number') {
+      this.botMinDelayMs = Math.max(0, options.botMoveDelayMs);
+      this.botMaxDelayMs = Math.max(0, options.botMoveDelayMs);
+    } else {
+      this.botMinDelayMs = Math.max(0, options.botMinDelayMs ?? 500);
+      this.botMaxDelayMs = Math.max(
+        this.botMinDelayMs,
+        options.botMaxDelayMs ?? 3000,
+      );
+    }
 
     this.adapter = new RulesAdapter();
     this.gameTree = new GameTree();
     this.audio = new CathedralAudio({ enabled: true, volume: 0.75 });
-    this.bot = new ChessBot(this.engine, {
+    this.bot = new ChessBot(this.botEngine, {
       rating: this.botRating,
       style: this.botStyle,
     });
@@ -356,6 +386,32 @@ export class PlayController {
                     )
                     .join('')}
                 </select>
+              </label>
+
+              <label class="wc-field">
+                <span class="wc-field-label">Min Think (s)</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="10"
+                  step="0.1"
+                  value="${(this.botMinDelayMs / 1000).toFixed(1)}"
+                  class="wc-select"
+                  data-testid="input-bot-min-delay"
+                />
+              </label>
+
+              <label class="wc-field">
+                <span class="wc-field-label">Max Think (s)</span>
+                <input
+                  type="number"
+                  min="0.1"
+                  max="15"
+                  step="0.1"
+                  value="${(this.botMaxDelayMs / 1000).toFixed(1)}"
+                  class="wc-select"
+                  data-testid="input-bot-max-delay"
+                />
               </label>
             </div>
 
@@ -676,6 +732,26 @@ export class PlayController {
     infiniteToggle?.addEventListener('change', () => {
       this.setInfiniteAnalysis(infiniteToggle.checked);
     });
+
+    const minDelayInput = this.container.querySelector(
+      '[data-testid="input-bot-min-delay"]',
+    ) as HTMLInputElement | null;
+    const maxDelayInput = this.container.querySelector(
+      '[data-testid="input-bot-max-delay"]',
+    ) as HTMLInputElement | null;
+
+    const syncDelayInputs = () => {
+      const minSec = Number(minDelayInput?.value ?? 0.5);
+      const maxSec = Number(maxDelayInput?.value ?? 3.0);
+      const minMs = Number.isFinite(minSec) ? Math.max(0, Math.round(minSec * 1000)) : 500;
+      const maxMs = Number.isFinite(maxSec)
+        ? Math.max(minMs, Math.round(maxSec * 1000))
+        : Math.max(minMs, 3000);
+      this.setBotDelayRangeMs(minMs, maxMs);
+    };
+
+    minDelayInput?.addEventListener('change', syncDelayInputs);
+    maxDelayInput?.addEventListener('change', syncDelayInputs);
   }
 
   public setBotRating(rating: number): void {
@@ -685,7 +761,36 @@ export class PlayController {
   }
 
   public setBotMoveDelayMs(delayMs: number): void {
-    this.botMoveDelayMs = Math.max(0, delayMs);
+    const clamped = Math.max(0, Math.round(delayMs));
+    this.setBotDelayRangeMs(clamped, clamped);
+  }
+
+  public setBotDelayRangeMs(minMs: number, maxMs: number): void {
+    this.botMinDelayMs = Math.max(0, Math.round(minMs));
+    this.botMaxDelayMs = Math.max(this.botMinDelayMs, Math.round(maxMs));
+    const minDelayInput = this.container.querySelector(
+      '[data-testid="input-bot-min-delay"]',
+    ) as HTMLInputElement | null;
+    const maxDelayInput = this.container.querySelector(
+      '[data-testid="input-bot-max-delay"]',
+    ) as HTMLInputElement | null;
+    if (minDelayInput) {
+      minDelayInput.value = (this.botMinDelayMs / 1000).toFixed(1);
+    }
+    if (maxDelayInput) {
+      maxDelayInput.value = (this.botMaxDelayMs / 1000).toFixed(1);
+    }
+  }
+
+  public getBotDelayRangeMs(): { minMs: number; maxMs: number } {
+    return {
+      minMs: this.botMinDelayMs,
+      maxMs: this.botMaxDelayMs,
+    };
+  }
+
+  public getLastBotThinkTimeMs(): number {
+    return this.lastBotThinkTimeMs;
   }
 
   private cancelInFlightBotSearch(): void {
@@ -757,7 +862,9 @@ export class PlayController {
 
   private scheduleLiveEvalUpdate(scoreWhite: UciScore, evalCp: number): void {
     this.latestEvalWhiteCp = evalCp;
-    this.latestEvalText = formatScore(scoreWhite);
+    const nextText = formatScore(scoreWhite);
+    if (nextText === this.latestEvalText) return;
+    this.latestEvalText = nextText;
     if (this.pendingEvalRafId !== null) return;
     this.pendingEvalRafId = requestAnimationFrame(() => {
       this.pendingEvalRafId = null;
@@ -909,21 +1016,62 @@ export class PlayController {
     this.updateControlsDisabledState();
 
     const fen = this.adapter.fen();
+    const searchStartedAt = performance.now();
 
     try {
-      if (this.botMoveDelayMs > 0) {
-        await new Promise<void>((resolve) =>
-          setTimeout(resolve, this.botMoveDelayMs),
-        );
-      }
-      if (gen !== this.gameGeneration || ac.signal.aborted || this.gameOver) {
-        return;
-      }
-
       const decision = await this.bot.chooseMove(fen, {
         signal: ac.signal,
         priority: 'live',
       });
+
+      if (gen !== this.gameGeneration || ac.signal.aborted || this.gameOver) {
+        return;
+      }
+
+      const clockSnap = this.clock.getSnapshot();
+      const botColor: Color = this.playerColor === 'w' ? 'b' : 'w';
+      const botRemainingMs =
+        botColor === 'w' ? clockSnap.whiteMs : clockSnap.blackMs;
+      const lastPly = this.plyHistory[this.plyHistory.length - 1];
+
+      const targetThinkMs = computeBotThinkTimeMs({
+        fen,
+        ply: this.plyHistory.length,
+        minDelayMs: this.botMinDelayMs,
+        maxDelayMs: this.botMaxDelayMs,
+        botRemainingMs,
+        incrementMs: this.clock.getConfig().incrementMs,
+        unlimitedClock: clockSnap.unlimited,
+        lastOpponentMove: lastPly
+          ? {
+              from: lastPly.executedMove.from,
+              to: lastPly.executedMove.to,
+              isCapture: lastPly.executedMove.isCapture,
+            }
+          : null,
+        decision,
+      });
+
+      this.lastBotThinkTimeMs = targetThinkMs;
+      const elapsedSearchMs = performance.now() - searchStartedAt;
+      const remainingWaitMs = Math.max(
+        0,
+        Math.round(targetThinkMs - elapsedSearchMs),
+      );
+
+      if (remainingWaitMs > 0) {
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, remainingWaitMs);
+          ac.signal.addEventListener(
+            'abort',
+            () => {
+              clearTimeout(timer);
+              resolve();
+            },
+            { once: true },
+          );
+        });
+      }
 
       // Guard against stale worker completion across New Game / Takeback / Color switch (Fixes Legacy Bug #4)
       if (gen !== this.gameGeneration || ac.signal.aborted || this.gameOver) {
@@ -1399,11 +1547,22 @@ export class PlayController {
     return this.latestEvalText;
   }
 
+  public getBotEngine(): EngineClient {
+    return this.botEngine;
+  }
+
+  public getBot(): ChessBot {
+    return this.bot;
+  }
+
   public destroy(): void {
     this.cancelInFlightBotSearch();
     this.cancelInfiniteAnalysis();
     if (this.pendingEvalRafId !== null) {
       cancelAnimationFrame(this.pendingEvalRafId);
+    }
+    if (this.ownsBotEngine) {
+      this.botEngine.terminate();
     }
     this.clock.destroy();
     this.board.destroy();

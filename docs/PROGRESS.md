@@ -387,17 +387,87 @@ Verified in Chromium via `tests/e2e/phase2.spec.ts` served by `scripts/serve.mjs
 7. **Legacy Bug #7 & Hotspots #1–#4 (Memory Leaks, Idle Loop, Raycasting, Noise Buffer Allocation)**: Verified that `BoardOverlay.getRedrawCount()` does not increment when state is unchanged, `CaptureParticleSystem` uses a fixed pool of `180` shards and stops `rAF` when idle, `idleRafCallbacksIn500Ms === 0` when nothing is changing, and `CathedralAudio.getNoiseBufferAllocationCount() === 1` across 10+ grounded stone slides.
 
 #### Measured Performance Numbers (Phase 3 — `npm run perf:drag`)
-Measured via `scripts/perf-drag.mjs` (`npm run perf:drag`) under `npm run serve` (`http://127.0.0.1:4179`, COOP/COEP isolated) while **multi-threaded Stockfish 17.1 WASM (`4` threads, reaching depth `23` at `2,138,482` NPS / `2.14 MN/s`)** runs continuous `go infinite` MultiPV 3 analysis in the background during `280` frames of continuous multi-square piece dragging and move execution:
+Measured via `scripts/perf-drag.mjs` (`npm run perf:drag`) under `npm run serve` (`http://127.0.0.1:4179`, COOP/COEP isolated) while **multi-threaded Stockfish 17.1 WASM (`4` threads, reaching depth `25` at `2,140,056` NPS / `2.14 MN/s`)** runs continuous `go infinite` MultiPV 3 analysis in the background during `280` frames of continuous multi-square piece dragging and move execution:
 - **p95 Frame Time during drags + `go infinite`:** **`16.70 ms`** (budget: `≤ 16.7 ms` — **PASS**)
-- **p50 (Median) Frame Time:** **`16.67 ms`** (`60.0 fps` locked)
-- **Mean Frame Time / FPS:** **`16.67 ms`** (**`60.0 fps`**)
-- **p99 Frame Time:** **`16.76 ms`**
-- **Max Frame Time:** **`16.80 ms`**
+- **p50 (Median) Frame Time:** **`16.66 ms`** (`60.0 fps` locked)
+- **Mean Frame Time / FPS:** **`16.73 ms`** (**`59.8 fps`**)
+- **p99 Frame Time:** **`16.77 ms`**
+- **Max Frame Time:** **`33.31 ms`**
 - **Long Tasks (`> 50 ms`) during drags + `go infinite`:** **`0`** (budget: `0` — **PASS**)
-- **Synchronous Input-to-Transform Latency (`pointerdown` + `pointermove` $\rightarrow$ `translate3d`):** **`1.155 ms`** (`< 0.07` frames; budget: `≤ 1 frame` — **PASS**)
+- **Synchronous Input-to-Transform Latency (`pointerdown` + `pointermove` $\rightarrow$ `translate3d`):** **`1.20 ms`** (`< 0.08` frames; budget: `≤ 1 frame` — **PASS**)
 - **Idle Render Work (`rAF` callbacks over `500 ms` when nothing is changing):** **`0`** (budget: `0` — **PASS**)
-- **Cold Startup to Interactive 2D Board:** **`274.57 ms`** (budget: `≤ 1,500 ms` — **PASS**)
-- **Production Bundle (`dist/`)**: JS `196.35 kB` (`57.40 kB` gzip), CSS `13.33 kB` (`3.39 kB` gzip), `0` runtime network requests.
+- **Cold Startup to Interactive 2D Board:** **`309.76 ms`** (budget: `≤ 1,500 ms` — **PASS**)
+- **Production Bundle (`dist/`)**: JS `205.43 kB` (`60.15 kB` gzip), CSS `13.68 kB` (`3.50 kB` gzip), `0` runtime network requests.
 
 #### Known Issues
 - None.
+
+---
+
+### 3. Phase 3 Refinements — Bot Strength Scaling, Human-Like Think Time & Vertical Promotion Picker
+
+#### 3.1 Root-Cause Investigation: Why Bots Played Far Above Their Rated Level
+1. **Shared Engine Instance & Transposition Table (Hash) Contamination**:
+   - `src/app.ts` and `src/ui/play-controller.ts` previously passed the same `sharedEngine` (`EngineClient`) to both `PlayController` (which runs full-strength `go infinite` background analysis and `requestHint` at `Skill Level 20`, `UCI_LimitStrength false`) and `ChessBot`.
+   - Even though `ChessBot.chooseMove()` passed `useCache: false` (bypassing the JS `AnalysisCache`), Stockfish's internal WASM transposition table (`Hash`) retained deep, full-strength evaluations from `go infinite`, hints, and prior searches.
+2. **`UCI_Elo` Minimum Floor (`1320`) & `MultiPV` Bypassing Stockfish's Internal Skill Perturbation**:
+   - Stockfish 17.1's `UCI_Elo` option has a hard minimum of `1320` (`min 1320 max 3190`). Setting `uciLimitStrength = true` for `400–1200` Elo clamped `uciElo` to `1320`, so `UCI_Elo` alone cannot produce `400–1200` Elo play.
+   - Furthermore, Stockfish's internal `Skill Level` / `UCI_LimitStrength` perturbation is only applied when Stockfish picks its final `bestmove` at the end of a search; the `info depth ... multipv k score cp ...` lines emitted during `MultiPV > 1` report **unperturbed, exact NNUE evaluations**. Because `ChessBot.chooseMove()` ignored `bestmove` and ran `selectHumanLikeMove()` on `analysis.lines`, Stockfish's internal skill noise had zero effect on the candidate line evaluations.
+3. **Excessive Search Depth, No Node Limits (`go nodes`), and Capped `MultiPV 5`**:
+   - `computeBotEngineParams` searched to `depth = 5` at 400 Elo and `depth = 6` at 600 Elo (`Novice`) with no node limit (`go depth 6` searches `~10,000–25,000` NNUE nodes), and `EngineClient.analyze()` clamped `multipv` to `Math.min(5, ...)`.
+   - In a typical middlegame with `30+` legal moves, the top 5 Stockfish moves at depth 6 are all strong moves (often within `15–60 cp` of best), so `Novice` and `Casual` bots never even considered the moves where human inaccuracies, missed threats, or hanging-piece blunders occur.
+
+#### 3.2 Implementation Plan (Written Before Code)
+
+##### Files to Add or Change
+- `src/engine/engine-client.ts` *(modified)*:
+  - Add `nodes?: number` (`go nodes <N>`) and `resetGame?: boolean` (`ucinewgame` before search) to `EngineAnalyzeRequest`.
+  - Expand `MultiPV` clamping from `1–5` to `1–12` so bot searches can request `MultiPV 6–8`.
+- `src/engine/bot.ts` *(modified)*:
+  - Rebuild `computeBotEngineParams`:
+    - Use strict node budgets (`go nodes`) and `Skill Level` (`0–20`) for low/mid levels (`400–1319`), and enable `UCI_LimitStrength` / `UCI_Elo` **only** where valid (`rating >= 1320 && rating < 2400`).
+    - Use `MultiPV` `6–8` at low levels (`8` at `400–799`, `7` at `800–1199`, `6` at `1200–1599`).
+    - Add rating-scaled `temperatureCp` and `blunderChance` (`0.0` at `2350–2400` up to `0.45` at `400`).
+  - Add a **Plausible Human Blunder** generator & evaluator (`findPlausibleHumanBlunderCandidates` / `scoreMoveHumanPlausibility`):
+    - Identifies moves that look constructive to a human (developing a minor piece, advancing a central pawn, capturing a piece, giving check, or castling) **but** either miss the opponent's threat on another square or leave a piece/pawn hanging (`85–520 cp` loss).
+    - Explicitly rejects random-looking moves (aimless king walks, rim rook shuffles, backward retreats to the back rank, or unprovoked Queen giveaways).
+  - Add `computeBotThinkTimeMs(options)` to calculate human-like thinking delay based on time control, remaining bot clock + increment, position complexity (legal move count, available captures and checks, MultiPV eval tension), game phase (opening, middlegame, endgame), and forced/obvious replies (single legal move or immediate recapture), bounded by configurable `minDelayMs` and `maxDelayMs` (default `500–3000 ms` in untimed games).
+- `src/ui/play-controller.ts` & `src/app.ts` *(modified)*:
+  - Isolate bot searches onto a dedicated `botEngine: EngineClient` instance so the bot never shares transposition table state or analysis results with full-strength `go infinite` / hints.
+  - Wire non-blocking human-like bot thinking time (`computeBotThinkTimeMs`) and UI inputs (`[data-testid="input-bot-min-delay"]` and `[data-testid="input-bot-max-delay"]`, defaulting to `0.5 s` and `3.0 s`) into `PlayController`, ensuring premoves can be queued and cancelled cleanly while the bot is thinking.
+- `src/render/board-renderer.ts` & `src/styles/main.css` *(modified)*:
+  - Replace the modal promotion box with a compact vertical column of 4 piece icons (`q`, `n`, `r`, `b`, no text) positioned directly on the promotion file (`left: ${col * 12.5}%; width: 12.5%; height: 50%`), anchored at the promotion square (`top: 0%` with `flex-direction: column` when `row < 4`, or `top: 50%` with `flex-direction: column-reverse` when `row >= 4`) so the Queen is always closest to the board edge and the column extends toward the center of the board.
+  - Dim the rest of the board slightly (`rgba(7, 9, 14, 0.48)`), render on top of all board layers (`z-index: 60/65`), and cancel cleanly on `Escape` or outside click.
+- `scripts/calibrate-bots.mjs` & `package.json` *(new / modified)*:
+  - Add `"calibrate:bots": "node scripts/calibrate-bots.mjs"` outside `npm test`.
+  - Runs self-play games across ratings `400`, `600` (`Novice`), `1000` (`Casual`), `1400` (`Club`), `1800` (`Expert`), `2200` (`Master`), and `2400` against reference levels on isolated Stockfish workers, using a separate full-strength Reference Oracle Stockfish instance (`Skill Level 20`, `UCI_LimitStrength false`, depth `10`) to measure **Average Centipawn Loss (ACPL)** and **Blunder Rate (`%` of moves with `cpLoss >= 100 cp`)** per level.
+- `tests/unit/bot.test.ts` & `tests/e2e/phase3.spec.ts` *(modified)*:
+  - Add unit tests for `computeBotThinkTimeMs`, human blunder generation (plausible vs random moves), and `UCI_Elo` validity gating (`>= 1320`).
+  - Add E2E test queuing a premove during human-like bot thinking time and confirming immediate execution after the bot moves.
+  - Add Playwright screenshot tests covering all **12 combinations** of promotion picker (`White` / `Black` × `unflipped` / `flipped` × files `a`, `d`, `h`) and visually inspect them.
+
+#### 3.3 Bot Strength Self-Play Calibration Targets & Measured Results (`npm run calibrate:bots`)
+Measured via `npm run calibrate:bots` (`scripts/calibrate-bots.mjs`, 6 self-play games per level across 6 diverse opening/middlegame structures = `50–54` evaluated bot moves per level, evaluated against an isolated full-strength depth-10 Stockfish 17.1 Oracle):
+
+| Rating / Level | Ref Opponent | Search & Sampling Profile | Target ACPL (cp) | **Measured ACPL (cp)** | Target Blunder Rate (`≥ 100 cp`) | **Measured Blunder Rate** | Match Score vs Ref | Status |
+|---|---|---|---|---|---|---|---|---|
+| **400** (Novice Min) | `1000` | `Skill 0`, `go nodes 25`, `MultiPV 8`, `UCI_LimitStrength false`, `temp 112.2 cp`, `blunder 45%` | `118 – 165 cp` | **`127.0 cp`** | `36% – 48%` | **`45.1%`** | `1.0 / 6` | **PASS** |
+| **600** (`Novice`) | `1000` | `Skill 2`, `go nodes 180`, `MultiPV 8`, `UCI_LimitStrength false`, `temp 90.7 cp`, `blunder 21%` | `88 – 122 cp` | **`100.0 cp`** | `26% – 36%` | **`32.0%`** | `0.5 / 6` | **PASS** |
+| **1000** (`Casual`) | `1400` | `Skill 6`, `go nodes 1600`, `MultiPV 7`, `UCI_LimitStrength false`, `temp 54.7 cp`, `blunder 6.2%` | `55 – 85 cp` | **`68.4 cp`** | `18% – 30%` | **`28.8%`** | `3.0 / 6` | **PASS** |
+| **1400** (`Club`) | `1400` | `Skill 10`, `UCI_Elo 1400`, `go nodes 3400`, `MultiPV 6`, `temp 28.2 cp`, `blunder 3.6%` | `26 – 48 cp` | **`31.0 cp`** | `7% – 15%` | **`9.4%`** | `3.5 / 6` | **PASS** |
+| **1800** (`Expert`) | `1800` | `Skill 14`, `UCI_Elo 1800`, `go nodes 8500`, `MultiPV 4`, `temp 10.8 cp`, `blunder 1.2%` | `15 – 26 cp` | **`17.9 cp`** | `2.5% – 8%` | **`5.6%`** | `4.5 / 6` | **PASS** |
+| **2200** (`Master`) | `1800` | `Skill 18`, `UCI_Elo 2200`, `go nodes 15500`, `MultiPV 3`, `temp 2.4 cp`, `blunder 0.4%` | `9 – 16 cp` | **`12.1 cp`** | `0% – 3.5%` | **`1.9%`** | `4.5 / 6` | **PASS** |
+| **2400** (Master Max) | `2200` | `Skill 20`, `UCI_LimitStrength false`, `go nodes 60000`, `MultiPV 2`, `temp 1.4 cp`, `blunder 0%` | `0 – 10 cp` | **`8.2 cp`** | `0% – 2.0%` | **`1.9%`** | `3.5 / 6` | **PASS** |
+
+- **Monotonic Progression**: **PASS** (`127.0 -> 100.0 -> 68.4 -> 31.0 -> 17.9 -> 12.1 -> 8.2 cp` ACPL and `45.1% -> 32.0% -> 28.8% -> 9.4% -> 5.6% -> 1.9% -> 1.9%` Blunder Rate).
+
+#### 3.4 Human-Like Thinking Time & Promotion Picker Verification
+- **Human-Like Bot Thinking Time (`computeBotThinkTimeMs` & `tests/e2e/phase3.spec.ts`)**:
+  - Verified in unit tests (`tests/unit/bot.test.ts`) that forced moves (`1` legal reply) and immediate recaptures reply quickly near `minDelayMs`, sharp tactical middlegames pause longer than early opening plies, and low remaining clock time (`< 5 s`) caps think time (`≤ 120 ms`) so the bot never flags due to artificial delay.
+  - Verified in E2E (`tests/e2e/phase3.spec.ts`) that setting `[data-testid="input-bot-min-delay"]` (`0.7 s`) and `[data-testid="input-bot-max-delay"]` (`1.4 s`), playing `1. e4`, and queuing a premove (`d2` $\rightarrow$ `d4`) while `isBotCurrentlyThinking() === true` highlights the premove during the non-blocking think delay and executes `2. d4` immediately after the bot moves.
+- **Vertical Column Promotion Picker (`tests/e2e/phase3.spec.ts`)**:
+  - Verified across all **12 combinations** (`White` / `Black` × `unflipped` / `flipped` × files `a`, `d`, and `h`, covering drag, click, and premove promotions) with Playwright bounding-box assertions and visual screenshot inspection (`promo-{w,b}-{unflipped,flipped}-file-{a,d,h}.png`):
+    - Renders a vertical column of 4 piece icons (`promote-q`, `promote-n`, `promote-r`, `promote-b`) with zero text labels directly on the promotion file (`width = boardWidth / 8`, `height = boardHeight / 2`), completely contained within the board with zero clipping on edge files `a` and `h`.
+    - Places the Queen (`q`) closest to the board edge (`top` edge when promoting at visual row `0`, `bottom` edge when promoting at visual row `7`) and extends toward the center of the board.
+    - Dims the board behind the column (`rgba(7, 9, 14, 0.48)`) and cancels cleanly on `Escape` or clicking outside, returning the pawn to its square.
+

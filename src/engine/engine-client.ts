@@ -86,6 +86,7 @@ export interface EngineAnalyzeRequest {
   fen?: string;
   moves?: string[];
   depth?: number;
+  nodes?: number;
   movetime?: number;
   infinite?: boolean;
   multipv?: number;
@@ -94,6 +95,7 @@ export interface EngineAnalyzeRequest {
   skillLevel?: number;
   uciLimitStrength?: boolean;
   uciElo?: number;
+  resetGame?: boolean;
   useCache?: boolean;
   preempt?: boolean;
   signal?: AbortSignal;
@@ -611,7 +613,7 @@ export class EngineClient {
     }
 
     const fen = request.fen?.trim() || DEFAULT_POSITION;
-    const multipv = Math.max(1, Math.min(5, Math.floor(request.multipv ?? 1)));
+    const multipv = Math.max(1, Math.min(12, Math.floor(request.multipv ?? 1)));
     const priority: EnginePriority = request.priority ?? 'live';
     const chess960 = detectChess960Need(fen, request.chess960);
 
@@ -621,11 +623,17 @@ export class EngineClient {
     const hasCustomMoves =
       Boolean(request.moves && request.moves.length > 0) ||
       Boolean(request.searchMoves && request.searchMoves.length > 0);
+    const hasNodeLimit =
+      typeof request.nodes === 'number' && request.nodes > 0;
     const targetDepth =
-      !request.infinite && !request.movetime ? (request.depth ?? 14) : undefined;
+      !request.infinite && !request.movetime && !hasNodeLimit
+        ? (request.depth ?? 14)
+        : request.depth;
 
     const cacheable =
       request.useCache !== false &&
+      !request.resetGame &&
+      !hasNodeLimit &&
       typeof targetDepth === 'number' &&
       isFullStrength &&
       !hasCustomMoves;
@@ -908,6 +916,10 @@ export class EngineClient {
       Math.min(20, Math.round(req.skillLevel ?? 20)),
     );
 
+    if (req.resetGame) {
+      this.transport.send('ucinewgame');
+    }
+
     if (this.appliedOptions.multipv !== desiredMultiPv) {
       this.transport.send(`setoption name MultiPV value ${desiredMultiPv}`);
       this.appliedOptions.multipv = desiredMultiPv;
@@ -1002,10 +1014,20 @@ export class EngineClient {
     const parts = ['go'];
     if (req.infinite) {
       parts.push('infinite');
-    } else if (typeof req.movetime === 'number') {
-      parts.push(`movetime ${Math.max(1, Math.floor(req.movetime))}`);
     } else {
-      parts.push(`depth ${Math.max(1, Math.floor(req.depth ?? 14))}`);
+      if (typeof req.movetime === 'number') {
+        parts.push(`movetime ${Math.max(1, Math.floor(req.movetime))}`);
+      }
+      if (typeof req.nodes === 'number' && req.nodes > 0) {
+        parts.push(`nodes ${Math.max(1, Math.floor(req.nodes))}`);
+      }
+      if (
+        typeof req.depth === 'number' ||
+        (typeof req.movetime !== 'number' &&
+          !(typeof req.nodes === 'number' && req.nodes > 0))
+      ) {
+        parts.push(`depth ${Math.max(1, Math.floor(req.depth ?? 14))}`);
+      }
     }
 
     if (req.searchMoves && req.searchMoves.length > 0) {

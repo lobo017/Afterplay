@@ -33,6 +33,7 @@ import {
   ChessBot,
   clampBotRating,
   computeBotEngineParams,
+  computeBotThinkTimeMs,
   getTierForRating,
   selectHumanLikeMove,
 } from './engine/bot';
@@ -101,6 +102,7 @@ export interface WizardChessEngineApi {
   clampBotRating: typeof clampBotRating;
   getTierForRating: typeof getTierForRating;
   computeBotEngineParams: typeof computeBotEngineParams;
+  computeBotThinkTimeMs: typeof computeBotThinkTimeMs;
   selectHumanLikeMove: typeof selectHumanLikeMove;
   detectEngineCapabilities: typeof detectEngineCapabilities;
   normalizeFenForCache: typeof normalizeFenForCache;
@@ -116,6 +118,7 @@ export interface WizardChessEngineApi {
 export interface WizardChessPlayApi {
   controller: PlayController;
   engine: EngineClient;
+  botEngine: EngineClient;
   devOverlay: DevOverlayController;
   BoardRenderer: typeof BoardRenderer;
   BoardOverlay: typeof BoardOverlay;
@@ -268,10 +271,15 @@ export function mountAppShell(container: HTMLElement): {
 
   const playRootEl = container.querySelector('#wc-play-root') as HTMLElement;
   const sharedEngine = createConnectedEngine({ variant: 'auto' });
+  const botEngine = new EngineClient({
+    variant: 'single-threaded',
+    hashMb: 16,
+  });
 
   const playController = new PlayController({
     container: playRootEl,
     engine: sharedEngine,
+    botEngine,
     devOverlay,
   });
 
@@ -303,6 +311,7 @@ export function mountAppShell(container: HTMLElement): {
       clampBotRating,
       getTierForRating,
       computeBotEngineParams,
+      computeBotThinkTimeMs,
       selectHumanLikeMove,
       detectEngineCapabilities,
       normalizeFenForCache,
@@ -318,6 +327,7 @@ export function mountAppShell(container: HTMLElement): {
     window.__wizardChessPlay = {
       controller: playController,
       engine: sharedEngine,
+      botEngine,
       devOverlay,
       BoardRenderer,
       BoardOverlay,

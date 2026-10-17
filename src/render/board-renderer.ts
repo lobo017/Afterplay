@@ -398,24 +398,24 @@ export class BoardRenderer {
     this.boardEl.addEventListener('contextmenu', this.handleContextMenu);
     window.addEventListener('keydown', this.handleKeyDown);
 
+    this.promotionBackdropEl.addEventListener('pointerdown', (e) => {
+      e.stopPropagation();
+    });
+
     this.promotionBackdropEl.addEventListener('click', (e) => {
+      e.stopPropagation();
       const target = e.target as HTMLElement;
       const promoBtn = target.closest(
         '[data-promotion-piece]',
       ) as HTMLElement | null;
       if (promoBtn) {
-        e.stopPropagation();
         const piece = promoBtn.getAttribute(
           'data-promotion-piece',
         ) as PieceSymbol;
         this.resolvePromotionPicker(piece);
         return;
       }
-      const cancelBtn = target.closest('[data-testid="promote-cancel"]');
-      if (cancelBtn || target === this.promotionBackdropEl) {
-        e.stopPropagation();
-        this.cancelPromotionPicker();
-      }
+      this.cancelPromotionPicker();
     });
 
     const acceptBtn = this.confirmBarEl.querySelector(
@@ -979,14 +979,17 @@ export class BoardRenderer {
   private openPromotionPicker(state: PendingPromotionState): void {
     this.pendingPromotion = state;
     const coords = squareToBoardCoords(state.to, this.flipped);
-    const leftPct = Math.max(4, Math.min(72, (coords.col / 8) * 100));
-    const isTopHalf = coords.row < 4;
+    const leftPct = coords.col * 12.5;
+    const isTopEdge = coords.row < 4;
 
+    // Ordered from board edge inward toward the center: Queen first (closest to edge),
+    // followed by Knight, Rook, Bishop. When anchored at the bottom edge (row 7),
+    // CSS flex-direction: column-reverse places Queen at row 7 (bottom edge) and extends upward.
     const pieces: Array<{ symbol: PieceSymbol; label: string }> = [
       { symbol: 'q', label: 'Queen' },
+      { symbol: 'n', label: 'Knight' },
       { symbol: 'r', label: 'Rook' },
       { symbol: 'b', label: 'Bishop' },
-      { symbol: 'n', label: 'Knight' },
     ];
 
     const buttonsHtml = pieces
@@ -1001,7 +1004,6 @@ export class BoardRenderer {
           title="${p.label}"
         >
           <div class="wc-promotion-piece-icon">${getPieceSvgMarkup(this.pieceSet, state.color, p.symbol)}</div>
-          <span>${p.label}</span>
         </button>
       `,
       )
@@ -1009,25 +1011,18 @@ export class BoardRenderer {
 
     this.promotionBackdropEl.innerHTML = `
       <div
-        class="wc-promotion-dialog"
+        class="wc-promotion-column ${
+          isTopEdge ? 'wc-promotion-column-top' : 'wc-promotion-column-bottom'
+        }"
         data-testid="promotion-picker"
+        data-color="${state.color}"
+        data-file="${state.to[0]}"
+        data-edge="${isTopEdge ? 'top' : 'bottom'}"
         role="dialog"
         aria-label="Choose promotion piece"
-        style="left: ${leftPct}%; ${isTopHalf ? 'top: 6%' : 'bottom: 6%'};"
+        style="left: ${leftPct}%; ${isTopEdge ? 'top: 0%;' : 'top: 50%;'}"
       >
-        <div class="wc-promotion-title">${
-          state.isPremove ? 'Premove Promotion' : 'Promote Pawn'
-        }</div>
-        <div class="wc-promotion-grid">
-          ${buttonsHtml}
-        </div>
-        <button
-          type="button"
-          class="wc-btn wc-btn-ghost wc-btn-sm wc-promotion-cancel"
-          data-testid="promote-cancel"
-        >
-          Cancel (Esc)
-        </button>
+        ${buttonsHtml}
       </div>
     `;
     this.promotionBackdropEl.hidden = false;
@@ -1265,7 +1260,11 @@ export class BoardRenderer {
     for (const [sq, el] of this.pieceElements.entries()) {
       el.style.transform = this.getSquareTranslateTransform(sq);
     }
-    this.syncOverlay();
+    if (this.pendingPromotion) {
+      this.openPromotionPicker(this.pendingPromotion);
+    } else {
+      this.syncOverlay();
+    }
   }
 
   public isFlipped(): boolean {
@@ -1327,6 +1326,9 @@ export class BoardRenderer {
         el.innerHTML = getPieceSvgMarkup(this.pieceSet, color, piece);
         el.style.transform = this.getSquareTranslateTransform(sq);
       }
+    }
+    if (this.pendingPromotion) {
+      this.openPromotionPicker(this.pendingPromotion);
     }
   }
 

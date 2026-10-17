@@ -5,9 +5,13 @@ import {
   ChessBot,
   clampBotRating,
   computeBotEngineParams,
+  computeBotThinkTimeMs,
+  findPlausibleHumanBlunderCandidates,
   getTierForRating,
+  scoreMoveHumanPlausibility,
   selectHumanLikeMove,
 } from '../../src/engine/bot';
+import { RulesAdapter } from '../../src/core/rules';
 import type { EngineLine } from '../../src/engine/cache';
 
 function makeLine(
@@ -209,4 +213,146 @@ describe('Phase 2 — Human-Like Playing Bot (400–2400 Elo & Style Presets)', 
       expect(decision.uci).toBe('h5f7');
     });
   });
+
+  it('scales node limits, Skill Level, MultiPV (6–8 at low levels), and enables UCI_LimitStrength only where UCI_Elo >= 1320', () => {
+    const p400 = computeBotEngineParams(400, 'solid');
+    const p600 = computeBotEngineParams(600, 'solid');
+    const p1000 = computeBotEngineParams(1000, 'solid');
+    const p1400 = computeBotEngineParams(1400, 'solid');
+    const p1800 = computeBotEngineParams(1800, 'solid');
+    const p2200 = computeBotEngineParams(2200, 'solid');
+    const p2400 = computeBotEngineParams(2400, 'solid');
+
+    // UCI_Elo has a minimum of 1320, so uciLimitStrength is false below 1320
+    expect(p400.uciLimitStrength).toBe(false);
+    expect(p600.uciLimitStrength).toBe(false);
+    expect(p1000.uciLimitStrength).toBe(false);
+    expect(p1400.uciLimitStrength).toBe(true);
+    expect(p1800.uciLimitStrength).toBe(true);
+    expect(p2200.uciLimitStrength).toBe(true);
+    expect(p2400.uciLimitStrength).toBe(false);
+
+    // MultiPV is 6–8 at low/club levels
+    expect(p400.multipv).toBe(8);
+    expect(p600.multipv).toBe(8);
+    expect(p1000.multipv).toBe(7);
+    expect(p1400.multipv).toBe(6);
+
+    // Node limits increase strictly from 400 to 2400
+    expect(p400.nodes).toBeLessThan(p600.nodes);
+    expect(p600.nodes).toBeLessThan(p1000.nodes);
+    expect(p1000.nodes).toBeLessThan(p1400.nodes);
+    expect(p1400.nodes).toBeLessThan(p1800.nodes);
+    expect(p1800.nodes).toBeLessThan(p2200.nodes);
+    expect(p2200.nodes).toBeLessThan(p2400.nodes);
+
+    // Blunder chance decreases strictly from 400 to 2400
+    expect(p400.blunderChance).toBeGreaterThan(p600.blunderChance);
+    expect(p600.blunderChance).toBeGreaterThan(p1000.blunderChance);
+    expect(p1000.blunderChance).toBeGreaterThan(p1400.blunderChance);
+    expect(p1400.blunderChance).toBeGreaterThan(p1800.blunderChance);
+    expect(p1800.blunderChance).toBeGreaterThan(p2200.blunderChance);
+    expect(p2400.blunderChance).toBe(0);
+  });
+
+  it('identifies plausible human blunders (missed threats or hanging pieces) while rejecting random-looking walks', () => {
+    // Black's knight on c6 attacks White's knight on e5 (320 cp).
+    // White has a natural developing move (Nc3) that misses that e5 is hanging, vs an absurd King walk Ke2.
+    const fen =
+      'r1bqk1nr/pppp1ppp/2n5/2b1N3/4P3/8/PPPP1PPP/RNBQKB1R w KQkq - 1 4';
+    const adapter = new RulesAdapter(fen);
+    const legalMoves = adapter.verboseMoves();
+
+    const nc3Move = legalMoves.find((m) => m.san === 'Nc3')!;
+    const ke2Move = legalMoves.find((m) => m.san === 'Ke2')!;
+    expect(nc3Move).toBeDefined();
+    expect(ke2Move).toBeDefined();
+
+    // Developing knight Nc3 is human-plausible; uncastled King walk Ke2 is rejected (0)
+    expect(scoreMoveHumanPlausibility(adapter, nc3Move)).toBeGreaterThan(15);
+    expect(scoreMoveHumanPlausibility(adapter, ke2Move)).toBe(0);
+
+    // Suppose Nd3 (+40 cp) saves the knight on e5, while Nc3 (-220 cp) leaves e5 hanging to Nxe5
+    const nd3Move = legalMoves.find((m) => m.san === 'Nd3')!;
+    const blunderCands = findPlausibleHumanBlunderCandidates(
+      adapter,
+      legalMoves,
+      new Set([nd3Move.uci]),
+      nd3Move,
+      40,
+    );
+    expect(blunderCands.some((c) => c.move.san === 'Nc3')).toBe(true);
+    expect(blunderCands.some((c) => c.move.san === 'Ke2')).toBe(false);
+
+    const lines: EngineLine[] = [
+      makeLine(1, 40, ['e5d3', 'c5b6']),
+      makeLine(2, -220, ['b1c3', 'c6e5']),
+      makeLine(3, -300, ['e1e2', 'c6e5']),
+    ];
+
+    const dec = selectHumanLikeMove({
+      fen,
+      lines,
+      ratingOrTier: 600,
+      style: 'solid',
+      rng: () => 0.99, // High draw samples from the human blunder tail
+      enableHumanBlunders: true,
+    });
+    expect(dec.san).not.toBe('Ke2');
+    const chosenCand = dec.candidates.find((c) => c.uci === dec.uci);
+    expect(chosenCand?.isHumanBlunder).toBe(true);
+  });
+
+  it('computes human-like thinking time varying with forced moves, recaptures, position complexity, game phase, and clock remaining', () => {
+    // 1. Forced move (only 1 legal reply: King in check with only 1 escape) -> near minDelayMs
+    const forcedCheckFen = '7k/8/8/8/8/8/6q1/7K w - - 0 1';
+    const forcedDelay = computeBotThinkTimeMs({
+      fen: forcedCheckFen,
+      minDelayMs: 500,
+      maxDelayMs: 3000,
+      unlimitedClock: true,
+      rng: () => 0.5,
+    });
+    expect(forcedDelay).toBe(500);
+
+    // 2. Early opening vs sharp tactical middlegame
+    const openingFen =
+      'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
+    const sharpMiddlegameFen =
+      'r1bq1rk1/ppp2ppp/2np1n2/2b1p1B1/2B1P3/2NP1N2/PPP2PPP/R2Q1RK1 b - - 4 7';
+
+    const openingDelay = computeBotThinkTimeMs({
+      fen: openingFen,
+      ply: 1,
+      minDelayMs: 500,
+      maxDelayMs: 3000,
+      unlimitedClock: true,
+      rng: () => 0.5,
+    });
+    const sharpDelay = computeBotThinkTimeMs({
+      fen: sharpMiddlegameFen,
+      ply: 14,
+      minDelayMs: 500,
+      maxDelayMs: 3000,
+      unlimitedClock: true,
+      rng: () => 0.5,
+    });
+    expect(sharpDelay).toBeGreaterThan(openingDelay);
+    expect(openingDelay).toBeGreaterThanOrEqual(500);
+    expect(sharpDelay).toBeLessThanOrEqual(3000);
+
+    // 3. Respects low remaining clock in timed games (< 5 seconds left)
+    const timeTroubleDelay = computeBotThinkTimeMs({
+      fen: sharpMiddlegameFen,
+      ply: 24,
+      minDelayMs: 500,
+      maxDelayMs: 3000,
+      unlimitedClock: false,
+      botRemainingMs: 3000,
+      incrementMs: 0,
+      rng: () => 0.5,
+    });
+    expect(timeTroubleDelay).toBeLessThanOrEqual(120);
+  });
 });
+
