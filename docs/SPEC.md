@@ -3,7 +3,8 @@
 ## Goal
 The best fully offline chess learning and analysis tool. It should be smooth (locked
 60 fps, 120 on high-refresh screens), accurate (Stockfish-grade analysis), and built around
-learning: every game you play becomes training material.
+learning: every game you play becomes training material. A companion Chrome extension
+captures games from Lichess and Chess.com so they're ready to analyze later.
 
 ## Stack
 - Vite + TypeScript (strict mode).
@@ -23,14 +24,17 @@ learning: every game you play becomes training material.
 - `npm run build` produces `dist/`.
 - `npm run serve` serves `dist/` on localhost with the COOP/COEP headers that
   multi-threaded Stockfish needs. This is the normal way to use the app offline.
+- `npm run build:ext` produces the unpacked capture extension in `dist-ext/` (Phase 5b).
 - Opening index.html directly from disk is NOT supported. Document why in README.
 - Also make it installable as a PWA from localhost. Inside the installed app, use a
   service-worker isolation shim to enable threads. If the page isn't cross-origin
   isolated, fall back to single-threaded Stockfish.
 
 ## Hard constraints
-- Zero runtime network requests. All assets, the engine, and its network file are cached
-  by the service worker.
+- The website makes zero runtime network requests. All assets, the engine, and its
+  network file are cached by the service worker.
+- The only component allowed to touch the network at runtime is the capture extension
+  (extension/, Phase 5b), and only to lichess.org, www.chess.com, and api.chess.com.
 - The engine and all heavy work run in workers. No main-thread task over 50 ms.
 - Exact chess rules: castling, en passant, promotion, threefold repetition, the 50-move
   rule, insufficient material, and Chess960 FEN round-trip.
@@ -52,7 +56,9 @@ src/
                explanations
   trainers/    puzzles, spaced repetition, repertoire, endgames, visualization drills
   storage/     IndexedDB schema, versioned migrations, JSON backup/restore
-  ui/          layout, settings, library, insights, Today screen
+  ui/          layout, settings, Games list / library, insights, Today screen
+extension/     Chrome MV3 capture extension (Phase 5b): site extractors, queue, popup,
+               localhost bridge
 scripts/       dataset download and build scripts
 data/          generated compact datasets
 ```
@@ -117,6 +123,15 @@ comments placed before moves, annotation symbols, promotions, castling, Chess960
   output parser covered by unit tests.
 - **Thread detection:** check whether the page is cross-origin isolated and fall back to a
   single thread if not.
+- **Perft cross-check:** compare the rules adapter's perft counts against Stockfish's
+  `go perft` (with UCI_Chess960 enabled where needed) to depth 3–4. Cover:
+  - the standard start position and Kiwipete
+  - at least 10 Chess960 starting positions
+  - hand-built Chess960 positions where castling is blocked by attacked squares, where
+    the castling rook shields the king from a check along the rank, and where king and
+    rook swap or stay on their squares
+
+  Any mismatch is a rules bug: fix it in the adapter, never in the test.
 - **Playing bot:**
   - Strength 400–2400 with tiers Novice, Casual, Club, Expert, Master.
   - Combine Stockfish's built-in strength limits (UCI_Elo / Skill Level) with a
@@ -125,8 +140,8 @@ comments placed before moves, annotation symbols, promotions, castling, Chess960
     plausible mistakes, not random ones.
   - Bot styles as presets: aggressive, solid, gambiteer.
 
-**Done when:** unit tests pass, and an end-to-end test confirms the engine finds a
-mate-in-2 and wins a hanging piece.
+**Done when:** unit tests pass, the perft cross-check passes, and an end-to-end test
+confirms the engine finds a mate-in-2 and wins a hanging piece.
 
 ### Phase 3 — 2D board and play mode
 - **Pieces:** SVG pieces moved only with CSS transform, animated with the Web Animations
@@ -135,8 +150,8 @@ mate-in-2 and wins a hanging piece.
   something changes.
 - **Input:** drag and click-to-move, legal-move dots, a promotion picker (with auto-queen
   option), premoves, board flip, and an optional confirm-move setting.
-- **Theme:** marble and obsidian look. 2–3 piece sets and board themes, including high
-  contrast.
+- **Theme:** marble and obsidian look (palette and materials from the legacy audit in
+  PROGRESS.md). 2–3 piece sets and board themes, including high contrast.
 - **Capture effect:** optional particle effect on one canvas, using a fixed pool (no new
   objects created per frame).
 - **Audio:** port the Web Audio synthesizer from legacy/. Start audio on the first
@@ -146,9 +161,11 @@ mate-in-2 and wins a hanging piece.
   - takebacks (toggleable), resign, draw offers
   - limited hints, which are logged for the review
 - **Layout:** responsive (desktop: board plus side panel; mobile: stacked).
+- **Legacy regression tests:** for each legacy bug in PROGRESS.md that applies to this
+  phase, write a test that would have failed on the old app.
 
-**Done when:** an end-to-end test plays a full game against the bot. Record the perf
-numbers.
+**Done when:** an end-to-end test plays a full game against the bot, the legacy
+regression tests pass, and the perf numbers are recorded.
 
 ### Phase 4 — Analysis board
 - **Eval bar:** animated, mate-aware, flips with the board.
@@ -234,6 +251,82 @@ numbers.
 **Done when:** fixture tests cover every class and every motif, and an end-to-end test
 reviews the sample game.
 
+### Phase 5b — Capture extension + Games list
+The website stays fully offline (zero runtime network requests, unchanged). A separate
+Chrome extension captures games from Lichess and Chess.com. It is the ONLY component
+allowed to touch the network.
+
+**Extension** (`extension/`, built with `npm run build:ext` into `dist-ext/`, loaded
+unpacked):
+- Manifest V3, with minimal permissions:
+  - access to lichess.org, www.chess.com, and api.chess.com
+  - access to the analysis site's localhost URL (for the bridge only)
+  - storage
+  - no remotely hosted code
+- **Capture** (a content script per site, behind one shared extractor interface, each
+  method in its own file):
+  - **Lichess:** detect a finished game and fetch the PGN, with clock times, from the
+    official game-export endpoint using the game ID from the URL.
+  - **Chess.com:** detect a finished game and extract the PGN from the game data the page
+    itself loads (decode Chess.com's compact move format if needed). If that fails, fall
+    back to the site's own share/PGN feature.
+- **Triggers:**
+  - auto-capture when a game I played ends (on/off setting)
+  - a "Save game" button injected on game pages
+  - a right-click menu entry on game links
+- **Fallback popup:** if extraction fails, show a notification that opens the extension
+  popup. There I can paste a game link or the raw PGN.
+  - Lichess links resolve through the export endpoint.
+  - Chess.com links resolve through the official monthly archive API. Games that aren't
+    there yet show as "pending" and retry periodically (the archive can lag up to 12 h).
+  - Pasted PGN is validated before saving.
+- **Queue:** captured games are stored in the extension's storage with site, game ID,
+  PGN, captured-at time, and status (pending / ready / delivered). The toolbar badge
+  shows the number of undelivered games. The popup lists recent captures and their
+  status.
+- **History backfill:** an "Import my history" button for both sites (Lichess games
+  export; Chess.com monthly archives).
+  - Fetch only what's new, one request at a time.
+  - Respect ETag headers and back off on 429 errors.
+  - Backfilled games go into the same queue.
+- **Settings:** my Lichess and Chess.com usernames (to recognize my own games), the
+  analysis site's localhost URL and port, and the auto-capture toggle.
+
+**Bridge to the website:**
+- A content script that runs only on the configured localhost URL relays messages
+  between the page and the extension.
+- Protocol:
+  1. The page announces it's ready (handshake with a version number).
+  2. The extension sends ready games in batches.
+  3. The page saves them to IndexedDB, skipping duplicates by site + game ID.
+  4. The page replies with the saved IDs, and the extension marks only those as
+     delivered.
+- Check message origin and shape on both sides.
+- Sync runs when the page opens and whenever its tab regains focus.
+- The website must work normally when the extension isn't installed.
+
+**Website — Games list (the minimal version of Phase 8's library):**
+- All captured and imported games: source icon, date, my color, opponent and ratings,
+  result, time control, opening name, and an Analyzed / Not analyzed badge.
+- Sort and filter by source, result, and analyzed status.
+- Select one or more games → "Analyze" queues them for game review on the chosen preset.
+  Opening an analyzed game shows its saved review.
+- An optional "Auto-analyze new games" toggle (off by default).
+- Also: a "Paste PGN" button and drag-and-drop of PGN files.
+
+**Tests:**
+- Unit-test every extractor against recorded page data and API responses in
+  `tests/fixtures/` (no live network in tests).
+- Unit-test the bridge protocol, including partial-failure cases (the page saves some
+  games and not others).
+- A Playwright test loads the unpacked extension. On mocked game pages it captures a
+  game, checks that the badge updates, opens the site, and confirms the game appears in
+  the Games list exactly once and can be analyzed.
+- The offline end-to-end test for the website still passes.
+
+**Document in README:** how to load the extension, how to set the site URL, and which
+capture methods are unofficial and may break when the sites change.
+
 ### Phase 6 — Puzzles and spaced repetition
 - **Personal puzzles:** every Mistake, Blunder, or Miss becomes a puzzle. Reject a
   position if the second-best move is nearly as good as the best.
@@ -260,8 +353,8 @@ end-to-end test solves a puzzle.
   - "guess the move" through my own games
 
 ### Phase 8 — Library, insights, settings, offline
-- **Library:**
-  - Every game saves automatically.
+- **Library:** extend the Phase 5b Games list into the full library.
+  - Every played, captured, or imported game is included.
   - Filter by result, color, opening, date, and accuracy.
   - Bulk PGN import runs in a worker.
   - JSON backup and restore of all data.
@@ -281,7 +374,7 @@ end-to-end test solves a puzzle.
 - **Offline:** service worker precaching and installable PWA.
 
 **Done when:** an end-to-end test switches the browser offline and confirms that play,
-analysis, review, and puzzles all still work.
+analysis, review, puzzles, and the Games list all still work.
 
 ### Phase 9 — Performance pass and final audit
 - Profile and fix until every performance budget is met. Record the numbers.
