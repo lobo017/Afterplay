@@ -42,6 +42,31 @@ import {
   scoreForWhite,
   scoreToCentipawns,
 } from './engine/uci-parser';
+import {
+  BOARD_THEMES,
+  PIECE_SETS,
+} from './render/themes';
+import { getPieceSvgMarkup } from './render/piece-sets';
+import { BoardOverlay, squareToBoardCoords } from './render/overlay';
+import {
+  CaptureParticleSystem,
+  PARTICLE_POOL_SIZE,
+  SHARDS_PER_CAPTURE,
+} from './render/particles';
+import { CathedralAudio } from './render/audio';
+import {
+  BoardRenderer,
+  computePremoveTargets,
+} from './render/board-renderer';
+import {
+  ChessClock,
+  TIME_CONTROL_PRESETS,
+  formatClockMs,
+} from './ui/clock';
+import {
+  PlayController,
+  computeCapturedAndMaterial,
+} from './ui/play-controller';
 
 export interface AppShellEnvironment {
   crossOriginIsolated: boolean;
@@ -88,10 +113,33 @@ export interface WizardChessEngineApi {
   createConnectedEngine: (options?: EngineClientOptions) => EngineClient;
 }
 
+export interface WizardChessPlayApi {
+  controller: PlayController;
+  engine: EngineClient;
+  devOverlay: DevOverlayController;
+  BoardRenderer: typeof BoardRenderer;
+  BoardOverlay: typeof BoardOverlay;
+  CaptureParticleSystem: typeof CaptureParticleSystem;
+  CathedralAudio: typeof CathedralAudio;
+  ChessClock: typeof ChessClock;
+  PlayController: typeof PlayController;
+  computeCapturedAndMaterial: typeof computeCapturedAndMaterial;
+  computePremoveTargets: typeof computePremoveTargets;
+  squareToBoardCoords: typeof squareToBoardCoords;
+  getPieceSvgMarkup: typeof getPieceSvgMarkup;
+  formatClockMs: typeof formatClockMs;
+  BOARD_THEMES: typeof BOARD_THEMES;
+  PIECE_SETS: typeof PIECE_SETS;
+  TIME_CONTROL_PRESETS: typeof TIME_CONTROL_PRESETS;
+  PARTICLE_POOL_SIZE: typeof PARTICLE_POOL_SIZE;
+  SHARDS_PER_CAPTURE: typeof SHARDS_PER_CAPTURE;
+}
+
 declare global {
   interface Window {
     __wizardChessCore?: WizardChessCoreApi;
     __wizardChessEngine?: WizardChessEngineApi;
+    __wizardChessPlay?: WizardChessPlayApi;
   }
 }
 
@@ -113,6 +161,7 @@ export function detectEnvironment(): AppShellEnvironment {
 export function mountAppShell(container: HTMLElement): {
   devOverlay: DevOverlayController;
   env: AppShellEnvironment;
+  playController: PlayController;
 } {
   const env = detectEnvironment();
   const threadModeLabel = env.crossOriginIsolated
@@ -126,7 +175,7 @@ export function mountAppShell(container: HTMLElement): {
           <div class="wc-brand-mark" aria-hidden="true">♛</div>
           <div>
             <h1 class="wc-brand-title">Wizard's Chess</h1>
-            <div class="wc-brand-subtitle">Offline Chess Learning &amp; Stockfish Analysis</div>
+            <div class="wc-brand-subtitle">Cathedral Marble &amp; Obsidian · Offline Stockfish Training</div>
           </div>
         </div>
         <div class="wc-status-bar">
@@ -160,44 +209,41 @@ export function mountAppShell(container: HTMLElement): {
       </header>
 
       <main class="wc-main">
-        <section class="wc-card" aria-labelledby="shell-heading">
-          <h2 id="shell-heading" class="wc-card-title">Phase 2 — Stockfish 17.1 WASM Engine &amp; Human-Like Bot</h2>
-          <p class="wc-card-desc">
-            Stockfish 17.1 Lite NNUE WebAssembly (multi-threaded and single-threaded variants), MultiPV 1–5 streaming analysis, priority queue, LRU position cache, human-like bot (400–2400 Elo across Novice, Casual, Club, Expert, Master with Aggressive, Solid, and Gambiteer styles), rules adapter (standard + Chess960), recursive variation game tree, custom PGN parser/writer (<code class="wc-kbd">[%eval]</code>, <code class="wc-kbd">[%cal]</code>, <code class="wc-kbd">[%csl]</code>), and IndexedDB v${LATEST_SCHEMA_VERSION} schema migrations are bundled locally with zero runtime network requests. Press <kbd class="wc-kbd">\`</kbd> at any time to inspect live frame timing and engine telemetry.
-          </p>
-          <div class="wc-grid">
-            <div class="wc-stat">
-              <div class="wc-stat-label">Engine Threading</div>
-              <div class="wc-stat-value" data-testid="stat-threading">${threadModeLabel}</div>
-            </div>
-            <div class="wc-stat">
-              <div class="wc-stat-label">Runtime Network</div>
-              <div class="wc-stat-value" data-testid="stat-network">0 External Requests</div>
-            </div>
-            <div class="wc-stat">
-              <div class="wc-stat-label">Bundled Datasets</div>
-              <div class="wc-stat-value" data-testid="stat-datasets">Openings · 20k Puzzles · Endgames</div>
-            </div>
-            <div class="wc-stat">
-              <div class="wc-stat-label">Rules &amp; Variants</div>
-              <div class="wc-stat-value" data-testid="stat-rules">Standard + Chess960 (Perft Verified)</div>
-            </div>
-            <div class="wc-stat">
-              <div class="wc-stat-label">PGN &amp; GameTree</div>
-              <div class="wc-stat-value" data-testid="stat-pgn">RAVs · NAGs · [%eval/%cal/%csl]</div>
-            </div>
-            <div class="wc-stat">
-              <div class="wc-stat-label">Local Storage</div>
-              <div class="wc-stat-value" data-testid="stat-storage">IndexedDB Schema v${LATEST_SCHEMA_VERSION}</div>
-            </div>
-            <div class="wc-stat">
-              <div class="wc-stat-label">Stockfish Engine</div>
-              <div class="wc-stat-value" data-testid="stat-engine">Stockfish 17.1 Lite NNUE (MultiPV 1–5)</div>
-            </div>
-            <div class="wc-stat">
-              <div class="wc-stat-label">Playing Bot</div>
-              <div class="wc-stat-value" data-testid="stat-bot">400–2400 Elo · Aggressive / Solid / Gambiteer</div>
-            </div>
+        <div id="wc-play-root" class="wc-play-root"></div>
+
+        <!-- System Architecture & Diagnostics Footer Bar (preserves Phase 0-2 telemetry selectors) -->
+        <section class="wc-diagnostics-strip" aria-label="Architecture Diagnostics">
+          <div class="wc-stat">
+            <div class="wc-stat-label">Engine Threading</div>
+            <div class="wc-stat-value" data-testid="stat-threading">${threadModeLabel}</div>
+          </div>
+          <div class="wc-stat">
+            <div class="wc-stat-label">Runtime Network</div>
+            <div class="wc-stat-value" data-testid="stat-network">0 External Requests</div>
+          </div>
+          <div class="wc-stat">
+            <div class="wc-stat-label">Bundled Datasets</div>
+            <div class="wc-stat-value" data-testid="stat-datasets">Openings · 20k Puzzles · Endgames</div>
+          </div>
+          <div class="wc-stat">
+            <div class="wc-stat-label">Rules &amp; Variants</div>
+            <div class="wc-stat-value" data-testid="stat-rules">Standard + Chess960 (Perft Verified)</div>
+          </div>
+          <div class="wc-stat">
+            <div class="wc-stat-label">PGN &amp; GameTree</div>
+            <div class="wc-stat-value" data-testid="stat-pgn">RAVs · NAGs · [%eval/%cal/%csl]</div>
+          </div>
+          <div class="wc-stat">
+            <div class="wc-stat-label">Local Storage</div>
+            <div class="wc-stat-value" data-testid="stat-storage">IndexedDB Schema v${LATEST_SCHEMA_VERSION}</div>
+          </div>
+          <div class="wc-stat">
+            <div class="wc-stat-label">Stockfish Engine</div>
+            <div class="wc-stat-value" data-testid="stat-engine">Stockfish 17.1 Lite NNUE (MultiPV 1–5)</div>
+          </div>
+          <div class="wc-stat">
+            <div class="wc-stat-label">Playing Bot</div>
+            <div class="wc-stat-value" data-testid="stat-bot">400–2400 Elo · Aggressive / Solid / Gambiteer</div>
           </div>
         </section>
       </main>
@@ -206,6 +252,28 @@ export function mountAppShell(container: HTMLElement): {
 
   const shellEl = container.querySelector('.wc-shell') as HTMLElement;
   const devOverlay = new DevOverlayController(shellEl);
+
+  const createConnectedEngine = (options?: EngineClientOptions) =>
+    new EngineClient({
+      ...options,
+      onTelemetry: (telemetry) => {
+        devOverlay.updateEngineStats(telemetry.depth, telemetry.nps);
+        options?.onTelemetry?.(telemetry);
+      },
+      onCacheLookup: (hit) => {
+        devOverlay.recordCacheLookup(hit);
+        options?.onCacheLookup?.(hit);
+      },
+    });
+
+  const playRootEl = container.querySelector('#wc-play-root') as HTMLElement;
+  const sharedEngine = createConnectedEngine({ variant: 'auto' });
+
+  const playController = new PlayController({
+    container: playRootEl,
+    engine: sharedEngine,
+    devOverlay,
+  });
 
   if (typeof window !== 'undefined') {
     window.__wizardChessCore = {
@@ -244,18 +312,29 @@ export function mountAppShell(container: HTMLElement): {
       formatScore,
       MULTI_THREADED_ENGINE_URL,
       SINGLE_THREADED_ENGINE_URL,
-      createConnectedEngine: (options?: EngineClientOptions) =>
-        new EngineClient({
-          ...options,
-          onTelemetry: (telemetry) => {
-            devOverlay.updateEngineStats(telemetry.depth, telemetry.nps);
-            options?.onTelemetry?.(telemetry);
-          },
-          onCacheLookup: (hit) => {
-            devOverlay.recordCacheLookup(hit);
-            options?.onCacheLookup?.(hit);
-          },
-        }),
+      createConnectedEngine,
+    };
+
+    window.__wizardChessPlay = {
+      controller: playController,
+      engine: sharedEngine,
+      devOverlay,
+      BoardRenderer,
+      BoardOverlay,
+      CaptureParticleSystem,
+      CathedralAudio,
+      ChessClock,
+      PlayController,
+      computeCapturedAndMaterial,
+      computePremoveTargets,
+      squareToBoardCoords,
+      getPieceSvgMarkup,
+      formatClockMs,
+      BOARD_THEMES,
+      PIECE_SETS,
+      TIME_CONTROL_PRESETS,
+      PARTICLE_POOL_SIZE,
+      SHARDS_PER_CAPTURE,
     };
   }
 
@@ -272,7 +351,31 @@ export function mountAppShell(container: HTMLElement): {
     });
   }
 
-  return { devOverlay, env };
+  // Global keyboard shortcut: 'f' / 'F' flips the board when not typing in an input
+  if (typeof window !== 'undefined') {
+    window.addEventListener('keydown', (e) => {
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      if (
+        (e.key === 'f' || e.key === 'F') &&
+        !e.ctrlKey &&
+        !e.altKey &&
+        !e.metaKey
+      ) {
+        e.preventDefault();
+        const board = playController.getBoard();
+        board.setFlipped(!board.isFlipped());
+      }
+    });
+  }
+
+  return { devOverlay, env, playController };
 }
-
-

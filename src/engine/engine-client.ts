@@ -687,12 +687,14 @@ export class EngineClient {
         request.signal.addEventListener('abort', onAbort, { once: true });
       }
 
-      // If a new 'live' task arrives with preempt=true (or while a lower-priority task is active and preempt===true)
+      // Preempt active search if request.preempt is true or if the active search is an infinite background search
       if (
-        request.preempt &&
         this.activeTask &&
-        this.activeTask.priorityRank < task.priorityRank &&
-        this.activePhase === 'searching'
+        this.activePhase === 'searching' &&
+        ((request.preempt && this.activeTask.priorityRank < task.priorityRank) ||
+          (this.activeTask.kind === 'analyze' &&
+            Boolean(this.activeTask.request.infinite) &&
+            this.activeTask.priorityRank <= task.priorityRank))
       ) {
         this.cancel(this.activeTask.id);
       }

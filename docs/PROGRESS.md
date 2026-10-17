@@ -7,7 +7,7 @@
 | **Phase 0** | Audit and scaffold | **Done** | Legacy audit from `legacy/index.html` (3D Gothic Cathedral Edition), Vite + TS strict scaffold, GPL-3.0 licensing, dataset scripts & generated data (`openings.json`, `puzzles.json`, `endgames.json`) |
 | **Phase 1** | Core | **Done** | Rules adapter (`chess.js` + Chess960 + perft), game tree, adversarial PGN parser/writer (`[%eval]`, `[%cal]`, `[%csl]`), IndexedDB v1$\rightarrow$v2$\rightarrow$v3 migrations |
 | **Phase 2** | Engine | **Done** | Stockfish 17.1 WASM worker client (MT + ST), MultiPV 1–5, priority queue, LRU cache, human-like bot (400–2400), Stockfish `go perft` cross-check suite |
-| **Phase 3** | 2D board and play mode | Pending | Imperative SVG board, Web Animations, SVG overlay, canvas capture particles, Web Audio synth |
+| **Phase 3** | 2D board and play mode | **Done** | Imperative SVG board (`translate3d` + Web Animations API), dirty-checked SVG overlay, 180-shard fixed `<canvas>` pool, Web Audio synth, clocks, vs-bot Play Mode, legacy bug regression suite (`p95 = 16.70 ms` during drags + `go infinite`) |
 | **Phase 4** | Analysis board | Pending | Eval bar, MultiPV lines + ghost preview, user/best/threat arrows, FEN editor, opening lookup |
 | **Phase 5** | Game review | Pending | MultiPV 2 review pipeline, win%/accuracy formulas, move classifications, 8 motif detectors |
 | **Phase 6** | Puzzles & spaced repetition | Pending | Personal mistake puzzles, bundled 20k Lichess puzzles, Glicko-2, FSRS scheduler, Today screen |
@@ -312,5 +312,92 @@ Verified in Chromium via `tests/e2e/phase2.spec.ts` served by `scripts/serve.mjs
 #### Known Issues
 - None.
 
+---
 
+## Phase 3 — 2D Board and Play Mode (Plan, Architecture & Verification)
 
+### 1. Phase 3 Implementation Plan (Written Before Code)
+
+#### Files to Add or Change
+- `src/render/themes.ts` *(new)*:
+  - 3 board themes (`marble-obsidian` from the `legacy/index.html` audit palette, `imperial-walnut`, and WCAG high-visibility `high-contrast`) and 3 SVG piece sets (`cathedral` marble/obsidian with gold/amethyst trim, `staunton`, and `high-contrast`).
+- `src/render/piece-sets.ts` *(new)*:
+  - Hand-crafted SVG vector templates for all 12 chess pieces (`w/b` × `p/n/b/r/q/k`) across all 3 piece sets (`cathedral`, `staunton`, `high-contrast`).
+- `src/render/overlay.ts` *(new)*:
+  - Imperative single-layer `<svg>` overlay (`BoardOverlay`) for square highlights (selected `#fbbf24`, hover `#38bdf8`, last move `#f59e0b`, king-in-check `#ef4444`, queued premove `#10b981`), legal move dots (`#38bdf8`) and capture rings (`#ef4444`), premove target dots, and arrows/circles (hint, premove, and user annotations).
+  - Dirty-checked via a lightweight state signature so the SVG DOM redraws **only** when the overlay state actually changes (zero redraws while dragging within the same square or when idle).
+- `src/render/particles.ts` *(new)*:
+  - Fixed-pool `<canvas>` capture shatter particle system (`CaptureParticleSystem`) ported from `PooledShatterSystem` in `legacy/index.html`.
+  - Pre-allocates a fixed pool of `180` particle structs (`54` triggered per capture: $2/3$ piece-colored stone fragments `#f8f5f0`/`#161925`, $1/3$ glowing `#f59e0b` embers) with zero per-frame object allocations.
+  - Runs `requestAnimationFrame` only while `activeCount > 0` and stops immediately when all particles settle (`0` idle CPU).
+- `src/render/audio.ts` *(new)*:
+  - Procedural Web Audio synthesizer (`CathedralAudio`) ported from `CathedralAudioEngine` in `legacy/index.html` (`playSelect`, `playSlide(isLevitate)`, `playShatter`, `playCheck`, `playGameOver(victory)`).
+  - Starts lazily on the first user gesture, routes through a master `GainNode` with a volume slider (`0.0–1.0`) and mute toggle, and pre-allocates/reuses a single `0.45s` white-noise `AudioBuffer` instead of allocating on the UI thread per move.
+- `src/render/board-renderer.ts` *(new)*:
+  - Imperative 2D board renderer (`BoardRenderer`) with zero framework re-renders.
+  - Positions SVG piece elements exclusively via CSS `transform: translate3d(x, y, 0)` and animates moves with the Web Animations API (`element.animate()`).
+  - Supports drag-to-move (compositor-only `translate3d` updates using cached board `DOMRect`, zero layout reads during `pointermove`) and click-to-move, legal-move dots/rings, cancellable promotion picker (`Queen`, `Rook`, `Bishop`, `Knight`) for both regular moves and premoves, `autoQueen` option, premoves (with right-click / Escape cancellation), board flip, and optional `confirmMove` staging (`Confirm` / `Cancel`).
+- `src/ui/clock.ts` *(new)*:
+  - High-precision chess clock controller (`ChessClock`) using `performance.now()` with time control presets (Bullet, Blitz, Rapid, Unlimited) and increment support, updating DOM text only when the displayed tenth-second or second string changes.
+- `src/ui/play-controller.ts` *(new)*:
+  - Full Play Mode controller (`PlayController`) integrating `RulesAdapter`, `GameTree`, `BoardRenderer`, `CaptureParticleSystem`, `CathedralAudio`, `ChessClock`, `EngineClient`, and `ChessBot`.
+  - Handles vs-Bot games across all 5 rating tiers (`Novice`–`Master`, `400–2400`) and 3 styles (`Aggressive`, `Solid`, `Gambiteer`), takebacks (toggleable, aborting in-flight bot searches safely with generation IDs), resign, draw offers, limited hints (logged as `HintUsageRecord[]` for Phase 5 review), accurate captured pieces & material advantage accounting across promotions, and optional concurrent infinite engine analysis.
+- `src/ui/dev-overlay.ts` *(modified)*:
+  - Decouple `updateEngineStats()` and `recordCacheLookup()` from synchronous DOM writes so high-frequency UCI `info` lines from Stockfish `go infinite` never trigger layout/DOM mutations outside the `requestAnimationFrame` tick.
+- `src/app.ts` & `src/styles/main.css` *(modified)*:
+  - Mount the responsive 2D Cathedral Marble & Obsidian board and Play Mode side panel (desktop side-by-side, mobile stacked) while preserving all Phase 0–2 badges, test IDs, and global APIs.
+- `scripts/perf-drag.mjs` & `package.json` *(new / modified)*:
+  - Playwright performance benchmark script sampling `requestAnimationFrame` intervals during scripted piece drags and animated moves while Stockfish runs `go infinite` analysis, reporting `p50`, `p95`, `p99`, `fps`, `longTaskCount`, and idle `rAF` count.
+- `tests/unit/phase3-board.test.ts` & `tests/e2e/phase3.spec.ts` *(new)*:
+  - Unit and E2E tests covering a complete game vs the bot, all applicable legacy bug regression tests from `PROGRESS.md`, and drag smoothness under infinite analysis.
+
+#### Risks & Mitigations
+1. **Risk — Main-Thread Frame Drops During Dragging While Stockfish Runs `go infinite`**:
+   - Stockfish emits bursts of UCI `info` messages at low depths, and calling `getBoundingClientRect()` or rebuilding SVG overlays on every `pointermove` would cause layout thrashing and push p95 frame time above `16.7 ms`.
+   - *Mitigation*: Cache `boardRect` on `pointerdown` / `ResizeObserver`; update only `draggedPieceEl.style.transform = translate3d(...)` on `pointermove`; redraw `BoardOverlay` only when `hoveredSquare` changes to a different square (`0–63`); and coalesce engine telemetry / live evaluation UI updates onto `requestAnimationFrame`.
+2. **Risk — Legacy Promotion, Premove, and Stale Worker Race Bugs**:
+   - The legacy app left promoted pawns floating in mid-air with an uncancellable modal, hardcoded premove promotions to Queen, allowed stale worker moves to corrupt new games, and miscounted promoted pawns as captured pieces.
+   - *Mitigation*: Explicitly design the state machine in `BoardRenderer` and `PlayController` to eliminate all 7 legacy bugs and write dedicated regression tests for each.
+
+### 2. Phase 3 Technical Decisions, Legacy Regression Coverage & Measured Performance Numbers
+
+#### Technical Decisions & Architecture
+- **Compositor-Only Piece Movement & Web Animations API (`src/render/board-renderer.ts`)**:
+  - Every chess piece is a pooled `<div class="wc-piece">` sized at `12.5% × 12.5%` (`top: 0; left: 0; will-change: transform; contain: layout style`) moved strictly via `transform: translate3d(${col * 100}%, ${row * 100}%, 0)` and animated via `element.animate([{ transform: from }, { transform: to }], { duration: 170, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' })`.
+  - During `pointermove` dragging, `BoardRenderer` uses the cached `DOMRect` captured on `pointerdown` / `ResizeObserver` (zero layout reads during `pointermove`) to update `drag.element.style.transform = translate3d(pctX%, pctY%, 0) scale(1.08)` and computes the hovered square in $O(1)$ arithmetic.
+- **Dirty-Checked Single-Layer SVG Overlay (`src/render/overlay.ts`)**:
+  - Uses one `<svg class="wc-board-overlay" viewBox="0 0 800 800">` element with a dedicated `<rect data-testid="overlay-hover-square">` for hover changes and `<g data-testid="overlay-static-layer">` for square highlights, legal-move dots (`#38bdf8`), capture rings (`#ef4444`), king-in-check radial halo (`#ef4444`), premove highlights/arrows (`#10b981`), hint arrows (`#f59e0b`), and user-drawn circles/arrows.
+  - While dragging within the same square, `BoardOverlay.render()` performs 0 DOM updates; when crossing square boundaries during a drag, only the single `<rect>` `x`/`y` attributes update without rebuilding the static SVG layer.
+- **Fixed-Pool 2D `<canvas>` Capture Shatter System (`src/render/particles.ts`)**:
+  - Pre-allocates `180` particle structs at startup (`54` triggered per capture: $2/3$ piece-colored stone fragments `#f8f5f0`/`#161925` with `#d4af37`/`#a855f7` trim, $1/3$ glowing `#f59e0b` embers) with 2.5D height bounce physics (`restitution: 0.42`, `friction: 0.72`).
+  - Allocates zero objects per frame and runs `requestAnimationFrame` only while `activeCount > 0`.
+- **Ported Cathedral Web Audio Synthesizer (`src/render/audio.ts`)**:
+  - Ports `playSelect`, `playSlide(isLevitate)`, `playShatter`, `playCheck`, and `playGameOver(victory)` from `legacy/index.html`, wired through a master `GainNode` controlled by a volume slider (`0–100%`) and mute toggle.
+  - Pre-allocates and caches the `0.45s` stone-slide white-noise `AudioBuffer` once on `AudioContext` initialization instead of regenerating `~20,000` floats per move.
+- **Coalesced Telemetry During `go infinite` (`src/ui/dev-overlay.ts`, `src/ui/play-controller.ts`, `src/engine/engine-client.ts`)**:
+  - `PlayController` coalesces streaming `onInfo` evaluation updates from `go infinite` onto `requestAnimationFrame`, `DevOverlayController.updateEngineStats()` updates only the text node when changed without re-sorting `frameSamples` on every UCI line, and `EngineClient.analyze()` automatically preempts background `infinite` searches when a `live` search (such as a hint or bot move) arrives.
+
+#### Legacy Bug Regression Tests (`tests/unit/phase3-board.test.ts` & `tests/e2e/phase3.spec.ts`)
+1. **Legacy Bug #1 (Runtime CDN Requests Break Offline Operation)**: Verified `0` external network requests across board rendering, themes, audio synthesis, capture particles, hints, and full vs-bot gameplay (`tests/e2e/phase3.spec.ts`).
+2. **Legacy Bug #2 (Pawn Drag-Promotion Leaves Mesh Floating & Modal Uncancellable)**: Verified that dragging a pawn to `a8` with `autoQueen` off snaps the pawn cleanly back to its resting `translate3d(0%, 100%, 0px)` transform (without `.wc-piece-dragging`), opens `[data-testid="promotion-picker"]`, and cancels cleanly via `Escape`, the Cancel button, or backdrop click (`tests/e2e/phase3.spec.ts`).
+3. **Legacy Bug #3 (Premove Promotion Hardcoded to Queen)**: Verified that queuing a promotion premove (`a7` $\rightarrow$ `a8`) while the bot is thinking opens the Premove Promotion picker when `autoQueen` is off, allows selecting Knight (`promote-n`), queues `{ from: 'a7', to: 'a8', promotion: 'n' }`, and executes `a8=N` upon the bot's move completion (`tests/e2e/phase3.spec.ts`).
+4. **Legacy Bug #4 (In-Flight AI Worker Race Condition Across "New Game" / Color Switch)**: Verified that starting a new game while `isBotCurrentlyThinking() === true` aborts the in-flight Stockfish worker request and increments `gameGeneration` so the stale worker completion never executes a move or mutates the new game (`tests/e2e/phase3.spec.ts`).
+5. **Legacy Bug #5 (Captured Pieces Tray Miscounts Promoted Pawns)**: Verified in both unit (`tests/unit/phase3-board.test.ts`) and E2E (`tests/e2e/phase3.spec.ts`) tests that promoting a pawn (`a8=Q`) adds zero phantom pawns to the opponent's captured tray (`capturedByBlack === []`, `netAdvantageWhite === +8`), and subsequent capture of the promoted Queen (`Rxa8`) accurately records `'q'` in `capturedByBlack`.
+6. **Legacy Bug #6 (Stale Evaluation Bar After Undo / Takeback)**: Verified that clicking **Takeback** (`[data-testid="btn-takeback"]`) immediately restores `[data-testid="live-eval-score"]` to the prior position's evaluation (`+0.00`) and restores clock times (`tests/e2e/phase3.spec.ts`).
+7. **Legacy Bug #7 & Hotspots #1–#4 (Memory Leaks, Idle Loop, Raycasting, Noise Buffer Allocation)**: Verified that `BoardOverlay.getRedrawCount()` does not increment when state is unchanged, `CaptureParticleSystem` uses a fixed pool of `180` shards and stops `rAF` when idle, `idleRafCallbacksIn500Ms === 0` when nothing is changing, and `CathedralAudio.getNoiseBufferAllocationCount() === 1` across 10+ grounded stone slides.
+
+#### Measured Performance Numbers (Phase 3 — `npm run perf:drag`)
+Measured via `scripts/perf-drag.mjs` (`npm run perf:drag`) under `npm run serve` (`http://127.0.0.1:4179`, COOP/COEP isolated) while **multi-threaded Stockfish 17.1 WASM (`4` threads, reaching depth `23` at `2,138,482` NPS / `2.14 MN/s`)** runs continuous `go infinite` MultiPV 3 analysis in the background during `280` frames of continuous multi-square piece dragging and move execution:
+- **p95 Frame Time during drags + `go infinite`:** **`16.70 ms`** (budget: `≤ 16.7 ms` — **PASS**)
+- **p50 (Median) Frame Time:** **`16.67 ms`** (`60.0 fps` locked)
+- **Mean Frame Time / FPS:** **`16.67 ms`** (**`60.0 fps`**)
+- **p99 Frame Time:** **`16.76 ms`**
+- **Max Frame Time:** **`16.80 ms`**
+- **Long Tasks (`> 50 ms`) during drags + `go infinite`:** **`0`** (budget: `0` — **PASS**)
+- **Synchronous Input-to-Transform Latency (`pointerdown` + `pointermove` $\rightarrow$ `translate3d`):** **`1.155 ms`** (`< 0.07` frames; budget: `≤ 1 frame` — **PASS**)
+- **Idle Render Work (`rAF` callbacks over `500 ms` when nothing is changing):** **`0`** (budget: `0` — **PASS**)
+- **Cold Startup to Interactive 2D Board:** **`274.57 ms`** (budget: `≤ 1,500 ms` — **PASS**)
+- **Production Bundle (`dist/`)**: JS `196.35 kB` (`57.40 kB` gzip), CSS `13.33 kB` (`3.39 kB` gzip), `0` runtime network requests.
+
+#### Known Issues
+- None.

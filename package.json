@@ -16,6 +16,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "perf:drag": "node scripts/perf-drag.mjs",
     "data:openings": "node scripts/build-openings.mjs",
     "data:puzzles": "node scripts/build-puzzles.mjs",
     "data:endgames": "node scripts/build-endgames.mjs",

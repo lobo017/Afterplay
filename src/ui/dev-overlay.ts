@@ -143,7 +143,11 @@ export class DevOverlayController {
     this.engineDepth = depth;
     this.engineNps = nps;
     if (this.visible) {
-      this.renderMetrics();
+      const kNps = (nps / 1000).toFixed(1);
+      const nextText = `d${depth} / ${kNps} kN/s`;
+      if (this.engineValEl.textContent !== nextText) {
+        this.engineValEl.textContent = nextText;
+      }
     }
   }
 
@@ -151,7 +155,14 @@ export class DevOverlayController {
     this.cacheTotal++;
     if (hit) this.cacheHits++;
     if (this.visible) {
-      this.renderMetrics();
+      const rate =
+        this.cacheTotal > 0
+          ? ((this.cacheHits / this.cacheTotal) * 100).toFixed(1)
+          : '0.0';
+      const nextText = `${rate}%`;
+      if (this.cacheValEl.textContent !== nextText) {
+        this.cacheValEl.textContent = nextText;
+      }
     }
   }
 
