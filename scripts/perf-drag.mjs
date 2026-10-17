@@ -463,7 +463,8 @@ async function scenarioPlay(page) {
 
 async function scenarioAnalysis(page) {
   if (ENGINE_THREADS !== null) {
-    // Applied while the shared engine is idle, before analysis starts
+    // Same path the app uses: EngineClient.configure() restarts the worker with the new
+    // thread count (it never sends setoption Threads to a live engine)
     await page.evaluate(
       (threads) => window.__wizardChessPlay.engine.configure({ threads }),
       ENGINE_THREADS,
@@ -579,16 +580,6 @@ async function runPerfBenchmark() {
       `ghostPreviews=${GHOST_PREVIEWS ? 'on' : 'off'}, port=${PORT}`,
   );
 
-  if (ENGINE_THREADS !== null) {
-    // Re-sending `setoption Threads` to the running multi-threaded WASM Stockfish hangs
-    // the page and then crashes it ("Target crashed"), even with the current value.
-    // Varying threads needs a thread count chosen before the engine starts.
-    throw new PerfAbort(
-      'PERF_ENGINE_THREADS is not usable yet: reconfiguring Threads on the running ' +
-        'Stockfish worker crashes the page. Run without it (auto = 4 threads here).',
-      2,
-    );
-  }
   requireNoLeftovers();
   requireFreeMemory('start');
 
@@ -688,6 +679,11 @@ ${formatProcesses(killed)}`,
       if (analysis.drag.maxEngineLineDomUpdatesPerFrame > 1) {
         failures.push(
           `scenario 2: ${analysis.drag.maxEngineLineDomUpdatesPerFrame} engine-line DOM updates in one frame`,
+        );
+      }
+      if (ENGINE_THREADS !== null && analysis.drag.engineThreads !== ENGINE_THREADS) {
+        failures.push(
+          `scenario 2: engine ran ${analysis.drag.engineThreads} threads, not the requested ${ENGINE_THREADS}`,
         );
       }
       if (GHOST_PREVIEWS && analysis.drag.ghostPreviewsShown === 0) {

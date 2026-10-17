@@ -1153,3 +1153,21 @@ left as is, as instructed). Its message now overstates the problem. With this fi
 setting could be re-enabled, since `configure()` is safe now.
 
 All checks: typecheck, lint, 107 unit tests, build, 21/21 e2e — PASS.
+
+### `PERF_ENGINE_THREADS` re-enabled (2026-10-17)
+
+The perf script's guard is removed. `PERF_ENGINE_THREADS=n` goes through
+`EngineClient.configure()`, the same worker-restart path the app uses. The run now fails
+if the engine doesn't report the requested thread count.
+
+One end-to-end check (`PERF_SCENARIOS=analysis PERF_ENGINE_THREADS=2`, no leftovers,
+6.8 GB free):
+- Engine: multi-threaded, **2 threads** confirmed, peak depth 23, peak 1.55 MN/s
+  (~2.4–2.9 MN/s at 4 threads).
+- Analysis drag: p95 16.71 ms, p99 33.34 ms, 4/280 dropped (1.43%), 0 long tasks, 93/93
+  ghost previews, ≤ 1 engine-line DOM update per frame.
+- Navigation sweep: p95 16.78 ms, 0.41% dropped, 0 long tasks.
+- Exit 0, "no child processes left".
+
+The thread-count matrix was not run; Phase 5 will compare thread counts for background
+review itself.
