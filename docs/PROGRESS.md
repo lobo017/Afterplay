@@ -810,3 +810,129 @@ p95 ≤ 16.7 ms + 0.5 ms jitter allowance (17.2 ms). Also report dropped frames
   waiting on the user's go-ahead.
 - A promotion picker opened for a premove is still closed when the opponent's move
   arrives (unchanged behavior). The pawn returns to its square and nothing is queued.
+
+---
+
+## Phase 3 — Bot Move Selection in a Worker (2026-10-17)
+
+User approved moving `selectHumanLikeMove` off the main thread (the last known issue
+above).
+
+### Plan (written before code)
+
+**Files**
+- `src/engine/bot-selection.worker.ts` *(new)*: a module worker that runs
+  `selectHumanLikeMove` and posts the decision back.
+- `src/engine/bot-selection-client.ts` *(new)*: `BotSelectionClient`. It owns the lazily
+  created worker, plus a synchronous fallback where `Worker` doesn't exist (Node:
+  `npm test`, `npm run calibrate:bots`) or the worker fails to start.
+- `src/engine/bot.ts`: `ChessBot.chooseMove` hands the selection to the client.
+- `src/app.ts`: expose `BotSelectionClient` on `window.__wizardChessEngine` for the e2e
+  proof.
+- Tests:
+  - `tests/helpers/bot-golden-cases.ts` (deterministic case generator).
+  - `tests/fixtures/bot-selection-golden.json`: expected moves, generated once from
+    the original Phase 3 implementation (`02865aa`).
+  - `tests/unit/bot-selection-golden.test.ts` (sync path).
+  - `tests/e2e/phase3-bot-worker.spec.ts` (real worker in Chrome).
+
+**Keeping moves identical:** the random source is a function and can't cross into a
+worker. The client pre-draws a buffer of values from the caller's `rng`. The worker
+replays them and reports how many it used; unused values are kept, per `rng`, and handed
+out first on the next call. The `rng` stream is therefore consumed exactly as if
+`selectHumanLikeMove` had called it directly. That matters for calibration, which
+shares one seeded stream across a whole game. If the buffer runs out, the worker reports
+it and the client retries with a larger buffer (selection is deterministic given its
+inputs).
+
+**Risks:** the worker's result must be structured-cloneable (it is all plain objects).
+The worker chunk must be precached for offline use; it matches the `**/*.js` glob. A
+pending selection after New Game/Takeback is dropped by the existing generation check.
+
+### Result
+
+**Status: done.** All checks pass, run by the agent:
+
+| Check | Result |
+|-------|--------|
+| `npm run typecheck` | PASS |
+| `npm run lint` | PASS (0 warnings) |
+| `npm test` | PASS — 13 files, 106 tests (3 new in `bot-selection-golden.test.ts`) |
+| `npm run build` | PASS — main JS 1,248.44 kB (203.88 kB gzip), new `bot-selection.worker` chunk 61.86 kB, precache 13 entries (was 12; the worker is cached for offline use) |
+| `npx playwright test` | PASS — 18 specs (2 new in `phase3-bot-worker.spec.ts`), 0 external requests, 0 console errors |
+
+`ChessBot` now takes an injectable `selectMove`. PlayController passes a
+`BotSelectionClient`, so play-mode bot moves are selected in the worker; the e2e test
+checks the client's counters (worker ≥ 1, inline 0). Node callers (`npm test`,
+`npm run calibrate:bots`) keep the inline default. The worker imports only `bot.ts`.
+Having the client in `bot.ts` would have put a `new Worker(...)` reference inside the
+worker's own bundle.
+
+**Moves are unchanged**
+- `tests/fixtures/bot-selection-golden.json` holds the moves the original Phase 3 code
+  (`02865aa`, before both optimizations) picks for 860 deterministic cases. The cases
+  come from `tests/helpers/bot-golden-cases.ts`: seeded random games, two to eight
+  synthetic MultiPV lines each, all seven rating bands from 400 to 2400 and all three
+  styles.
+- There are two passes. *Independent*: one `mulberry32(case.seed)` stream per case.
+  *Shared stream*: one seeded stream consumed across all 860 calls in order, the way
+  calibration uses it.
+- The fixture is sensitive to randomness: 221 of 860 cases pick a move other than line
+  1, and 262 cases differ between the two passes.
+- Identical results, all 1,720 selections in each:
+  - the current inline `selectHumanLikeMove`
+  - `BotSelectionClient` inline fallback (unit test)
+  - the real module worker in Chrome (e2e)
+- In the e2e run, the 860 independent requests are issued at once, then the 860
+  shared-stream requests in sequence: 1,720 selections in ~3.2–3.6 s, **0 main-thread
+  long tasks**.
+- Mutation check: making the client drop unused random values instead of keeping them
+  made the e2e test fail (245 of 860 shared-stream moves differed). The test therefore
+  guards the stream accounting, not just the selection code.
+
+**Premove burst, 10 runs** (`PERF_SCENARIOS=play npm run perf:drag`, each in a fresh
+browser):
+
+| Run | p50 | p95 | p99 | Dropped | Long tasks | Same-frame premoves |
+|-----|-----|-----|-----|---------|------------|---------------------|
+| 1 | 16.66 | **16.79** | 16.95 | 0/67 | 0 | 3/3 |
+| 2 | 16.67 | **16.81** | 49.99 | 1/70 | 0 | 3/3 |
+| 3 | 16.68 | **16.78** | 16.82 | 0/71 | 0 | 3/3 |
+| 4 | 16.67 | **16.77** | 33.40 | 2/71 | 0 | 3/3 |
+| 5 | 16.67 | **16.76** | 33.34 | 1/72 | 0 | 3/3 |
+| 6 | 16.68 | **16.78** | 17.47 | 0/75 | 0 | 3/3 |
+| 7 | 16.67 | **16.69** | 16.75 | 0/92 | 0 | 3/3 |
+| 8 | 16.68 | **16.82** | 49.94 | 2/71 | 0 | 3/3 |
+| 9 | 16.66 | **16.81** | 33.30 | 1/68 | 0 | 3/3 |
+| 10 | 16.67 | **16.78** | 49.90 | 1/76 | 0 | 3/3 |
+
+Every run passes the 17.2 ms limit (worst p95 16.82 ms). The Play-mode drag window in the
+same runs had p95 16.71–16.74 ms and 0 long tasks.
+
+**Both scenarios** (3 full runs, then 4 more full runs and 4 runs of scenario 2 alone):
+- Scenario 1 drag: p95 16.70–16.72 ms, 0 dropped frames, 0 long tasks, input latency
+  1.0–1.1 ms.
+- Scenario 1 premove burst: p95 16.78–16.85 ms, 0 long tasks.
+- Scenario 2 navigation sweep: p95 16.81–16.92 ms, 0 long tasks.
+- Engine-line DOM updates: ≤ 1 per frame. Ghost previews: 93/93.
+- Idle rAF: 0. Startup: 260–284 ms.
+- **Scenario 2 drag (MultiPV 5 + ghost hovers + `go infinite`) fails the p95 limit in 8
+  of 11 runs:** p95 33.32–33.33 ms with 3–7% dropped frames, and 0 long tasks in every
+  run. The 3 passing runs were at 16.70–16.73 ms.
+
+### Known issues
+
+- **Scenario 2's drag window misses its p95 budget under current machine load. This is
+  not caused by the worker change.** An A/B run of the previous commit (`6afceb9`, no
+  worker) under the same conditions failed 4 of 4 times, with *more* dropped frames
+  (7.1–12.5%) than the worker build (0.7–7.1%). In this morning's runs, the same commit
+  passed 3 of 3 (0.7–1.8% dropped). The machine was at 10–30% CPU while idle during these
+  runs (VS Code, several Chrome processes, Zoom).
+- The drops are single frames with no main-thread long task, so the cost is probably
+  rendering or compositing (ghost layer + overlay + dragged piece every frame) competing
+  with four engine threads. This needs a trace-level profile to pin down; Phase 9 is
+  the place for it.
+- Separate from the drops above: the premove burst still shows 0–2 isolated dropped
+  frames per ~70-frame window (p99 up to 50 ms) around bot moves. p95 is unaffected.
+- Calibration was not re-run. In Node, `ChessBot` uses the inline selector, which the
+  golden test shows is unchanged.

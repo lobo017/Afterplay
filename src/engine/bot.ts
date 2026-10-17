@@ -690,14 +690,9 @@ export function findPlausibleHumanBlunderCandidates(
  * rating-scaled temperature, plausible-mistake filtering, human blunder probability,
  * and style preset.
  */
-export function selectHumanLikeMove(options: {
-  fen?: string;
-  lines: EngineLine[];
-  ratingOrTier: number | BotTierId;
-  style?: BotStyleId;
-  rng?: () => number;
-  enableHumanBlunders?: boolean;
-}): BotMoveDecision {
+export function selectHumanLikeMove(
+  options: HumanLikeSelectionRequest & { rng?: () => number },
+): BotMoveDecision {
   const fen = options.fen?.trim() || DEFAULT_POSITION;
   const style = options.style ?? 'solid';
   const params = computeBotEngineParams(options.ratingOrTier, style);
@@ -1115,10 +1110,35 @@ function matchLegalMove(
   return null;
 }
 
+/** Everything selectHumanLikeMove() needs apart from its random source. */
+export interface HumanLikeSelectionRequest {
+  fen?: string;
+  lines: EngineLine[];
+  ratingOrTier: number | BotTierId;
+  style?: BotStyleId;
+  enableHumanBlunders?: boolean;
+}
+
+/**
+ * Runs the human-like move selection. It must draw from `rng` exactly as
+ * selectHumanLikeMove() would, so a seeded stream produces the same moves wherever the
+ * selection runs (see BotSelectionClient, which moves it into a worker).
+ */
+export type BotMoveSelector = (
+  request: HumanLikeSelectionRequest,
+  rng: () => number,
+) => Promise<BotMoveDecision>;
+
+/** Default selector: runs on the calling thread (Node scripts and unit tests). */
+export const selectHumanLikeMoveInline: BotMoveSelector = (request, rng) =>
+  Promise.resolve(selectHumanLikeMove({ ...request, rng }));
+
 export interface ChessBotOptions {
   rating?: number | BotTierId;
   style?: BotStyleId;
   rng?: () => number;
+  /** Where the move selection runs; defaults to inline on the calling thread. */
+  selectMove?: BotMoveSelector;
 }
 
 /**
@@ -1131,6 +1151,7 @@ export class ChessBot {
   private rating: number;
   private style: BotStyleId;
   private readonly rng: () => number;
+  private readonly selectMove: BotMoveSelector;
 
   constructor(engine: EngineClient, options?: ChessBotOptions) {
     this.engine = engine;
@@ -1141,6 +1162,7 @@ export class ChessBot {
     this.rating = clampBotRating(initRating);
     this.style = options?.style ?? 'solid';
     this.rng = options?.rng ?? Math.random;
+    this.selectMove = options?.selectMove ?? selectHumanLikeMoveInline;
   }
 
   public getRating(): number {
@@ -1203,13 +1225,15 @@ export class ChessBot {
       signal: options?.signal,
     });
 
-    return selectHumanLikeMove({
-      fen,
-      lines: analysis.lines,
-      ratingOrTier: this.rating,
-      style: this.style,
-      rng: options?.rng ?? this.rng,
-      enableHumanBlunders: options?.enableHumanBlunders ?? true,
-    });
+    return this.selectMove(
+      {
+        fen,
+        lines: analysis.lines,
+        ratingOrTier: this.rating,
+        style: this.style,
+        enableHumanBlunders: options?.enableHumanBlunders ?? true,
+      },
+      options?.rng ?? this.rng,
+    );
   }
 }

@@ -24,6 +24,7 @@ import {
   EngineClient,
   type EngineAnalysisResult,
 } from '../engine/engine-client';
+import { BotSelectionClient } from '../engine/bot-selection-client';
 import { formatScore, type UciScore } from '../engine/uci-parser';
 import { CathedralAudio } from '../render/audio';
 import { BoardRenderer } from '../render/board-renderer';
@@ -139,6 +140,8 @@ export interface PlayControllerOptions {
   engine: EngineClient;
   /** Separate engine instance for bot moves so the bot never reuses full-strength analysis state. */
   botEngine?: EngineClient;
+  /** Worker-backed bot move selection; created (and owned) here when not given. */
+  botSelection?: BotSelectionClient;
   devOverlay?: DevOverlayController;
   /** Shared synthesizer, so the app builds only one AudioContext. */
   audio?: CathedralAudio;
@@ -168,6 +171,8 @@ export class PlayController {
   private readonly audio: CathedralAudio;
   private readonly clock: ChessClock;
   private readonly bot: ChessBot;
+  private readonly botSelection: BotSelectionClient;
+  private readonly ownsBotSelection: boolean;
   private board!: BoardRenderer;
 
   private adapter: RulesAdapter;
@@ -260,9 +265,18 @@ export class PlayController {
     this.gameTree = new GameTree();
     this.audio =
       options.audio ?? new CathedralAudio({ enabled: true, volume: 0.75 });
+    // The bot's move selection runs in a worker so it never blocks the board
+    if (options.botSelection) {
+      this.botSelection = options.botSelection;
+      this.ownsBotSelection = false;
+    } else {
+      this.botSelection = new BotSelectionClient();
+      this.ownsBotSelection = true;
+    }
     this.bot = new ChessBot(this.botEngine, {
       rating: this.botRating,
       style: this.botStyle,
+      selectMove: (request, rng) => this.botSelection.select(request, rng),
     });
 
     this.clock = new ChessClock({
@@ -1624,6 +1638,10 @@ export class PlayController {
     return this.botEngine;
   }
 
+  public getBotSelection(): BotSelectionClient {
+    return this.botSelection;
+  }
+
   public getBot(): ChessBot {
     return this.bot;
   }
@@ -1636,6 +1654,9 @@ export class PlayController {
     }
     if (this.ownsBotEngine) {
       this.botEngine.terminate();
+    }
+    if (this.ownsBotSelection) {
+      this.botSelection.terminate();
     }
     this.clock.destroy();
     this.board.destroy();

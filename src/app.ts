@@ -96,6 +96,7 @@ import {
   serializeEditorBoardToFen,
 } from './analysis/position-editor';
 import { AnalysisController } from './analysis/analysis-controller';
+import { BotSelectionClient } from './engine/bot-selection-client';
 
 export type AppWorkspaceMode = 'play' | 'analysis';
 
@@ -143,6 +144,7 @@ export interface WizardChessEngineApi {
   MULTI_THREADED_ENGINE_URL: typeof MULTI_THREADED_ENGINE_URL;
   SINGLE_THREADED_ENGINE_URL: typeof SINGLE_THREADED_ENGINE_URL;
   createConnectedEngine: (options?: EngineClientOptions) => EngineClient;
+  BotSelectionClient: typeof BotSelectionClient;
 }
 
 export interface WizardChessPlayApi {
@@ -499,6 +501,7 @@ export function mountAppShell(container: HTMLElement): {
       MULTI_THREADED_ENGINE_URL,
       SINGLE_THREADED_ENGINE_URL,
       createConnectedEngine,
+      BotSelectionClient,
     };
 
     window.__wizardChessPlay = {
