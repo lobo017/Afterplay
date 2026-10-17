@@ -1013,3 +1013,45 @@ data:
 
 These cleanup tests ran on a blank page (Chrome launched, no app or Stockfish loaded), with
 a temporary 1 GB memory floor, because free memory was under 3 GB at the time.
+
+### E2E suite: the same orphan risk, fixed
+
+Reproduced on the current config with a throwaway spec that holds a blank page open (no
+app or engine):
+
+| Experiment | Before | After |
+|------------|--------|-------|
+| A: force-kill the Playwright runner only | worker + Chrome died (job object); **`serve.mjs --port 4173` survived** | nothing left |
+| B: kill only the shell that launched `npx playwright test` | npx, cmd, runner, worker, Chrome and server **kept running**; the test ran to completion (1.5 min) | guard logged "ancestor process … exited", killed 2 child trees (worker + Chrome, server); npx exited; nothing left |
+
+**Fixes (`playwright.config.ts`, `tests/e2e/global-setup.ts`)**
+- `webServer.env.WC_EXIT_WITH_PARENT_PID`: the server exits when the runner dies.
+- Global setup (it runs in the runner process; experiment B confirms this):
+  - Refuses to start while leftover headless Chrome or other perf/test runs exist,
+    listing them with kill commands. Checked with a stand-in leftover: the run refused
+    before any test started.
+  - Installs the ancestor watchdog. Ctrl+C is left to Playwright, which already shuts
+    down gracefully. A server on 4173 is not a leftover: `reuseExistingServer` reuses
+    your own `npm run serve` on purpose.
+- `outputDir: test-results/playwright`: Playwright wipes its output folder on every
+  run, which used to delete `test-results/perf-logs/`. Confirmed: a perf log survived a
+  full e2e run afterwards. Before the change, an e2e run in this session wiped 16
+  cleanup-test logs.
+
+Full checks after the change: typecheck, lint, 106 unit tests, build, 18/18 e2e — all PASS
+(4.27 GB free).
+
+### Known issues / notes
+
+- The thread × ghost matrix is still not run. Next step, once memory allows (the perf
+  script now enforces ≥ 3 GB free): 3 rounds round-robin of
+  `PERF_SCENARIOS=analysis PERF_ENGINE_THREADS={4,3,2}` and `PERF_GHOSTS=off` at 4
+  threads.
+- The SIGINT/SIGTERM paths were verified by emitting the signals in-process. Real
+  console Ctrl+C delivery couldn't be scripted from this environment.
+- **Agent mistake during verification:** a cleanup lookup for a stand-in leftover
+  matched its own command line and returned its own PID (4028). By the time `taskkill`
+  ran, that PID had apparently been reused, and `taskkill` reported terminating a
+  process with it. An unrelated process may have been killed; it couldn't be
+  identified afterwards (no Application-log errors). From then on, PIDs were only
+  killed after re-checking the command line at kill time.
