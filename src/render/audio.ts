@@ -34,9 +34,29 @@ export class CathedralAudio {
   }
 
   /**
+   * Builds the AudioContext ahead of the first gesture without starting playback. The
+   * context stays suspended until init() resumes it during a user gesture.
+   */
+  public prewarm(): void {
+    this.createContext();
+  }
+
+  /**
    * Initializes or resumes the AudioContext on a user gesture.
    */
   public init(): boolean {
+    this.createContext();
+
+    if (this.ctx && this.ctx.state === 'suspended') {
+      void this.ctx.resume().catch(() => {
+        // Ignore autoplay restriction errors until next user gesture
+      });
+    }
+
+    return this.ctx !== null;
+  }
+
+  private createContext(): void {
     if (!this.ctx) {
       try {
         if (this.contextFactory) {
@@ -60,14 +80,6 @@ export class CathedralAudio {
         this.ensureStoneNoiseBuffer();
       }
     }
-
-    if (this.ctx && this.ctx.state === 'suspended') {
-      void this.ctx.resume().catch(() => {
-        // Ignore autoplay restriction errors until next user gesture
-      });
-    }
-
-    return this.ctx !== null;
   }
 
   private ensureStoneNoiseBuffer(): AudioBuffer | null {

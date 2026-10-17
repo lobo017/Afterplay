@@ -7,8 +7,8 @@
 | **Phase 0** | Audit and scaffold | **Done** | Legacy audit from `legacy/index.html` (3D Gothic Cathedral Edition), Vite + TS strict scaffold, GPL-3.0 licensing, dataset scripts & generated data (`openings.json`, `puzzles.json`, `endgames.json`) |
 | **Phase 1** | Core | **Done** | Rules adapter (`chess.js` + Chess960 + perft), game tree, adversarial PGN parser/writer (`[%eval]`, `[%cal]`, `[%csl]`), IndexedDB v1$\rightarrow$v2$\rightarrow$v3 migrations |
 | **Phase 2** | Engine | **Done** | Stockfish 17.1 WASM worker client (MT + ST), MultiPV 1–5, priority queue, LRU cache, human-like bot (400–2400), Stockfish `go perft` cross-check suite |
-| **Phase 3** | 2D board and play mode | **Done** | Imperative SVG board (`translate3d` + Web Animations API), dirty-checked SVG overlay, 180-shard fixed `<canvas>` pool, Web Audio synth, clocks, vs-bot Play Mode, legacy bug regression suite (`p95 = 16.70 ms` during drags + `go infinite`) |
-| **Phase 4** | Analysis board | **Done** | Animated mate-aware eval bar, live MultiPV 1–5 lines + ghost preview, best/threat/user arrows, variation tree & keyboard navigation, FEN position editor, ECO opening lookup |
+| **Phase 3** | 2D board and play mode | **Done** | Imperative SVG board (`translate3d` + Web Animations API), dirty-checked SVG overlay, 180-shard fixed `<canvas>` pool, Web Audio synth, clocks, vs-bot Play Mode, legacy bug regression suite. **2026-10-17 fixes:** drags survive board updates, drag cancel (right-click / Esc / off-board), premove queue (max 10) on a hypothetical board, same-frame premove execution |
+| **Phase 4** | Analysis board | **Done** | Animated mate-aware eval bar, live MultiPV 1–5 lines + ghost preview, best/threat/user arrows, variation tree & keyboard navigation, FEN position editor, ECO opening lookup. **2026-10-17 fixes:** zero layout shift while navigating (was 694 shifts), ~100 ms step animation with reverse and snap-on-repeat, engine lines batched to ≤ 1 DOM update per frame |
 | **Phase 5** | Game review | Pending | MultiPV 2 review pipeline, win%/accuracy formulas, move classifications, 8 motif detectors |
 | **Phase 6** | Puzzles & spaced repetition | Pending | Personal mistake puzzles, bundled 20k Lichess puzzles, Glicko-2, FSRS scheduler, Today screen |
 | **Phase 7** | Repertoire, endgame & visualization | Pending | White/Black repertoire trees, 6 curated endgame drills, coordinate/blindfold/guess-the-move |
@@ -552,3 +552,261 @@ Verified via Playwright screenshots (`phase4-analysis-unflipped.png` and `phase4
 - **Production Bundle (`dist/`)**: JS `1,228.34 kB` (`198.49 kB` gzip, includes `data/openings.json` 3,865-position dictionary, `RulesAdapter`, `GameTree`, `PGN`, `WizardChessStorage`, `EngineClient`, `ChessBot`, `BoardRenderer`, and `AnalysisController`), CSS `24.05 kB` (`5.32 kB` gzip), precache `12 entries (15,296.19 KiB)`.
 
 
+---
+
+## Phase 3–4 Fixes — Handover Baseline (2026-10-16)
+
+A new agent took over the project at commit `02865aa`. Every check was re-run before any
+change, on Windows 11 with system Chrome (Playwright 1.64.1) and Node 22.18.0.
+
+| Check | Result |
+|-------|--------|
+| `npm run typecheck` | PASS |
+| `npm run lint` | PASS (0 warnings) |
+| `npm test` | PASS — 11 files, 92 tests (11.7 s) |
+| `npm run build` | PASS — JS 1,228.34 kB (198.49 kB gzip), CSS 24.05 kB |
+| `npx playwright test` | PASS — 7 specs (21.7 s) |
+| `npm run perf:drag` (scenario 1: Play mode drag + `go infinite`) | **FAIL (exit 1) in 6 of 6 runs** — see below |
+| perf scenario 2 (analysis board, MultiPV 5, ghost previews) | Did not exist at baseline (Phase 4 never added it) |
+
+**perf:drag scenario 1, 6 runs at baseline:**
+
+| Run | p50 | p95 | p99 | max | long tasks | budgetPassed |
+|-----|-----|-----|-----|-----|------------|--------------|
+| 1 | 16.67 | 16.71 | 16.81 | 33.35 | 0 | false |
+| 2 | 16.67 | 16.75 | 33.34 | 33.35 | 0 | false |
+| 3 | 16.66 | 16.76 | 16.80 | — | 0 | false |
+| 4 | 16.67 | 16.75 | 16.79 | — | 0 | false |
+| 5 | 16.66 | 16.76 | 16.78 | — | 0 | false |
+| 6 | 16.66 | 16.74 | 16.81 | — | 0 | false |
+
+Idle rAF callbacks: 0. Startup to interactive: 331–609 ms. Input latency: about 1.0 ms.
+
+The only failing condition is `p95FrameMs <= 16.7`. Headless Chrome runs rAF at 60 Hz,
+so one vsync is 16.667 ms, and the cutoff leaves only 0.033 ms for timestamp jitter. The
+measured p95 is still one vsync interval: no frames are dropped at the 95th percentile.
+Phase 3 recorded p95 = 16.70 ms, a pass by 0.00 ms; today's runs land 0.01–0.09 ms over.
+
+**User decision (2026-10-16):** keep 16.7 ms as the frame budget, but pass when
+p95 ≤ 16.7 ms + 0.5 ms jitter allowance (17.2 ms). Also report dropped frames
+(intervals > 1.5 × vsync). One dropped frame is 33.3 ms, so real jank still fails.
+
+**Measured before any app change (same build as above):**
+
+- *Layout shift while navigating* (new test `tests/e2e/phase4-navigation.spec.ts`, 81 plies
+  forward then back, MultiPV 5): **694 layout-shift entries, cumulative score 10.95**.
+  Elements that shifted:
+
+  | Element | Count | Cause |
+  |---------|-------|-------|
+  | `.wc-moves-panel`, `.wc-annotation-bar`, `.wc-editor-section`, `.wc-pgn-section` | 409 each | Engine lines panel changes height (one "Analyzing…" row ↔ five lines), moving everything below it by ~138 px |
+  | `.wc-diagnostics-strip` | 359 | Page height follows the side panel |
+  | `eval-bar-white-fill` | 174 | `height` transition on a bottom-anchored fill moves its top edge |
+  | `analysis-nps` badge | 95 | Depth text width ("Depth 9" → "Depth 12") moves the NPS badge |
+  | `threat-move-badge` | 42 | Width follows its text |
+  | `eval-bar-score` | 3 | Score label jumps top ↔ bottom using `top`/`bottom` |
+  | `analysis-eval-pill` | 1 | Width follows its text |
+
+- *Perf scenario 2* (analysis board, MultiPV 5, `go infinite`, ghost previews every 3rd
+  frame of the drag sweep; run on the old build with a temporary copy of the new script):
+
+  | Metric | Drag + ghosts | Navigation sweep (1 key per frame, 81 plies × 2) |
+  |--------|---------------|------------------------------------------------|
+  | p50 / p95 / p99 frame | 16.67 / **33.36** / 49.99 ms | 33.42 / **83.35** / 83.38 ms |
+  | Dropped frames | 34 / 279 (12.2%) | 108 / 162 (66.7%) |
+  | Long tasks | **1 (281 ms)** | 0 |
+  | Input latency (first pickup) | **279.9 ms** | — |
+  | Max engine-line DOM updates per frame | 1 | — |
+
+  Every navigation step re-renders the whole move tree, re-serializes the PGN, rebuilds the
+  hidden position editor, and restarts the engine, so a step costs 30–80 ms. The 281 ms
+  long task is the first pointer-down on the analysis board, which creates a second
+  `AudioContext` synchronously.
+
+### Plan (written before code)
+
+**Files to change**
+
+- `src/render/board-renderer.ts`
+  - The drag survives `setPosition`. The held element is never re-positioned or recycled
+    while it still holds the same piece. If the piece is gone (captured), the drag ends
+    and the element is released, so no ghost is left. Selection, legal dots, and premove
+    dots are recomputed for the new position.
+  - Drag cancel: right-click during a drag (chorded `mousedown`/`pointermove` with
+    button 2), Escape, or a drop off the board. The piece snaps back with a ~120 ms WAAPI
+    animation. Clicking the selected piece again deselects it.
+  - Right-click (no drag) clears the premove queue; otherwise it still draws arrows and
+    circles.
+  - Premove queue (`maxPremoves`, default 10). Destinations come from piece geometry
+    (chessground style) on a hypothetical board: real position plus my earlier premoves,
+    with the opponent passing. The hypothetical board is what is drawn while premoves
+    are queued (chess.com style), so a piece moved by premove 1 can be picked up again
+    for premove 2. Queued premoves get numbered highlights. A failed premove flashes,
+    then clears the rest of the queue.
+  - Position changes animate from a board diff (match vanished and appeared pieces of
+    the same colour and type, nearest first, as chessground does). This covers forward,
+    reverse, castling, en passant, and premove snap-back. Elements whose square changes
+    cancel their running animation first, so an interrupted animation always ends on
+    the right square.
+- `src/render/overlay.ts`: numbered premove highlights and the premove failure flash.
+- `src/ui/play-controller.ts`: premove execution moves into one helper. After the
+  opponent's move it plays the next premove in the same task (same frame), through the
+  normal clock path (elapsed ≈ 0 ms plus increment). An illegal premove clears the
+  queue with a flash. Adds a "Max premoves" setting.
+- `src/analysis/analysis-controller.ts`
+  - Navigation is incremental: toggle the active tree node instead of re-rendering, and
+    scroll only the move-tree container.
+  - Step ±1 animates (reverse when going back). Home/End, distant clicks, and variation
+    switches snap. Key repeat or input faster than the animation snaps.
+  - Adds a "Navigation animation" setting (off / fast / normal) and a public
+    `setAnalysisDepth()` (used by perf scenario 2).
+  - Debounces engine restarts and tree/PGN serialization off the per-keystroke path.
+- `src/analysis/engine-lines-panel.ts`: five persistent row slots with reserved height,
+  updated in place. Updates are coalesced to at most one DOM write per frame (with a
+  render counter). Identical ghost hovers are skipped.
+- `src/analysis/eval-bar.ts`: fills animate with `transform: scaleY` instead of
+  `height`. The score label uses fixed top and bottom slots toggled with `visibility`.
+- `src/styles/main.css`: tabular-nums, fixed widths and ellipsis for the eval pill,
+  depth/NPS badges, threat pill, opening name, status banners and clocks. Fixed-height
+  move tree and move list with `scrollbar-gutter: stable`. FEN readout no longer
+  toggles a scrollbar. The active move no longer turns bold, which changed its width.
+- `src/render/audio.ts` / `src/app.ts`: one shared `CathedralAudio` for both modes, so
+  the first pickup on the analysis board doesn't build a second `AudioContext`.
+- `scripts/perf-drag.mjs`: two scenarios (Play + `go infinite` drag and premove burst;
+  analysis + MultiPV 5 + ghost hovers drag and navigation sweep), using the jitter
+  allowance above.
+- Tests: `tests/e2e/phase4-navigation.spec.ts` (layout shift, held arrow key), new
+  `tests/e2e/phase3-premoves.spec.ts` (drag through opponent move, right-click/Esc
+  cancel, 3-premove queue, illegal premove cancels the rest, right-click clears queue),
+  plus unit tests for premove geometry on the hypothetical board and the diff
+  animation planner.
+- `tests/e2e/phase4.spec.ts`: screenshots move from a hard-coded folder outside the
+  repo (`C:/Users/ethan/.gemini/...`, left by the previous agent) to
+  `test-results/screenshots/`. The assertions don't change.
+
+**Risks**
+
+- Existing Phase 3 tests use `getPremove()` / `setPremove()`. These are kept as
+  "first queued premove" wrappers, so the old assertions still hold.
+- Drawing the hypothetical board while premoves are queued changes what Play mode
+  shows during the opponent's turn. This is the main UX decision; recorded under
+  Decisions.
+- Chorded right-click during a left-button drag doesn't fire `pointerdown`, so it's
+  handled through `mousedown` and `pointermove` with `button === 2`.
+
+### Result
+
+**Status: done.** All checks pass, run by the agent on 2026-10-17:
+
+| Check | Result |
+|-------|--------|
+| `npm run typecheck` | PASS |
+| `npm run lint` | PASS (0 warnings) |
+| `npm test` | PASS — 12 files, 103 tests (11 new in `tests/unit/premove-queue.test.ts`) |
+| `npm run build` | PASS — JS 1,245.77 kB (203.02 kB gzip), CSS 25.95 kB (5.69 kB gzip), 12 precache entries |
+| `npx playwright test` | PASS — 16 specs, two consecutive full runs, no flakes (7 earlier + 6 in `phase3-premoves.spec.ts` + 3 in `phase4-navigation.spec.ts`) |
+
+**New end-to-end coverage**
+- `phase3-premoves.spec.ts`:
+  - A drag held through the bot's move, then dropped, plays the move.
+  - A held piece that gets captured ends the drag with no ghost element.
+  - Right-click, Escape, and an off-board drop cancel a drag (with the snap-back animation).
+  - Clicking the selected piece again deselects it.
+  - Three queued premoves (one planned by dragging the piece premove 1 moved) all execute
+    across three bot moves. Each lands in the same frame as the bot's move, and the clock
+    is charged ~0 ms plus increment.
+  - An illegal premove cancels the whole queue with a flash.
+  - Right-click clears the queue, but still draws circles when nothing is queued.
+  - Max premoves = 1 refuses a second premove.
+  - Escape clears the queue.
+- `phase4-navigation.spec.ts`:
+  - Layout-shift test over the 81-ply game, forward then back: **0 entries, score
+    0.00000** (baseline 694 entries, 10.95), in every run.
+  - Holding → / ← through the game (auto-repeat every 33 ms) ends on the exact position:
+    piece elements match the FEN, no animation still running, no layout shift.
+  - A one-move step animates c2→c4 in 100 ms and c4→c2 in reverse with the last move
+    highlighted. Home/End and the "off" setting snap.
+
+**Measured performance (`npm run perf:drag`, 3 runs, headless Chrome 60 Hz, MT Stockfish ×4):**
+
+| Window | p50 | p95 | p99 | Dropped | Long tasks |
+|--------|-----|-----|-----|---------|------------|
+| 1 · Play drag + `go infinite` | 16.66–16.67 | **16.72–16.76** | 16.78–16.84 | 0–0.4% | **0** |
+| 1 · 3-premove burst (3 bot moves) | 16.67–16.68 | 16.76 / **33.27** / 16.80 | 16.84–50.07 | 0–5.2% | **0** |
+| 2 · Analysis drag, MultiPV 5, `go infinite`, ghost hover every 3rd frame | 16.67 | **16.71–16.73** | 16.81–33.34 | 0.7–1.8% | **0** |
+| 2 · Navigation sweep (81 plies at 1 key/frame, back at 1 key/2 frames) | 16.67–16.68 | **16.82–16.88** | 33.35–33.39 | 1.7–4.5% | **0** |
+
+- Premove execution: 3/3 premoves played in the bot move's frame in every run. Premove
+  execution itself takes 5–7 ms of main-thread time.
+- Engine-line DOM updates: at most **1 per frame**. Ghost previews shown: 93/93.
+- Input latency: 0.8–1.2 ms. Idle rAF: 0. Startup: 283–314 ms. Engine peak 2.4–2.8 MN/s,
+  depth 22–24.
+- Against the baseline, scenario 2 drag p95 went from 33.36 → 16.72 ms, its 281 ms long
+  task is gone, and first-pickup latency went from 280 → ~1 ms. The navigation sweep p95
+  went from 83.35 → ~16.85 ms.
+- The analysis sweep's backward half first sampled two-frame intervals as one; that
+  measurement bug was fixed before these numbers were taken.
+
+### Decisions
+
+- **Hypothetical board is displayed while premoves are queued** (chess.com style). This
+  lets a piece moved by premove 1 be picked up again for premove 2, where it is shown.
+  Lichess (single premove) shows the real board; with Max premoves = 1 the only
+  difference is that the premoved piece is drawn on its target square.
+- **Left-clicking an empty square no longer clears premoves.** Before, it cleared the
+  single premove. With a queue of up to 10, a stray click wiping the whole queue felt
+  wrong. Right-click and Escape clear the queue, as the brief specifies.
+- Max premoves accepts 1–20, default 10.
+- Navigation animation: normal = 100 ms, fast = 60 ms, off = 0. A step that arrives
+  while the previous animation is still running, or a key auto-repeat, snaps. A step
+  within twice the duration gets half the duration. Engine restarts wait 120 ms after
+  steps that come less than 150 ms apart. The PGN textarea refreshes 400 ms after
+  navigation stops, and never while it has focus.
+- Piece animation now comes from a board diff (chessground-style nearest matching, plus
+  pawn ↔ promoted-piece pairing) instead of a single move descriptor. That one planner
+  covers forward and reverse steps, castling, en passant, takebacks, and premove
+  snap-back.
+- On a position change, engine rows from the old position are hidden immediately
+  (`visibility`, no layout effect) so a click in the frame before the next flush can't
+  act on a stale line. That is one attribute write outside the per-frame batch.
+- One shared `CathedralAudio` is used by both modes. It is pre-warmed on the first
+  `pointermove`, because the `AudioContext` constructor blocks the main thread for
+  ~210 ms in this Chrome. Sound still starts on the first gesture.
+
+### Deviations from the spec and changes to existing code
+
+- **Perf budget:** p95 passes at ≤ 17.2 ms (16.7 ms + 0.5 ms jitter allowance), by the
+  user's decision at handover. Written into SPEC.md.
+- **`tests/e2e/phase4.spec.ts` (assertions unchanged):**
+  1. It clicked engine line 2's first move to create a variation. When Stockfish puts
+     `1... e5` (the existing main-line move) on line 2, nothing is inserted; this
+     reproduced after the new rendering changed timing. The test now clicks the first
+     line whose first move isn't `1... e5`, as its own comment already said ("Line 2 (or
+     Line 1 if different from e5)").
+  2. Its screenshots went to a hard-coded folder outside the repo
+     (`C:/Users/ethan/.gemini/antigravity-cli/brain/...`, left by the previous agent).
+     They now go to `test-results/screenshots/`.
+- **`RulesAdapter.isCheckmate()` / `isStalemate()`:** standard chess now uses chess.js's
+  internal check instead of `verboseMoves()`. Building SAN and two FEN strings for every
+  legal move made this the largest cost of a navigation step (~3 ms). Chess960 keeps the
+  old path. Added `RulesAdapter.sanMoves()`.
+- **Bot blunder scan (`findPlausibleHumanBlunderCandidates`):** it caused a ~105 ms main
+  thread long task on every bot move, found while measuring the premove burst.
+  - Fix: reply scanning uses SAN-only move lists, and the post-move position loads from
+    the verbose move's `after` FEN instead of `clone()` + `move()`.
+  - Checked against the previous implementation on 860 random positions with two seeds:
+    identical output, average 59.5 → 15.9 ms in Node.
+  - Bot calibration (`npm run calibrate:bots`) was not re-run; with identical selection
+    output, the measured ACPL targets are unaffected.
+
+### Known issues
+
+- **Bot move selection still runs on the main thread.** It takes ~15–40 ms per bot move
+  in the browser (Node: average 15.9 ms, max 112 ms over 560 random positions). That is
+  under 50 ms in every perf run, so no long tasks, but it can drop 1–3 frames when the
+  bot finishes thinking. This is why the premove-burst window's p95 reached 33.27 ms in
+  1 of 3 runs. Premove execution itself is 5–7 ms. The spec-compliant fix is to run
+  `selectHumanLikeMove` in a worker. That is a Phase 3 bot change outside this task;
+  waiting on the user's go-ahead.
+- A promotion picker opened for a premove is still closed when the opponent's move
+  arrives (unchanged behavior). The pawn returns to its square and nothing is queued.

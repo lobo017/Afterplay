@@ -371,19 +371,34 @@ export function mountAppShell(container: HTMLElement): {
     hashMb: 16,
   });
 
+  // One synthesizer for both modes, so only one AudioContext is ever built.
+  const audio = new CathedralAudio({ enabled: true, volume: 0.75 });
+
   const playController = new PlayController({
     container: playRootEl,
     engine: sharedEngine,
     botEngine,
     devOverlay,
+    audio,
   });
 
   const analysisController = new AnalysisController({
     container: analysisRootEl,
     engine: sharedEngine,
     threatEngine: botEngine,
+    audio,
     initialActive: false,
   });
+
+  // Building an AudioContext blocks the main thread for ~200 ms on some systems. Do it on
+  // the first pointer movement, before the first click, so the first piece pickup isn't
+  // where that stall lands. Sound still starts on the first gesture (init() resumes it).
+  if (typeof window !== 'undefined') {
+    window.addEventListener('pointermove', () => audio.prewarm(), {
+      once: true,
+      passive: true,
+    });
+  }
 
   let currentMode: AppWorkspaceMode = 'play';
   const modeTabPlayBtn = container.querySelector(

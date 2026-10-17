@@ -84,6 +84,8 @@ export class EvalBar {
   private readonly whiteFillEl: HTMLElement;
   private readonly blackFillEl: HTMLElement;
   private readonly scoreEl: HTMLElement;
+  private readonly scoreTopEl: HTMLElement;
+  private readonly scoreBottomEl: HTMLElement;
 
   private flipped: boolean;
   private scoreWhite: UciScore;
@@ -112,9 +114,20 @@ export class EvalBar {
     midlineEl.className = 'wc-eval-bar-midline';
     midlineEl.setAttribute('aria-hidden', 'true');
 
+    // The score label has a fixed slot at each end of the bar. Switching ends moves the
+    // text between slots instead of moving a box, so it never registers as a layout shift.
     this.scoreEl = document.createElement('div');
     this.scoreEl.className = 'wc-eval-bar-score';
     this.scoreEl.setAttribute('data-testid', 'eval-bar-score');
+    this.scoreEl.setAttribute('aria-hidden', 'true');
+    this.scoreTopEl = document.createElement('span');
+    this.scoreTopEl.className = 'wc-eval-bar-score-slot';
+    this.scoreTopEl.setAttribute('data-slot', 'top');
+    this.scoreBottomEl = document.createElement('span');
+    this.scoreBottomEl.className = 'wc-eval-bar-score-slot';
+    this.scoreBottomEl.setAttribute('data-slot', 'bottom');
+    this.scoreEl.appendChild(this.scoreTopEl);
+    this.scoreEl.appendChild(this.scoreBottomEl);
 
     this.rootEl.appendChild(this.blackFillEl);
     this.rootEl.appendChild(this.whiteFillEl);
@@ -184,20 +197,18 @@ export class EvalBar {
 
     // When unflipped (White at bottom): White fill grows upward from bottom: 0
     // When flipped (Black at bottom, White at top): White fill grows downward from top: 0
-    if (this.flipped) {
-      this.whiteFillEl.style.top = '0%';
-      this.whiteFillEl.style.bottom = 'auto';
-      this.blackFillEl.style.bottom = '0%';
-      this.blackFillEl.style.top = 'auto';
-    } else {
-      this.whiteFillEl.style.bottom = '0%';
-      this.whiteFillEl.style.top = 'auto';
-      this.blackFillEl.style.top = '0%';
-      this.blackFillEl.style.bottom = 'auto';
-    }
-
-    this.whiteFillEl.style.height = `${whitePct.toFixed(2)}%`;
-    this.blackFillEl.style.height = `${blackPct.toFixed(2)}%`;
+    // Both fills are full height and scaled from their anchored edge with a transform,
+    // which animates on the compositor and never shifts layout (a `height` change would).
+    const whiteEdge = this.flipped ? 'top' : 'bottom';
+    const blackEdge = this.flipped ? 'bottom' : 'top';
+    this.whiteFillEl.style[whiteEdge] = '0%';
+    this.whiteFillEl.style[blackEdge] = 'auto';
+    this.blackFillEl.style[blackEdge] = '0%';
+    this.blackFillEl.style[whiteEdge] = 'auto';
+    this.whiteFillEl.style.transformOrigin = `center ${whiteEdge}`;
+    this.blackFillEl.style.transformOrigin = `center ${blackEdge}`;
+    this.whiteFillEl.style.transform = `scaleY(${(whitePct / 100).toFixed(4)})`;
+    this.blackFillEl.style.transform = `scaleY(${(blackPct / 100).toFixed(4)})`;
 
     // Place the score label on the winning side's end of the bar
     const labelAtBottom = this.flipped ? !whiteAheadOrEqual : whiteAheadOrEqual;
@@ -209,8 +220,13 @@ export class EvalBar {
       'data-theme-tone',
       whiteAheadOrEqual ? 'light' : 'dark',
     );
-    if (this.scoreEl.textContent !== scoreText) {
-      this.scoreEl.textContent = scoreText;
+    const shown = labelAtBottom ? this.scoreBottomEl : this.scoreTopEl;
+    const other = labelAtBottom ? this.scoreTopEl : this.scoreBottomEl;
+    if (shown.textContent !== scoreText) {
+      shown.textContent = scoreText;
+    }
+    if (other.textContent !== '') {
+      other.textContent = '';
     }
   }
 }

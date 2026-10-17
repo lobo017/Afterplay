@@ -52,9 +52,26 @@ import {
   type ThreatDetectionResult,
 } from './threat-detector';
 
+export type NavAnimationMode = 'off' | 'fast' | 'normal';
+
+/** Duration of the one-move animation when stepping with ← / →. */
+export const NAV_ANIMATION_DURATION_MS: Record<NavAnimationMode, number> = {
+  off: 0,
+  fast: 60,
+  normal: 100,
+};
+
+/** Steps closer together than this are "rapid": the engine restart waits for a pause. */
+const RAPID_NAVIGATION_MS = 150;
+const ANALYSIS_RESTART_DELAY_MS = 120;
+const PGN_SYNC_DELAY_MS = 400;
+
 export interface AnalysisControllerOptions {
   container: HTMLElement;
   engine: EngineClient;
+  /** Shared synthesizer, so the app builds only one AudioContext. */
+  audio?: CathedralAudio;
+  initialNavAnimation?: NavAnimationMode;
   /** Optional dedicated secondary engine for null-move threat searches so main MultiPV analysis is never interrupted. */
   threatEngine?: EngineClient;
   initialFen?: string;
@@ -102,11 +119,36 @@ export class AnalysisController {
   private showBestMoveArrow: boolean;
   private showThreatArrow: boolean;
   private editorVisible = false;
+  private navAnimation: NavAnimationMode;
+  private lastNavigationAt = -Infinity;
+  /** The latest navigation came hard on the heels of the previous one. */
+  private rapidNavigation = false;
 
   private analysisGeneration = 0;
   private analysisAbortController: AbortController | null = null;
   private threatAbortController: AbortController | null = null;
   private pendingRafId: number | null = null;
+  private analysisStartTimer: ReturnType<typeof setTimeout> | null = null;
+  private pgnSyncTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** Tree button per node id, rebuilt whenever the tree is re-rendered. */
+  private treeNodeEls = new Map<string, HTMLElement>();
+  private activeTreeNodeId: string | null = null;
+  /**
+   * Node offsets inside the tree container, measured once after each render (or resize)
+   * so keeping the active move in view never forces a layout during navigation.
+   */
+  private treeNodeOffsets: Map<string, { top: number; bottom: number }> | null = null;
+  private treeViewportHeight = 0;
+  private treeScrollTop = 0;
+  private treeResizeObserver: ResizeObserver | null = null;
+  private nagButtonEls: HTMLButtonElement[] = [];
+  private statusCache: {
+    adapter: RulesAdapter;
+    checkmate: boolean;
+    draw: boolean;
+    inCheck: boolean;
+  } | null = null;
 
   private latestLines: EngineLine[] = [];
   private latestDepth = 0;
@@ -143,8 +185,10 @@ export class AnalysisController {
     this.threatSearchDepth = options.threatSearchDepth ?? 8;
     this.showBestMoveArrow = options.showBestMoveArrow ?? true;
     this.showThreatArrow = options.showThreatArrow ?? true;
+    this.navAnimation = options.initialNavAnimation ?? 'normal';
 
-    this.audio = new CathedralAudio({ enabled: true, volume: 0.75 });
+    this.audio =
+      options.audio ?? new CathedralAudio({ enabled: true, volume: 0.75 });
 
     if (options.initialPgn) {
       this.gameTree = parsePgn(options.initialPgn);
@@ -158,7 +202,7 @@ export class AnalysisController {
 
     this.mountLayout();
     this.bindKeyboardShortcuts();
-    this.syncAllFromCurrentNode(false);
+    this.syncAllFromCurrentNode({ treeChanged: true });
   }
 
   private mountLayout(): void {
@@ -210,6 +254,17 @@ export class AnalysisController {
               <label class="wc-checkbox-label" title="Show opponent threat arrow from null-move search">
                 <input type="checkbox" data-testid="toggle-threat-arrow" ${this.showThreatArrow ? 'checked' : ''} />
                 <span>Threat Arrow</span>
+              </label>
+              <label class="wc-inline-label" title="Animation when stepping one move with ← / →">
+                <span>Move anim</span>
+                <select class="wc-select wc-select-sm" data-testid="select-nav-animation" aria-label="Navigation animation">
+                  ${(['off', 'fast', 'normal'] as const)
+                    .map(
+                      (m) =>
+                        `<option value="${m}" ${m === this.navAnimation ? 'selected' : ''}>${m[0]!.toUpperCase()}${m.slice(1)}</option>`,
+                    )
+                    .join('')}
+                </select>
               </label>
             </div>
           </div>
@@ -522,6 +577,13 @@ export class AnalysisController {
       this.setShowThreatArrow(threatArrowCheck.checked);
     });
 
+    const navAnimSelect = this.container.querySelector(
+      '[data-testid="select-nav-animation"]',
+    ) as HTMLSelectElement | null;
+    navAnimSelect?.addEventListener('change', () => {
+      this.setNavAnimation(navAnimSelect.value as NavAnimationMode);
+    });
+
     this.promoteVarBtnEl.addEventListener('click', () => {
       this.promoteCurrentVariation();
     });
@@ -537,6 +599,23 @@ export class AnalysisController {
     this.deleteVarBtnEl.addEventListener('click', () => {
       this.deleteCurrentVariation();
     });
+
+    // Track the tree's scroll position and size so navigation never has to read layout
+    this.treeContainerEl.addEventListener(
+      'scroll',
+      () => {
+        this.treeScrollTop = this.treeContainerEl.scrollTop;
+      },
+      { passive: true },
+    );
+    if (typeof ResizeObserver !== 'undefined') {
+      // A width change reflows the moves: re-measure and keep the active move in view
+      this.treeResizeObserver = new ResizeObserver(() => {
+        this.treeNodeOffsets = null;
+        this.keepActiveTreeNodeInView();
+      });
+      this.treeResizeObserver.observe(this.treeContainerEl);
+    }
 
     this.treeContainerEl.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
@@ -637,12 +716,12 @@ export class AnalysisController {
     switch (e.key) {
       case 'ArrowLeft': {
         e.preventDefault();
-        this.goBack();
+        this.goBack({ repeat: e.repeat });
         break;
       }
       case 'ArrowRight': {
         e.preventDefault();
-        this.goForward();
+        this.goForward(0, { repeat: e.repeat });
         break;
       }
       case 'ArrowUp': {
@@ -696,6 +775,59 @@ export class AnalysisController {
     this.startPositionAnalysis();
   }
 
+  public setNavAnimation(mode: NavAnimationMode): void {
+    this.navAnimation = mode in NAV_ANIMATION_DURATION_MS ? mode : 'normal';
+    const select = this.container.querySelector(
+      '[data-testid="select-nav-animation"]',
+    ) as HTMLSelectElement | null;
+    if (select && select.value !== this.navAnimation) {
+      select.value = this.navAnimation;
+    }
+  }
+
+  public getNavAnimation(): NavAnimationMode {
+    return this.navAnimation;
+  }
+
+  /**
+   * Engine depth for the analysis board. 'infinite' keeps searching until the position
+   * changes (used by the perf benchmark to keep the engine busy).
+   */
+  public setAnalysisDepth(depth: number | 'infinite'): void {
+    this.analysisDepth =
+      depth === 'infinite' ? Infinity : Math.max(1, Math.floor(depth));
+    if (this.engineEnabled && this.isActive) {
+      this.startPositionAnalysis();
+    }
+  }
+
+  /**
+   * Animation length for a one-move step. Held keys and steps that arrive while the last
+   * animation is still running snap, so navigation never lags behind input; quick
+   * repeated presses get a shortened animation.
+   */
+  private stepAnimationMs(repeat: boolean): number {
+    const sinceLast = this.markNavigation();
+    const full = NAV_ANIMATION_DURATION_MS[this.navAnimation];
+    if (full <= 0 || repeat || sinceLast < full) return 0;
+    if (sinceLast < full * 2) return Math.round(full / 2);
+    return full;
+  }
+
+  /** Jumps (Home/End, distant moves, variation switches) always snap. */
+  private jumpAnimationMs(): number {
+    this.markNavigation();
+    return 0;
+  }
+
+  private markNavigation(): number {
+    const now = performance.now();
+    const sinceLast = now - this.lastNavigationAt;
+    this.lastNavigationAt = now;
+    this.rapidNavigation = sinceLast < RAPID_NAVIGATION_MS;
+    return sinceLast;
+  }
+
   public isCurrentlyActive(): boolean {
     return this.isActive;
   }
@@ -709,7 +841,7 @@ export class AnalysisController {
       this.positionEditor.setTool('pointer');
       this.board.setPosition(this.adapter, {
         lastMove: this.getLastMoveCoords(this.gameTree.currentNode),
-        wasDragged: true,
+        animate: false,
         triggerCaptureParticles: false,
         preserveAnalysisArrows: true,
       });
@@ -806,14 +938,18 @@ export class AnalysisController {
     } catch {
       this.board.setPosition(this.adapter, {
         lastMove: this.getLastMoveCoords(this.gameTree.currentNode),
-        wasDragged: true,
+        animate: false,
         triggerCaptureParticles: false,
       });
       return;
     }
 
     this.gameTree.addMove(executed.uci);
-    this.syncAllFromCurrentNode(wasDragged);
+    this.syncAllFromCurrentNode({
+      wasDragged,
+      animationMs: this.stepAnimationMs(false),
+      treeChanged: true,
+    });
   }
 
   private handleBoardAnnotationsChange(
@@ -855,39 +991,61 @@ export class AnalysisController {
       }
     }
 
-    this.syncAllFromCurrentNode(false);
+    this.syncAllFromCurrentNode({
+      animationMs: this.jumpAnimationMs(),
+      treeChanged: true,
+    });
   }
 
+  /**
+   * Moves to `nodeId`. A neighbouring move (the parent or a child) animates like a step;
+   * anything further away is a jump and snaps.
+   */
   public goToNode(nodeId: string): GameNode {
+    const curr = this.gameTree.currentNode;
+    const target = this.gameTree.getNode(nodeId);
+    const adjacent =
+      target !== undefined &&
+      (target.parentId === curr.id || curr.parentId === target.id);
     const node = this.gameTree.goToNode(nodeId);
-    this.syncAllFromCurrentNode(false);
+    this.syncAllFromCurrentNode({
+      animationMs: adjacent ? this.stepAnimationMs(false) : this.jumpAnimationMs(),
+    });
     return node;
   }
 
   public goToStart(): GameNode {
     const node = this.gameTree.goToStart();
-    this.syncAllFromCurrentNode(false);
+    this.syncAllFromCurrentNode({ animationMs: this.jumpAnimationMs() });
     return node;
   }
 
   public goToEnd(): GameNode {
     const node = this.gameTree.goToEnd();
-    this.syncAllFromCurrentNode(false);
+    this.syncAllFromCurrentNode({ animationMs: this.jumpAnimationMs() });
     return node;
   }
 
-  public goBack(): GameNode | null {
+  /** Steps back one move, playing it in reverse. */
+  public goBack(options?: { repeat?: boolean }): GameNode | null {
     const node = this.gameTree.goBack();
     if (node) {
-      this.syncAllFromCurrentNode(false);
+      this.syncAllFromCurrentNode({
+        animationMs: this.stepAnimationMs(Boolean(options?.repeat)),
+      });
     }
     return node;
   }
 
-  public goForward(variationIndex = 0): GameNode | null {
+  public goForward(
+    variationIndex = 0,
+    options?: { repeat?: boolean },
+  ): GameNode | null {
     const node = this.gameTree.goForward(variationIndex);
     if (node) {
-      this.syncAllFromCurrentNode(false);
+      this.syncAllFromCurrentNode({
+        animationMs: this.stepAnimationMs(Boolean(options?.repeat)),
+      });
     }
     return node;
   }
@@ -963,7 +1121,7 @@ export class AnalysisController {
   public deleteCurrentVariation(): boolean {
     const ok = this.gameTree.deleteVariation(this.gameTree.currentNodeId);
     if (ok) {
-      this.syncAllFromCurrentNode(false);
+      this.syncAllFromCurrentNode({ treeChanged: true });
     }
     return ok;
   }
@@ -977,13 +1135,13 @@ export class AnalysisController {
       chess960: validation.isChess960,
     });
     this.positionEditor.setTool('pointer');
-    this.syncAllFromCurrentNode(false);
+    this.syncAllFromCurrentNode({ treeChanged: true });
     return true;
   }
 
   public loadGameTree(tree: GameTree): void {
     this.gameTree = GameTree.fromJSON(tree.toJSON());
-    this.syncAllFromCurrentNode(false);
+    this.syncAllFromCurrentNode({ treeChanged: true });
   }
 
   public importPgn(pgnText: string): boolean {
@@ -992,7 +1150,7 @@ export class AnalysisController {
       this.gameTree = parsed;
       this.pgnStatusEl.textContent = 'PGN Loaded';
       this.pgnStatusEl.setAttribute('data-status', 'ok');
-      this.syncAllFromCurrentNode(false);
+      this.syncAllFromCurrentNode({ treeChanged: true });
       return true;
     } catch (err) {
       this.pgnStatusEl.textContent =
@@ -1011,19 +1169,53 @@ export class AnalysisController {
   }
 
   private syncPgnTextarea(): void {
+    if (this.pgnSyncTimer !== null) {
+      clearTimeout(this.pgnSyncTimer);
+      this.pgnSyncTimer = null;
+    }
     this.pgnTextareaEl.value = writePgn(this.gameTree);
   }
 
-  private syncAllFromCurrentNode(wasDragged: boolean): void {
+  /**
+   * Refreshes the PGN text once navigation pauses (the engine writes [%eval] onto the
+   * nodes it visits). Never overwrites the textarea while the user is typing in it.
+   */
+  private schedulePgnTextareaSync(): void {
+    if (this.pgnSyncTimer !== null) {
+      clearTimeout(this.pgnSyncTimer);
+    }
+    this.pgnSyncTimer = setTimeout(() => {
+      this.pgnSyncTimer = null;
+      if (document.activeElement !== this.pgnTextareaEl) {
+        this.syncPgnTextarea();
+      }
+    }, PGN_SYNC_DELAY_MS);
+  }
+
+  /**
+   * Brings every panel in line with the current node.
+   * - `animationMs`: duration of the board animation (0 snaps). Stepping backward plays
+   *   the move in reverse; the board works that out from the position diff.
+   * - `treeChanged`: the move tree's structure changed and must be re-rendered. Plain
+   *   navigation only moves the active-node highlight, so nothing in the list reflows.
+   */
+  private syncAllFromCurrentNode(opts: {
+    wasDragged?: boolean;
+    animationMs?: number;
+    treeChanged?: boolean;
+  }): void {
     const node = this.gameTree.currentNode;
     this.adapter = new RulesAdapter(node.fen, {
       chess960: this.gameTree.isChess960(),
     });
 
+    const animationMs = opts.animationMs ?? 0;
     const lastMove = this.getLastMoveCoords(node);
     this.board.setPosition(this.adapter, {
       lastMove,
-      wasDragged,
+      wasDragged: Boolean(opts.wasDragged),
+      animate: animationMs > 0,
+      animationDurationMs: animationMs,
       triggerCaptureParticles: false,
       preserveAnalysisArrows: false,
     });
@@ -1031,8 +1223,10 @@ export class AnalysisController {
     // Restore node's [%cal] and [%csl] user annotations onto the board
     this.board.setUserAnnotations(node.arrows, node.highlights);
 
-    // Sync PositionEditor FEN input
-    this.positionEditor.setFen(node.fen, false);
+    // The (hidden) editor is re-synced when it opens; skip the work while navigating
+    if (this.editorVisible) {
+      this.positionEditor.setFen(node.fen, false);
+    }
     this.fenDisplayEl.textContent = node.fen;
 
     // Sync Opening Lookup
@@ -1049,15 +1243,16 @@ export class AnalysisController {
     }
 
     // Sync status banner
-    if (this.adapter.isCheckmate()) {
+    const status = this.positionStatus();
+    if (status.checkmate) {
       const winner = this.adapter.turn() === 'w' ? 'Black' : 'White';
       this.statusTextEl.textContent = `Checkmate — ${winner} wins`;
-    } else if (this.adapter.isDraw()) {
+    } else if (status.draw) {
       this.statusTextEl.textContent = 'Draw position';
     } else {
       const side = this.adapter.turn() === 'w' ? 'White' : 'Black';
       this.statusTextEl.textContent = `${side} to move${
-        this.adapter.inCheck() ? ' — Check!' : ''
+        status.inCheck ? ' — Check!' : ''
       }`;
     }
 
@@ -1075,10 +1270,95 @@ export class AnalysisController {
 
     this.syncAnnotationControls();
     this.syncVariationButtonsState();
-    this.renderMoveTree();
-    this.syncPgnTextarea();
+    if (opts.treeChanged) {
+      this.renderMoveTree();
+      this.syncPgnTextarea();
+    } else {
+      this.updateActiveTreeNode();
+      this.schedulePgnTextareaSync();
+    }
 
-    this.startPositionAnalysis();
+    // While the user is flicking through moves, restart the engine once they pause
+    if (this.rapidNavigation && !opts.treeChanged) {
+      this.cancelActiveSearches();
+      this.linesPanel.clear(node.fen);
+      this.analysisStartTimer = setTimeout(() => {
+        this.analysisStartTimer = null;
+        this.startPositionAnalysis();
+      }, ANALYSIS_RESTART_DELAY_MS);
+    } else {
+      this.startPositionAnalysis();
+    }
+  }
+
+  /**
+   * Checkmate / draw / check for the current adapter, computed once per position: legal
+   * move generation is the most expensive part of a navigation step.
+   */
+  private positionStatus(): { checkmate: boolean; draw: boolean; inCheck: boolean } {
+    if (this.statusCache?.adapter !== this.adapter) {
+      const checkmate = this.adapter.isCheckmate();
+      this.statusCache = {
+        adapter: this.adapter,
+        checkmate,
+        draw: !checkmate && this.adapter.isDraw(),
+        inCheck: this.adapter.inCheck(),
+      };
+    }
+    return this.statusCache;
+  }
+
+  /** Moves the active highlight in the move tree and scrolls only the tree to show it. */
+  private updateActiveTreeNode(): void {
+    const activeId = this.gameTree.currentNodeId;
+    if (this.activeTreeNodeId !== activeId) {
+      if (this.activeTreeNodeId) {
+        this.treeNodeEls
+          .get(this.activeTreeNodeId)
+          ?.classList.remove('wc-tree-node-active');
+      }
+      this.treeNodeEls.get(activeId)?.classList.add('wc-tree-node-active');
+      this.activeTreeNodeId = activeId;
+    }
+    this.keepActiveTreeNodeInView();
+  }
+
+  /**
+   * Adjusts the tree container's own scrollTop. Never uses scrollIntoView, which also
+   * scrolls every scrollable ancestor, including the page.
+   */
+  private keepActiveTreeNodeInView(): void {
+    const container = this.treeContainerEl;
+    if (!container.isConnected) return;
+    if (!this.treeNodeOffsets) {
+      // One layout read per render or resize; navigation then works from the cache
+      this.treeNodeOffsets = new Map();
+      for (const [id, el] of this.treeNodeEls) {
+        this.treeNodeOffsets.set(id, {
+          top: el.offsetTop,
+          bottom: el.offsetTop + el.offsetHeight,
+        });
+      }
+      this.treeViewportHeight = container.clientHeight;
+      this.treeScrollTop = container.scrollTop;
+    }
+
+    const offsets = this.activeTreeNodeId
+      ? this.treeNodeOffsets.get(this.activeTreeNodeId)
+      : undefined;
+    const margin = 6;
+    let next = this.treeScrollTop;
+    if (!offsets) {
+      next = 0;
+    } else if (offsets.top - margin < this.treeScrollTop) {
+      next = Math.max(0, offsets.top - margin);
+    } else if (offsets.bottom + margin > this.treeScrollTop + this.treeViewportHeight) {
+      next = offsets.bottom + margin - this.treeViewportHeight;
+    }
+    if (next !== this.treeScrollTop) {
+      this.treeScrollTop = next;
+      container.scrollTop = next;
+    }
   }
 
   private syncAnnotationControls(): void {
@@ -1087,15 +1367,18 @@ export class AnalysisController {
       this.commentInputEl.value = curr.comment;
     }
 
-    const nagButtons =
-      this.container.querySelectorAll<HTMLButtonElement>('[data-nag-code]');
-    nagButtons.forEach((btn) => {
+    if (this.nagButtonEls.length === 0) {
+      this.nagButtonEls = Array.from(
+        this.container.querySelectorAll<HTMLButtonElement>('[data-nag-code]'),
+      );
+    }
+    for (const btn of this.nagButtonEls) {
       const code = Number(btn.getAttribute('data-nag-code'));
       const active = curr.nags.includes(code);
       btn.classList.toggle('wc-btn-primary', active);
       btn.setAttribute('aria-pressed', String(active));
       btn.disabled = curr.ply === 0;
-    });
+    }
   }
 
   private syncVariationButtonsState(): void {
@@ -1111,6 +1394,9 @@ export class AnalysisController {
     const root = this.gameTree.root;
     if (root.children.length === 0 && !root.comment) {
       this.treeContainerEl.innerHTML = `<div class="wc-move-empty">Play moves on the board, click an engine line, or load a PGN to build variations.</div>`;
+      this.treeNodeEls.clear();
+      this.treeNodeOffsets = null;
+      this.activeTreeNodeId = null;
       return;
     }
 
@@ -1191,6 +1477,17 @@ export class AnalysisController {
     }
 
     this.treeContainerEl.innerHTML = htmlParts.join(' ');
+
+    this.treeNodeEls.clear();
+    this.treeContainerEl
+      .querySelectorAll<HTMLElement>('[data-node-id]')
+      .forEach((el) => {
+        const id = el.getAttribute('data-node-id');
+        if (id) this.treeNodeEls.set(id, el);
+      });
+    this.activeTreeNodeId = activeId;
+    this.treeNodeOffsets = null;
+    this.keepActiveTreeNodeInView();
   }
 
   private escapeHtml(str: string): string {
@@ -1203,6 +1500,10 @@ export class AnalysisController {
 
   private cancelActiveSearches(): void {
     this.analysisGeneration++;
+    if (this.analysisStartTimer !== null) {
+      clearTimeout(this.analysisStartTimer);
+      this.analysisStartTimer = null;
+    }
     if (this.analysisAbortController) {
       this.analysisAbortController.abort();
       this.analysisAbortController = null;
@@ -1233,8 +1534,9 @@ export class AnalysisController {
       return;
     }
 
-    if (this.adapter.isGameOver()) {
-      if (this.adapter.isCheckmate()) {
+    const status = this.positionStatus();
+    if (status.checkmate || status.draw) {
+      if (status.checkmate) {
         const whiteMated = this.adapter.turn() === 'w';
         const mateScore: UciScore = {
           type: 'mate',
@@ -1272,7 +1574,9 @@ export class AnalysisController {
     void this.engine
       .analyze({
         fen,
-        depth: this.analysisDepth,
+        ...(Number.isFinite(this.analysisDepth)
+          ? { depth: this.analysisDepth }
+          : { infinite: true }),
         multipv: this.multipv,
         chess960,
         priority: 'live',
@@ -1291,7 +1595,8 @@ export class AnalysisController {
         this.latestLines = finalResult.lines;
         this.latestDepth = finalResult.depth;
         this.latestNps = finalResult.nps;
-        this.applyEngineSnapshotImmediate(node.id, fen, chess960);
+        // Same per-frame batch as streaming updates: at most one DOM update per frame
+        this.scheduleUiUpdateFromEngine(node.id, fen, chess960);
 
         if (sharedWorker && this.showThreatArrow) {
           void this.runThreatSearchForCurrentNode(gen, fen);
@@ -1449,6 +1754,12 @@ export class AnalysisController {
 
   public destroy(): void {
     this.cancelActiveSearches();
+    if (this.pgnSyncTimer !== null) {
+      clearTimeout(this.pgnSyncTimer);
+      this.pgnSyncTimer = null;
+    }
+    this.linesPanel.destroy();
+    this.treeResizeObserver?.disconnect();
     if (typeof window !== 'undefined') {
       window.removeEventListener('keydown', this.handleWindowKeyDown);
     }

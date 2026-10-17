@@ -525,30 +525,40 @@ function computeWorstHangingLossForSide(
   postMoveAdapter: RulesAdapter,
   us: Color,
 ): { maxLossCp: number; hangingSquare: Square | null } {
-  const opponentMoves = postMoveAdapter.verboseMoves();
+  // SAN carries everything needed here (mate marker, capture, mover, target square), and
+  // listing moves as SAN avoids building a verbose move object with two FEN strings per
+  // reply. This scan runs for every candidate move, so it dominated the bot's main-thread
+  // time (~100 ms per move) before.
+  const opponentSans = postMoveAdapter.sanMoves();
   let maxLossCp = 0;
   let hangingSquare: Square | null = null;
 
-  for (const oppMove of opponentMoves) {
-    if (oppMove.san.includes('#')) {
-      return { maxLossCp: 900, hangingSquare: oppMove.to };
+  for (const san of opponentSans) {
+    const to = sanTargetSquare(san);
+    if (san.includes('#')) {
+      return { maxLossCp: 900, hangingSquare: to };
     }
-    if (!oppMove.isCapture || !oppMove.captured) continue;
+    if (!san.includes('x') || !to) continue;
 
-    const victimCp = PIECE_VALUE_CP[oppMove.captured] ?? 100;
-    const attackerCp = PIECE_VALUE_CP[oppMove.piece] ?? 100;
+    // An empty target square on a pawn capture is en passant: the victim is a pawn
+    const victimType = postMoveAdapter.get(to)?.type ?? 'p';
+    const moverType: PieceSymbol = /^[KQRBN]/.test(san)
+      ? (san[0]!.toLowerCase() as PieceSymbol)
+      : 'p';
+    const victimCp = PIECE_VALUE_CP[victimType] ?? 100;
+    const attackerCp = PIECE_VALUE_CP[moverType] ?? 100;
 
     // Check if the square is defended by `us` after the opponent captures
     const afterOppCapture = postMoveAdapter.clone();
     try {
-      afterOppCapture.move(oppMove.uci);
-      const isRecapturable = afterOppCapture.isAttacked(oppMove.to, us);
+      afterOppCapture.move(san);
+      const isRecapturable = afterOppCapture.isAttacked(to, us);
       const netLoss = isRecapturable
         ? Math.max(0, victimCp - attackerCp)
         : victimCp;
       if (netLoss > maxLossCp) {
         maxLossCp = netLoss;
-        hangingSquare = oppMove.to;
+        hangingSquare = to;
       }
     } catch {
       // Ignore illegal probe
@@ -556,6 +566,12 @@ function computeWorstHangingLossForSide(
   }
 
   return { maxLossCp, hangingSquare };
+}
+
+/** Destination square of a SAN move ("Nxf7+" → f7, "exd8=Q#" → d8); null for castling. */
+function sanTargetSquare(san: string): Square | null {
+  const m = /([a-h][1-8])(?:=[QRBN])?[+#]?$/.exec(san);
+  return m ? (m[1] as Square) : null;
 }
 
 /**
@@ -597,9 +613,17 @@ export function findPlausibleHumanBlunderCandidates(
     const plausibility = scoreMoveHumanPlausibility(adapter, move);
     if (plausibility < 22) continue; // Never pick random-looking moves
 
-    const post = adapter.clone();
+    // In standard chess the verbose move already carries the resulting FEN, which is much
+    // cheaper to load than clone() + move(). Chess960 keeps the full path so its castling
+    // state carries over exactly.
+    let post: RulesAdapter;
     try {
-      post.move(move.uci);
+      if (adapter.isChess960()) {
+        post = adapter.clone();
+        post.move(move.uci);
+      } else {
+        post = new RulesAdapter(move.after);
+      }
     } catch {
       continue;
     }

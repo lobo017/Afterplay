@@ -1,8 +1,7 @@
 import path from 'node:path';
 import { expect, test } from '@playwright/test';
 
-const ARTIFACT_DIR =
-  'C:/Users/ethan/.gemini/antigravity-cli/brain/309bf8ed-adc6-4109-9b09-ba72bfbf7dce';
+const ARTIFACT_DIR = path.join('test-results', 'screenshots');
 
 test.describe('Phase 4 — Analysis Board, Eval Bar, MultiPV Ghost Previews, Threat Arrows, Variations, Editor & PGN', () => {
   test('renders live MultiPV 1-5 analysis, eval bar, best/threat/user arrows, ghost previews in both board orientations, keyboard variation navigation, FEN editor validation, and PGN export with zero external network requests', async ({
@@ -292,11 +291,17 @@ test.describe('Phase 4 — Analysis Board, Eval Bar, MultiPV Ghost Previews, Thr
       'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq',
     );
 
-    // Wait for Engine Line 2 (or Line 1 if different from e5) and click a PV move to insert a variation
+    // Wait for at least two engine lines, then click the first move of a line that differs
+    // from the main-line 1... e5 (Stockfish's line order varies between runs, so this can
+    // be line 1, 2 or 3) to insert a variation
     await expect(page.getByTestId('engine-pv-move-2-0')).toBeVisible({
       timeout: 15_000,
     });
-    await page.getByTestId('engine-pv-move-2-0').click();
+    await page
+      .locator('[data-testid^="engine-pv-move-"][data-testid$="-0"]')
+      .filter({ hasNotText: /^\s*1\.\.\. e5\s*$/ })
+      .first()
+      .click();
 
     // Verify the move tree now contains a variation branch
     await expect(page.getByTestId('analysis-move-tree')).toContainText('(');

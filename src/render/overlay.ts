@@ -67,7 +67,10 @@ export interface BoardOverlayState {
   lastMove: { from: Square; to: Square } | null;
   checkSquare: Square | null;
   legalMoves: OverlayLegalTarget[];
-  premove: { from: Square; to: Square; promotion?: PieceSymbol } | null;
+  /** Queued premoves in execution order. */
+  premoves: Array<{ from: Square; to: Square; promotion?: PieceSymbol }>;
+  /** Squares of a premove queue that was just cancelled because a premove was illegal. */
+  premoveFlash?: Square[];
   premoveTargets: Square[];
   pendingConfirmMove: { from: Square; to: Square } | null;
   hintMove: { from: Square; to: Square } | null;
@@ -106,9 +109,10 @@ function buildStaticSignature(state: BoardOverlayState): string {
   const legalKey = state.legalMoves
     .map((m) => `${m.to}${m.isCapture ? 'x' : '.'}`)
     .join(',');
-  const premoveKey = state.premove
-    ? `${state.premove.from}-${state.premove.to}-${state.premove.promotion ?? ''}`
-    : '';
+  const premoveKey = state.premoves
+    .map((p) => `${p.from}-${p.to}-${p.promotion ?? ''}`)
+    .join(',');
+  const premoveFlashKey = (state.premoveFlash ?? []).join(',');
   const premoveTargetsKey = state.premoveTargets.join(',');
   const confirmKey = state.pendingConfirmMove
     ? `${state.pendingConfirmMove.from}-${state.pendingConfirmMove.to}`
@@ -142,6 +146,7 @@ function buildStaticSignature(state: BoardOverlayState): string {
     state.checkSquare ?? '',
     legalKey,
     premoveKey,
+    premoveFlashKey,
     premoveTargetsKey,
     confirmKey,
     hintKey,
@@ -344,29 +349,43 @@ export class BoardOverlay {
       );
     }
 
-    // Queued premove squares (#10b981 origin 0.26, target 0.42, target ring #34d399 0.95 from legacy audit)
-    if (state.premove) {
-      const fromC = squareToBoardCoords(state.premove.from, state.flipped);
-      const toC = squareToBoardCoords(state.premove.to, state.flipped);
+    // Queued premoves (#10b981 origin 0.26, target 0.42, target ring #34d399 0.95 from the
+    // legacy audit), each target numbered in execution order. A square used by several
+    // premoves shows the last one that lands there.
+    if (state.premoves.length > 0) {
+      const targetOrder = new Map<Square, number>();
+      state.premoves.forEach((p, i) => targetOrder.set(p.to, i + 1));
+      const origins = new Set<Square>();
+      state.premoves.forEach((p, i) => {
+        if (targetOrder.has(p.from) || origins.has(p.from)) return;
+        origins.add(p.from);
+        const fromC = squareToBoardCoords(p.from, state.flipped);
+        parts.push(
+          `<rect x="${fromC.x}" y="${fromC.y}" width="100" height="100" fill="#10b981" fill-opacity="0.26" data-testid="overlay-premove-from" data-square="${p.from}" data-order="${i + 1}" />`,
+        );
+      });
+      for (const [sq, order] of targetOrder) {
+        const toC = squareToBoardCoords(sq, state.flipped);
+        parts.push(
+          `<rect x="${toC.x}" y="${toC.y}" width="100" height="100" fill="#10b981" fill-opacity="0.42" data-testid="overlay-premove-to" data-square="${sq}" data-order="${order}" />`,
+        );
+        parts.push(
+          `<rect x="${toC.x + 4}" y="${toC.y + 4}" width="92" height="92" rx="8" fill="none" stroke="#34d399" stroke-width="5" stroke-opacity="0.95" />`,
+        );
+        parts.push(
+          `<circle cx="${toC.x + 20}" cy="${toC.y + 20}" r="14" fill="#065f46" stroke="#34d399" stroke-width="2.5" />`,
+        );
+        parts.push(
+          `<text x="${toC.x + 20}" y="${toC.y + 20}" text-anchor="middle" dominant-baseline="central" font-family="ui-monospace, Consolas, monospace" font-size="18" font-weight="700" fill="#ecfdf5" data-testid="overlay-premove-order" data-square="${sq}">${order}</text>`,
+        );
+      }
+    }
+
+    // Brief flash on the squares of a premove queue cancelled by an illegal premove
+    for (const sq of state.premoveFlash ?? []) {
+      const c = squareToBoardCoords(sq, state.flipped);
       parts.push(
-        `<rect x="${fromC.x}" y="${fromC.y}" width="100" height="100" fill="#10b981" fill-opacity="0.26" data-testid="overlay-premove-from" data-square="${state.premove.from}" />`,
-      );
-      parts.push(
-        `<rect x="${toC.x}" y="${toC.y}" width="100" height="100" fill="#10b981" fill-opacity="0.42" data-testid="overlay-premove-to" data-square="${state.premove.to}" />`,
-      );
-      parts.push(
-        `<rect x="${toC.x + 4}" y="${toC.y + 4}" width="92" height="92" rx="8" fill="none" stroke="#34d399" stroke-width="5" stroke-opacity="0.95" />`,
-      );
-      parts.push(
-        renderArrowSvg(
-          state.premove.from,
-          state.premove.to,
-          state.flipped,
-          '#10b981',
-          0.85,
-          true,
-          'overlay-premove-arrow',
-        ),
+        `<rect x="${c.x}" y="${c.y}" width="100" height="100" fill="#ef4444" class="wc-premove-flash" data-testid="overlay-premove-flash" data-square="${sq}" />`,
       );
     }
 

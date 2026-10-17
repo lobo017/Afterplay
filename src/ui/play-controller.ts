@@ -26,10 +26,7 @@ import {
 } from '../engine/engine-client';
 import { formatScore, type UciScore } from '../engine/uci-parser';
 import { CathedralAudio } from '../render/audio';
-import {
-  BoardRenderer,
-  type PremoveInput,
-} from '../render/board-renderer';
+import { BoardRenderer } from '../render/board-renderer';
 import { getPieceSvgMarkup } from '../render/piece-sets';
 import {
   BOARD_THEMES,
@@ -143,6 +140,8 @@ export interface PlayControllerOptions {
   /** Separate engine instance for bot moves so the bot never reuses full-strength analysis state. */
   botEngine?: EngineClient;
   devOverlay?: DevOverlayController;
+  /** Shared synthesizer, so the app builds only one AudioContext. */
+  audio?: CathedralAudio;
   initialBotRating?: number;
   initialBotStyle?: BotStyleId;
   initialTimeControl?: TimeControlPresetId;
@@ -150,7 +149,11 @@ export interface PlayControllerOptions {
   botMoveDelayMs?: number;
   botMinDelayMs?: number;
   botMaxDelayMs?: number;
+  maxPremoves?: number;
 }
+
+export const DEFAULT_MAX_PREMOVES = 10;
+const MAX_PREMOVES_LIMIT = 20;
 
 /**
  * Phase 3 Play Mode Controller.
@@ -183,6 +186,7 @@ export class PlayController {
   private botMinDelayMs: number;
   private botMaxDelayMs: number;
   private lastBotThinkTimeMs = 0;
+  private maxPremoves: number;
 
   private gameOver = false;
   private gameResult: GameTermination = '*';
@@ -244,9 +248,18 @@ export class PlayController {
       );
     }
 
+    this.maxPremoves = Math.max(
+      1,
+      Math.min(
+        MAX_PREMOVES_LIMIT,
+        Math.floor(options.maxPremoves ?? DEFAULT_MAX_PREMOVES),
+      ),
+    );
+
     this.adapter = new RulesAdapter();
     this.gameTree = new GameTree();
-    this.audio = new CathedralAudio({ enabled: true, volume: 0.75 });
+    this.audio =
+      options.audio ?? new CathedralAudio({ enabled: true, volume: 0.75 });
     this.bot = new ChessBot(this.botEngine, {
       rating: this.botRating,
       style: this.botStyle,
@@ -459,6 +472,19 @@ export class PlayController {
                     .join('')}
                 </select>
               </label>
+
+              <label class="wc-field" title="How many premoves you can queue during the opponent's turn. 1 = Lichess-style single premove.">
+                <span class="wc-field-label">Max Premoves</span>
+                <input
+                  type="number"
+                  min="1"
+                  max="${MAX_PREMOVES_LIMIT}"
+                  step="1"
+                  value="${this.maxPremoves}"
+                  class="wc-select"
+                  data-testid="input-max-premoves"
+                />
+              </label>
             </div>
 
             <div class="wc-toggles-grid">
@@ -516,6 +542,7 @@ export class PlayController {
       flipped: false,
       interactiveColor: this.playerColor,
       enablePremoves: true,
+      maxPremoves: this.maxPremoves,
       autoQueen: false,
       confirmMove: false,
       captureEffects: true,
@@ -752,6 +779,31 @@ export class PlayController {
 
     minDelayInput?.addEventListener('change', syncDelayInputs);
     maxDelayInput?.addEventListener('change', syncDelayInputs);
+
+    const maxPremovesInput = this.container.querySelector(
+      '[data-testid="input-max-premoves"]',
+    ) as HTMLInputElement | null;
+    maxPremovesInput?.addEventListener('change', () => {
+      this.setMaxPremoves(Number(maxPremovesInput.value));
+    });
+  }
+
+  public setMaxPremoves(max: number): void {
+    const value = Number.isFinite(max)
+      ? Math.max(1, Math.min(MAX_PREMOVES_LIMIT, Math.floor(max)))
+      : DEFAULT_MAX_PREMOVES;
+    this.maxPremoves = value;
+    this.board.setMaxPremoves(value);
+    const input = this.container.querySelector(
+      '[data-testid="input-max-premoves"]',
+    ) as HTMLInputElement | null;
+    if (input && input.value !== String(value)) {
+      input.value = String(value);
+    }
+  }
+
+  public getMaxPremoves(): number {
+    return this.maxPremoves;
   }
 
   public setBotRating(rating: number): void {
@@ -959,6 +1011,12 @@ export class PlayController {
   private applyExecutedMove(
     executed: ExecutedMove,
     wasDragged: boolean,
+    options?: {
+      /** `executed` is the head of the board's premove queue. */
+      consumedPremove?: boolean;
+      /** Another move follows in this same task, so don't restart analysis yet. */
+      moreMovesFollow?: boolean;
+    },
   ): void {
     // Switch clock turn (starts clock on move 1 or adds Fischer increment)
     const clockSnap =
@@ -980,6 +1038,7 @@ export class PlayController {
       lastMove: executed,
       wasDragged,
       triggerCaptureParticles: true,
+      consumedPremove: Boolean(options?.consumedPremove),
     });
 
     // Trigger procedural Web Audio effects
@@ -1001,7 +1060,40 @@ export class PlayController {
     }
 
     this.updateAllHud();
-    this.restartInfiniteAnalysisIfEnabled();
+    if (!options?.moreMovesFollow) {
+      this.restartInfiniteAnalysisIfEnabled();
+    }
+  }
+
+  /**
+   * Plays the head of the premove queue right after the opponent's move, in the same task
+   * (so the same frame) and through the normal clock path: the player is charged the real
+   * elapsed time, which is ~0 ms, and receives the increment. An illegal premove cancels
+   * itself and everything queued after it, with a flash. Returns true when a move was played.
+   */
+  private executeQueuedPremove(): boolean {
+    const next = this.board.getPremove();
+    if (!next || this.gameOver || this.adapter.turn() !== this.playerColor) {
+      return false;
+    }
+
+    let executed: ExecutedMove;
+    try {
+      executed = this.adapter.move({
+        from: next.from,
+        to: next.to,
+        ...(next.promotion ? { promotion: next.promotion } : {}),
+      });
+    } catch {
+      this.board.clearPremoves({ flash: true });
+      return false;
+    }
+
+    this.applyExecutedMove(executed, false, { consumedPremove: true });
+    if (!this.gameOver && this.adapter.turn() !== this.playerColor) {
+      void this.triggerBotMove();
+    }
+    return true;
   }
 
   private async triggerBotMove(): Promise<void> {
@@ -1097,33 +1189,14 @@ export class PlayController {
         }
       }
 
-      this.applyExecutedMove(executed, false);
-
-      // If the user queued a premove while the bot was thinking, execute it immediately if legal
-      const queuedPremove: PremoveInput | null = this.board.getPremove();
-      if (queuedPremove && !this.gameOver) {
-        this.board.setPremove(null);
-        const premoveInput: MoveInput = {
-          from: queuedPremove.from,
-          to: queuedPremove.to,
-          ...(queuedPremove.promotion
-            ? { promotion: queuedPremove.promotion }
-            : {}),
-        };
-        try {
-          const premoveExecuted = this.adapter.move(premoveInput);
-          this.applyExecutedMove(premoveExecuted, false);
-          if (!this.gameOver && this.adapter.turn() !== this.playerColor) {
-            void this.triggerBotMove();
-          }
-        } catch {
-          // Premove is illegal in resulting position; clear it and re-sync board
-          this.board.setPosition(this.adapter, {
-            lastMove: executed,
-            wasDragged: false,
-            triggerCaptureParticles: false,
-          });
-        }
+      // A queued premove plays in this same task, so the bot's move and the premove reach
+      // the screen in one frame with no added delay.
+      const premoveQueued = this.board.getPremove() !== null;
+      this.applyExecutedMove(executed, false, {
+        moreMovesFollow: premoveQueued,
+      });
+      if (premoveQueued && !this.executeQueuedPremove()) {
+        this.restartInfiniteAnalysisIfEnabled();
       }
     } catch (err: unknown) {
       if (err instanceof EngineCancelledError || ac.signal.aborted) {

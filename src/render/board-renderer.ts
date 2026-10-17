@@ -37,12 +37,9 @@ export interface PremoveInput {
   promotion?: PieceSymbol;
 }
 
-export interface MoveAnimationDescriptor {
+export interface PieceTransition {
   from: Square;
   to: Square;
-  wasDragged?: boolean;
-  rookFrom?: Square;
-  rookTo?: Square;
 }
 
 export interface GhostPreviewInput {
@@ -60,8 +57,9 @@ export interface BoardRendererOptions {
   boardTheme?: BoardThemeId;
   pieceSet?: PieceSetId;
   animationDurationMs?: number;
+  /** Longest premove queue; 1 gives Lichess-style single premoves. */
+  maxPremoves?: number;
   onMove?: (move: MoveInput, wasDragged: boolean) => void;
-  onPremoveChange?: (premove: PremoveInput | null) => void;
   onSelectSquare?: (square: Square, piece: Piece) => void;
   onSquareEdit?: (square: Square) => boolean;
   onAnnotationsChange?: (
@@ -79,6 +77,8 @@ interface ActiveDragState {
   startX: number;
   startY: number;
   isDragging: boolean;
+  /** The piece was already selected before this press, so a plain click deselects it. */
+  wasSelected: boolean;
 }
 
 interface PendingPromotionState {
@@ -97,6 +97,8 @@ interface PendingConfirmState {
 }
 
 const FILES = 'abcdefgh';
+const SNAP_BACK_MS = 120;
+const PREMOVE_FLASH_MS = 450;
 
 function parseFenBoardSquares(fen: string): Map<Square, Piece> {
   const squares = new Map<Square, Piece>();
@@ -126,16 +128,78 @@ function parseFenBoardSquares(fen: string): Map<Square, Piece> {
   return squares;
 }
 
+/** Reads every occupied square of `adapter` into a map. */
+export function boardSquaresFromAdapter(adapter: RulesAdapter): Map<Square, Piece> {
+  const squares = new Map<Square, Piece>();
+  for (let r = 1; r <= 8; r++) {
+    for (let f = 0; f < 8; f++) {
+      const sq = `${FILES[f]}${r}` as Square;
+      const p = adapter.get(sq);
+      if (p) {
+        squares.set(sq, { color: p.color, type: p.type });
+      }
+    }
+  }
+  return squares;
+}
+
 /**
- * Computes all pseudo-legal premove target squares for a piece at `from` of color `color`,
- * including empty-square pawn diagonal captures and castling destinations.
+ * Plays `premove` on a hypothetical board where the opponent passes. Only piece geometry
+ * matters here: castling also moves the rook, a pawn reaching the last rank becomes the
+ * chosen piece (queen by default), and whatever stood on the target square is replaced.
+ * Real legality is checked only when the premove executes.
  */
-export function computePremoveTargets(
-  adapter: RulesAdapter,
+export function applyPremoveToSquares(
+  squares: Map<Square, Piece>,
+  premove: PremoveInput,
+): void {
+  const piece = squares.get(premove.from);
+  if (!piece) return;
+  squares.delete(premove.from);
+
+  const fromFile = FILES.indexOf(premove.from[0] ?? 'a');
+  const toFile = FILES.indexOf(premove.to[0] ?? 'a');
+  const homeRank = piece.color === 'w' ? '1' : '8';
+  if (
+    piece.type === 'k' &&
+    premove.from[1] === homeRank &&
+    premove.to[1] === homeRank &&
+    Math.abs(toFile - fromFile) === 2
+  ) {
+    const kingside = toFile > fromFile;
+    const step = kingside ? 1 : -1;
+    for (let f = fromFile + step; f >= 0 && f < 8; f += step) {
+      const sq = `${FILES[f]}${homeRank}` as Square;
+      const p = squares.get(sq);
+      if (p && p.color === piece.color && p.type === 'r') {
+        squares.delete(sq);
+        squares.set(`${kingside ? 'f' : 'd'}${homeRank}` as Square, p);
+        break;
+      }
+    }
+  }
+
+  const lastRank = piece.color === 'w' ? '8' : '1';
+  const placed: Piece =
+    piece.type === 'p' && premove.to[1] === lastRank
+      ? { color: piece.color, type: premove.promotion ?? 'q' }
+      : piece;
+  squares.set(premove.to, placed);
+}
+
+/**
+ * Computes premove destinations for the piece of `color` on `from`, following piece
+ * movement geometry the way Lichess's chessground does: blockers are ignored, pawns may
+ * premove diagonally onto empty squares, squares held by your own pieces are allowed
+ * (they may be recaptured on by then), and a king on its home rank may castle toward
+ * any of its own rooks there.
+ */
+export function computePremoveTargetsOnSquares(
+  squares: Map<Square, Piece>,
   from: Square,
   color: Color,
 ): Square[] {
-  const piece = adapter.get(from);
+  const piece = squares.get(from);
   if (!piece || piece.color !== color) return [];
 
   const f0 = FILES.indexOf(from[0] ?? 'a');
@@ -218,14 +282,119 @@ export function computePremoveTargets(
       }
       const homeRank = color === 'w' ? 0 : 7;
       if (r0 === homeRank) {
-        addIfValid(2, homeRank); // c1 / c8
-        addIfValid(6, homeRank); // g1 / g8
+        for (let f = 0; f < 8; f++) {
+          const rook = squares.get(`${FILES[f]}${homeRank + 1}` as Square);
+          if (rook && rook.color === color && rook.type === 'r') {
+            addIfValid(f > f0 ? 6 : 2, homeRank); // g1/g8 or c1/c8
+          }
+        }
       }
       break;
     }
   }
 
   return Array.from(targets);
+}
+
+/** Premove destinations on the real position held by `adapter`. */
+export function computePremoveTargets(
+  adapter: RulesAdapter,
+  from: Square,
+  color: Color,
+): Square[] {
+  return computePremoveTargetsOnSquares(
+    boardSquaresFromAdapter(adapter),
+    from,
+    color,
+  );
+}
+
+const squareDistance = (a: Square, b: Square): number => {
+  const df = FILES.indexOf(a[0] ?? 'a') - FILES.indexOf(b[0] ?? 'a');
+  const dr = Number(a[1]) - Number(b[1]);
+  return df * df + dr * dr;
+};
+
+const isPromotionPair = (pawnSq: Square, pieceSq: Square, color: Color): boolean => {
+  const pawnRank = color === 'w' ? '7' : '2';
+  const lastRank = color === 'w' ? '8' : '1';
+  return (
+    pawnSq[1] === pawnRank &&
+    pieceSq[1] === lastRank &&
+    Math.abs(FILES.indexOf(pawnSq[0] ?? 'a') - FILES.indexOf(pieceSq[0] ?? 'a')) <= 1
+  );
+};
+
+/**
+ * Works out which pieces slid between two boards, the way chessground plans animations:
+ * every piece that appeared is matched to the nearest vanished piece of the same color and
+ * type. A second pass pairs a promoted piece with the pawn it came from (and back again
+ * when stepping backward). This one plan covers normal moves, captures, castling, en
+ * passant, moves played in reverse, and premoves snapping back.
+ */
+export function planPieceTransitions(
+  prev: Map<Square, Piece>,
+  next: Map<Square, Piece>,
+): PieceTransition[] {
+  const vanished: Array<{ sq: Square; piece: Piece }> = [];
+  const appeared: Array<{ sq: Square; piece: Piece }> = [];
+  for (const [sq, piece] of prev) {
+    const n = next.get(sq);
+    if (!n || n.color !== piece.color || n.type !== piece.type) {
+      vanished.push({ sq, piece });
+    }
+  }
+  for (const [sq, piece] of next) {
+    const p = prev.get(sq);
+    if (!p || p.color !== piece.color || p.type !== piece.type) {
+      appeared.push({ sq, piece });
+    }
+  }
+
+  const transitions: PieceTransition[] = [];
+  const used = new Set<Square>();
+  const unmatched: Array<{ sq: Square; piece: Piece }> = [];
+
+  for (const a of appeared) {
+    let best: Square | null = null;
+    let bestDist = Infinity;
+    for (const v of vanished) {
+      if (used.has(v.sq)) continue;
+      if (v.piece.color !== a.piece.color || v.piece.type !== a.piece.type) continue;
+      const d = squareDistance(v.sq, a.sq);
+      if (d < bestDist) {
+        bestDist = d;
+        best = v.sq;
+      }
+    }
+    if (best) {
+      used.add(best);
+      transitions.push({ from: best, to: a.sq });
+    } else {
+      unmatched.push(a);
+    }
+  }
+
+  for (const a of unmatched) {
+    for (const v of vanished) {
+      if (used.has(v.sq) || v.piece.color !== a.piece.color) continue;
+      const forward =
+        v.piece.type === 'p' &&
+        a.piece.type !== 'p' &&
+        isPromotionPair(v.sq, a.sq, a.piece.color);
+      const backward =
+        a.piece.type === 'p' &&
+        v.piece.type !== 'p' &&
+        isPromotionPair(a.sq, v.sq, a.piece.color);
+      if (forward || backward) {
+        used.add(v.sq);
+        transitions.push({ from: v.sq, to: a.sq });
+        break;
+      }
+    }
+  }
+
+  return transitions;
 }
 
 /**
@@ -261,13 +430,20 @@ export class BoardRenderer {
 
   private readonly pieceElements = new Map<Square, HTMLElement>();
   private readonly freePiecePool: HTMLElement[] = [];
+  /** The one running animation per piece element (move, step, or snap-back). */
+  private readonly pieceAnimations = new WeakMap<HTMLElement, Animation>();
   private readonly ghostPieceElements = new Map<Square, HTMLElement>();
 
   private selectedSquare: Square | null = null;
   private hoveredSquare: Square | null = null;
   private lastMove: { from: Square; to: Square } | null = null;
-  private premove: PremoveInput | null = null;
+  private premoves: PremoveInput[] = [];
+  private maxPremoves: number;
   private premoveTargets: Square[] = [];
+  private premoveFlashSquares: Square[] = [];
+  private premoveFlashTimer: ReturnType<typeof setTimeout> | null = null;
+  /** What the board shows: the real position, plus queued premoves played on top. */
+  private displaySquares = new Map<Square, Piece>();
   private hintMove: { from: Square; to: Square } | null = null;
   private bestMoveArrow: { from: Square; to: Square } | null = null;
   private threatMoveArrow: { from: Square; to: Square } | null = null;
@@ -282,12 +458,11 @@ export class BoardRenderer {
   private pendingConfirm: PendingConfirmState | null = null;
   private cachedBoardRect: DOMRect | null = null;
   private resizeObserver: ResizeObserver | null = null;
+  /** A right-click that cancelled a drag must not also open the browser menu. */
+  private suppressContextMenuUntil = 0;
 
   private onMoveCallback:
     | ((move: MoveInput, wasDragged: boolean) => void)
-    | undefined;
-  private onPremoveChangeCallback:
-    | ((premove: PremoveInput | null) => void)
     | undefined;
   private onSelectSquareCallback:
     | ((square: Square, piece: Piece) => void)
@@ -312,9 +487,9 @@ export class BoardRenderer {
     this.boardTheme = options?.boardTheme ?? DEFAULT_BOARD_THEME;
     this.pieceSet = options?.pieceSet ?? DEFAULT_PIECE_SET;
     this.animationDurationMs = options?.animationDurationMs ?? 170;
+    this.maxPremoves = Math.max(1, Math.floor(options?.maxPremoves ?? 10));
 
     this.onMoveCallback = options?.onMove;
-    this.onPremoveChangeCallback = options?.onPremoveChange;
     this.onSelectSquareCallback = options?.onSelectSquare;
     this.onSquareEditCallback = options?.onSquareEdit;
     this.onAnnotationsChangeCallback = options?.onAnnotationsChange;
@@ -393,7 +568,8 @@ export class BoardRenderer {
     this.applyThemeVariables();
     this.renderSquaresGrid();
     this.renderCoordinates();
-    this.syncPiecesFromAdapter();
+    this.displaySquares = this.computeDisplaySquares();
+    this.renderPieces(this.displaySquares, { animate: false });
     this.syncOverlay();
     this.bindEvents();
   }
@@ -467,6 +643,9 @@ export class BoardRenderer {
     });
     window.addEventListener('pointerup', this.handlePointerUp);
     window.addEventListener('pointercancel', this.handlePointerCancel);
+    // Pressing a second mouse button mid-drag fires mousedown but no pointerdown.
+    window.addEventListener('mousedown', this.handleWindowMouseDown, true);
+    window.addEventListener('contextmenu', this.handleWindowContextMenu, true);
     this.boardEl.addEventListener('contextmenu', this.handleContextMenu);
     window.addEventListener('keydown', this.handleKeyDown);
 
@@ -567,109 +746,155 @@ export class BoardRenderer {
     }
   }
 
-  private syncPiecesFromAdapter(animation?: MoveAnimationDescriptor): void {
-    const nextSquares = new Map<Square, Piece>();
-    for (let r = 1; r <= 8; r++) {
-      for (let f = 0; f < 8; f++) {
-        const sq = `${FILES[f]}${r}` as Square;
-        const p = this.adapter.get(sq);
-        if (p) {
-          nextSquares.set(sq, p);
+  /** The real position with every queued premove played on top (opponent passing). */
+  private computeDisplaySquares(): Map<Square, Piece> {
+    const squares = boardSquaresFromAdapter(this.adapter);
+    for (const premove of this.premoves) {
+      applyPremoveToSquares(squares, premove);
+    }
+    return squares;
+  }
+
+  private pieceAt(square: Square): Piece | undefined {
+    return this.displaySquares.get(square);
+  }
+
+  private cancelPieceAnimations(el: HTMLElement): void {
+    const anim = this.pieceAnimations.get(el);
+    if (anim) {
+      this.pieceAnimations.delete(el);
+      anim.cancel();
+    }
+  }
+
+  /** Starts a transform animation on a piece, replacing any it already had. */
+  private startPieceAnimation(
+    el: HTMLElement,
+    fromTransform: string,
+    toTransform: string,
+    durationMs: number,
+  ): Animation | null {
+    this.cancelPieceAnimations(el);
+    if (durationMs <= 0 || typeof el.animate !== 'function') return null;
+    try {
+      const anim = el.animate(
+        [{ transform: fromTransform }, { transform: toTransform }],
+        { duration: durationMs, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' },
+      );
+      this.pieceAnimations.set(el, anim);
+      anim.addEventListener('finish', () => {
+        if (this.pieceAnimations.get(el) === anim) {
+          this.pieceAnimations.delete(el);
         }
-      }
+      });
+      return anim;
+    } catch {
+      // Ignore Web Animations API errors in headless/mock environments
+      return null;
+    }
+  }
+
+  private animatePiece(
+    el: HTMLElement,
+    fromTransform: string,
+    toTransform: string,
+    durationMs: number,
+  ): void {
+    this.startPieceAnimation(el, fromTransform, toTransform, durationMs);
+  }
+
+  /**
+   * Brings the piece elements in line with `next`. Pieces that slid (per
+   * `planPieceTransitions`) keep their element and animate to the new square; every
+   * element whose square changes first drops its running animation, so an interrupted
+   * animation always ends on the right square. Elements that stay put are left alone,
+   * which lets an animation started by the previous update finish undisturbed.
+   */
+  private renderPieces(
+    next: Map<Square, Piece>,
+    opts: {
+      animate: boolean;
+      durationMs?: number;
+      /** Destination of a piece that was dropped by drag: it is already there. */
+      noAnimateTo?: Square | null;
+      /** Element being held by an ongoing drag: never repositioned here. */
+      keepElement?: HTMLElement | null;
+    },
+  ): void {
+    const durationMs = opts.animate
+      ? (opts.durationMs ?? this.animationDurationMs)
+      : 0;
+
+    const prev = new Map<Square, Piece>();
+    for (const [sq, el] of this.pieceElements) {
+      prev.set(sq, {
+        color: el.getAttribute('data-color') as Color,
+        type: el.getAttribute('data-piece') as PieceSymbol,
+      });
     }
 
-    // If a move animation descriptor is supplied, move the existing DOM element from `from` to `to`
-    const animatedTargets = new Map<
-      Square,
-      { el: HTMLElement; fromSquare: Square; wasDragged: boolean }
-    >();
-
-    if (animation) {
-      const movingEl = this.pieceElements.get(animation.from);
-      if (movingEl && nextSquares.has(animation.to)) {
-        this.pieceElements.delete(animation.from);
-        animatedTargets.set(animation.to, {
-          el: movingEl,
-          fromSquare: animation.from,
-          wasDragged: Boolean(animation.wasDragged),
-        });
-      }
-      if (
-        animation.rookFrom &&
-        animation.rookTo &&
-        animation.rookFrom !== animation.rookTo
-      ) {
-        const rookEl = this.pieceElements.get(animation.rookFrom);
-        if (rookEl && nextSquares.has(animation.rookTo)) {
-          this.pieceElements.delete(animation.rookFrom);
-          animatedTargets.set(animation.rookTo, {
-            el: rookEl,
-            fromSquare: animation.rookFrom,
-            wasDragged: false,
-          });
-        }
+    const moved = new Map<Square, { el: HTMLElement; from: Square }>();
+    for (const t of planPieceTransitions(prev, next)) {
+      const el = this.pieceElements.get(t.from);
+      if (el) {
+        moved.set(t.to, { el, from: t.from });
       }
     }
+    for (const { from } of moved.values()) {
+      this.pieceElements.delete(from);
+    }
 
-    // Release any piece elements on squares that no longer match
-    for (const [sq, el] of this.pieceElements.entries()) {
-      const nextPiece = nextSquares.get(sq);
+    for (const [sq, el] of this.pieceElements) {
+      const nextPiece = next.get(sq);
       if (
         !nextPiece ||
-        animatedTargets.has(sq) ||
         el.getAttribute('data-color') !== nextPiece.color ||
         el.getAttribute('data-piece') !== nextPiece.type
       ) {
+        this.cancelPieceAnimations(el);
         this.releasePieceElement(el);
         this.pieceElements.delete(sq);
       }
     }
 
-    // Place / update all pieces
-    for (const [sq, piece] of nextSquares.entries()) {
-      const animEntry = animatedTargets.get(sq);
-      if (animEntry) {
-        const { el, fromSquare, wasDragged } = animEntry;
-        el.classList.remove('wc-piece-ghost-vacated');
+    for (const [sq, piece] of next) {
+      const toTransform = this.getSquareTranslateTransform(sq);
+      const mv = moved.get(sq);
+      if (mv) {
+        const { el, from } = mv;
+        this.cancelPieceAnimations(el);
+        el.classList.remove('wc-piece-ghost-vacated', 'wc-piece-dragging');
         el.setAttribute('data-square', sq);
-        el.setAttribute('data-color', piece.color);
-        el.setAttribute('data-piece', piece.type);
         el.setAttribute('data-testid', `piece-${sq}`);
-        el.innerHTML = getPieceSvgMarkup(
-          this.pieceSet,
-          piece.color,
-          piece.type,
-        );
-        const toTransform = this.getSquareTranslateTransform(sq);
+        if (
+          el.getAttribute('data-piece') !== piece.type ||
+          el.getAttribute('data-color') !== piece.color
+        ) {
+          el.setAttribute('data-color', piece.color);
+          el.setAttribute('data-piece', piece.type);
+          el.innerHTML = getPieceSvgMarkup(this.pieceSet, piece.color, piece.type);
+        }
         el.style.transform = toTransform;
         this.pieceElements.set(sq, el);
-
-        if (
-          !wasDragged &&
-          this.animationDurationMs > 0 &&
-          typeof el.animate === 'function'
-        ) {
-          const fromTransform = this.getSquareTranslateTransform(fromSquare);
-          try {
-            el.animate(
-              [{ transform: fromTransform }, { transform: toTransform }],
-              {
-                duration: this.animationDurationMs,
-                easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
-              },
-            );
-          } catch {
-            // Ignore Web Animations API errors in headless/mock environments
-          }
+        if (sq !== opts.noAnimateTo) {
+          this.animatePiece(
+            el,
+            this.getSquareTranslateTransform(from),
+            toTransform,
+            durationMs,
+          );
         }
         continue;
       }
 
       const existing = this.pieceElements.get(sq);
       if (existing) {
+        if (existing === opts.keepElement) continue;
         existing.classList.remove('wc-piece-ghost-vacated');
-        existing.style.transform = this.getSquareTranslateTransform(sq);
+        if (existing.style.transform !== toTransform) {
+          this.cancelPieceAnimations(existing);
+          existing.style.transform = toTransform;
+        }
       } else {
         const el = this.acquirePieceElement(sq, piece.color, piece.type);
         this.pieceElements.set(sq, el);
@@ -771,6 +996,10 @@ export class BoardRenderer {
   }
 
   public setGhostPreview(preview: GhostPreviewInput | null): void {
+    // Hovering keeps re-firing for the same line; skip identical previews.
+    const key = (p: GhostPreviewInput | null) =>
+      p ? `${p.targetFen}|${(p.moves ?? []).map((m) => m.from + m.to).join(',')}` : '';
+    if (key(preview) === key(this.ghostPreview)) return;
     this.ghostPreview = preview
       ? {
           targetFen: preview.targetFen,
@@ -834,7 +1063,8 @@ export class BoardRenderer {
       lastMove: this.lastMove,
       checkSquare,
       legalMoves,
-      premove: this.premove,
+      premoves: this.premoves,
+      premoveFlash: this.premoveFlashSquares,
       premoveTargets: this.premoveTargets,
       pendingConfirmMove: this.pendingConfirm
         ? { from: this.pendingConfirm.from, to: this.pendingConfirm.to }
@@ -852,9 +1082,30 @@ export class BoardRenderer {
     event.preventDefault();
   };
 
+  private readonly handleWindowContextMenu = (event: MouseEvent): void => {
+    if (!this.boardEl.isConnected) return;
+    if (this.dragState || performance.now() < this.suppressContextMenuUntil) {
+      event.preventDefault();
+      this.suppressContextMenuUntil = 0;
+    }
+  };
+
+  private readonly handleWindowMouseDown = (event: MouseEvent): void => {
+    if (!this.boardEl.isConnected) return;
+    if (event.button === 2 && this.dragState) {
+      event.preventDefault();
+      this.cancelDrag(true);
+    }
+  };
+
   private readonly handleKeyDown = (event: KeyboardEvent): void => {
     if (!this.boardEl.isConnected) return;
     if (event.key === 'Escape') {
+      if (this.dragState) {
+        event.preventDefault();
+        this.cancelDrag(true);
+        return;
+      }
       if (this.pendingPromotion) {
         event.preventDefault();
         this.cancelPromotionPicker();
@@ -865,9 +1116,9 @@ export class BoardRenderer {
         this.cancelPendingConfirmMove();
         return;
       }
-      if (this.premove) {
+      if (this.premoves.length > 0) {
         event.preventDefault();
-        this.setPremove(null);
+        this.clearPremoves();
         return;
       }
       if (this.selectedSquare) {
@@ -881,23 +1132,43 @@ export class BoardRenderer {
     }
   };
 
+  /** Premove destinations for a freshly selected piece, or none when premoving isn't possible. */
+  private selectionPremoveTargets(square: Square, piece: Piece): Square[] {
+    if (
+      !this.enablePremoves ||
+      piece.color === this.adapter.turn() ||
+      this.premoves.length >= this.maxPremoves
+    ) {
+      return [];
+    }
+    return computePremoveTargetsOnSquares(this.displaySquares, square, piece.color);
+  }
+
   private readonly handlePointerDown = (event: PointerEvent): void => {
     // Refresh cached board rect once on pointerdown (never inside pointermove!)
     this.cachedBoardRect = this.boardEl.getBoundingClientRect();
 
     const sq = this.squareFromClientPoint(event.clientX, event.clientY);
-    if (!sq) return;
 
-    // Right-click: cancel premove or start user circle/arrow
+    // Right-click: cancel a drag, else clear queued premoves, else start a circle/arrow
     if (event.button === 2) {
-      if (this.premove) {
-        this.setPremove(null);
+      if (this.dragState) {
+        event.preventDefault();
+        this.cancelDrag(true);
+        return;
+      }
+      if (!sq) return;
+      if (this.premoves.length > 0) {
+        this.selectedSquare = null;
+        this.premoveTargets = [];
+        this.clearPremoves();
         return;
       }
       this.rightDragStart = sq;
       return;
     }
 
+    if (!sq) return;
     if (event.button !== 0) return;
     if (this.pendingPromotion || this.pendingConfirm) return;
 
@@ -913,13 +1184,12 @@ export class BoardRenderer {
       this.emitAnnotationsChange();
     }
 
-    // Clear active premove if user clicks when premove is set and no square is selected
     const turn = this.adapter.turn();
-    const clickedPiece = this.adapter.get(sq);
+    const clickedPiece = this.pieceAt(sq);
 
     // 1. If a square is already selected, check if clicking `sq` completes a move or premove
     if (this.selectedSquare && this.selectedSquare !== sq) {
-      const selectedPiece = this.adapter.get(this.selectedSquare);
+      const selectedPiece = this.pieceAt(this.selectedSquare);
       if (selectedPiece && this.canInteractWithColor(selectedPiece.color)) {
         if (selectedPiece.color === turn) {
           const legalTargets = this.getLegalMovesForSelectedSquare();
@@ -933,10 +1203,7 @@ export class BoardRenderer {
             );
             return;
           }
-        } else if (
-          this.enablePremoves &&
-          this.premoveTargets.includes(sq)
-        ) {
+        } else if (this.premoveTargets.includes(sq)) {
           this.initiateMoveOrPromotion(
             this.selectedSquare,
             sq,
@@ -951,18 +1218,12 @@ export class BoardRenderer {
 
     // 2. Otherwise, check if the clicked square has an interactive piece to select / drag
     if (clickedPiece && this.canInteractWithColor(clickedPiece.color)) {
+      const wasSelected = this.selectedSquare === sq;
       this.selectedSquare = sq;
-      if (clickedPiece.color !== turn && this.enablePremoves) {
-        this.premoveTargets = computePremoveTargets(
-          this.adapter,
-          sq,
-          clickedPiece.color,
-        );
-      } else {
-        this.premoveTargets = [];
+      this.premoveTargets = this.selectionPremoveTargets(sq, clickedPiece);
+      if (!wasSelected) {
+        this.onSelectSquareCallback?.(sq, clickedPiece);
       }
-
-      this.onSelectSquareCallback?.(sq, clickedPiece);
 
       const pieceEl = this.pieceElements.get(sq);
       if (pieceEl) {
@@ -974,6 +1235,7 @@ export class BoardRenderer {
           startX: event.clientX,
           startY: event.clientY,
           isDragging: false,
+          wasSelected,
         };
       }
 
@@ -981,20 +1243,23 @@ export class BoardRenderer {
       return;
     }
 
-    // Clicked empty or opponent non-target square -> clear selection (and premove if active)
+    // Clicked an empty or opponent square that isn't a target: clear the selection.
+    // Queued premoves stay; right-click or Escape clears them.
     this.selectedSquare = null;
     this.premoveTargets = [];
-    if (this.premove) {
-      this.setPremove(null);
-    } else {
-      this.syncOverlay();
-    }
+    this.syncOverlay();
   };
 
   private readonly handlePointerMove = (event: PointerEvent): void => {
     if (!this.boardEl.isConnected) return;
     const drag = this.dragState;
     if (!drag || event.pointerId !== drag.pointerId) return;
+
+    // A right button pressed during a drag arrives as a chorded pointermove
+    if (event.button === 2) {
+      this.cancelDrag(true);
+      return;
+    }
 
     const rect = this.cachedBoardRect;
     if (!rect || rect.width <= 0 || rect.height <= 0) return;
@@ -1006,6 +1271,7 @@ export class BoardRenderer {
       );
       if (dist < 2.5) return;
       drag.isDragging = true;
+      this.cancelPieceAnimations(drag.element);
       drag.element.classList.add('wc-piece-dragging');
     }
 
@@ -1031,6 +1297,49 @@ export class BoardRenderer {
       this.syncOverlay();
     }
   };
+
+  /** Animates a released piece from where it was dropped back to its square. */
+  private snapBack(el: HTMLElement, fromTransform: string, homeTransform: string): void {
+    this.cancelPieceAnimations(el);
+    el.style.transform = homeTransform;
+    if (fromTransform === homeTransform) return;
+    const anim = this.startPieceAnimation(el, fromTransform, homeTransform, SNAP_BACK_MS);
+    if (!anim) return;
+    el.classList.add('wc-piece-snapback');
+    const done = () => el.classList.remove('wc-piece-snapback');
+    anim.addEventListener('finish', done);
+    anim.addEventListener('cancel', done);
+  }
+
+  /**
+   * Ends the drag in progress: the piece returns to its square (animated when `animate`)
+   * and the selection is cleared. Returns false when nothing was being dragged.
+   */
+  private cancelDrag(animate: boolean): boolean {
+    const drag = this.dragState;
+    if (!drag) return false;
+    this.dragState = null;
+    this.hoveredSquare = null;
+
+    const dropTransform = drag.element.style.transform;
+    const homeTransform = this.getSquareTranslateTransform(drag.from);
+    drag.element.classList.remove('wc-piece-dragging');
+    if (animate && drag.isDragging) {
+      this.snapBack(drag.element, dropTransform, homeTransform);
+    } else {
+      drag.element.style.transform = homeTransform;
+    }
+
+    this.selectedSquare = null;
+    this.premoveTargets = [];
+    this.suppressContextMenuUntil = performance.now() + 1500;
+    this.syncOverlay();
+    return true;
+  }
+
+  public isDragInProgress(): boolean {
+    return this.dragState !== null;
+  }
 
   private readonly handlePointerUp = (event: PointerEvent): void => {
     if (!this.boardEl.isConnected) return;
@@ -1079,49 +1388,52 @@ export class BoardRenderer {
     this.dragState = null;
     this.hoveredSquare = null;
 
-    // Always snap the piece element cleanly back to its resting square transform first
-    // so a dragged piece NEVER remains floating in mid-air (fixes Legacy Bug #2)
+    // Always put the element back on its resting square first, so a dragged piece
+    // NEVER remains floating in mid-air (fixes Legacy Bug #2)
+    const dropTransform = drag.element.style.transform;
+    const homeTransform = this.getSquareTranslateTransform(drag.from);
     drag.element.classList.remove('wc-piece-dragging');
-    drag.element.style.transform = this.getSquareTranslateTransform(drag.from);
+    drag.element.style.transform = homeTransform;
 
     if (!drag.isDragging) {
+      // A plain click on the piece that was already selected deselects it
+      if (drag.wasSelected) {
+        this.selectedSquare = null;
+        this.premoveTargets = [];
+      }
       this.syncOverlay();
       return;
     }
 
     const dropSq = this.squareFromClientPoint(event.clientX, event.clientY);
-    if (!dropSq || dropSq === drag.from) {
+    if (dropSq === drag.from) {
       this.syncOverlay();
       return;
     }
 
-    const turn = this.adapter.turn();
-    if (drag.piece.color === turn) {
-      const legalTargets = this.getLegalMovesForSelectedSquare();
-      if (legalTargets.some((t) => t.to === dropSq)) {
-        this.initiateMoveOrPromotion(
-          drag.from,
-          dropSq,
-          drag.piece,
-          false,
-          true,
-        );
+    if (dropSq) {
+      if (drag.piece.color === this.adapter.turn()) {
+        const legalTargets = this.getLegalMovesForSelectedSquare();
+        if (legalTargets.some((t) => t.to === dropSq)) {
+          this.initiateMoveOrPromotion(
+            drag.from,
+            dropSq,
+            drag.piece,
+            false,
+            true,
+          );
+          return;
+        }
+      } else if (this.premoveTargets.includes(dropSq)) {
+        this.initiateMoveOrPromotion(drag.from, dropSq, drag.piece, true, true);
         return;
       }
-    } else if (
-      this.enablePremoves &&
-      this.premoveTargets.includes(dropSq)
-    ) {
-      this.initiateMoveOrPromotion(
-        drag.from,
-        dropSq,
-        drag.piece,
-        true,
-        true,
-      );
-      return;
     }
 
+    // Dropped off the board or on a square it can't go to: snap back and deselect
+    this.snapBack(drag.element, dropTransform, homeTransform);
+    this.selectedSquare = null;
+    this.premoveTargets = [];
     this.syncOverlay();
   };
 
@@ -1129,11 +1441,7 @@ export class BoardRenderer {
     if (!this.boardEl.isConnected) return;
     const drag = this.dragState;
     if (!drag || event.pointerId !== drag.pointerId) return;
-    this.dragState = null;
-    this.hoveredSquare = null;
-    drag.element.classList.remove('wc-piece-dragging');
-    drag.element.style.transform = this.getSquareTranslateTransform(drag.from);
-    this.syncOverlay();
+    this.cancelDrag(false);
   };
 
   private emitAnnotationsChange(): void {
@@ -1326,7 +1634,7 @@ export class BoardRenderer {
     this.premoveTargets = [];
 
     if (isPremove) {
-      this.setPremove(move);
+      this.addPremove(move, { dragged: wasDragged });
       return;
     }
 
@@ -1405,14 +1713,132 @@ export class BoardRenderer {
     this.syncOverlay();
   }
 
-  public setPremove(premove: PremoveInput | null): void {
-    this.premove = premove;
+  /** Re-renders the board after the premove queue changed. */
+  private refreshPremoveDisplay(animate: boolean, noAnimateTo?: Square): void {
+    this.displaySquares = this.computeDisplaySquares();
+    const drag = this.dragState;
+    const held = drag ? this.displaySquares.get(drag.from) : undefined;
+    const keepDrag =
+      drag !== null &&
+      held !== undefined &&
+      held.color === drag.piece.color &&
+      held.type === drag.piece.type;
+    if (drag && !keepDrag) {
+      this.endDragForRemovedPiece();
+    }
+    this.renderPieces(this.displaySquares, {
+      animate,
+      noAnimateTo: noAnimateTo ?? null,
+      keepElement: keepDrag && drag ? drag.element : null,
+    });
     this.syncOverlay();
-    this.onPremoveChangeCallback?.(premove);
   }
 
+  /**
+   * Appends a premove to the queue. It is planned on the hypothetical board (earlier
+   * premoves played, opponent passing). Returns false when the queue is full or the
+   * premove's piece isn't on its square in that hypothetical position.
+   */
+  public addPremove(
+    premove: PremoveInput,
+    options?: { dragged?: boolean },
+  ): boolean {
+    const piece = this.displaySquares.get(premove.from);
+    if (!piece || this.premoves.length >= this.maxPremoves) {
+      this.syncOverlay();
+      return false;
+    }
+    this.premoves.push({
+      from: premove.from,
+      to: premove.to,
+      promotion: premove.promotion,
+    });
+    this.refreshPremoveDisplay(true, options?.dragged ? premove.to : undefined);
+    return true;
+  }
+
+  /** Replaces the whole queue with `premove`, or clears it when null. */
+  public setPremove(premove: PremoveInput | null): void {
+    this.clearPremoveFlash();
+    this.premoves = [];
+    if (premove) {
+      this.premoves.push({
+        from: premove.from,
+        to: premove.to,
+        promotion: premove.promotion,
+      });
+    }
+    this.refreshPremoveDisplay(false);
+  }
+
+  /** The next premove to execute (head of the queue), or null. */
   public getPremove(): PremoveInput | null {
-    return this.premove;
+    return this.premoves[0] ? { ...this.premoves[0] } : null;
+  }
+
+  public getPremoves(): PremoveInput[] {
+    return this.premoves.map((p) => ({ ...p }));
+  }
+
+  /**
+   * Clears every queued premove. With `flash`, the cancelled squares blink in the
+   * premove failure color so the player sees that the queue was dropped.
+   */
+  public clearPremoves(options?: { flash?: boolean }): void {
+    if (this.premoves.length === 0) return;
+    if (options?.flash) {
+      const flash = new Set<Square>();
+      for (const p of this.premoves) {
+        flash.add(p.from);
+        flash.add(p.to);
+      }
+      this.premoveFlashSquares = [...flash];
+      if (this.premoveFlashTimer !== null) {
+        clearTimeout(this.premoveFlashTimer);
+      }
+      this.premoveFlashTimer = setTimeout(() => {
+        this.premoveFlashTimer = null;
+        this.premoveFlashSquares = [];
+        this.syncOverlay();
+      }, PREMOVE_FLASH_MS);
+    }
+    this.premoves = [];
+    this.refreshPremoveDisplay(true);
+  }
+
+  private clearPremoveFlash(): void {
+    if (this.premoveFlashTimer !== null) {
+      clearTimeout(this.premoveFlashTimer);
+      this.premoveFlashTimer = null;
+    }
+    this.premoveFlashSquares = [];
+  }
+
+  public getPremoveFlashSquares(): Square[] {
+    return [...this.premoveFlashSquares];
+  }
+
+  public setMaxPremoves(max: number): void {
+    this.maxPremoves = Math.max(1, Math.floor(max));
+    if (this.premoves.length > this.maxPremoves) {
+      this.premoves = this.premoves.slice(0, this.maxPremoves);
+      this.refreshPremoveDisplay(true);
+    }
+  }
+
+  public getMaxPremoves(): number {
+    return this.maxPremoves;
+  }
+
+  /** The held piece no longer exists (captured or moved away): end the drag cleanly. */
+  private endDragForRemovedPiece(): void {
+    const drag = this.dragState;
+    if (!drag) return;
+    this.dragState = null;
+    this.hoveredSquare = null;
+    drag.element.classList.remove('wc-piece-dragging');
+    this.selectedSquare = null;
+    this.premoveTargets = [];
   }
 
   public isPromotionPickerOpen(): boolean {
@@ -1424,8 +1850,17 @@ export class BoardRenderer {
   }
 
   /**
-   * Updates the board position from a RulesAdapter or FEN string, optionally animating the executed move
-   * and triggering the capture particle burst.
+   * Updates the board position from a RulesAdapter or FEN string and triggers the capture
+   * particle burst for a capturing `lastMove`.
+   *
+   * Pieces animate from the board diff when `animate` is true (the default whenever a
+   * `lastMove` is given): forward moves, moves played backward, castling rooks, and
+   * premoves snapping back all come out of the same plan. A dragged move's piece is
+   * already on its square and doesn't animate.
+   *
+   * A drag in progress is never cancelled by a board update. If the held piece is still
+   * on its square, the drag continues against the new position; if it was captured, the
+   * drag ends cleanly with no ghost element left behind.
    */
   public setPosition(
     fenOrAdapter: string | RulesAdapter,
@@ -1434,6 +1869,10 @@ export class BoardRenderer {
       wasDragged?: boolean;
       triggerCaptureParticles?: boolean;
       preserveAnalysisArrows?: boolean;
+      animate?: boolean;
+      animationDurationMs?: number;
+      /** The head of the premove queue was just played on the real board. */
+      consumedPremove?: boolean;
     },
   ): void {
     if (this.pendingPromotion) {
@@ -1448,9 +1887,10 @@ export class BoardRenderer {
     } else {
       this.adapter = fenOrAdapter.clone();
     }
+    if (options?.consumedPremove) {
+      this.premoves.shift();
+    }
 
-    this.selectedSquare = null;
-    this.premoveTargets = [];
     this.hintMove = null;
     if (!options?.preserveAnalysisArrows) {
       this.bestMoveArrow = null;
@@ -1463,53 +1903,45 @@ export class BoardRenderer {
     const lm = options?.lastMove;
     this.lastMove = lm ? { from: lm.from, to: lm.to } : null;
 
-    let animDesc: MoveAnimationDescriptor | undefined;
-    if (lm) {
-      animDesc = {
-        from: lm.from,
-        to: lm.to,
-        wasDragged: Boolean(options?.wasDragged),
-      };
-
-      // Check if it was a castling move so the rook also animates
-      if ('isCastle' in lm && lm.isCastle) {
-        const homeRank = lm.color === 'w' ? '1' : '8';
-        animDesc.rookTo = (
-          lm.isKingsideCastle ? `f${homeRank}` : `d${homeRank}`
-        ) as Square;
-        const beforeAdapter = new RulesAdapter(lm.before);
-        for (let f = 0; f < 8; f++) {
-          const sq = `${FILES[f]}${homeRank}` as Square;
-          const p = beforeAdapter.get(sq);
-          if (p && p.type === 'r' && p.color === lm.color) {
-            const kingFile = FILES.indexOf(lm.from[0] ?? 'e');
-            if (
-              (lm.isKingsideCastle && f > kingFile) ||
-              (lm.isQueensideCastle && f < kingFile)
-            ) {
-              animDesc.rookFrom = sq;
-              break;
-            }
-          }
-        }
-      }
-
-      if (
-        options?.triggerCaptureParticles !== false &&
-        'isCapture' in lm &&
-        lm.isCapture
-      ) {
-        const capturedColor: Color = lm.color === 'w' ? 'b' : 'w';
-        this.particles.triggerCapture(
-          lm.to,
-          capturedColor,
-          lm.from,
-          this.flipped,
-        );
-      }
+    if (
+      lm &&
+      options?.triggerCaptureParticles !== false &&
+      'isCapture' in lm &&
+      lm.isCapture
+    ) {
+      const capturedColor: Color = lm.color === 'w' ? 'b' : 'w';
+      this.particles.triggerCapture(lm.to, capturedColor, lm.from, this.flipped);
     }
 
-    this.syncPiecesFromAdapter(animDesc);
+    this.displaySquares = this.computeDisplaySquares();
+
+    const drag = this.dragState;
+    const held = drag ? this.displaySquares.get(drag.from) : undefined;
+    const dragContinues =
+      drag !== null &&
+      held !== undefined &&
+      held.color === drag.piece.color &&
+      held.type === drag.piece.type &&
+      this.canInteractWithColor(held.color);
+
+    if (drag && dragContinues) {
+      this.selectedSquare = drag.from;
+      this.premoveTargets = this.selectionPremoveTargets(drag.from, drag.piece);
+    } else {
+      this.endDragForRemovedPiece();
+      this.selectedSquare = null;
+      this.premoveTargets = [];
+    }
+
+    const animate = options?.animate ?? Boolean(lm);
+    this.renderPieces(this.displaySquares, {
+      animate,
+      ...(typeof options?.animationDurationMs === 'number'
+        ? { durationMs: options.animationDurationMs }
+        : {}),
+      noAnimateTo: options?.wasDragged && lm ? lm.to : null,
+      keepElement: dragContinues && drag ? drag.element : null,
+    });
     this.syncOverlay();
   }
 
@@ -1520,6 +1952,8 @@ export class BoardRenderer {
     this.renderSquaresGrid();
     this.renderCoordinates();
     for (const [sq, el] of this.pieceElements.entries()) {
+      if (this.dragState?.isDragging && el === this.dragState.element) continue;
+      this.cancelPieceAnimations(el);
       el.style.transform = this.getSquareTranslateTransform(sq);
     }
     for (const [sq, el] of this.ghostPieceElements.entries()) {
@@ -1539,8 +1973,20 @@ export class BoardRenderer {
 
   public setInteractiveColor(color: Color | 'both' | 'none'): void {
     this.interactiveColor = color;
-    this.selectedSquare = null;
-    this.premoveTargets = [];
+    const drag = this.dragState;
+    if (drag && !this.canInteractWithColor(drag.piece.color)) {
+      this.cancelDrag(false);
+    }
+    if (this.dragState) {
+      this.selectedSquare = this.dragState.from;
+      this.premoveTargets = this.selectionPremoveTargets(
+        this.dragState.from,
+        this.dragState.piece,
+      );
+    } else {
+      this.selectedSquare = null;
+      this.premoveTargets = [];
+    }
     this.syncOverlay();
   }
 
@@ -1654,8 +2100,11 @@ export class BoardRenderer {
     window.removeEventListener('pointermove', this.handlePointerMove);
     window.removeEventListener('pointerup', this.handlePointerUp);
     window.removeEventListener('pointercancel', this.handlePointerCancel);
+    window.removeEventListener('mousedown', this.handleWindowMouseDown, true);
+    window.removeEventListener('contextmenu', this.handleWindowContextMenu, true);
     this.boardEl.removeEventListener('contextmenu', this.handleContextMenu);
     window.removeEventListener('keydown', this.handleKeyDown);
+    this.clearPremoveFlash();
     this.resizeObserver?.disconnect();
     this.particles.destroy();
     this.frameEl.remove();

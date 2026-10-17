@@ -75,6 +75,16 @@ data/          generated compact datasets
   a single thread. The UI stays responsive throughout.
 - **Measurement:** a Playwright perf script samples requestAnimationFrame intervals while
   scripted drags run during analysis. Note that headless numbers are only indicative.
+  - `npm run perf:drag` runs two scenarios and reports p95 frame time, dropped frames and
+    long tasks for each:
+    1. Play mode, drags while the engine runs `go infinite`, plus a burst of three
+       premoves executing across three bot moves.
+    2. Analysis board with MultiPV 5 and `go infinite`, drags while ghost previews are
+       triggered, plus a rapid arrow-key sweep through a 40-move game.
+  - The p95 check allows 0.5 ms for rAF timestamp jitter (pass at ≤ 17.2 ms on a 60 Hz
+    display). A single dropped frame (33.3 ms) still fails.
+  - Premove execution and navigation must not add long tasks. Engine-line updates reach
+    the DOM at most once per frame.
 - **Dev overlay** (toggle with the backtick key):
   - FPS and p95 frame time
   - long-task count
@@ -150,6 +160,34 @@ confirms the engine finds a mate-in-2 and wins a hanging piece.
   something changes.
 - **Input:** drag and click-to-move, legal-move dots, a promotion picker (with auto-queen
   option), premoves, board flip, and an optional confirm-move setting.
+- **Drags survive board updates** (as on Lichess and Chess.com):
+  - A board update (such as the opponent's move arriving) never cancels a drag in
+    progress. If the held piece is still on its square, the drag continues: dropping it
+    plays a normal move if legal, otherwise the piece snaps back. If the held piece was
+    captured, the drag ends cleanly with no ghost piece left behind.
+  - Dropping during the opponent's turn adds a premove.
+- **Cancelling:**
+  - Right-clicking during a drag cancels it, and the piece snaps back to its square with
+    a short animation. Escape also cancels a drag, and so does dropping a piece off the
+    board.
+  - Clicking the selected piece again deselects it.
+  - Right-clicking (not during a drag) clears all queued premoves. With no drag or
+    premove involved, right-click still draws arrows and circles.
+- **Premove queue:**
+  - Several premoves can be queued, up to a "Max premoves" setting (default 10; 1 gives
+    Lichess-style single premoves).
+  - Each premove is planned on a hypothetical board where the earlier premoves have been
+    played and the opponent has passed; the board shows that hypothetical position while
+    premoves are queued. Destinations follow piece movement geometry, as in Lichess's
+    board library: pawns may premove diagonally, and squares occupied by your own pieces
+    are allowed. Real legality is checked only when the premove executes.
+  - Queued premoves are shown as highlighted squares with order numbers (1, 2, 3…) in
+    the premove color.
+  - When the opponent moves, the next premove plays instantly, with no added delay, in
+    the same frame as the board update, and the clock is charged the real elapsed time
+    (about 0 ms, plus increment). An illegal premove is cancelled together with every
+    premove queued after it, with a brief visual flash.
+  - Bot think time does not apply to premoves.
 - **Promotion picker:**
   - Compact vertical column of 4 piece icons (no text) sitting directly on the promotion
     file, starting at the promotion square and extending toward the center of the board,
@@ -199,7 +237,10 @@ confirms the engine finds a mate-in-2 and wins a hanging piece.
 **Done when:** an end-to-end test plays a full game against the bot, premoves during bot
 thinking time and promotion picker screenshot tests pass, `npm run calibrate:bots` hits
 the documented targets, the legacy regression tests pass, and the perf numbers are
-recorded.
+recorded. End-to-end tests also cover: a drag held through an opponent move and then
+dropped plays the move; right-click and Escape both cancel a drag; three queued premoves
+all execute across three bot moves; an illegal premove cancels the rest of the queue;
+right-click clears the premove queue.
 
 ### Phase 4 — Analysis board
 - **Eval bar:** animated, mate-aware, flips with the board.
@@ -223,8 +264,26 @@ recorded.
   | Space | Engine on/off |
 
 - **Openings:** show the opening name and ECO code from the openings dataset.
+- **Stable layout while navigating:** zero layout shift while stepping through moves,
+  verified by a Playwright test that steps through a 40-move game with
+  `PerformanceObserver('layout-shift')` and reports which elements shifted.
+  - Keeping the current move in view scrolls only the move list, never the page.
+  - Text that changes per move (eval, engine lines, opening name, depth and node
+    counts, clocks) has fixed widths, tabular-nums digits, reserved heights and ellipsis
+    truncation. Scrollable panels use `scrollbar-gutter: stable`. No panel resizes based
+    on its contents.
+- **Navigation animation:**
+  - Stepping one move forward or back animates that move over about 100 ms (backward
+    plays it in reverse), with the last move highlighted.
+  - Jumps (Home/End, clicking a distant move) snap instantly.
+  - When a key is held or pressed rapidly, animations are shortened or skipped so
+    navigation never lags behind input. An interrupted animation always ends with the
+    board in the correct position.
+  - A "Navigation animation" setting offers off / fast / normal.
 
-**Done when:** end-to-end tests cover analysis, variations, the editor, and PGN export.
+**Done when:** end-to-end tests cover analysis, variations, the editor, and PGN export;
+the layout-shift test records zero shifts across a 40-move game; and holding an arrow key
+through a game ends on the correct position with no layout shift.
 
 ### Phase 5 — Game review
 - **Analysis budget per position:**

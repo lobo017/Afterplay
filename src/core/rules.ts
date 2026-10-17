@@ -508,11 +508,17 @@ export class RulesAdapter {
     return this.chess.attackers(square, attackedBy);
   }
 
+  // In standard chess, chess.js answers these with its internal move generator. The
+  // verbose path also builds SAN for every move, which costs extra make/undo work per
+  // move. Chess960 still goes through verboseMoves(), since it adds the castling moves
+  // chess.js doesn't know about.
   public isCheckmate(): boolean {
+    if (!this.c960.enabled) return this.chess.isCheckmate();
     return this.inCheck() && this.verboseMoves().length === 0;
   }
 
   public isStalemate(): boolean {
+    if (!this.c960.enabled) return this.chess.isStalemate();
     return !this.inCheck() && this.verboseMoves().length === 0;
   }
 
@@ -543,6 +549,16 @@ export class RulesAdapter {
 
   public isGameOver(): boolean {
     return this.isCheckmate() || this.isDraw();
+  }
+
+  /**
+   * All legal moves as SAN strings. In standard chess this skips building verbose move
+   * objects (chess.js serializes two FENs per verbose move), which makes it several
+   * times cheaper than verboseMoves() for scanning many positions.
+   */
+  public sanMoves(): string[] {
+    if (!this.c960.enabled) return this.chess.moves();
+    return this.verboseMoves().map((m) => m.san);
   }
 
   /**

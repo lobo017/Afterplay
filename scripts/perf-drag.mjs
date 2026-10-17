@@ -4,6 +4,29 @@ import { chromium } from '@playwright/test';
 
 const PORT = Number(process.env.PERF_PORT || 4179);
 const BASE_URL = `http://127.0.0.1:${PORT}`;
+const SCENARIOS = (process.env.PERF_SCENARIOS || 'play,analysis')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+// Frame budget: one 60 Hz vsync (16.7 ms) plus 0.5 ms for rAF timestamp jitter.
+// A single dropped frame is a 33.3 ms interval, so this still fails on real jank.
+const FRAME_BUDGET_MS = 16.7;
+const FRAME_JITTER_ALLOWANCE_MS = 0.5;
+const P95_LIMIT_MS = FRAME_BUDGET_MS + FRAME_JITTER_ALLOWANCE_MS;
+
+const FORTY_MOVE_PGN = `[Event "World Championship"]
+[White "Fischer, Robert James"]
+[Black "Spassky, Boris V"]
+[Result "1-0"]
+
+1. c4 e6 2. Nf3 d5 3. d4 Nf6 4. Nc3 Be7 5. Bg5 O-O 6. e3 h6 7. Bh4 b6 8. cxd5
+Nxd5 9. Bxe7 Qxe7 10. Nxd5 exd5 11. Rc1 Be6 12. Qa4 c5 13. Qa3 Rc8 14. Bb5 a6
+15. dxc5 bxc5 16. O-O Ra7 17. Be2 Nd7 18. Nd4 Qf8 19. Nxe6 fxe6 20. e4 d4 21. f4
+Qe7 22. e5 Rb8 23. Bc4 Kh8 24. Qh3 Nf8 25. b3 a5 26. f5 exf5 27. Rxf5 Nh7 28.
+Rcf1 Qd8 29. Qg3 Re7 30. h4 Rbb7 31. e6 Rbc7 32. Qe5 Qe8 33. a4 Qd8 34. R1f2
+Qe8 35. R2f3 Qd8 36. Bd3 Qe8 37. Qe4 Nf6 38. Rxf6 gxf6 39. Rxf6 Kg8 40. Bc4 Kh8
+41. Qf4 1-0`;
 
 function startStaticServer(port) {
   return new Promise((resolve, reject) => {
@@ -45,6 +68,394 @@ function startStaticServer(port) {
   });
 }
 
+/**
+ * Installs window.__perf helpers: a long-task counter and a frame-interval sampler.
+ * Runs inside the page.
+ */
+function installPerfHelpers() {
+  const perf = {
+    longTasks: 0,
+    longTaskMaxMs: 0,
+    observer: null,
+    startLongTasks() {
+      perf.longTasks = 0;
+      perf.longTaskMaxMs = 0;
+      perf.observer = new PerformanceObserver((list) => {
+        for (const entry of list.getEntries()) {
+          if (entry.duration > 50) {
+            perf.longTasks++;
+            perf.longTaskMaxMs = Math.max(perf.longTaskMaxMs, entry.duration);
+          }
+        }
+      });
+      perf.observer.observe({ entryTypes: ['longtask'] });
+    },
+    stopLongTasks() {
+      perf.observer?.disconnect();
+      perf.observer = null;
+      return { longTaskCount: perf.longTasks, longTaskMaxMs: perf.longTaskMaxMs };
+    },
+    frame() {
+      return new Promise((r) => requestAnimationFrame(r));
+    },
+    summarize(intervals) {
+      const samples = [...intervals].sort((a, b) => a - b);
+      const count = samples.length;
+      const pick = (q) =>
+        count > 0 ? samples[Math.min(count - 1, Math.floor(count * q))] : 0;
+      const mean = count > 0 ? samples.reduce((a, v) => a + v, 0) / count : 0;
+      const dropped = samples.filter((v) => v > 1.5 * 16.667).length;
+      return {
+        sampleCount: count,
+        fps: mean > 0 ? Number((1000 / mean).toFixed(1)) : 0,
+        meanFrameMs: Number(mean.toFixed(2)),
+        p50FrameMs: Number(pick(0.5).toFixed(2)),
+        p95FrameMs: Number(pick(0.95).toFixed(2)),
+        p99FrameMs: Number(pick(0.99).toFixed(2)),
+        maxFrameMs: Number((count > 0 ? samples[count - 1] : 0).toFixed(2)),
+        droppedFrames: dropped,
+        droppedFramePct: count > 0 ? Number(((dropped / count) * 100).toFixed(2)) : 0,
+      };
+    },
+    squareCenter(boardEl, square, flipped) {
+      const rect = boardEl.getBoundingClientRect();
+      const file = 'abcdefgh'.indexOf(square[0]);
+      const rank = Number(square[1]) - 1;
+      const col = flipped ? 7 - file : file;
+      const row = flipped ? rank : 7 - rank;
+      return {
+        x: rect.left + (col + 0.5) * (rect.width / 8),
+        y: rect.top + (row + 0.5) * (rect.height / 8),
+      };
+    },
+    pointer(type, target, pointerId, pt, button = 0) {
+      target.dispatchEvent(
+        new window.PointerEvent(type, {
+          bubbles: true,
+          pointerId,
+          button,
+          buttons: type === 'pointerup' ? 0 : 1,
+          clientX: pt.x,
+          clientY: pt.y,
+        }),
+      );
+    },
+    clickSquare(boardEl, square, flipped, pointerId) {
+      const pt = perf.squareCenter(boardEl, square, flipped);
+      perf.pointer('pointerdown', boardEl, pointerId, pt);
+      perf.pointer('pointerup', window, pointerId, pt);
+    },
+  };
+  window.__perf = perf;
+}
+
+/**
+ * Sweeps pieces around the board with synthetic pointer events, one step per frame,
+ * sampling rAF intervals. Optionally hovers engine-line moves every few frames so the
+ * board renders ghost previews while the drag is in flight. Runs inside the page.
+ */
+async function runDragSweep({ ghostHoverEvery, readTelemetry }) {
+  const perf = window.__perf;
+  const boardEl = document.querySelector('[data-testid="chess-board"]');
+  if (!boardEl) throw new Error('chess-board not found');
+  const rect = boardEl.getBoundingClientRect();
+  const sqCenter = (col, row) => ({
+    x: rect.left + (col + 0.5) * (rect.width / 8),
+    y: rect.top + (row + 0.5) * (rect.height / 8),
+  });
+
+  // Input-to-transform latency: pointerdown + pointermove, then read the dragged transform.
+  const pieceE2 = document.querySelector('[data-testid="piece-e2"]');
+  const startPt = sqCenter(4, 6);
+  const tInput0 = performance.now();
+  perf.pointer('pointerdown', boardEl, 1, startPt);
+  perf.pointer('pointermove', window, 1, { x: startPt.x + 30, y: startPt.y - 60 });
+  const inputLatencyMs = pieceE2?.style.transform.includes('scale(1.08)')
+    ? Number((performance.now() - tInput0).toFixed(3))
+    : 999;
+  perf.pointer('pointerup', window, 1, startPt);
+
+  const trajectories = [
+    [sqCenter(4, 6), sqCenter(0, 2), sqCenter(7, 2), sqCenter(4, 6)],
+    [sqCenter(6, 7), sqCenter(2, 3), sqCenter(5, 1), sqCenter(6, 7)],
+    [sqCenter(3, 7), sqCenter(0, 4), sqCenter(7, 3), sqCenter(3, 7)],
+    [sqCenter(0, 7), sqCenter(0, 1), sqCenter(7, 1), sqCenter(0, 7)],
+    // b1 knight dropped on c3: a legal 1. Nc3
+    [sqCenter(1, 7), sqCenter(4, 4), sqCenter(2, 5)],
+  ];
+
+  const frameIntervals = [];
+  let peakDepth = 0;
+  let peakNps = 0;
+  let ghostHovers = 0;
+  let ghostPreviewsShown = 0;
+  let frameIndex = 0;
+  perf.startLongTasks();
+
+  for (let tIdx = 0; tIdx < trajectories.length; tIdx++) {
+    const waypoints = trajectories[tIdx];
+    const pointerId = 10 + tIdx;
+    perf.pointer('pointerdown', boardEl, pointerId, waypoints[0]);
+    let lastTime = await perf.frame();
+
+    for (let w = 1; w < waypoints.length; w++) {
+      const prev = waypoints[w - 1];
+      const next = waypoints[w];
+      const steps = 20;
+      for (let s = 1; s <= steps; s++) {
+        const now = await perf.frame();
+        const dt = now - lastTime;
+        lastTime = now;
+        if (dt > 0 && dt < 250) frameIntervals.push(dt);
+
+        const ratio = s / steps;
+        perf.pointer('pointermove', window, pointerId, {
+          x: prev.x + (next.x - prev.x) * ratio,
+          y: prev.y + (next.y - prev.y) * ratio,
+        });
+
+        frameIndex++;
+        if (ghostHoverEvery > 0 && frameIndex % ghostHoverEvery === 0) {
+          const line = 1 + (Math.floor(frameIndex / ghostHoverEvery) % 5);
+          const ply = Math.floor(frameIndex / (ghostHoverEvery * 5)) % 4;
+          const token = document.querySelector(
+            `[data-testid="engine-pv-move-${line}-${ply}"]`,
+          );
+          if (token) {
+            token.dispatchEvent(new window.MouseEvent('mouseover', { bubbles: true }));
+            ghostHovers++;
+            if (window.__wizardChessAnalysis.controller.getBoard().getGhostPreview()) {
+              ghostPreviewsShown++;
+            }
+          }
+        }
+
+        const tel = readTelemetry ? window.__wizardChessPlay.engine.getTelemetry() : null;
+        if (tel) {
+          peakDepth = Math.max(peakDepth, tel.depth);
+          peakNps = Math.max(peakNps, tel.nps);
+        }
+      }
+    }
+
+    perf.pointer('pointerup', window, pointerId, waypoints[waypoints.length - 1]);
+  }
+
+  const longTasks = perf.stopLongTasks();
+  const linesList = document.querySelector('[data-testid="engine-lines-list"]');
+  linesList?.dispatchEvent(new window.MouseEvent('mouseleave'));
+  const tel = window.__wizardChessPlay.engine.getTelemetry();
+  return {
+    ...perf.summarize(frameIntervals),
+    ...longTasks,
+    inputLatencyMs,
+    ghostHovers,
+    ghostPreviewsShown,
+    engineVariant: tel.variant,
+    engineThreads: tel.threads,
+    enginePeakDepth: Math.max(peakDepth, tel.depth),
+    enginePeakNps: Math.max(peakNps, tel.nps),
+  };
+}
+
+async function measureIdleRaf(page) {
+  return page.evaluate(async () => {
+    let rafCalls = 0;
+    const origRaf = window.requestAnimationFrame;
+    window.requestAnimationFrame = (cb) => {
+      rafCalls++;
+      return origRaf.call(window, cb);
+    };
+    try {
+      await new Promise((r) => setTimeout(r, 500));
+    } finally {
+      window.requestAnimationFrame = origRaf;
+    }
+    return rafCalls;
+  });
+}
+
+async function scenarioPlay(page) {
+  // Infinite analysis on the shared engine while the user drags pieces in Play mode.
+  await page.getByTestId('square-e2').click();
+  await page.getByTestId('square-e2').click();
+  await page.getByTestId('toggle-infinite-analysis').check();
+  await page.waitForFunction(
+    () => {
+      const m = window.__wizardChessPlay?.devOverlay.getMetrics();
+      return Boolean(m && m.engineDepth >= 8 && m.engineNps > 0);
+    },
+    undefined,
+    { timeout: 15_000 },
+  );
+
+  // A hardware-mouse drag first confirms real pointer capture end to end.
+  const boardBox = await page.locator('[data-testid="chess-board"]').boundingBox();
+  const e2X = boardBox.x + 4.5 * (boardBox.width / 8);
+  const e2Y = boardBox.y + 6.5 * (boardBox.height / 8);
+  await page.mouse.move(e2X, e2Y);
+  await page.mouse.down();
+  await page.mouse.move(e2X, e2Y - 120, { steps: 10 });
+  await page.mouse.move(e2X, e2Y, { steps: 10 });
+  await page.mouse.up();
+
+  const drag = await page.evaluate(runDragSweep, {
+    ghostHoverEvery: 0,
+    readTelemetry: true,
+  });
+
+  // Premove burst: queue three premoves while the bot thinks and let all of them fire.
+  const premoves = await page.evaluate(async () => {
+    const perf = window.__perf;
+    const play = window.__wizardChessPlay;
+    const controller = play.controller;
+    const board = controller.getBoard();
+    controller.setBotDelayRangeMs(350, 350);
+    controller.startNewGame({ playerColor: 'w' });
+    const boardEl = document.querySelector('[data-testid="chess-board"]');
+    perf.clickSquare(boardEl, 'e2', false, 40);
+    perf.clickSquare(boardEl, 'e4', false, 41);
+    const queue = [
+      ['d2', 'd4'],
+      ['g1', 'f3'],
+      ['b1', 'c3'],
+    ];
+    queue.forEach(([from, to], i) => {
+      perf.clickSquare(boardEl, from, false, 50 + i * 2);
+      perf.clickSquare(boardEl, to, false, 51 + i * 2);
+    });
+    const queued = board.getPremoves().length;
+
+    const frameIntervals = [];
+    let lastPly = controller.getGameTree().getMainLine().length;
+    let lastTime = await perf.frame();
+    const plyFrames = [];
+    perf.startLongTasks();
+    const deadline = performance.now() + 15_000;
+    while (performance.now() < deadline) {
+      const now = await perf.frame();
+      const dt = now - lastTime;
+      lastTime = now;
+      if (dt > 0 && dt < 250) frameIntervals.push(dt);
+      const ply = controller.getGameTree().getMainLine().length;
+      if (ply !== lastPly) {
+        plyFrames.push({ frame: frameIntervals.length, from: lastPly, to: ply });
+        lastPly = ply;
+      }
+      if (ply >= 7) break;
+    }
+    const longTasks = perf.stopLongTasks();
+    // Each bot reply and the premove it releases must land in the same frame (ply jumps by 2).
+    const sameFrameExecutions = plyFrames.filter((p) => p.to - p.from === 2).length;
+    controller.setBotDelayRangeMs(500, 3000);
+    return {
+      queued,
+      finalPly: controller.getGameTree().getMainLine().length,
+      sameFrameExecutions,
+      plyFrames,
+      ...perf.summarize(frameIntervals),
+      ...longTasks,
+    };
+  });
+
+  await page.evaluate(() => window.__wizardChessPlay.controller.setInfiniteAnalysis(false));
+  return { drag, premoves };
+}
+
+async function scenarioAnalysis(page) {
+  await page.getByTestId('mode-tab-analysis').click();
+  await page.getByTestId('analysis-layout').waitFor({ state: 'visible' });
+  await page.getByTestId('select-multipv').selectOption('5');
+  await page.evaluate(() => {
+    window.__wizardChessAnalysis.controller.setAnalysisDepth('infinite');
+  });
+  await page.locator('[data-testid="engine-pv-move-5-3"]').waitFor({
+    state: 'visible',
+    timeout: 20_000,
+  });
+
+  const panelRendersBefore = await page.evaluate(() =>
+    window.__wizardChessAnalysis.controller.getLinesPanel().getRenderCount(),
+  );
+  const renderAudit = page.evaluate(async () => {
+    // Count engine-line DOM updates per animation frame while the drag sweep runs.
+    const panel = window.__wizardChessAnalysis.controller.getLinesPanel();
+    let maxPerFrame = 0;
+    let frames = 0;
+    let last = panel.getRenderCount();
+    window.__perfAuditStop = false;
+    while (!window.__perfAuditStop) {
+      await new Promise((r) => requestAnimationFrame(r));
+      const now = panel.getRenderCount();
+      maxPerFrame = Math.max(maxPerFrame, now - last);
+      last = now;
+      frames++;
+    }
+    return { frames, maxEngineLineDomUpdatesPerFrame: maxPerFrame };
+  });
+
+  const drag = await page.evaluate(runDragSweep, {
+    ghostHoverEvery: 3,
+    readTelemetry: true,
+  });
+  await page.evaluate(() => {
+    window.__perfAuditStop = true;
+  });
+  const audit = await renderAudit;
+  const panelRendersAfter = await page.evaluate(() =>
+    window.__wizardChessAnalysis.controller.getLinesPanel().getRenderCount(),
+  );
+
+  // Navigation sweep: rapid arrow-key stepping through a 40-move game, one key per frame.
+  const navigation = await page.evaluate(async (pgn) => {
+    const perf = window.__perf;
+    const controller = window.__wizardChessAnalysis.controller;
+    controller.importPgn(pgn);
+    controller.goToStart();
+    const plies = controller.getGameTree().getMainLine().length;
+    await perf.frame();
+    const frameIntervals = [];
+    let lastTime = await perf.frame();
+    perf.startLongTasks();
+    const press = (key) =>
+      window.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+    for (let i = 0; i < plies; i++) {
+      press('ArrowRight');
+      const now = await perf.frame();
+      if (now - lastTime < 250) frameIntervals.push(now - lastTime);
+      lastTime = now;
+    }
+    const plyAtEnd = controller.getGameTree().currentNode.ply;
+    // Back again at one key every second frame; every frame interval is sampled.
+    for (let i = 0; i < plies; i++) {
+      press('ArrowLeft');
+      for (let f = 0; f < 2; f++) {
+        const now = await perf.frame();
+        if (now - lastTime < 250) frameIntervals.push(now - lastTime);
+        lastTime = now;
+      }
+    }
+    const longTasks = perf.stopLongTasks();
+    return {
+      plies,
+      plyAtEnd,
+      plyAfterReturn: controller.getGameTree().currentNode.ply,
+      ...perf.summarize(frameIntervals),
+      ...longTasks,
+    };
+  }, FORTY_MOVE_PGN);
+
+  return {
+    drag: {
+      ...drag,
+      engineLineDomUpdates: panelRendersAfter - panelRendersBefore,
+      auditFrames: audit.frames,
+      maxEngineLineDomUpdatesPerFrame: audit.maxEngineLineDomUpdatesPerFrame,
+    },
+    navigation,
+  };
+}
+
 async function runPerfBenchmark() {
   const server = await startStaticServer(PORT);
   const browser = await chromium.launch({
@@ -58,255 +469,85 @@ async function runPerfBenchmark() {
     });
     const page = await context.newPage();
 
-    // 1. Measure cold start to interactive board
     const navStart = performance.now();
     await page.goto(BASE_URL, { waitUntil: 'domcontentloaded' });
     await page.locator('[data-testid="chess-board"]').waitFor({ state: 'visible' });
     await page.locator('[data-testid="piece-e2"]').waitFor({ state: 'visible' });
     const startupInteractiveMs = Number((performance.now() - navStart).toFixed(2));
 
-    // 2. Verify zero idle rAF work when nothing is changing (clock not started, dev overlay hidden, 0 active particles)
-    const idleRafCallbacksIn500Ms = await page.evaluate(async () => {
-      let rafCalls = 0;
-      const origRaf = window.requestAnimationFrame;
-      window.requestAnimationFrame = (cb) => {
-        rafCalls++;
-        return origRaf.call(window, cb);
-      };
-      try {
-        await new Promise((r) => setTimeout(r, 500));
-      } finally {
-        window.requestAnimationFrame = origRaf;
-      }
-      return rafCalls;
-    });
+    // No rAF work while nothing changes (clock not started, overlay hidden, no particles).
+    const idleRafCallbacksIn500Ms = await measureIdleRaf(page);
+    await page.evaluate(installPerfHelpers);
 
-    // 3. Click the board once (first user gesture to initialize Web Audio) and enable Infinite Analysis
-    await page.getByTestId('square-e2').click();
-    await page.getByTestId('square-e2').click();
-    await page.getByTestId('toggle-infinite-analysis').check();
-
-    await page.waitForFunction(
-      () => {
-        const metrics = window.__wizardChessPlay?.devOverlay.getMetrics();
-        return Boolean(metrics && metrics.engineDepth >= 8 && metrics.engineNps > 0);
-      },
-      { timeout: 15_000 },
-    );
-
-    // 4. Perform a Playwright hardware mouse drag first to confirm end-to-end pointer capture
-    const boardBox = await page.locator('[data-testid="chess-board"]').boundingBox();
-    if (!boardBox) {
-      throw new Error('Could not resolve chessboard bounding box');
-    }
-    const e2X = boardBox.x + 4.5 * (boardBox.width / 8);
-    const e2Y = boardBox.y + 6.5 * (boardBox.height / 8);
-    await page.mouse.move(e2X, e2Y);
-    await page.mouse.down();
-    await page.mouse.move(e2X, e2Y - 120, { steps: 10 });
-    await page.mouse.move(e2X, e2Y, { steps: 10 });
-    await page.mouse.up();
-
-    // 5. Run the high-precision rAF frame interval benchmark during continuous scripted drags
-    // while Stockfish `go infinite` is actively crunching in the worker
-    const stats = await page.evaluate(async () => {
-      const boardEl = document.querySelector('[data-testid="chess-board"]');
-      const pieceE2 = document.querySelector('[data-testid="piece-e2"]');
-      if (!boardEl || !pieceE2) {
-        throw new Error('Board or piece-e2 not found');
-      }
-
-      const rect = boardEl.getBoundingClientRect();
-      const sqCenter = (col, row) => ({
-        x: rect.left + (col + 0.5) * (rect.width / 8),
-        y: rect.top + (row + 0.5) * (rect.height / 8),
-      });
-
-      // Measure synchronous input-to-transform latency
-      const startPt = sqCenter(4, 6);
-      const tInput0 = performance.now();
-      boardEl.dispatchEvent(
-        new window.PointerEvent('pointerdown', {
-          bubbles: true,
-          pointerId: 1,
-          button: 0,
-          clientX: startPt.x,
-          clientY: startPt.y,
-        }),
-      );
-      window.dispatchEvent(
-        new window.PointerEvent('pointermove', {
-          bubbles: true,
-          pointerId: 1,
-          button: 0,
-          clientX: startPt.x + 30,
-          clientY: startPt.y - 60,
-        }),
-      );
-      const transformDuringDrag = pieceE2.style.transform;
-      const inputLatencyMs = transformDuringDrag.includes('scale(1.08)')
-        ? Number((performance.now() - tInput0).toFixed(3))
-        : 999;
-      window.dispatchEvent(
-        new window.PointerEvent('pointerup', {
-          bubbles: true,
-          pointerId: 1,
-          button: 0,
-          clientX: startPt.x,
-          clientY: startPt.y,
-        }),
-      );
-
-      // Set up LongTask observer
-      let longTasks = 0;
-      let observer = null;
-      if (typeof PerformanceObserver !== 'undefined') {
-        try {
-          observer = new PerformanceObserver((list) => {
-            for (const entry of list.getEntries()) {
-              if (entry.duration > 50) {
-                longTasks++;
-              }
-            }
-          });
-          observer.observe({ entryTypes: ['longtask'] });
-        } catch {
-          // Ignore if unsupported
-        }
-      }
-
-      // Define 5 multi-square drag trajectories across all files & ranks (240 frames total)
-      const trajectories = [
-        // e2 pawn swept across the board and returned to e2
-        [sqCenter(4, 6), sqCenter(0, 2), sqCenter(7, 2), sqCenter(4, 6)],
-        // g1 knight swept across the center and returned to g1
-        [sqCenter(6, 7), sqCenter(2, 3), sqCenter(5, 1), sqCenter(6, 7)],
-        // d1 queen swept across diagonals and returned to d1
-        [sqCenter(3, 7), sqCenter(0, 4), sqCenter(7, 3), sqCenter(3, 7)],
-        // a1 rook swept along file/rank and returned to a1
-        [sqCenter(0, 7), sqCenter(0, 1), sqCenter(7, 1), sqCenter(0, 7)],
-        // b1 knight dragged and dropped onto c3 (legal move 1. Nc3)
-        [sqCenter(1, 7), sqCenter(4, 4), sqCenter(2, 5)],
-      ];
-
-      const frameIntervals = [];
-      let peakDepth = 0;
-      let peakNps = 0;
-      const play = window.__wizardChessPlay;
-
-      for (let tIdx = 0; tIdx < trajectories.length; tIdx++) {
-        const waypoints = trajectories[tIdx];
-        const origin = waypoints[0];
-        const pointerId = 10 + tIdx;
-
-        boardEl.dispatchEvent(
-          new window.PointerEvent('pointerdown', {
-            bubbles: true,
-            pointerId,
-            button: 0,
-            clientX: origin.x,
-            clientY: origin.y,
-          }),
-        );
-
-        let lastTime = await new Promise((r) => requestAnimationFrame(r));
-
-        for (let w = 1; w < waypoints.length; w++) {
-          const prev = waypoints[w - 1];
-          const next = waypoints[w];
-          const steps = 20;
-          for (let s = 1; s <= steps; s++) {
-            const now = await new Promise((r) => requestAnimationFrame(r));
-            const dt = now - lastTime;
-            lastTime = now;
-            if (dt > 0 && dt < 250) {
-              frameIntervals.push(dt);
-            }
-
-            const ratio = s / steps;
-            const x = prev.x + (next.x - prev.x) * ratio;
-            const y = prev.y + (next.y - prev.y) * ratio;
-            window.dispatchEvent(
-              new window.PointerEvent('pointermove', {
-                bubbles: true,
-                pointerId,
-                button: 0,
-                clientX: x,
-                clientY: y,
-              }),
-            );
-
-            const tel = play.engine.getTelemetry();
-            if (tel.depth > peakDepth) peakDepth = tel.depth;
-            if (tel.nps > peakNps) peakNps = tel.nps;
-          }
-        }
-
-        const endPt = waypoints[waypoints.length - 1];
-        window.dispatchEvent(
-          new window.PointerEvent('pointerup', {
-            bubbles: true,
-            pointerId,
-            button: 0,
-            clientX: endPt.x,
-            clientY: endPt.y,
-          }),
-        );
-      }
-
-      observer?.disconnect();
-      const finalTelemetry = play.engine.getTelemetry();
-      play.controller.setInfiniteAnalysis(false);
-
-      const samples = [...frameIntervals].sort((a, b) => a - b);
-      const count = samples.length;
-      const sum = samples.reduce((acc, v) => acc + v, 0);
-      const mean = count > 0 ? sum / count : 16.67;
-      const p50 = count > 0 ? samples[Math.floor(count * 0.5)] : 16.67;
-      const p95 =
-        count > 0
-          ? samples[Math.min(count - 1, Math.floor(count * 0.95))]
-          : 16.67;
-      const p99 =
-        count > 0
-          ? samples[Math.min(count - 1, Math.floor(count * 0.99))]
-          : 16.67;
-      const max = count > 0 ? samples[count - 1] : 16.67;
-
-      return {
-        sampleCount: count,
-        fps: Number((1000 / mean).toFixed(1)),
-        meanFrameMs: Number(mean.toFixed(2)),
-        p50FrameMs: Number(p50.toFixed(2)),
-        p95FrameMs: Number(p95.toFixed(2)),
-        p99FrameMs: Number(p99.toFixed(2)),
-        maxFrameMs: Number(max.toFixed(2)),
-        longTaskCount: longTasks,
-        inputLatencyMs,
-        engineVariant: finalTelemetry.variant,
-        engineThreads: finalTelemetry.threads,
-        enginePeakDepth: Math.max(peakDepth, finalTelemetry.depth),
-        enginePeakNps: Math.max(peakNps, finalTelemetry.nps),
-      };
-    });
-
-    const summary = {
-      ...stats,
-      idleRafCallbacksIn500Ms,
+    const report = {
       startupInteractiveMs,
-      budgetPassed:
-        stats.p95FrameMs <= 16.7 &&
-        stats.longTaskCount === 0 &&
-        idleRafCallbacksIn500Ms === 0 &&
-        startupInteractiveMs <= 1500,
+      idleRafCallbacksIn500Ms,
+      p95LimitMs: P95_LIMIT_MS,
+    };
+    const failures = [];
+    const checkFrames = (label, stats) => {
+      if (stats.p95FrameMs > P95_LIMIT_MS) {
+        failures.push(`${label}: p95 ${stats.p95FrameMs} ms > ${P95_LIMIT_MS} ms`);
+      }
+      if (stats.longTaskCount !== 0) {
+        failures.push(`${label}: ${stats.longTaskCount} long task(s)`);
+      }
     };
 
-    console.log(
-      "\n=== Wizard's Chess Phase 3 Drag + Infinite Analysis Perf Report ===",
-    );
-    console.log(JSON.stringify(summary, null, 2));
+    if (SCENARIOS.includes('play')) {
+      const play = await scenarioPlay(page);
+      report.scenario1_playDragInfinite = play.drag;
+      report.scenario1_premoveExecution = play.premoves;
+      checkFrames('scenario 1 drag', play.drag);
+      checkFrames('scenario 1 premove execution', play.premoves);
+      if (play.premoves.queued !== 3 || play.premoves.finalPly < 7) {
+        failures.push(
+          `scenario 1 premoves: queued ${play.premoves.queued}, final ply ${play.premoves.finalPly}`,
+        );
+      }
+      if (play.premoves.sameFrameExecutions !== 3) {
+        failures.push(
+          `scenario 1 premoves: only ${play.premoves.sameFrameExecutions}/3 executed in the bot's frame`,
+        );
+      }
+    }
 
-    if (!summary.budgetPassed) {
+    if (SCENARIOS.includes('analysis')) {
+      const analysis = await scenarioAnalysis(page);
+      report.scenario2_analysisDragMultiPv5Ghosts = analysis.drag;
+      report.scenario2_navigationSweep = analysis.navigation;
+      checkFrames('scenario 2 drag', analysis.drag);
+      checkFrames('scenario 2 navigation', analysis.navigation);
+      if (analysis.drag.maxEngineLineDomUpdatesPerFrame > 1) {
+        failures.push(
+          `scenario 2: ${analysis.drag.maxEngineLineDomUpdatesPerFrame} engine-line DOM updates in one frame`,
+        );
+      }
+      if (analysis.drag.ghostPreviewsShown === 0) {
+        failures.push('scenario 2: no ghost previews were shown during the drag');
+      }
+      if (
+        analysis.navigation.plyAtEnd !== analysis.navigation.plies ||
+        analysis.navigation.plyAfterReturn !== 0
+      ) {
+        failures.push('scenario 2 navigation: did not land on the expected plies');
+      }
+    }
+
+    if (idleRafCallbacksIn500Ms !== 0) {
+      failures.push(`idle: ${idleRafCallbacksIn500Ms} rAF callbacks in 500 ms`);
+    }
+    if (startupInteractiveMs > 1500) {
+      failures.push(`startup: ${startupInteractiveMs} ms > 1500 ms`);
+    }
+
+    report.failures = failures;
+    report.budgetPassed = failures.length === 0;
+
+    console.log("\n=== Wizard's Chess Perf Report (perf:drag) ===");
+    console.log(JSON.stringify(report, null, 2));
+
+    if (!report.budgetPassed) {
       process.exitCode = 1;
     }
   } finally {
