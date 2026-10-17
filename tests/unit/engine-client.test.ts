@@ -323,4 +323,68 @@ describe('Phase 2 — EngineClient, Thread Detection, Priority Queue & Cache', (
     expect(cache.has('4k3/8/8/8/8/8/8/4K3 w - - 0 1', 1, 1)).toBe(false);
     expect(cache.has('4k3/8/8/8/8/8/8/4K3 w - - 0 1', 20, 1)).toBe(true);
   });
+  it('changing threads restarts the worker and resumes the running analysis on the new one', async () => {
+    const transports: MockStockfishTransport[] = [];
+    const client = new EngineClient({
+      variant: 'multi-threaded',
+      threads: 4,
+      transportFactory: (variant) => {
+        const mock = new MockStockfishTransport(variant);
+        mock.autoRespondSearch = false; // infinite search: lines only when we emit them
+        transports.push(mock);
+        return mock;
+      },
+    });
+    await client.init();
+
+    const fen = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
+    const infos: EngineAnalysisResult[] = [];
+    const analysis = client.analyze({
+      fen,
+      infinite: true,
+      multipv: 3,
+      priority: 'background',
+      useCache: false,
+      onInfo: (snap) => infos.push(snap),
+    });
+    await new Promise((r) => setTimeout(r, 0));
+    const first = transports[0]!;
+    expect(first.sentCommands).toContain('go infinite');
+    first.emit('info depth 12 multipv 1 score cp 20 nodes 1000 nps 100000 time 10 pv e7e5');
+
+    await client.configure({ threads: 2 });
+
+    // The old worker never received a live Threads change; it was terminated instead
+    expect(first.sentCommands.filter((c) => c.startsWith('setoption name Threads'))).toEqual([
+      'setoption name Threads value 4',
+    ]);
+    expect(first.terminated).toBe(true);
+    expect(client.getThreads()).toBe(2);
+
+    // The new worker booted with 2 threads and resumed the same search
+    expect(transports).toHaveLength(2);
+    const second = transports[1]!;
+    expect(second.sentCommands).toContain('setoption name Threads value 2');
+    expect(second.sentCommands).toContain('setoption name MultiPV value 3');
+    expect(second.sentCommands).toContain(`position fen ${fen}`);
+    expect(second.sentCommands).toContain('go infinite');
+
+    // Late output from the old worker is ignored; the new worker's output streams through
+    first.emit('info depth 30 multipv 1 score cp 999 nodes 1 nps 1 time 1 pv a7a6');
+    second.emit('info depth 8 multipv 1 score cp 25 nodes 500 nps 90000 time 5 pv c7c5');
+    expect(infos.at(-1)?.lines[0]?.pv[0]).toBe('c7c5');
+    expect(infos.at(-1)?.depth).toBe(8);
+
+    // Same promise, finished by the new worker
+    client.stopActiveSearch();
+    second.emit('bestmove c7c5');
+    const result = await analysis;
+    expect(result.bestMove).toBe('c7c5');
+    expect(result.multipv).toBe(3);
+
+    // An unchanged value is a no-op: no third worker
+    await client.configure({ threads: 2 });
+    expect(transports).toHaveLength(2);
+    client.terminate();
+  });
 });

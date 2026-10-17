@@ -320,6 +320,7 @@ export class EngineClient {
   private readonly options: EngineClientOptions;
   private readonly cache: AnalysisCache;
   private transport: EngineTransport | null = null;
+  private transportGeneration = 0;
   private activeVariant: EngineVariant;
   private engineName = 'Stockfish 17.1 Lite WASM';
   private engineAuthor = 'the Stockfish developers';
@@ -489,6 +490,9 @@ export class EngineClient {
       this.options.transportFactory ?? createBrowserWorkerTransport;
     const transport = factory(variant, scriptUrl);
     this.transport = transport;
+    // Lines from a replaced worker must never reach the tasks of the next one
+    const generation = ++this.transportGeneration;
+    const isCurrent = () => generation === this.transportGeneration;
     this.uciOptions.clear();
 
     const timeoutMs = this.options.initTimeoutMs ?? 15000;
@@ -504,6 +508,7 @@ export class EngineClient {
       }, timeoutMs);
 
       transport.onError((err) => {
+        if (!isCurrent()) return;
         if (!this.initialized) {
           clearTimeout(timer);
           reject(err);
@@ -513,6 +518,7 @@ export class EngineClient {
       });
 
       transport.onMessage((line) => {
+        if (!isCurrent()) return;
         if (!uciOkReceived) {
           const parsed = parseUciLine(line);
           if (!parsed) return;
@@ -559,38 +565,94 @@ export class EngineClient {
   }
 
   /**
-   * Reconfigures Threads or Hash size on the running engine.
+   * Changes Threads or Hash size by restarting the Stockfish worker with the new values.
+   *
+   * These options are never sent to a live engine: `setoption name Threads` on the
+   * running multi-threaded WASM build hangs the page and then crashes it, even with an
+   * unchanged value (and Hash resizes the same shared memory). Instead the worker is
+   * stopped, terminated and booted again, and the search that was running continues on
+   * the new worker (same position, MultiPV and callbacks; its promise stays pending).
    */
   public async configure(config: {
     threads?: number;
     hashMb?: number;
   }): Promise<void> {
     await this.init();
-    if (!this.transport) return;
 
+    let threads = this.configuredThreads;
     if (
       typeof config.threads === 'number' &&
       this.activeVariant === 'multi-threaded'
     ) {
       const maxThreads = this.uciOptions.get('Threads')?.max ?? 32;
-      this.configuredThreads = Math.max(
-        1,
-        Math.min(maxThreads, Math.floor(config.threads)),
-      );
-      this.transport.send(
-        `setoption name Threads value ${this.configuredThreads}`,
-      );
+      threads = Math.max(1, Math.min(maxThreads, Math.floor(config.threads)));
+    }
+    const hashMb =
+      typeof config.hashMb === 'number'
+        ? Math.max(1, Math.min(1024, Math.floor(config.hashMb)))
+        : this.configuredHashMb;
+
+    if (threads === this.configuredThreads && hashMb === this.configuredHashMb) {
+      return;
+    }
+    this.configuredThreads = threads;
+    this.configuredHashMb = hashMb;
+    await this.restartWorker();
+  }
+
+  /**
+   * Replaces the Stockfish worker with a fresh one booted with the current configuration
+   * (variant, Threads, Hash). The active search is handed to the new worker: it goes back
+   * to the front of the queue with its results cleared, and runs again from scratch.
+   */
+  private async restartWorker(): Promise<void> {
+    const active = this.activeTask;
+    this.activeTask = null;
+    this.activePhase = 'idle';
+
+    if (active) {
+      if (active.cancelled && !(active.kind === 'analyze' && active.stoppingToResolve)) {
+        // Already cancelled: it was only waiting for the old worker's bestmove
+        active.abortHandler?.();
+        active.reject(new EngineCancelledError(active.id));
+      } else if (active.kind === 'analyze' && active.stoppingToResolve) {
+        // stopActiveSearch() asked for the result so far: deliver it now
+        active.abortHandler?.();
+        active.resolve(this.buildTaskSnapshot(active, null, null));
+      } else {
+        if (active.kind === 'analyze') {
+          active.linesByMultiPv.clear();
+          active.maxDepth = 0;
+          active.latestNodes = 0;
+          active.latestNps = 0;
+          active.latestTimeMs = 0;
+        } else {
+          active.divide = {};
+        }
+        this.queue.unshift(active);
+      }
     }
 
-    if (typeof config.hashMb === 'number') {
-      this.configuredHashMb = Math.max(1, Math.min(1024, Math.floor(config.hashMb)));
-      this.transport.send(
-        `setoption name Hash value ${this.configuredHashMb}`,
-      );
-    }
+    // Waiters on the old worker's readyok would never be answered
+    const waiters = this.readyWaiters;
+    this.readyWaiters = [];
+    for (const resolveWaiter of waiters) resolveWaiter();
 
-    await this.waitForReadyOk();
+    this.cleanupTransport();
+    this.initialized = false;
+    this.initPromise = null;
+    // A new engine starts with its own defaults; tasks re-apply what they need
+    this.appliedOptions = {
+      multipv: 1,
+      chess960: false,
+      skillLevel: 20,
+      uciLimitStrength: false,
+      uciElo: 1320,
+    };
+
+    await this.init();
     this.emitTelemetry();
+    this.pumpQueue();
   }
 
   public async newGame(): Promise<void> {

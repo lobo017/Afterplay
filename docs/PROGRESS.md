@@ -1094,3 +1094,62 @@ ever needed. `PERF_GHOSTS=off` works.
 **The analysis-board engine shares the machine with a background review.** Phase 5 hasn't
 started. Whether to drop threads while a review runs is open and should be measured
 then, since the baseline gives no reason to change the default now.
+
+### Engine thread changes restart the worker (2026-10-17)
+
+**Who can change threads while the engine runs:** nothing in the app UI. No settings,
+analysis or review code calls `EngineClient.configure()`. It is public API (exposed as
+`window.__wizardChessPlay.engine`) and was used only by the perf script. Phase 5 review
+and Phase 8 settings would be the first real callers, so the fix lives in
+`configure()` itself.
+
+**What actually crashes (reproduced on the original code with a throwaway spec):**
+
+| Situation | Original `configure()` |
+|-----------|------------------------|
+| Fresh page, engine just booted, same value (4) | hung > 20 s |
+| Fresh page, engine just booted, new value (2) | hung > 20 s |
+| Engine already warmed by a search, same value (4) | fine (20 ms) |
+| Threads changed mid-analysis on a warmed engine | fine |
+
+So the trigger is a second `setoption name Threads` arriving soon after the worker
+boots, probably while the WASM pthread pool from boot is still starting. It is not
+"changing threads while running". This corrects the earlier explanation in this log.
+
+**Fix (`src/engine/engine-client.ts`).** `configure({ threads, hashMb })` never sends
+`setoption Threads/Hash` to a live engine:
+- An unchanged value is a no-op.
+- A change restarts the worker: stop, terminate, boot a new worker with the new
+  values, and resume.
+- On resume, the running search goes back to the front of the queue with its results
+  cleared. Its promise, `onInfo` stream and abort signal carry over. The new worker
+  starts from default options, so the task re-applies MultiPV, UCI_Chess960 and
+  strength settings.
+- A search being stopped to resolve (`stopActiveSearch`) finishes with its lines so
+  far; a cancelled one is rejected.
+- Pending `readyok` waiters are released.
+- A transport generation counter drops any late line from the replaced worker.
+
+**Tests**
+- `tests/unit/engine-client.test.ts`: mid-search threads change.
+  - The old worker never receives a second Threads command and is terminated.
+  - The new worker boots with `Threads 2` and re-sends `MultiPV 3`, the same position
+    and `go infinite`.
+  - Late output from the old worker is ignored; the same promise resolves from the new
+    worker.
+  - An unchanged value creates no new worker.
+- `tests/e2e/phase2-engine-restart.spec.ts` (real multi-threaded Stockfish):
+  - During MultiPV 5 infinite analysis, threads 4 → 2 → 4: each restart takes well
+    under 10 s, analysis resumes on the same position with 5 lines to depth ≥ 10, no
+    crash and no page errors.
+  - Threads set to 4 and to 2 right after start-up: no hang, then a depth-10 MultiPV 3
+    search completes.
+- Mutation check against the original `engine-client.ts`: both start-up tests fail
+  (20 s hang); the mid-analysis test passes either way. It is kept as the check that a
+  running analysis survives a restart.
+
+**Not changed:** the perf script's `PERF_ENGINE_THREADS` guard still aborts (harness
+left as is, as instructed). Its message now overstates the problem. With this fix the
+setting could be re-enabled, since `configure()` is safe now.
+
+All checks: typecheck, lint, 107 unit tests, build, 21/21 e2e — PASS.

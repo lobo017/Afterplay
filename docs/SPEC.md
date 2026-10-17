@@ -133,6 +133,13 @@ comments placed before moves, annotation symbols, promotions, castling, Chess960
   output parser covered by unit tests.
 - **Thread detection:** check whether the page is cross-origin isolated and fall back to a
   single thread if not.
+- **Thread (and hash) changes require a worker restart.** Never send
+  `setoption name Threads` (or `Hash`) to a running engine: on the multi-threaded WASM
+  build, a second Threads change sent soon after the worker boots hangs the page and
+  then crashes it. Changing threads stops the engine, terminates the worker, boots a new
+  one with the new value, and resumes the search that was running (same position,
+  MultiPV and callbacks). Covered by an end-to-end test that changes threads during
+  analysis and right after start-up.
 - **Perft cross-check:** compare the rules adapter's perft counts against Stockfish's
   `go perft` (with UCI_Chess960 enabled where needed) to depth 3–4. Cover:
   - the standard start position and Kiwipete
