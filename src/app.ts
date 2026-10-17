@@ -68,10 +68,40 @@ import {
   PlayController,
   computeCapturedAndMaterial,
 } from './ui/play-controller';
+import {
+  OPENINGS_BY_EPD,
+  formatOpeningBadge,
+  lookupGameOpening,
+  lookupOpeningByFen,
+} from './analysis/opening-lookup';
+import {
+  EvalBar,
+  cpToWhiteWinPercent,
+  formatEvalBarScore,
+  pgnEvalToUciScore,
+  scoreToEvalBarPercent,
+  scoreToWhiteWinPercent,
+} from './analysis/eval-bar';
+import {
+  buildNullMoveFen,
+  detectOpponentThreat,
+} from './analysis/threat-detector';
+import {
+  EngineLinesPanel,
+  formatPvMovesToSan,
+} from './analysis/engine-lines-panel';
+import {
+  PositionEditor,
+  parseFenForEditor,
+  serializeEditorBoardToFen,
+} from './analysis/position-editor';
+import { AnalysisController } from './analysis/analysis-controller';
+
+export type AppWorkspaceMode = 'play' | 'analysis';
 
 export interface AppShellEnvironment {
   crossOriginIsolated: boolean;
-  hardwareConcurrency: number;
+  hardwareConcurrency: boolean | number;
   offlineReady: boolean;
 }
 
@@ -138,11 +168,37 @@ export interface WizardChessPlayApi {
   SHARDS_PER_CAPTURE: typeof SHARDS_PER_CAPTURE;
 }
 
+export interface WizardChessAnalysisApi {
+  controller: AnalysisController;
+  switchToAnalysis: (copyPlayGame?: boolean) => void;
+  switchToPlay: () => void;
+  getMode: () => AppWorkspaceMode;
+  AnalysisController: typeof AnalysisController;
+  EvalBar: typeof EvalBar;
+  cpToWhiteWinPercent: typeof cpToWhiteWinPercent;
+  scoreToWhiteWinPercent: typeof scoreToWhiteWinPercent;
+  scoreToEvalBarPercent: typeof scoreToEvalBarPercent;
+  formatEvalBarScore: typeof formatEvalBarScore;
+  pgnEvalToUciScore: typeof pgnEvalToUciScore;
+  EngineLinesPanel: typeof EngineLinesPanel;
+  formatPvMovesToSan: typeof formatPvMovesToSan;
+  PositionEditor: typeof PositionEditor;
+  parseFenForEditor: typeof parseFenForEditor;
+  serializeEditorBoardToFen: typeof serializeEditorBoardToFen;
+  lookupOpeningByFen: typeof lookupOpeningByFen;
+  lookupGameOpening: typeof lookupGameOpening;
+  formatOpeningBadge: typeof formatOpeningBadge;
+  OPENINGS_BY_EPD: typeof OPENINGS_BY_EPD;
+  buildNullMoveFen: typeof buildNullMoveFen;
+  detectOpponentThreat: typeof detectOpponentThreat;
+}
+
 declare global {
   interface Window {
     __wizardChessCore?: WizardChessCoreApi;
     __wizardChessEngine?: WizardChessEngineApi;
     __wizardChessPlay?: WizardChessPlayApi;
+    __wizardChessAnalysis?: WizardChessAnalysisApi;
   }
 }
 
@@ -165,6 +221,8 @@ export function mountAppShell(container: HTMLElement): {
   devOverlay: DevOverlayController;
   env: AppShellEnvironment;
   playController: PlayController;
+  analysisController: AnalysisController;
+  setMode: (mode: AppWorkspaceMode, copyPlayGame?: boolean) => void;
 } {
   const env = detectEnvironment();
   const threadModeLabel = env.crossOriginIsolated
@@ -181,6 +239,34 @@ export function mountAppShell(container: HTMLElement): {
             <div class="wc-brand-subtitle">Cathedral Marble &amp; Obsidian · Offline Stockfish Training</div>
           </div>
         </div>
+
+        <nav class="wc-mode-nav" aria-label="Workspace Mode">
+          <button
+            type="button"
+            class="wc-mode-tab wc-mode-tab-active"
+            data-testid="mode-tab-play"
+            aria-selected="true"
+          >
+            ⚔ Play Board
+          </button>
+          <button
+            type="button"
+            class="wc-mode-tab"
+            data-testid="mode-tab-analysis"
+            aria-selected="false"
+          >
+            🔍 Analysis Board
+          </button>
+          <button
+            type="button"
+            class="wc-mode-tab wc-mode-tab-action"
+            data-testid="btn-analyze-game"
+            title="Send the current Play game tree to the Analysis Board"
+          >
+            Analyze Game →
+          </button>
+        </nav>
+
         <div class="wc-status-bar">
           <span class="wc-badge" data-testid="isolation-badge">
             <span class="wc-dot ${env.crossOriginIsolated ? '' : 'wc-dot-warn'}"></span>
@@ -212,7 +298,9 @@ export function mountAppShell(container: HTMLElement): {
       </header>
 
       <main class="wc-main">
-        <div id="wc-play-root" class="wc-play-root"></div>
+        <div id="wc-workspace-host" class="wc-workspace-host">
+          <div id="wc-play-root" class="wc-play-root"></div>
+        </div>
 
         <!-- System Architecture & Diagnostics Footer Bar (preserves Phase 0-2 telemetry selectors) -->
         <section class="wc-diagnostics-strip" aria-label="Architecture Diagnostics">
@@ -269,7 +357,14 @@ export function mountAppShell(container: HTMLElement): {
       },
     });
 
+  const workspaceHostEl = container.querySelector(
+    '#wc-workspace-host',
+  ) as HTMLElement;
   const playRootEl = container.querySelector('#wc-play-root') as HTMLElement;
+  const analysisRootEl = document.createElement('div');
+  analysisRootEl.id = 'wc-analysis-root';
+  analysisRootEl.className = 'wc-analysis-root';
+
   const sharedEngine = createConnectedEngine({ variant: 'auto' });
   const botEngine = new EngineClient({
     variant: 'single-threaded',
@@ -282,6 +377,73 @@ export function mountAppShell(container: HTMLElement): {
     botEngine,
     devOverlay,
   });
+
+  const analysisController = new AnalysisController({
+    container: analysisRootEl,
+    engine: sharedEngine,
+    threatEngine: botEngine,
+    initialActive: false,
+  });
+
+  let currentMode: AppWorkspaceMode = 'play';
+  const modeTabPlayBtn = container.querySelector(
+    '[data-testid="mode-tab-play"]',
+  ) as HTMLButtonElement;
+  const modeTabAnalysisBtn = container.querySelector(
+    '[data-testid="mode-tab-analysis"]',
+  ) as HTMLButtonElement;
+  const analyzeGameBtn = container.querySelector(
+    '[data-testid="btn-analyze-game"]',
+  ) as HTMLButtonElement;
+
+  const setMode = (mode: AppWorkspaceMode, copyPlayGame = false): void => {
+    if (copyPlayGame) {
+      const playTree = playController.getGameTree();
+      if (playTree.root.children.length > 0 || playTree.root.fen !== DEFAULT_POSITION) {
+        analysisController.loadGameTree(playTree);
+      }
+    }
+    if (currentMode === mode) {
+      return;
+    }
+    currentMode = mode;
+    const isPlay = mode === 'play';
+
+    modeTabPlayBtn.classList.toggle('wc-mode-tab-active', isPlay);
+    modeTabPlayBtn.setAttribute('aria-selected', String(isPlay));
+    modeTabAnalysisBtn.classList.toggle('wc-mode-tab-active', !isPlay);
+    modeTabAnalysisBtn.setAttribute('aria-selected', String(!isPlay));
+
+    if (isPlay) {
+      analysisController.setActive(false);
+      workspaceHostEl.replaceChildren(playRootEl);
+    } else {
+      workspaceHostEl.replaceChildren(analysisRootEl);
+      analysisController.setActive(true);
+    }
+  };
+
+  modeTabPlayBtn.addEventListener('click', () => {
+    setMode('play', false);
+  });
+
+  modeTabAnalysisBtn.addEventListener('click', () => {
+    setMode('analysis', false);
+  });
+
+  analyzeGameBtn.addEventListener('click', () => {
+    setMode('analysis', true);
+  });
+
+  if (typeof window !== 'undefined') {
+    const params = new URLSearchParams(window.location.search);
+    if (
+      params.get('mode') === 'analysis' ||
+      window.location.hash === '#analysis'
+    ) {
+      setMode('analysis', false);
+    }
+  }
 
   if (typeof window !== 'undefined') {
     window.__wizardChessCore = {
@@ -346,6 +508,32 @@ export function mountAppShell(container: HTMLElement): {
       PARTICLE_POOL_SIZE,
       SHARDS_PER_CAPTURE,
     };
+
+    window.__wizardChessAnalysis = {
+      controller: analysisController,
+      switchToAnalysis: (copyPlayGame = false) =>
+        setMode('analysis', copyPlayGame),
+      switchToPlay: () => setMode('play', false),
+      getMode: () => currentMode,
+      AnalysisController,
+      EvalBar,
+      cpToWhiteWinPercent,
+      scoreToWhiteWinPercent,
+      scoreToEvalBarPercent,
+      formatEvalBarScore,
+      pgnEvalToUciScore,
+      EngineLinesPanel,
+      formatPvMovesToSan,
+      PositionEditor,
+      parseFenForEditor,
+      serializeEditorBoardToFen,
+      lookupOpeningByFen,
+      lookupGameOpening,
+      formatOpeningBadge,
+      OPENINGS_BY_EPD,
+      buildNullMoveFen,
+      detectOpponentThreat,
+    };
   }
 
   const toggleBtn = container.querySelector(
@@ -361,9 +549,10 @@ export function mountAppShell(container: HTMLElement): {
     });
   }
 
-  // Global keyboard shortcut: 'f' / 'F' flips the board when not typing in an input
+  // Global keyboard shortcut for Play Mode: 'f' / 'F' flips the play board when not typing in an input
   if (typeof window !== 'undefined') {
     window.addEventListener('keydown', (e) => {
+      if (currentMode !== 'play') return;
       const target = e.target as HTMLElement | null;
       if (
         target &&
@@ -387,5 +576,12 @@ export function mountAppShell(container: HTMLElement): {
     });
   }
 
-  return { devOverlay, env, playController };
+  return {
+    devOverlay,
+    env,
+    playController,
+    analysisController,
+    setMode,
+  };
 }
+

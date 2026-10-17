@@ -1,3 +1,4 @@
+import type { AnnotationColor } from '../core/game-tree';
 import type { PieceSymbol, Square } from '../core/rules';
 
 export interface OverlayLegalTarget {
@@ -11,11 +12,52 @@ export interface OverlayArrow {
   color: string;
   opacity?: number;
   dashed?: boolean;
+  testId?: string;
 }
 
 export interface OverlayCircle {
   square: Square;
   color: string;
+}
+
+export const ANNOTATION_COLOR_HEX: Record<AnnotationColor, string> = {
+  G: '#22c55e',
+  R: '#ef4444',
+  B: '#38bdf8',
+  Y: '#eab308',
+};
+
+export function hexToAnnotationColor(hex: string): AnnotationColor {
+  const lower = hex.trim().toLowerCase();
+  if (lower === '#ef4444' || lower === 'red' || lower === 'r') return 'R';
+  if (lower === '#38bdf8' || lower === 'blue' || lower === 'b') return 'B';
+  if (
+    lower === '#eab308' ||
+    lower === '#f59e0b' ||
+    lower === 'yellow' ||
+    lower === 'y'
+  ) {
+    return 'Y';
+  }
+  return 'G';
+}
+
+export function resolveModifierAnnotationColor(event: {
+  shiftKey?: boolean;
+  altKey?: boolean;
+  ctrlKey?: boolean;
+  metaKey?: boolean;
+}): { code: AnnotationColor; hex: string } {
+  if ((event.shiftKey && event.altKey) || event.ctrlKey || event.metaKey) {
+    return { code: 'Y', hex: ANNOTATION_COLOR_HEX.Y };
+  }
+  if (event.shiftKey) {
+    return { code: 'R', hex: ANNOTATION_COLOR_HEX.R };
+  }
+  if (event.altKey) {
+    return { code: 'B', hex: ANNOTATION_COLOR_HEX.B };
+  }
+  return { code: 'G', hex: ANNOTATION_COLOR_HEX.G };
 }
 
 export interface BoardOverlayState {
@@ -29,6 +71,9 @@ export interface BoardOverlayState {
   premoveTargets: Square[];
   pendingConfirmMove: { from: Square; to: Square } | null;
   hintMove: { from: Square; to: Square } | null;
+  bestMove?: { from: Square; to: Square } | null;
+  threatMove?: { from: Square; to: Square } | null;
+  ghostArrows?: Array<{ from: Square; to: Square }>;
   arrows: OverlayArrow[];
   circles: OverlayCircle[];
 }
@@ -71,6 +116,15 @@ function buildStaticSignature(state: BoardOverlayState): string {
   const hintKey = state.hintMove
     ? `${state.hintMove.from}-${state.hintMove.to}`
     : '';
+  const bestKey = state.bestMove
+    ? `${state.bestMove.from}-${state.bestMove.to}`
+    : '';
+  const threatKey = state.threatMove
+    ? `${state.threatMove.from}-${state.threatMove.to}`
+    : '';
+  const ghostKey = (state.ghostArrows ?? [])
+    .map((g) => `${g.from}>${g.to}`)
+    .join(',');
   const arrowsKey = state.arrows
     .map(
       (a) =>
@@ -91,6 +145,9 @@ function buildStaticSignature(state: BoardOverlayState): string {
     premoveTargetsKey,
     confirmKey,
     hintKey,
+    bestKey,
+    threatKey,
+    ghostKey,
     arrowsKey,
     circlesKey,
   ].join('|');
@@ -132,8 +189,21 @@ function renderArrowSvg(
   const baseCenterX = tipX - ux * headLength;
   const baseCenterY = tipY - uy * headLength;
 
+  const dataAttrs = [
+    testId ? `data-testid="${testId}"` : '',
+    `data-from="${from}"`,
+    `data-to="${to}"`,
+    `data-color="${color}"`,
+    `data-start-cx="${start.cx}"`,
+    `data-start-cy="${start.cy}"`,
+    `data-end-cx="${end.cx}"`,
+    `data-end-cy="${end.cy}"`,
+  ]
+    .filter(Boolean)
+    .join(' ');
+
   if (dashed) {
-    return `<g opacity="${opacity}" ${testId ? `data-testid="${testId}"` : ''}>
+    return `<g opacity="${opacity}" ${dataAttrs}>
       <line x1="${sx.toFixed(1)}" y1="${sy.toFixed(1)}" x2="${baseCenterX.toFixed(1)}" y2="${baseCenterY.toFixed(1)}"
         stroke="${color}" stroke-width="14" stroke-dasharray="16 10" stroke-linecap="round" />
       <polygon points="${tipX.toFixed(1)},${tipY.toFixed(1)} ${(baseCenterX + px * headHalfWidth).toFixed(1)},${(baseCenterY + py * headHalfWidth).toFixed(1)} ${(baseCenterX - px * headHalfWidth).toFixed(1)},${(baseCenterY - py * headHalfWidth).toFixed(1)}"
@@ -166,14 +236,12 @@ function renderArrowSvg(
     `${p7x.toFixed(1)},${p7y.toFixed(1)}`,
   ].join(' ');
 
-  return `<polygon points="${points}" fill="${color}" opacity="${opacity}" ${
-    testId ? `data-testid="${testId}"` : ''
-  } />`;
+  return `<polygon points="${points}" fill="${color}" stroke="rgba(7, 9, 14, 0.45)" stroke-width="2" opacity="${opacity}" ${dataAttrs} />`;
 }
 
 /**
  * Single-layer SVG overlay for arrows, square highlights, legal-move dots, capture rings,
- * king-in-check halo, and premove markers.
+ * king-in-check halo, best-move/threat/ghost arrows, and premove markers.
  * Redraws ONLY when state changes.
  */
 export class BoardOverlay {
@@ -343,7 +411,7 @@ export class BoardOverlay {
     for (const circle of state.circles) {
       const c = squareToBoardCoords(circle.square, state.flipped);
       parts.push(
-        `<circle cx="${c.cx}" cy="${c.cy}" r="43" fill="none" stroke="${circle.color}" stroke-width="6" stroke-opacity="0.85" data-testid="overlay-user-circle" data-square="${circle.square}" />`,
+        `<circle cx="${c.cx}" cy="${c.cy}" r="43" fill="none" stroke="${circle.color}" stroke-width="6" stroke-opacity="0.88" data-testid="overlay-user-circle" data-square="${circle.square}" data-color="${circle.color}" />`,
       );
     }
 
@@ -369,6 +437,53 @@ export class BoardOverlay {
       );
     }
 
+    // Threat arrow (null-move opponent threat, dashed crimson #ef4444)
+    if (state.threatMove) {
+      parts.push(
+        renderArrowSvg(
+          state.threatMove.from,
+          state.threatMove.to,
+          state.flipped,
+          '#ef4444',
+          0.86,
+          true,
+          'overlay-threat-arrow',
+        ),
+      );
+    }
+
+    // Best-move arrow (Stockfish top line move, solid emerald/cyan #10b981)
+    if (state.bestMove) {
+      parts.push(
+        renderArrowSvg(
+          state.bestMove.from,
+          state.bestMove.to,
+          state.flipped,
+          '#10b981',
+          0.9,
+          false,
+          'overlay-best-move-arrow',
+        ),
+      );
+    }
+
+    // Ghost preview trajectory arrows
+    if (state.ghostArrows) {
+      for (const ga of state.ghostArrows) {
+        parts.push(
+          renderArrowSvg(
+            ga.from,
+            ga.to,
+            state.flipped,
+            '#a855f7',
+            0.76,
+            true,
+            'overlay-ghost-arrow',
+          ),
+        );
+      }
+    }
+
     // Hint arrow
     if (state.hintMove) {
       parts.push(
@@ -384,7 +499,7 @@ export class BoardOverlay {
       );
     }
 
-    // Custom / engine arrows
+    // Custom / user-drawn arrows
     for (const arrow of state.arrows) {
       parts.push(
         renderArrowSvg(
@@ -392,9 +507,9 @@ export class BoardOverlay {
           arrow.to,
           state.flipped,
           arrow.color,
-          arrow.opacity ?? 0.85,
+          arrow.opacity ?? 0.88,
           arrow.dashed ?? false,
-          'overlay-arrow',
+          arrow.testId ?? 'overlay-user-arrow',
         ),
       );
     }

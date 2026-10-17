@@ -1,3 +1,7 @@
+import type {
+  PgnArrowAnnotation,
+  PgnHighlightAnnotation,
+} from '../core/game-tree';
 import {
   RulesAdapter,
   type Color,
@@ -8,7 +12,10 @@ import {
   type Square,
 } from '../core/rules';
 import {
+  ANNOTATION_COLOR_HEX,
   BoardOverlay,
+  hexToAnnotationColor,
+  resolveModifierAnnotationColor,
   squareToBoardCoords,
   type OverlayArrow,
   type OverlayCircle,
@@ -38,6 +45,11 @@ export interface MoveAnimationDescriptor {
   rookTo?: Square;
 }
 
+export interface GhostPreviewInput {
+  targetFen: string;
+  moves?: Array<{ from: Square; to: Square }>;
+}
+
 export interface BoardRendererOptions {
   flipped?: boolean;
   interactiveColor?: Color | 'both' | 'none';
@@ -51,6 +63,12 @@ export interface BoardRendererOptions {
   onMove?: (move: MoveInput, wasDragged: boolean) => void;
   onPremoveChange?: (premove: PremoveInput | null) => void;
   onSelectSquare?: (square: Square, piece: Piece) => void;
+  onSquareEdit?: (square: Square) => boolean;
+  onAnnotationsChange?: (
+    arrows: PgnArrowAnnotation[],
+    highlights: PgnHighlightAnnotation[],
+  ) => void;
+  onFlipChange?: (flipped: boolean) => void;
 }
 
 interface ActiveDragState {
@@ -79,6 +97,34 @@ interface PendingConfirmState {
 }
 
 const FILES = 'abcdefgh';
+
+function parseFenBoardSquares(fen: string): Map<Square, Piece> {
+  const squares = new Map<Square, Piece>();
+  const boardPart = fen.trim().split(/\s+/)[0] ?? '';
+  const rows = boardPart.split('/');
+  if (rows.length !== 8) return squares;
+
+  for (let r = 0; r < 8; r++) {
+    const rowStr = rows[r]!;
+    let f = 0;
+    for (let i = 0; i < rowStr.length; i++) {
+      const ch = rowStr[i]!;
+      if (ch >= '1' && ch <= '8') {
+        f += Number(ch);
+      } else if (/^[prnbqkPRNBQK]$/.test(ch)) {
+        if (f < 8) {
+          const sq = `${FILES[f]}${8 - r}` as Square;
+          squares.set(sq, {
+            color: ch === ch.toUpperCase() ? 'w' : 'b',
+            type: ch.toLowerCase() as PieceSymbol,
+          });
+        }
+        f++;
+      }
+    }
+  }
+  return squares;
+}
 
 /**
  * Computes all pseudo-legal premove target squares for a piece at `from` of color `color`,
@@ -187,6 +233,7 @@ export function computePremoveTargets(
  * - Moves pieces strictly via CSS `transform: translate3d(...)`.
  * - Animates moves via the Web Animations API (`element.animate()`).
  * - Uses a single SVG layer (`BoardOverlay`) that redraws only when state changes.
+ * - Uses a dedicated ghost pieces layer (`wc-ghost-pieces-layer`) for MultiPV line previews.
  * - Uses a fixed-pool `<canvas>` layer (`CaptureParticleSystem`) for capture shatter particles.
  */
 export class BoardRenderer {
@@ -197,6 +244,7 @@ export class BoardRenderer {
   private readonly coordsEl: HTMLElement;
   private readonly overlay: BoardOverlay;
   private readonly piecesLayerEl: HTMLElement;
+  private readonly ghostLayerEl: HTMLElement;
   private readonly particles: CaptureParticleSystem;
   private readonly promotionBackdropEl: HTMLElement;
   private readonly confirmBarEl: HTMLElement;
@@ -213,6 +261,7 @@ export class BoardRenderer {
 
   private readonly pieceElements = new Map<Square, HTMLElement>();
   private readonly freePiecePool: HTMLElement[] = [];
+  private readonly ghostPieceElements = new Map<Square, HTMLElement>();
 
   private selectedSquare: Square | null = null;
   private hoveredSquare: Square | null = null;
@@ -220,6 +269,10 @@ export class BoardRenderer {
   private premove: PremoveInput | null = null;
   private premoveTargets: Square[] = [];
   private hintMove: { from: Square; to: Square } | null = null;
+  private bestMoveArrow: { from: Square; to: Square } | null = null;
+  private threatMoveArrow: { from: Square; to: Square } | null = null;
+  private ghostPreview: GhostPreviewInput | null = null;
+  private ghostArrows: Array<{ from: Square; to: Square }> = [];
   private userArrows: OverlayArrow[] = [];
   private userCircles: OverlayCircle[] = [];
 
@@ -239,6 +292,14 @@ export class BoardRenderer {
   private onSelectSquareCallback:
     | ((square: Square, piece: Piece) => void)
     | undefined;
+  private onSquareEditCallback: ((square: Square) => boolean) | undefined;
+  private onAnnotationsChangeCallback:
+    | ((
+        arrows: PgnArrowAnnotation[],
+        highlights: PgnHighlightAnnotation[],
+      ) => void)
+    | undefined;
+  private onFlipChangeCallback: ((flipped: boolean) => void) | undefined;
 
   constructor(parent: HTMLElement, options?: BoardRendererOptions) {
     this.container = parent;
@@ -255,6 +316,9 @@ export class BoardRenderer {
     this.onMoveCallback = options?.onMove;
     this.onPremoveChangeCallback = options?.onPremoveChange;
     this.onSelectSquareCallback = options?.onSelectSquare;
+    this.onSquareEditCallback = options?.onSquareEdit;
+    this.onAnnotationsChangeCallback = options?.onAnnotationsChange;
+    this.onFlipChangeCallback = options?.onFlipChange;
 
     // Outer carved cathedral frame
     this.frameEl = document.createElement('div');
@@ -266,6 +330,7 @@ export class BoardRenderer {
     this.boardEl = document.createElement('div');
     this.boardEl.className = 'wc-board-surface';
     this.boardEl.setAttribute('data-testid', 'chess-board');
+    this.boardEl.setAttribute('data-flipped', String(this.flipped));
     this.boardEl.setAttribute('role', 'application');
     this.boardEl.setAttribute('aria-label', 'Chessboard');
     this.boardEl.tabIndex = 0;
@@ -289,6 +354,12 @@ export class BoardRenderer {
     this.piecesLayerEl.className = 'wc-pieces-layer';
     this.piecesLayerEl.setAttribute('data-testid', 'board-pieces-layer');
     this.boardEl.appendChild(this.piecesLayerEl);
+
+    // Ghost pieces layer for engine line hover previews
+    this.ghostLayerEl = document.createElement('div');
+    this.ghostLayerEl.className = 'wc-ghost-pieces-layer';
+    this.ghostLayerEl.setAttribute('data-testid', 'board-ghost-layer');
+    this.boardEl.appendChild(this.ghostLayerEl);
 
     // Single <canvas> capture shatter particle overlay
     this.particles = new CaptureParticleSystem(this.boardEl);
@@ -328,7 +399,8 @@ export class BoardRenderer {
   }
 
   private applyThemeVariables(): void {
-    const theme = BOARD_THEMES[this.boardTheme] ?? BOARD_THEMES['marble-obsidian'];
+    const theme =
+      BOARD_THEMES[this.boardTheme] ?? BOARD_THEMES['marble-obsidian'];
     this.frameEl.setAttribute('data-theme', this.boardTheme);
     this.frameEl.setAttribute('data-piece-set', this.pieceSet);
     const s = this.frameEl.style;
@@ -473,8 +545,7 @@ export class BoardRenderer {
     color: Color,
     piece: PieceSymbol,
   ): HTMLElement {
-    const el =
-      this.freePiecePool.pop() ?? document.createElement('div');
+    const el = this.freePiecePool.pop() ?? document.createElement('div');
     el.className = 'wc-piece';
     el.setAttribute('data-square', square);
     el.setAttribute('data-color', color);
@@ -489,7 +560,7 @@ export class BoardRenderer {
   }
 
   private releasePieceElement(el: HTMLElement): void {
-    el.classList.remove('wc-piece-dragging');
+    el.classList.remove('wc-piece-dragging', 'wc-piece-ghost-vacated');
     el.remove();
     if (this.freePiecePool.length < 32) {
       this.freePiecePool.push(el);
@@ -560,11 +631,16 @@ export class BoardRenderer {
       const animEntry = animatedTargets.get(sq);
       if (animEntry) {
         const { el, fromSquare, wasDragged } = animEntry;
+        el.classList.remove('wc-piece-ghost-vacated');
         el.setAttribute('data-square', sq);
         el.setAttribute('data-color', piece.color);
         el.setAttribute('data-piece', piece.type);
         el.setAttribute('data-testid', `piece-${sq}`);
-        el.innerHTML = getPieceSvgMarkup(this.pieceSet, piece.color, piece.type);
+        el.innerHTML = getPieceSvgMarkup(
+          this.pieceSet,
+          piece.color,
+          piece.type,
+        );
         const toTransform = this.getSquareTranslateTransform(sq);
         el.style.transform = toTransform;
         this.pieceElements.set(sq, el);
@@ -592,12 +668,121 @@ export class BoardRenderer {
 
       const existing = this.pieceElements.get(sq);
       if (existing) {
+        existing.classList.remove('wc-piece-ghost-vacated');
         existing.style.transform = this.getSquareTranslateTransform(sq);
       } else {
         const el = this.acquirePieceElement(sq, piece.color, piece.type);
         this.pieceElements.set(sq, el);
       }
     }
+  }
+
+  /**
+   * Renders an arbitrary square map directly on the board (used by the Position Editor
+   * when previewing an in-progress board setup before full FEN validation passes).
+   */
+  public setArbitrarySquares(squares: Map<Square, Piece>): void {
+    this.setGhostPreview(null);
+    this.selectedSquare = null;
+    this.premoveTargets = [];
+
+    for (const [sq, el] of this.pieceElements.entries()) {
+      const nextPiece = squares.get(sq);
+      if (
+        !nextPiece ||
+        el.getAttribute('data-color') !== nextPiece.color ||
+        el.getAttribute('data-piece') !== nextPiece.type
+      ) {
+        this.releasePieceElement(el);
+        this.pieceElements.delete(sq);
+      }
+    }
+
+    for (const [sq, piece] of squares.entries()) {
+      const existing = this.pieceElements.get(sq);
+      if (existing) {
+        existing.style.transform = this.getSquareTranslateTransform(sq);
+      } else {
+        const el = this.acquirePieceElement(sq, piece.color, piece.type);
+        this.pieceElements.set(sq, el);
+      }
+    }
+
+    this.syncOverlay();
+  }
+
+  private renderGhostLayer(): void {
+    // Clear existing ghost piece elements and vacated classes
+    for (const el of this.ghostPieceElements.values()) {
+      el.remove();
+    }
+    this.ghostPieceElements.clear();
+    for (const el of this.pieceElements.values()) {
+      el.classList.remove('wc-piece-ghost-vacated');
+    }
+
+    if (!this.ghostPreview) {
+      this.ghostArrows = [];
+      return;
+    }
+
+    const targetSquares = parseFenBoardSquares(this.ghostPreview.targetFen);
+
+    for (let r = 1; r <= 8; r++) {
+      for (let f = 0; f < 8; f++) {
+        const sq = `${FILES[f]}${r}` as Square;
+        const basePiece = this.adapter.get(sq);
+        const targetPiece = targetSquares.get(sq);
+
+        const changed =
+          (basePiece?.color ?? '') !== (targetPiece?.color ?? '') ||
+          (basePiece?.type ?? '') !== (targetPiece?.type ?? '');
+
+        if (!changed) continue;
+
+        if (basePiece) {
+          const baseEl = this.pieceElements.get(sq);
+          baseEl?.classList.add('wc-piece-ghost-vacated');
+        }
+
+        if (targetPiece) {
+          const ghostEl = document.createElement('div');
+          ghostEl.className = 'wc-piece wc-ghost-piece';
+          ghostEl.setAttribute('data-square', sq);
+          ghostEl.setAttribute('data-color', targetPiece.color);
+          ghostEl.setAttribute('data-piece', targetPiece.type);
+          ghostEl.setAttribute('data-testid', `ghost-piece-${sq}`);
+          ghostEl.innerHTML = getPieceSvgMarkup(
+            this.pieceSet,
+            targetPiece.color,
+            targetPiece.type,
+          );
+          ghostEl.style.transform = this.getSquareTranslateTransform(sq);
+          this.ghostLayerEl.appendChild(ghostEl);
+          this.ghostPieceElements.set(sq, ghostEl);
+        }
+      }
+    }
+
+    this.ghostArrows = (this.ghostPreview.moves ?? []).map((m) => ({
+      from: m.from,
+      to: m.to,
+    }));
+  }
+
+  public setGhostPreview(preview: GhostPreviewInput | null): void {
+    this.ghostPreview = preview
+      ? {
+          targetFen: preview.targetFen,
+          ...(preview.moves ? { moves: [...preview.moves] } : {}),
+        }
+      : null;
+    this.renderGhostLayer();
+    this.syncOverlay();
+  }
+
+  public getGhostPreview(): GhostPreviewInput | null {
+    return this.ghostPreview;
   }
 
   private canInteractWithColor(color: Color): boolean {
@@ -655,6 +840,9 @@ export class BoardRenderer {
         ? { from: this.pendingConfirm.from, to: this.pendingConfirm.to }
         : null,
       hintMove: this.hintMove,
+      bestMove: this.bestMoveArrow,
+      threatMove: this.threatMoveArrow,
+      ghostArrows: this.ghostArrows,
       arrows: this.userArrows,
       circles: this.userCircles,
     });
@@ -665,6 +853,7 @@ export class BoardRenderer {
   };
 
   private readonly handleKeyDown = (event: KeyboardEvent): void => {
+    if (!this.boardEl.isConnected) return;
     if (event.key === 'Escape') {
       if (this.pendingPromotion) {
         event.preventDefault();
@@ -712,10 +901,16 @@ export class BoardRenderer {
     if (event.button !== 0) return;
     if (this.pendingPromotion || this.pendingConfirm) return;
 
+    // Check if an interactive Position Editor tool is consuming left clicks
+    if (this.onSquareEditCallback && this.onSquareEditCallback(sq)) {
+      return;
+    }
+
     // Clear user-drawn annotations on left click
     if (this.userArrows.length > 0 || this.userCircles.length > 0) {
       this.userArrows = [];
       this.userCircles = [];
+      this.emitAnnotationsChange();
     }
 
     // Clear active premove if user clicks when premove is set and no square is selected
@@ -797,6 +992,7 @@ export class BoardRenderer {
   };
 
   private readonly handlePointerMove = (event: PointerEvent): void => {
+    if (!this.boardEl.isConnected) return;
     const drag = this.dragState;
     if (!drag || event.pointerId !== drag.pointerId) return;
 
@@ -837,21 +1033,23 @@ export class BoardRenderer {
   };
 
   private readonly handlePointerUp = (event: PointerEvent): void => {
+    if (!this.boardEl.isConnected) return;
+
     // Handle right-click / right-drag annotation
     if (event.button === 2 && this.rightDragStart) {
       const startSq = this.rightDragStart;
       this.rightDragStart = null;
       const endSq = this.squareFromClientPoint(event.clientX, event.clientY);
       if (endSq) {
-        const color = event.shiftKey
-          ? '#ef4444'
-          : event.altKey
-            ? '#38bdf8'
-            : '#22c55e';
+        const { hex: color } = resolveModifierAnnotationColor(event);
         if (startSq === endSq) {
           const idx = this.userCircles.findIndex((c) => c.square === startSq);
           if (idx >= 0) {
-            this.userCircles.splice(idx, 1);
+            if (this.userCircles[idx]?.color === color) {
+              this.userCircles.splice(idx, 1);
+            } else {
+              this.userCircles[idx] = { square: startSq, color };
+            }
           } else {
             this.userCircles.push({ square: startSq, color });
           }
@@ -860,12 +1058,17 @@ export class BoardRenderer {
             (a) => a.from === startSq && a.to === endSq,
           );
           if (idx >= 0) {
-            this.userArrows.splice(idx, 1);
+            if (this.userArrows[idx]?.color === color) {
+              this.userArrows.splice(idx, 1);
+            } else {
+              this.userArrows[idx] = { from: startSq, to: endSq, color };
+            }
           } else {
             this.userArrows.push({ from: startSq, to: endSq, color });
           }
         }
         this.syncOverlay();
+        this.emitAnnotationsChange();
       }
       return;
     }
@@ -923,6 +1126,7 @@ export class BoardRenderer {
   };
 
   private readonly handlePointerCancel = (event: PointerEvent): void => {
+    if (!this.boardEl.isConnected) return;
     const drag = this.dragState;
     if (!drag || event.pointerId !== drag.pointerId) return;
     this.dragState = null;
@@ -931,6 +1135,60 @@ export class BoardRenderer {
     drag.element.style.transform = this.getSquareTranslateTransform(drag.from);
     this.syncOverlay();
   };
+
+  private emitAnnotationsChange(): void {
+    this.onAnnotationsChangeCallback?.(
+      this.getPgnArrows(),
+      this.getPgnHighlights(),
+    );
+  }
+
+  public getPgnArrows(): PgnArrowAnnotation[] {
+    return this.userArrows.map((a) => ({
+      color: hexToAnnotationColor(a.color),
+      from: a.from,
+      to: a.to,
+    }));
+  }
+
+  public getPgnHighlights(): PgnHighlightAnnotation[] {
+    return this.userCircles.map((c) => ({
+      color: hexToAnnotationColor(c.color),
+      square: c.square,
+    }));
+  }
+
+  public setUserAnnotations(
+    arrows: PgnArrowAnnotation[],
+    highlights: PgnHighlightAnnotation[],
+  ): void {
+    this.userArrows = arrows.map((a) => ({
+      from: a.from,
+      to: a.to,
+      color: ANNOTATION_COLOR_HEX[a.color] ?? ANNOTATION_COLOR_HEX.G,
+    }));
+    this.userCircles = highlights.map((h) => ({
+      square: h.square,
+      color: ANNOTATION_COLOR_HEX[h.color] ?? ANNOTATION_COLOR_HEX.G,
+    }));
+    this.syncOverlay();
+  }
+
+  public getUserArrows(): OverlayArrow[] {
+    return [...this.userArrows];
+  }
+
+  public getUserCircles(): OverlayCircle[] {
+    return [...this.userCircles];
+  }
+
+  public clearUserAnnotations(): void {
+    if (this.userArrows.length === 0 && this.userCircles.length === 0) return;
+    this.userArrows = [];
+    this.userCircles = [];
+    this.syncOverlay();
+    this.emitAnnotationsChange();
+  }
 
   private isPromotionMove(
     from: Square,
@@ -982,9 +1240,6 @@ export class BoardRenderer {
     const leftPct = coords.col * 12.5;
     const isTopEdge = coords.row < 4;
 
-    // Ordered from board edge inward toward the center: Queen first (closest to edge),
-    // followed by Knight, Rook, Bishop. When anchored at the bottom edge (row 7),
-    // CSS flex-direction: column-reverse places Queen at row 7 (bottom edge) and extends upward.
     const pieces: Array<{ symbol: PieceSymbol; label: string }> = [
       { symbol: 'q', label: 'Queen' },
       { symbol: 'n', label: 'Knight' },
@@ -1091,7 +1346,6 @@ export class BoardRenderer {
       wasDragged,
     };
 
-    // Visually move the piece element to the staged target square
     const fromEl = this.pieceElements.get(move.from);
     if (fromEl) {
       fromEl.style.transform = this.getSquareTranslateTransform(move.to);
@@ -1179,6 +1433,7 @@ export class BoardRenderer {
       lastMove?: ExecutedMove | { from: Square; to: Square } | null;
       wasDragged?: boolean;
       triggerCaptureParticles?: boolean;
+      preserveAnalysisArrows?: boolean;
     },
   ): void {
     if (this.pendingPromotion) {
@@ -1197,6 +1452,13 @@ export class BoardRenderer {
     this.selectedSquare = null;
     this.premoveTargets = [];
     this.hintMove = null;
+    if (!options?.preserveAnalysisArrows) {
+      this.bestMoveArrow = null;
+      this.threatMoveArrow = null;
+    }
+
+    this.ghostPreview = null;
+    this.renderGhostLayer();
 
     const lm = options?.lastMove;
     this.lastMove = lm ? { from: lm.from, to: lm.to } : null;
@@ -1215,7 +1477,6 @@ export class BoardRenderer {
         animDesc.rookTo = (
           lm.isKingsideCastle ? `f${homeRank}` : `d${homeRank}`
         ) as Square;
-        // Find which square had the rook before the move
         const beforeAdapter = new RulesAdapter(lm.before);
         for (let f = 0; f < 8; f++) {
           const sq = `${FILES[f]}${homeRank}` as Square;
@@ -1255,9 +1516,13 @@ export class BoardRenderer {
   public setFlipped(flipped: boolean): void {
     if (this.flipped === flipped) return;
     this.flipped = flipped;
+    this.boardEl.setAttribute('data-flipped', String(this.flipped));
     this.renderSquaresGrid();
     this.renderCoordinates();
     for (const [sq, el] of this.pieceElements.entries()) {
+      el.style.transform = this.getSquareTranslateTransform(sq);
+    }
+    for (const [sq, el] of this.ghostPieceElements.entries()) {
       el.style.transform = this.getSquareTranslateTransform(sq);
     }
     if (this.pendingPromotion) {
@@ -1265,6 +1530,7 @@ export class BoardRenderer {
     } else {
       this.syncOverlay();
     }
+    this.onFlipChangeCallback?.(this.flipped);
   }
 
   public isFlipped(): boolean {
@@ -1327,6 +1593,14 @@ export class BoardRenderer {
         el.style.transform = this.getSquareTranslateTransform(sq);
       }
     }
+    for (const [sq, el] of this.ghostPieceElements.entries()) {
+      const color = el.getAttribute('data-color') as Color;
+      const piece = el.getAttribute('data-piece') as PieceSymbol;
+      if (color && piece) {
+        el.innerHTML = getPieceSvgMarkup(this.pieceSet, color, piece);
+        el.style.transform = this.getSquareTranslateTransform(sq);
+      }
+    }
     if (this.pendingPromotion) {
       this.openPromotionPicker(this.pendingPromotion);
     }
@@ -1341,6 +1615,24 @@ export class BoardRenderer {
     this.syncOverlay();
   }
 
+  public setBestMoveArrow(arrow: { from: Square; to: Square } | null): void {
+    this.bestMoveArrow = arrow ? { ...arrow } : null;
+    this.syncOverlay();
+  }
+
+  public getBestMoveArrow(): { from: Square; to: Square } | null {
+    return this.bestMoveArrow ? { ...this.bestMoveArrow } : null;
+  }
+
+  public setThreatMoveArrow(arrow: { from: Square; to: Square } | null): void {
+    this.threatMoveArrow = arrow ? { ...arrow } : null;
+    this.syncOverlay();
+  }
+
+  public getThreatMoveArrow(): { from: Square; to: Square } | null {
+    return this.threatMoveArrow ? { ...this.threatMoveArrow } : null;
+  }
+
   public getOverlay(): BoardOverlay {
     return this.overlay;
   }
@@ -1351,6 +1643,10 @@ export class BoardRenderer {
 
   public getPieceElement(square: Square): HTMLElement | undefined {
     return this.pieceElements.get(square);
+  }
+
+  public getGhostPieceElement(square: Square): HTMLElement | undefined {
+    return this.ghostPieceElements.get(square);
   }
 
   public destroy(): void {
