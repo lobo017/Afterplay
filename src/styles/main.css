@@ -187,7 +187,7 @@ body {
   bottom: 1rem;
   right: 1rem;
   z-index: 1000;
-  min-width: 17rem;
+  min-width: 19.5rem;
   background: rgba(11, 13, 18, 0.94);
   border: 1px solid var(--accent-gold);
   border-radius: 0.625rem;
@@ -214,6 +214,7 @@ body {
 .wc-dev-row {
   display: flex;
   justify-content: space-between;
+  gap: 1.25rem;
   padding: 0.18rem 0;
   border-bottom: 1px solid rgba(38, 47, 69, 0.5);
 }

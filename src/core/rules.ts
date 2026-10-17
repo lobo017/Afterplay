@@ -594,7 +594,7 @@ export class RulesAdapter {
    */
   public move(moveInput: string | MoveInput | null): ExecutedMove {
     const fenBefore = this.fen();
-    const chessFenBefore = this.chess.fen();
+    const chessFenBefore = this.chess.fen({ forceEnpassantSquare: true });
     const c960Before = cloneC960State(this.c960);
     const positionCountsBefore = new Map(this.positionCounts);
 
@@ -702,7 +702,7 @@ export class RulesAdapter {
       this.updateC960RightsAfterRegularMove(rawMove);
     }
 
-    const executed = this.mapChessJsMove(rawMove, fenBefore);
+    const executed = this.mapChessJsMove(rawMove, fenBefore, this.c960);
     this.historyStack.push({
       fenBefore,
       chessFenBefore,
@@ -722,7 +722,7 @@ export class RulesAdapter {
     if (!snapshot) {
       const undone = this.chess.undo();
       if (!undone) return null;
-      return this.mapChessJsMove(undone, this.fen());
+      return this.mapChessJsMove(undone, this.fen(), this.c960);
     }
 
     this.c960 = snapshot.c960Before;
@@ -743,17 +743,66 @@ export class RulesAdapter {
    */
   public perft(depth: number): number {
     if (depth <= 0) return 1;
-    if (!this.c960.enabled) {
+    if (
+      !this.c960.enabled ||
+      (!this.c960.w.kSide &&
+        !this.c960.w.qSide &&
+        !this.c960.b.kSide &&
+        !this.c960.b.qSide)
+    ) {
       return this.chess.perft(depth);
     }
-    const moves = this.verboseMoves();
-    if (depth === 1) return moves.length;
-    let nodes = 0;
-    for (const m of moves) {
-      this.move(m.san);
-      nodes += this.perft(depth - 1);
-      this.undo();
+
+    const us = this.turn();
+    if (depth === 1) {
+      let count = this.chess.perft(1);
+      if (this.c960[us].kingFile !== null) {
+        if (this.canChess960Castle(us, 'k')) count++;
+        if (this.canChess960Castle(us, 'q')) count++;
+      }
+      return count;
     }
+
+    let nodes = 0;
+    const rawMoves = this.chess.moves({ verbose: true });
+    for (const m of rawMoves) {
+      const prevC960 = cloneC960State(this.c960);
+      this.chess.move({ from: m.from, to: m.to, promotion: m.promotion });
+      this.updateC960RightsAfterRegularMove(m);
+      nodes += this.perft(depth - 1);
+      this.chess.undo();
+      this.c960 = prevC960;
+    }
+
+    if (this.c960[us].kingFile !== null) {
+      for (const side of ['k', 'q'] as const) {
+        if (this.canChess960Castle(us, side)) {
+          const rankChar = us === 'w' ? '1' : '8';
+          const right = side === 'k' ? this.c960[us].kSide! : this.c960[us].qSide!;
+          const kingFromSq = `${fileCharFromIndex(this.c960[us].kingFile!)}${rankChar}` as Square;
+          const rookFromSq = `${fileCharFromIndex(right.rookFile)}${rankChar}` as Square;
+          const kingToSq = (side === 'k' ? `g${rankChar}` : `c${rankChar}`) as Square;
+          const rookToSq = (side === 'k' ? `f${rankChar}` : `d${rankChar}`) as Square;
+          const nextInternalFen = this.computePostCastleInternalFen(
+            us,
+            kingFromSq,
+            rookFromSq,
+            kingToSq,
+            rookToSq,
+          );
+          const childState = cloneC960State(this.c960);
+          childState[us].kingFile = null;
+          childState[us].kSide = null;
+          childState[us].qSide = null;
+          const parts = nextInternalFen.split(' ');
+          parts[2] = serializeCastlingConfig(childState);
+          const child = new RulesAdapter(parts.join(' '), { chess960: true });
+          child.c960 = childState;
+          nodes += child.perft(depth - 1);
+        }
+      }
+    }
+
     return nodes;
   }
 
@@ -762,7 +811,11 @@ export class RulesAdapter {
     this.positionCounts.set(key, (this.positionCounts.get(key) ?? 0) + 1);
   }
 
-  private mapChessJsMove(m: Move, fenBefore: string): ExecutedMove {
+  private mapChessJsMove(
+    m: Move,
+    fenBefore: string,
+    c960StateAfter?: Chess960CastlingState,
+  ): ExecutedMove {
     const isKingsideCastle = m.isKingsideCastle();
     const isQueensideCastle = m.isQueensideCastle();
     const isCastle = isKingsideCastle || isQueensideCastle;
@@ -770,7 +823,14 @@ export class RulesAdapter {
     const isPromotion = m.isPromotion();
     const isCapture = m.isCapture() || isEnPassant;
     const uci = `${m.from}${m.to}${m.promotion ?? ''}`;
-    const fenAfter = this.c960.enabled ? this.fen() : m.after;
+    let fenAfter = m.after;
+    if (this.c960.enabled) {
+      const nextState =
+        c960StateAfter ?? this.computeC960StateAfterRegularMove(this.c960, m);
+      const parts = m.after.split(' ');
+      parts[2] = serializeCastlingConfig(nextState);
+      fenAfter = parts.join(' ');
+    }
 
     return {
       color: m.color,
@@ -793,14 +853,10 @@ export class RulesAdapter {
     };
   }
 
-  private buildChess960CastleMove(
-    us: Color,
-    side: 'k' | 'q',
-    fenBefore: string,
-  ): ExecutedMove | null {
+  private canChess960Castle(us: Color, side: 'k' | 'q'): boolean {
     const sideState = this.c960[us];
     const right = side === 'k' ? sideState.kSide : sideState.qSide;
-    if (!right || sideState.kingFile === null) return null;
+    if (!right || sideState.kingFile === null) return false;
 
     const rankChar = us === 'w' ? '1' : '8';
     const kingFromFile = sideState.kingFile;
@@ -810,8 +866,6 @@ export class RulesAdapter {
 
     const kingFromSq = `${fileCharFromIndex(kingFromFile)}${rankChar}` as Square;
     const rookFromSq = `${fileCharFromIndex(rookFromFile)}${rankChar}` as Square;
-    const kingToSq = `${fileCharFromIndex(kingToFile)}${rankChar}` as Square;
-    const rookToSq = `${fileCharFromIndex(rookToFile)}${rankChar}` as Square;
 
     const kingPiece = this.chess.get(kingFromSq);
     const rookPiece = this.chess.get(rookFromSq);
@@ -823,11 +877,11 @@ export class RulesAdapter {
       rookPiece.color !== us ||
       rookPiece.type !== 'r'
     ) {
-      return null;
+      return false;
     }
 
     if (this.chess.inCheck()) {
-      return null;
+      return false;
     }
 
     // 1. Check all squares between kingFrom..kingTo and rookFrom..rookTo are vacant
@@ -837,7 +891,7 @@ export class RulesAdapter {
     for (let f = minKing; f <= maxKing; f++) {
       if (f === kingFromFile || f === rookFromFile) continue;
       const sq = `${fileCharFromIndex(f)}${rankChar}` as Square;
-      if (this.chess.get(sq)) return null;
+      if (this.chess.get(sq)) return false;
     }
 
     const minRook = Math.min(rookFromFile, rookToFile);
@@ -845,18 +899,58 @@ export class RulesAdapter {
     for (let f = minRook; f <= maxRook; f++) {
       if (f === kingFromFile || f === rookFromFile) continue;
       const sq = `${fileCharFromIndex(f)}${rankChar}` as Square;
-      if (this.chess.get(sq)) return null;
+      if (this.chess.get(sq)) return false;
     }
 
     // 2. Check no square along the king's path is attacked by the opponent.
     const them: Color = us === 'w' ? 'b' : 'w';
     for (let f = minKing; f <= maxKing; f++) {
       const sq = `${fileCharFromIndex(f)}${rankChar}` as Square;
-      if (this.chess.isAttacked(sq, them)) return null;
+      if (this.chess.isAttacked(sq, them)) return false;
     }
 
-    // 3. Simulate post-castle board to verify King is not in check (e.g. discovered rank attack)
-    //    and compute check/checkmate suffix ('+' / '#') on the opponent.
+    // 3. Check that moving kingFrom/rookFrom to kingTo/rookTo does not expose kingToFile
+    //    to a horizontal rank attack (e.g. when the castling rook shielded the king along the rank).
+    for (const step of [-1, 1] as const) {
+      for (let f = kingToFile + step; f >= 0 && f <= 7; f += step) {
+        if (f === rookToFile) break; // Our castling rook occupies rookToFile after castling
+        if (f === kingFromFile || f === rookFromFile) continue; // Vacated by castling
+        const sq = `${fileCharFromIndex(f)}${rankChar}` as Square;
+        const piece = this.chess.get(sq);
+        if (piece) {
+          if (piece.color === them && (piece.type === 'r' || piece.type === 'q')) {
+            return false;
+          }
+          break;
+        }
+      }
+    }
+
+    return true;
+  }
+
+  private buildChess960CastleMove(
+    us: Color,
+    side: 'k' | 'q',
+    fenBefore: string,
+  ): ExecutedMove | null {
+    if (!this.canChess960Castle(us, side)) {
+      return null;
+    }
+
+    const sideState = this.c960[us];
+    const right = (side === 'k' ? sideState.kSide : sideState.qSide)!;
+    const rankChar = us === 'w' ? '1' : '8';
+    const kingFromFile = sideState.kingFile!;
+    const rookFromFile = right.rookFile;
+    const kingToFile = side === 'k' ? 6 : 2;
+    const rookToFile = side === 'k' ? 5 : 3;
+
+    const kingFromSq = `${fileCharFromIndex(kingFromFile)}${rankChar}` as Square;
+    const rookFromSq = `${fileCharFromIndex(rookFromFile)}${rankChar}` as Square;
+    const kingToSq = `${fileCharFromIndex(kingToFile)}${rankChar}` as Square;
+    const rookToSq = `${fileCharFromIndex(rookToFile)}${rankChar}` as Square;
+
     const simFenAfter = this.computePostCastleInternalFen(
       us,
       kingFromSq,
@@ -865,10 +959,6 @@ export class RulesAdapter {
       rookToSq,
     );
     const simChess = new Chess(simFenAfter);
-    const movedKingSq = kingToSq;
-    if (simChess.isAttacked(movedKingSq, them)) {
-      return null;
-    }
 
     const simState = cloneC960State(this.c960);
     simState[us].kingFile = null;
@@ -953,7 +1043,7 @@ export class RulesAdapter {
       if (clean === 'O-O-O') {
         return this.buildChess960CastleMove(us, 'q', fenBefore);
       }
-      // Also support UCI king-to-rook or king-to-target string if passed as string
+      // Also support UCI king-to-rook or 2+ square king-to-target string if passed as string
       if (/^[a-h][18][a-h][18]$/.test(clean)) {
         return this.matchChess960CastleInput(
           { from: clean.slice(0, 2), to: clean.slice(2, 4) },
@@ -971,13 +1061,19 @@ export class RulesAdapter {
 
     if (sideState.kSide) {
       const kRookSq = `${fileCharFromIndex(sideState.kSide.rookFile)}${rankChar}`;
-      if (to === kRookSq || (to === `g${rankChar}` && from !== to)) {
+      if (
+        to === kRookSq ||
+        (to === `g${rankChar}` && Math.abs(6 - sideState.kingFile) > 1)
+      ) {
         return this.buildChess960CastleMove(us, 'k', fenBefore);
       }
     }
     if (sideState.qSide) {
       const qRookSq = `${fileCharFromIndex(sideState.qSide.rookFile)}${rankChar}`;
-      if (to === qRookSq || (to === `c${rankChar}` && from !== to)) {
+      if (
+        to === qRookSq ||
+        (to === `c${rankChar}` && Math.abs(2 - sideState.kingFile) > 1)
+      ) {
         return this.buildChess960CastleMove(us, 'q', fenBefore);
       }
     }
@@ -1011,41 +1107,49 @@ export class RulesAdapter {
     this.chess.load(nextInternalFen);
   }
 
-  private updateC960RightsAfterRegularMove(m: Move): void {
+  private computeC960StateAfterRegularMove(
+    current: Chess960CastlingState,
+    m: Move,
+  ): Chess960CastlingState {
+    const next = cloneC960State(current);
     const us = m.color;
     const them: Color = us === 'w' ? 'b' : 'w';
     const usRank = us === 'w' ? '1' : '8';
     const themRank = them === 'w' ? '1' : '8';
 
-    // Moving the king clears both castling rights for `us`
     if (m.piece === 'k') {
-      this.c960[us].kingFile = null;
-      this.c960[us].kSide = null;
-      this.c960[us].qSide = null;
+      next[us].kingFile = null;
+      next[us].kSide = null;
+      next[us].qSide = null;
     }
 
-    // Moving a rook from its initial square clears that side's castling right
     if (m.piece === 'r' && m.from[1] === usRank) {
       const fromFile = fileIndex(m.from[0]!);
-      if (this.c960[us].kSide?.rookFile === fromFile) {
-        this.c960[us].kSide = null;
+      if (next[us].kSide?.rookFile === fromFile) {
+        next[us].kSide = null;
       }
-      if (this.c960[us].qSide?.rookFile === fromFile) {
-        this.c960[us].qSide = null;
+      if (next[us].qSide?.rookFile === fromFile) {
+        next[us].qSide = null;
       }
     }
 
-    // Capturing an enemy rook on its initial square clears that enemy castling right
     if (m.captured === 'r' && m.to[1] === themRank) {
       const toFile = fileIndex(m.to[0]!);
-      if (this.c960[them].kSide?.rookFile === toFile) {
-        this.c960[them].kSide = null;
+      if (next[them].kSide?.rookFile === toFile) {
+        next[them].kSide = null;
       }
-      if (this.c960[them].qSide?.rookFile === toFile) {
-        this.c960[them].qSide = null;
+      if (next[them].qSide?.rookFile === toFile) {
+        next[them].qSide = null;
       }
     }
+
+    return next;
   }
+
+  private updateC960RightsAfterRegularMove(m: Move): void {
+    this.c960 = this.computeC960StateAfterRegularMove(this.c960, m);
+  }
+
 
   /**
    * Normalizes real-world PGN SAN quirks before passing to chess.js.

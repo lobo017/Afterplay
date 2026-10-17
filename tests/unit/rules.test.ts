@@ -230,5 +230,41 @@ describe('Phase 1 — RulesAdapter & Perft Verification', () => {
       expect(f1Adapter.get('b1')).toBeUndefined();
       expect(f1Adapter.get('f1')).toBeUndefined();
     });
+
+    it('disambiguates 1-square king step f1g1 (Kg1) from f1h1 (O-O) when castling rook is on h1', () => {
+      const fen = '1r3k1r/pppppppp/8/8/8/8/PPPPPPPP/1R3K1R w HBhb - 0 1';
+      const adapter = new RulesAdapter(fen);
+      const verbose = adapter.verboseMoves();
+      const kg1Verbose = verbose.find((m) => m.san === 'Kg1');
+      const ooVerbose = verbose.find((m) => m.san === 'O-O');
+
+      expect(kg1Verbose).toBeDefined();
+      expect(ooVerbose).toBeDefined();
+      expect(kg1Verbose?.after).toBe(
+        '1r3k1r/pppppppp/8/8/8/8/PPPPPPPP/1R4KR b hb - 1 1',
+      );
+      expect(ooVerbose?.after).toBe(
+        '1r3k1r/pppppppp/8/8/8/8/PPPPPPPP/1R3RK1 b hb - 1 1',
+      );
+
+      // Stepping f1->g1 is regular Kg1, NOT O-O
+      const kg1Move = adapter.move('f1g1');
+      expect(kg1Move.san).toBe('Kg1');
+      expect(kg1Move.isCastle).toBe(false);
+      expect(adapter.fen()).toBe(
+        '1r3k1r/pppppppp/8/8/8/8/PPPPPPPP/1R4KR b hb - 1 1',
+      );
+
+      adapter.undo();
+      expect(adapter.fen()).toBe(fen);
+
+      // Capturing own rook f1->h1 is O-O
+      const ooMove = adapter.move('f1h1');
+      expect(ooMove.san).toBe('O-O');
+      expect(ooMove.isCastle).toBe(true);
+      expect(adapter.fen()).toBe(
+        '1r3k1r/pppppppp/8/8/8/8/PPPPPPPP/1R3RK1 b hb - 1 1',
+      );
+    });
   });
 });
