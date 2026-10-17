@@ -936,3 +936,80 @@ same runs had p95 16.71–16.74 ms and 0 long tasks.
   frames per ~70-frame window (p99 up to 50 ms) around bot moves. p95 is unaffected.
 - Calibration was not re-run. In Node, `ChessBot` uses the inline selector, which the
   golden test shows is unchanged.
+
+---
+
+## Perf / E2E Harness Hardening (2026-10-17)
+
+### Why
+
+A background thread-count experiment (`PERF_ENGINE_THREADS` × `PERF_GHOSTS`, 20 runs) was
+stopped by Claude Code because the machine ran critically low on memory. It produced no
+data:
+- The two runs that finished had failed with a generic `Error`, and their details were
+  overwritten by the next run.
+- The stop left an orphaned `perf-drag.mjs` with its server and a headless Chrome
+  running `go infinite` on four threads. They were found and killed by hand, which freed
+  ~900 MB.
+- Earlier perf numbers in this log were taken without checking for such leftovers, so
+  their background load isn't fully accounted for.
+
+### What was found (reproduced)
+
+- **Force-killing a node process takes its node-spawned children with it** on Windows
+  (libuv job object). Chrome and the perf server died with a force-killed `perf-drag.mjs`.
+- **Killing the launching shell does not.** For `bash → npm/npx → cmd → node`, the node
+  chain survives the shell and keeps running, and its direct parent stays alive. This
+  is how the perf run was orphaned. The Playwright suite behaves the same way: with its
+  shell dead it ran the whole (throwaway) test to completion, 1.5 minutes, with nobody
+  watching.
+- **Playwright's web server escaped the runner's process tree.** It is started through a
+  shell; force-killing the runner left `serve.mjs --port 4173` running, and later runs
+  would have silently reused it (`reuseExistingServer`).
+- Windows never re-parents, so a `ParentProcessId` can name a process that exited long
+  ago (Git Bash's fork emulation leaves such gaps). An ancestor watchdog has to ignore
+  ancestors that are already dead when it starts; the first version didn't, and fired
+  falsely.
+
+### Changes
+
+- **`scripts/lib/process-guard.mjs`** *(new, with `.d.mts` types)*:
+  - process listing (PowerShell CIM / `ps`)
+  - leftover detection: Playwright headless Chrome, other `perf-drag.mjs` /
+    `calibrate-bots.mjs`, Playwright runners/workers, `serve.mjs` on the perf port
+  - tree kill
+  - `installCleanup()`: runs cleanup once, on normal exit, uncaught errors,
+    Ctrl+C/Ctrl+Break, SIGTERM/SIGHUP, **death of any live ancestor**, or a hard
+    deadline
+  - `exitWithParent()`
+- **`scripts/perf-drag.mjs`**:
+  - Refuses to start (exit 2) if leftovers exist, listing each with a `taskkill`
+    command. Other `serve.mjs` instances on other ports are reported but left alone.
+  - Checks free memory at start and before each scenario. Aborts (exit 3) under 3 GB.
+  - Every run writes its own log, `test-results/perf-logs/<time>_<scenarios>_<threads>_<ghosts>_pid<n>.log`.
+    It records config, memory, server output, page errors, the full report, and complete
+    error stacks. Lines are written synchronously so a crash can't lose them.
+  - Kills every child tree on every way out, and confirms "no child processes left" at
+    exit. Chrome is launched with Playwright's own signal handlers off, so one handler
+    owns shutdown.
+  - Hard deadline `PERF_MAX_RUN_MS` (default 15 min; a full run takes 1–3 min), exit 4.
+  - New knobs: `PERF_ENGINE_THREADS=n` (applied while the engine is idle) and
+    `PERF_GHOSTS=off`.
+- **`scripts/serve.mjs`**: exits when the process named in `WC_EXIT_WITH_PARENT_PID`
+  dies.
+
+### Verification (each run in this session; temporary harness scripts deleted afterwards)
+
+| Case | Result |
+|------|--------|
+| Free memory 2.41 GB | abort, exit 3, clear message, log written |
+| Stand-in `serve.mjs --port 4179` running | refused, exit 2, listed with its `taskkill` command |
+| Normal exit / thrown error | 0 leftovers; log has the full stack trace |
+| SIGINT / SIGTERM (emitted in-process; real Ctrl+C delivery can't be scripted here) | handler ran, Chrome + server killed, 0 leftovers |
+| Force kill of `perf-drag.mjs` only | 0 leftovers (job object + server watchdog) |
+| Kill of the launching bash only (`bash → node → perf`, npm-like chain) | watchdog: "ancestor exited", killed Chrome + server, perf and the npm stand-in exited, 0 leftovers |
+| `PERF_MAX_RUN_MS=6000` | exit 4 after 6 s, 0 leftovers |
+| Real full run at 3.72 GB free | exit 0, "no child processes left"; p95 16.73 / 16.80 / 16.69 / 16.87 ms, 0 long tasks |
+
+These cleanup tests ran on a blank page (Chrome launched, no app or Stockfish loaded), with
+a temporary 1 GB memory floor, because free memory was under 3 GB at the time.

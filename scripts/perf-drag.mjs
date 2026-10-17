@@ -1,6 +1,20 @@
 import { spawn } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import process from 'node:process';
+import { inspect } from 'node:util';
 import { chromium } from '@playwright/test';
+import {
+  findLeftoverTestProcesses,
+  findOtherRepoServers,
+  formatGb,
+  formatProcesses,
+  freeMemoryBytes,
+  installCleanup,
+  killAllChildTrees,
+  killCommandHint,
+} from './lib/process-guard.mjs';
 
 const PORT = Number(process.env.PERF_PORT || 4179);
 const BASE_URL = `http://127.0.0.1:${PORT}`;
@@ -8,6 +22,13 @@ const SCENARIOS = (process.env.PERF_SCENARIOS || 'play,analysis')
   .split(',')
   .map((s) => s.trim())
   .filter(Boolean);
+
+// Experiment knobs for scenario 2: PERF_ENGINE_THREADS=n overrides the engine's auto
+// thread count; PERF_GHOSTS=off skips the ghost-preview hovers during the drag sweep.
+const ENGINE_THREADS = process.env.PERF_ENGINE_THREADS
+  ? Number(process.env.PERF_ENGINE_THREADS)
+  : null;
+const GHOST_PREVIEWS = process.env.PERF_GHOSTS !== 'off';
 
 // Frame budget: one 60 Hz vsync (16.7 ms) plus 0.5 ms for rAF timestamp jitter.
 // A single dropped frame is a 33.3 ms interval, so this still fails on real jank.
@@ -28,6 +49,81 @@ Rcf1 Qd8 29. Qg3 Re7 30. h4 Rbb7 31. e6 Rbc7 32. Qe5 Qe8 33. a4 Qd8 34. R1f2
 Qe8 35. R2f3 Qd8 36. Bd3 Qe8 37. Qe4 Nf6 38. Rxf6 gxf6 39. Rxf6 Kg8 40. Bc4 Kh8
 41. Qf4 1-0`;
 
+// --- Run log: every run writes its own file, so nothing is ever overwritten ---------
+const LOG_DIR = path.join('test-results', 'perf-logs');
+const RUN_TAG = [
+  new Date().toISOString().replace(/[:.]/g, '-'),
+  SCENARIOS.join('+'),
+  ENGINE_THREADS ? `threads${ENGINE_THREADS}` : 'threadsAuto',
+  GHOST_PREVIEWS ? 'ghosts' : 'noGhosts',
+  `pid${process.pid}`,
+].join('_');
+const LOG_PATH = path.join(LOG_DIR, `${RUN_TAG}.log`);
+fs.mkdirSync(LOG_DIR, { recursive: true });
+
+const formatLogPart = (part) => {
+  if (typeof part === 'string') return part;
+  if (part instanceof Error) {
+    const cause = part.cause ? `\nCaused by: ${formatLogPart(part.cause)}` : '';
+    return `${part.stack ?? part.message}${cause}`;
+  }
+  return inspect(part, { depth: 8, breakLength: 120 });
+};
+// appendFileSync: the line is on disk even if the process dies right after
+const writeLog = (stream, parts) => {
+  const text = `${parts.map(formatLogPart).join(' ')}\n`;
+  stream.write(text);
+  fs.appendFileSync(LOG_PATH, text);
+};
+const log = (...parts) => writeLog(process.stdout, parts);
+const logError = (...parts) => writeLog(process.stderr, parts);
+
+// --- Preflight: free memory and leftover processes --------------------------------
+// Last-resort limit: a full run takes 1–3 minutes, so a run still going after this is
+// stuck or orphaned and kills itself (and its browser and server).
+const MAX_RUN_MS = Number(process.env.PERF_MAX_RUN_MS) || 15 * 60 * 1000;
+const MIN_FREE_MEMORY_BYTES = 3 * 1024 ** 3;
+
+/** A deliberate stop with a clear message (not a crash). */
+class PerfAbort extends Error {
+  constructor(message, exitCode) {
+    super(message);
+    this.exitCode = exitCode;
+  }
+}
+
+function requireFreeMemory(stage) {
+  const free = freeMemoryBytes();
+  log(`[memory] ${stage}: ${formatGb(free)} free of ${formatGb(os.totalmem())}`);
+  if (free < MIN_FREE_MEMORY_BYTES) {
+    throw new PerfAbort(
+      `Only ${formatGb(free)} of memory is free before ${stage}; perf:drag needs at least ` +
+        `${formatGb(MIN_FREE_MEMORY_BYTES)} (each run starts headless Chrome and multi-threaded ` +
+        'Stockfish). Close other applications and run it again.',
+      3,
+    );
+  }
+}
+
+function requireNoLeftovers() {
+  const leftovers = findLeftoverTestProcesses({ ports: [PORT] });
+  if (leftovers.length > 0) {
+    throw new PerfAbort(
+      `Refusing to start: ${leftovers.length} process(es) from earlier perf or test runs ` +
+        `are still running. They hold memory and skew frame timings:\n${formatProcesses(leftovers)}\n` +
+        `Stop them first, for example:\n${killCommandHint(leftovers)}`,
+      2,
+    );
+  }
+  const others = findOtherRepoServers({ ports: [PORT] });
+  if (others.length > 0) {
+    log(
+      `[note] other serve.mjs instances are running on other ports (not started by this ` +
+        `script, left alone):\n${formatProcesses(others)}`,
+    );
+  }
+}
+
 function startStaticServer(port) {
   return new Promise((resolve, reject) => {
     const child = spawn(
@@ -35,16 +131,21 @@ function startStaticServer(port) {
       ['scripts/serve.mjs', '--port', String(port)],
       {
         stdio: ['ignore', 'pipe', 'pipe'],
+        // The server exits by itself if this script is force-killed
+        env: { ...process.env, WC_EXIT_WITH_PARENT_PID: String(process.pid) },
+        windowsHide: true,
       },
     );
+    let stderr = '';
 
     const timer = setTimeout(() => {
       child.kill();
-      reject(new Error('Timed out waiting for scripts/serve.mjs to start'));
+      reject(new Error(`Timed out waiting for scripts/serve.mjs to start\n${stderr}`));
     }, 10_000);
 
     child.stdout.on('data', (chunk) => {
       const text = chunk.toString();
+      log(`[server] ${text.trimEnd()}`);
       if (text.includes('http://')) {
         clearTimeout(timer);
         resolve(child);
@@ -53,16 +154,14 @@ function startStaticServer(port) {
 
     child.stderr.on('data', (chunk) => {
       const text = chunk.toString();
-      if (text.toLowerCase().includes('error')) {
-        clearTimeout(timer);
-        reject(new Error(text));
-      }
+      stderr += text;
+      logError(`[server stderr] ${text.trimEnd()}`);
     });
 
     child.on('exit', (code) => {
       clearTimeout(timer);
       if (code !== 0) {
-        reject(new Error(`Server exited early with code ${code}`));
+        reject(new Error(`scripts/serve.mjs exited early with code ${code}\n${stderr}`));
       }
     });
   });
@@ -363,6 +462,13 @@ async function scenarioPlay(page) {
 }
 
 async function scenarioAnalysis(page) {
+  if (ENGINE_THREADS !== null) {
+    // Applied while the shared engine is idle, before analysis starts
+    await page.evaluate(
+      (threads) => window.__wizardChessPlay.engine.configure({ threads }),
+      ENGINE_THREADS,
+    );
+  }
   await page.getByTestId('mode-tab-analysis').click();
   await page.getByTestId('analysis-layout').waitFor({ state: 'visible' });
   await page.getByTestId('select-multipv').selectOption('5');
@@ -395,7 +501,7 @@ async function scenarioAnalysis(page) {
   });
 
   const drag = await page.evaluate(runDragSweep, {
-    ghostHoverEvery: 3,
+    ghostHoverEvery: GHOST_PREVIEWS ? 3 : 0,
     readTelemetry: true,
   });
   await page.evaluate(() => {
@@ -456,18 +562,65 @@ async function scenarioAnalysis(page) {
   };
 }
 
+async function closeBrowser(browser) {
+  if (!browser) return;
+  await Promise.race([
+    browser.close().catch((err) => logError('[cleanup] browser.close failed:', err)),
+    new Promise((r) => setTimeout(r, 10_000)),
+  ]);
+}
+
 async function runPerfBenchmark() {
-  const server = await startStaticServer(PORT);
-  const browser = await chromium.launch({
-    channel: 'chrome',
-    headless: true,
+  log(`[run] ${RUN_TAG}`);
+  log(`[run] log file: ${path.resolve(LOG_PATH)}`);
+  log(
+    `[run] node ${process.version}, ${process.platform}/${process.arch}, ${os.cpus().length} CPUs, ` +
+      `scenarios=${SCENARIOS.join(',')}, engineThreads=${ENGINE_THREADS ?? 'auto'}, ` +
+      `ghostPreviews=${GHOST_PREVIEWS ? 'on' : 'off'}, port=${PORT}`,
+  );
+
+  requireNoLeftovers();
+  requireFreeMemory('start');
+
+  // From here on, whatever ends the run (error, Ctrl+C, SIGTERM, parent gone) also
+  // takes down the server and every browser process this script started.
+  installCleanup({
+    log: logError,
+    maxRunMs: MAX_RUN_MS,
+    cleanup: (reason) => {
+      const killed = killAllChildTrees();
+      if (killed.length === 0) {
+        log(`[cleanup] ${reason}: no child processes left`);
+      } else {
+        logError(
+          `[cleanup] ${reason}: killed ${killed.length} child process tree(s) still running:
+${formatProcesses(killed)}`,
+        );
+      }
+    },
   });
 
+  let server = null;
+  let browser = null;
   try {
+    server = await startStaticServer(PORT);
+    browser = await chromium.launch({
+      channel: 'chrome',
+      headless: true,
+      // This script owns signal handling, so cleanup covers the server too
+      handleSIGINT: false,
+      handleSIGTERM: false,
+      handleSIGHUP: false,
+    });
+
     const context = await browser.newContext({
       viewport: { width: 1440, height: 900 },
     });
     const page = await context.newPage();
+    page.on('pageerror', (err) => logError('[page error]', err));
+    page.on('console', (msg) => {
+      if (msg.type() === 'error') logError(`[page console.error] ${msg.text()}`);
+    });
 
     const navStart = performance.now();
     await page.goto(BASE_URL, { waitUntil: 'domcontentloaded' });
@@ -483,6 +636,8 @@ async function runPerfBenchmark() {
       startupInteractiveMs,
       idleRafCallbacksIn500Ms,
       p95LimitMs: P95_LIMIT_MS,
+      engineThreadsRequested: ENGINE_THREADS ?? 'auto',
+      ghostPreviews: GHOST_PREVIEWS,
     };
     const failures = [];
     const checkFrames = (label, stats) => {
@@ -495,6 +650,7 @@ async function runPerfBenchmark() {
     };
 
     if (SCENARIOS.includes('play')) {
+      requireFreeMemory('scenario 1 (play)');
       const play = await scenarioPlay(page);
       report.scenario1_playDragInfinite = play.drag;
       report.scenario1_premoveExecution = play.premoves;
@@ -513,6 +669,7 @@ async function runPerfBenchmark() {
     }
 
     if (SCENARIOS.includes('analysis')) {
+      requireFreeMemory('scenario 2 (analysis)');
       const analysis = await scenarioAnalysis(page);
       report.scenario2_analysisDragMultiPv5Ghosts = analysis.drag;
       report.scenario2_navigationSweep = analysis.navigation;
@@ -523,7 +680,7 @@ async function runPerfBenchmark() {
           `scenario 2: ${analysis.drag.maxEngineLineDomUpdatesPerFrame} engine-line DOM updates in one frame`,
         );
       }
-      if (analysis.drag.ghostPreviewsShown === 0) {
+      if (GHOST_PREVIEWS && analysis.drag.ghostPreviewsShown === 0) {
         failures.push('scenario 2: no ghost previews were shown during the drag');
       }
       if (
@@ -544,19 +701,30 @@ async function runPerfBenchmark() {
     report.failures = failures;
     report.budgetPassed = failures.length === 0;
 
-    console.log("\n=== Wizard's Chess Perf Report (perf:drag) ===");
-    console.log(JSON.stringify(report, null, 2));
+    log("\n=== Wizard's Chess Perf Report (perf:drag) ===");
+    log(JSON.stringify(report, null, 2));
 
     if (!report.budgetPassed) {
       process.exitCode = 1;
     }
   } finally {
-    await browser.close();
-    server.kill();
+    await closeBrowser(browser);
+    server?.kill();
   }
 }
 
-runPerfBenchmark().catch((err) => {
-  console.error('Perf benchmark failed:', err);
-  process.exit(1);
-});
+runPerfBenchmark()
+  .catch((err) => {
+    if (err instanceof PerfAbort) {
+      logError(`[abort] ${err.message}`);
+      process.exitCode = err.exitCode;
+    } else {
+      logError('Perf benchmark failed:', err);
+      process.exitCode = 1;
+    }
+  })
+  .finally(() => {
+    log(`[run] finished with exit code ${process.exitCode ?? 0}; log: ${path.resolve(LOG_PATH)}`);
+    // Exit explicitly: the 'exit' handler then confirms no child process is left behind
+    process.exit(process.exitCode ?? 0);
+  });

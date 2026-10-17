@@ -2,6 +2,11 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { exitWithParent } from './lib/process-guard.mjs';
+
+// Harnesses that start this server set WC_EXIT_WITH_PARENT_PID, so the server goes away
+// even if the harness is force-killed and can't clean up after itself.
+exitWithParent(Number(process.env.WC_EXIT_WITH_PARENT_PID) || 0);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const distDir = path.resolve(__dirname, '..', 'dist');
