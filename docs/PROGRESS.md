@@ -1055,3 +1055,42 @@ Full checks after the change: typecheck, lint, 106 unit tests, build, 18/18 e2e 
   process with it. An unrelated process may have been killed; it couldn't be
   identified afterwards (no Application-log errors). From then on, PIDs were only
   killed after re-checking the command line at kill time.
+
+### Clean baseline: scenario 2 drag at 4 threads (2026-10-17)
+
+Checked before each run: no leftover browser/server/runner processes, 5.0–6.6 GB free.
+Runs were sequential and in the foreground, with no overlapping work.
+
+| Run | Threads | p95 | p99 | Dropped | Long tasks | Ghost previews | Result |
+|-----|---------|-----|-----|---------|------------|----------------|--------|
+| 1 | 4 (auto) | 16.69 ms | 16.72 ms | 2/280 (0.71%) | 0 | 93 | PASS |
+| 2 | 4 (auto) | 16.69 ms | 16.79 ms | 2/280 (0.71%) | 0 | 93 | PASS |
+| 3 | 4 (auto) | 16.69 ms | 16.76 ms | 1/280 (0.36%) | 0 | 93 | PASS |
+
+**Conclusion:** with no orphaned processes and enough free memory, scenario 2's drag passes
+3/3 at the default 4 threads. The earlier 8/11 failures (3–7% dropped frames) were most
+likely background load from orphaned perf runs and memory pressure, not the app.
+Orphaned runs with their own Chrome and four Stockfish threads were found and killed
+during that period, and free memory was 1.1–2.6 GB. **The default stays at 4 threads**
+(`clamp(1, 4, floor(hardwareConcurrency / 2))`). The reduced-thread and ghosts-off
+matrix wasn't needed.
+
+**`PERF_ENGINE_THREADS` doesn't work and now aborts immediately.** The first baseline
+attempt used `PERF_ENGINE_THREADS=4`. All 3 runs failed in the step that calls
+`engine.configure({ threads })`:
+- Re-sending `setoption Threads` to the running multi-threaded WASM Stockfish hung the
+  page for ~5 minutes, then crashed it (`page.evaluate: Target crashed`; 2 runs), or ran
+  into the 15-minute run limit (1 run).
+- This happened even with the current value.
+- Cleanup worked each time (exit code 1 / 4, child trees killed, full logs written).
+- It is most likely also the cause of the two generic `Error` runs in the aborted matrix,
+  so that matrix would not have measured anything.
+
+The script now rejects the setting with a clear message (exit 2) instead of hanging.
+Varying the thread count needs a count chosen before the engine starts (an
+`EngineClient` construction option set from the page). That's for Phase 9 if it is
+ever needed. `PERF_GHOSTS=off` works.
+
+**The analysis-board engine shares the machine with a background review.** Phase 5 hasn't
+started. Whether to drop threads while a review runs is open and should be measured
+then, since the baseline gives no reason to change the default now.

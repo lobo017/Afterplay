@@ -579,6 +579,16 @@ async function runPerfBenchmark() {
       `ghostPreviews=${GHOST_PREVIEWS ? 'on' : 'off'}, port=${PORT}`,
   );
 
+  if (ENGINE_THREADS !== null) {
+    // Re-sending `setoption Threads` to the running multi-threaded WASM Stockfish hangs
+    // the page and then crashes it ("Target crashed"), even with the current value.
+    // Varying threads needs a thread count chosen before the engine starts.
+    throw new PerfAbort(
+      'PERF_ENGINE_THREADS is not usable yet: reconfiguring Threads on the running ' +
+        'Stockfish worker crashes the page. Run without it (auto = 4 threads here).',
+      2,
+    );
+  }
   requireNoLeftovers();
   requireFreeMemory('start');
 
