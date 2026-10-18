@@ -16,7 +16,7 @@ describe('Phase 1 — IndexedDB Storage & Versioned Schema Migrations', () => {
     await deleteWizardChessDB(testDbName);
   });
 
-  it('upgrades step-by-step from v1 -> v2 -> v3 while preserving data and backfilling v3 fields', async () => {
+  it('upgrades step-by-step from v1 -> v2 -> v3 -> v4 while preserving data and backfilling v3 fields', async () => {
     // 1. Open at Schema v1
     const v1Storage = await WizardChessStorage.create({
       dbName: testDbName,
@@ -82,10 +82,10 @@ describe('Phase 1 — IndexedDB Storage & Versioned Schema Migrations', () => {
     });
     v2Storage.close();
 
-    // 3. Upgrade from v2 -> v3 (LATEST_SCHEMA_VERSION)
+    // 3. Upgrade from v2 -> v3
     const v3Storage = await WizardChessStorage.create({
       dbName: testDbName,
-      version: LATEST_SCHEMA_VERSION,
+      version: 3,
     });
     expect(v3Storage.version).toBe(3);
     expect(await v3Storage.getSchemaVersion()).toBe(3);
@@ -112,6 +112,30 @@ describe('Phase 1 — IndexedDB Storage & Versioned Schema Migrations', () => {
     const puzAtV3 = await v3Storage.getPuzzle('puz-1');
     expect(puzAtV3?.rating).toBe(1450);
     v3Storage.close();
+
+    // 4. Upgrade from v3 -> v4 (LATEST_SCHEMA_VERSION): adds the reviews store
+    const v4Storage = await WizardChessStorage.create({
+      dbName: testDbName,
+      version: LATEST_SCHEMA_VERSION,
+    });
+    expect(LATEST_SCHEMA_VERSION).toBe(4);
+    expect(v4Storage.version).toBe(4);
+    expect(await v4Storage.getSchemaVersion()).toBe(4);
+    expect(v4Storage.storeNames.sort()).toEqual([
+      'endgame_progress',
+      'games',
+      'puzzles',
+      'repertoires',
+      'reviews',
+      'schema_meta',
+      'settings',
+      'srs_cards',
+    ]);
+    expect((await v4Storage.getMigrationHistory()).map((h) => h.toVersion)).toEqual([1, 2, 3, 4]);
+    expect((await v4Storage.getGame('game-v1-1'))?.white).toBe('Morphy');
+    expect((await v4Storage.getPuzzle('puz-1'))?.rating).toBe(1450);
+    expect(await v4Storage.getSetting('boardTheme')).toBe('cathedral-marble');
+    v4Storage.close();
   });
 
   it('supports CRUD, game filtering, due SRS card queries, and full JSON backup/restore', async () => {

@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "build:ext": "node scripts/build-extension.mjs",
     "serve": "node scripts/serve.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings=0",

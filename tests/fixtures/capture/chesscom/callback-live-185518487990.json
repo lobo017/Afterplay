@@ -1,0 +1,66 @@
+{
+  "game": {
+    "canSendTrophy": false,
+    "changesPlayersRating": 1,
+    "colorOfWinner": "black",
+    "id": 185518487990,
+    "uuid": "41ca871b-cad6-11f1-bbc6-f7818301000f",
+    "initialSetup": "",
+    "isLiveGame": true,
+    "isAbortable": false,
+    "isAnalyzable": true,
+    "isCheckmate": false,
+    "isStalemate": false,
+    "isFinished": true,
+    "isRated": true,
+    "isResignable": false,
+    "lastMove": "fe",
+    "moveList": "mCZJCJ7JpxYIbsJRgv5QfA!Teg0SltWOiyRYfe90cM8!dlXPsCTCeC0MvM3VMv6XCE!3vMVMlMYKMF3!EMKTaeQBksBLFE47eS1SMLTLASL1EU78S191UP!3PI8StBXCIN3!NISUowCvwEUTBJTVEMVNJR!3RZNxMU3UIRU3Rt2UtvxvZ~vD7JDLJh32hQLMgfMLQRLnfgnTRB23sATLBF32FB2VAILMgp13IQMLBuV2pw3NuB2VQYNMwFMNFELMEvNxvnxpnvpxvnMLnmxvBlVNlBvnmuLKBKNEKDnDY~Ew6YUMYDMDumwojzDvmuvnuCn~CKfe",
+    "plyCount": 164,
+    "ratingChangeWhite": -1,
+    "ratingChangeBlack": 1,
+    "gameEndReason": "timeout",
+    "resultMessage": "Hikaru won on time",
+    "endTime": 1792316076,
+    "turnColor": "white",
+    "type": "chess",
+    "typeName": "Standard Chess",
+    "allowVacation": false,
+    "pgnHeaders": {
+      "Event": "Live Chess",
+      "Site": "Chess.com",
+      "Date": "2026.10.18",
+      "White": "Billy_thekid30",
+      "Black": "Hikaru",
+      "Result": "0-1",
+      "ECO": "B01",
+      "WhiteElo": 2870,
+      "BlackElo": 3470,
+      "TimeControl": "180",
+      "EndTime": "9:34:36 GMT+0000",
+      "Termination": "Hikaru won on time",
+      "SetUp": "1",
+      "FEN": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+    },
+    "moveTimestamps": "1800,1800,1763,1799,1746,1786,1737,1774,1719,1769,1692,1756,1687,1747,1682,1738,1669,1727,1659,1715,1640,1705,1635,1694,1575,1644,1574,1501,1543,1495,1404,1464,1394,1454,1321,1390,1320,1380,1254,1370,1241,1307,1203,1106,1181,1066,1169,963,972,958,964,860,952,855,889,777,838,776,827,562,791,547,714,497,650,487,576,470,519,465,494,449,439,379,336,341,327,303,296,252,267,247,245,231,214,227,200,226,196,225,183,213,171,207,170,200,160,196,159,191,158,189,153,185,152,178,143,173,137,165,136,158,132,153,113,143,104,136,103,130,99,123,97,122,92,116,86,115,82,113,74,101,67,97,66,88,65,87,54,79,53,77,48,76,42,65,41,59,35,58,26,57,22,56,17,53,12,52,2,51,1,50,1,42,0",
+    "baseTime1": 1800,
+    "timeIncrement1": 0,
+    "timeControl": {
+      "baseMs": 180000
+    }
+  },
+  "players": {
+    "top": {
+      "username": "Hikaru",
+      "color": "black",
+      "rating": 3470,
+      "isComputer": false
+    },
+    "bottom": {
+      "username": "Billy_thekid30",
+      "color": "white",
+      "rating": 2870,
+      "isComputer": false
+    }
+  }
+}

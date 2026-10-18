@@ -2,7 +2,7 @@ import path from 'node:path';
 import { expect, test } from '@playwright/test';
 
 test.describe('Phase 1 — Core Rules, GameTree, PGN Round-Trip & Browser IndexedDB Migrations', () => {
-  test('verifies adversarial PGN round-trip, Chess960 rules, GameTree operations, and native Chromium IndexedDB v1->v2->v3 migrations with zero network requests', async ({
+  test('verifies adversarial PGN round-trip, Chess960 rules, GameTree operations, and native Chromium IndexedDB v1->v2->v3->v4 migrations with zero network requests', async ({
     page,
   }) => {
     const externalRequests: string[] = [];
@@ -28,10 +28,10 @@ test.describe('Phase 1 — Core Rules, GameTree, PGN Round-Trip & Browser Indexe
     const response = await page.goto('/');
     expect(response?.status()).toBe(200);
 
-    await expect(page.getByTestId('core-badge')).toContainText('Core Rules · PGN · IDB v3');
+    await expect(page.getByTestId('core-badge')).toContainText('Core Rules · PGN · IDB v4');
     await expect(page.getByTestId('stat-rules')).toContainText('Standard + Chess960');
     await expect(page.getByTestId('stat-pgn')).toContainText('RAVs · NAGs · [%eval/%cal/%csl]');
-    await expect(page.getByTestId('stat-storage')).toContainText('IndexedDB Schema v3');
+    await expect(page.getByTestId('stat-storage')).toContainText('IndexedDB Schema v4');
 
     if (process.env.SCREENSHOT_DIR) {
       await page.screenshot({
@@ -78,7 +78,7 @@ test.describe('Phase 1 — Core Rules, GameTree, PGN Round-Trip & Browser Indexe
       const tree2 = core.parsePgn(written1);
       const written2 = core.writePgn(tree2);
 
-      // 3. Real browser IndexedDB step-by-step migration (v1 -> v2 -> v3)
+      // 3. Real browser IndexedDB step-by-step migration (v1 -> v2 -> v3 -> v4)
       const dbName = 'wizards-chess-e2e-migration-test';
       await core.deleteWizardChessDB(dbName);
 
@@ -105,14 +105,19 @@ test.describe('Phase 1 — Core Rules, GameTree, PGN Round-Trip & Browser Indexe
       const v2HasAccuracyIdx = s2.getIndexNames('games').includes('by-accuracy');
       s2.close();
 
-      const s3 = await core.WizardChessStorage.create({
+      const s3 = await core.WizardChessStorage.create({ dbName, version: 3 });
+      const v3Stores = s3.storeNames.sort();
+      const migratedGame = await s3.getGame('e2e-game-1');
+      s3.close();
+
+      const s4 = await core.WizardChessStorage.create({
         dbName,
         version: core.LATEST_SCHEMA_VERSION,
       });
-      const v3Stores = s3.storeNames.sort();
-      const migratedGame = await s3.getGame('e2e-game-1');
-      const migrationHistory = await s3.getMigrationHistory();
-      s3.close();
+      const v4Stores = s4.storeNames.sort();
+      const gameAtV4 = await s4.getGame('e2e-game-1');
+      const migrationHistory = await s4.getMigrationHistory();
+      s4.close();
       await core.deleteWizardChessDB(dbName);
 
       return {
@@ -128,6 +133,9 @@ test.describe('Phase 1 — Core Rules, GameTree, PGN Round-Trip & Browser Indexe
         v2Stores,
         v2HasAccuracyIdx,
         v3Stores,
+        v4Stores,
+        latestVersion: core.LATEST_SCHEMA_VERSION,
+        gameAtV4White: gameAtV4?.white,
         migratedGameSchemaVersion: migratedGame?.schemaVersion,
         migrationVersions: migrationHistory.map((m) => m.toVersion),
       };
@@ -174,7 +182,19 @@ test.describe('Phase 1 — Core Rules, GameTree, PGN Round-Trip & Browser Indexe
       'srs_cards',
     ]);
     expect(e2eResults.migratedGameSchemaVersion).toBe(3);
-    expect(e2eResults.migrationVersions).toEqual([1, 2, 3]);
+    expect(e2eResults.latestVersion).toBe(4);
+    expect(e2eResults.v4Stores).toEqual([
+      'endgame_progress',
+      'games',
+      'puzzles',
+      'repertoires',
+      'reviews',
+      'schema_meta',
+      'settings',
+      'srs_cards',
+    ]);
+    expect(e2eResults.gameAtV4White).toBe('WhitePlayer');
+    expect(e2eResults.migrationVersions).toEqual([1, 2, 3, 4]);
 
     expect(externalRequests).toEqual([]);
     expect(consoleErrors).toEqual([]);

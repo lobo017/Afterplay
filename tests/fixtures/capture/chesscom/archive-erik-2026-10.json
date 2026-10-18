@@ -1,0 +1,73 @@
+{
+  "recorded": {
+    "url": "https://api.chess.com/pub/player/erik/games/2026/10",
+    "etag": "W/\"f3b821e339159c4d2ebe3aea8ab3e52b\""
+  },
+  "games": [
+    {
+      "url": "https://www.chess.com/game/daily/1036320138",
+      "pgn": "[Event \"Let's Play! - Chess960\"]\n[Site \"Chess.com\"]\n[Date \"2026.09.28\"]\n[Round \"-\"]\n[White \"erik\"]\n[Black \"NorwegianViking82\"]\n[Result \"1-0\"]\n[Variant \"Chess960\"]\n[SetUp \"1\"]\n[FEN \"nrnkqrbb/pppppppp/8/8/8/8/PPPPPPPP/NRNKQRBB w FBfb - 0 1\"]\n[CurrentPosition \"1k3r1b/p2qp3/1ppr2p1/3p1n1p/2nP1P2/2PN2PB/PP2Q2P/2KRR1B1 b - - 3 17\"]\n[Timezone \"UTC\"]\n[ECO \"A02\"]\n[ECOUrl \"https://www.chess.com/openings/Birds-Opening-1...f5\"]\n[UTCDate \"2026.09.28\"]\n[UTCTime \"23:59:10\"]\n[WhiteElo \"1440\"]\n[BlackElo \"1270\"]\n[TimeControl \"1/86400\"]\n[Termination \"erik won on time\"]\n[StartTime \"23:59:10\"]\n[EndDate \"2026.10.02\"]\n[EndTime \"22:00:08\"]\n[Link \"https://www.chess.com/game/daily/1036320138\"]\n\n1. f4 {[%clk 0:00:19.4]} 1... f5 {[%clk 0:00:37.6]} 2. g3 {[%clk 0:01:31]} 2... Nab6 {[%clk 0:55:30.4]} 3. e4 {[%clk 0:16:02.4]} 3... fxe4 {[%clk 0:01:26.4]} 4. Bxe4 {[%clk 0:00:04.6]} 4... d5 {[%clk 0:01:09.8]} 5. Bf3 {[%clk 0:02:13.3]} 5... Nd6 {[%clk 0:00:36.6]} 6. Nab3 {[%clk 0:00:17.9]} 6... g6 {[%clk 0:01:53.3]} 7. d4 {[%clk 0:28:50.3]} 7... Nbc4 {[%clk 0:00:48]} 8. Nd3 {[%clk 0:00:42]} 8... c6 {[%clk 0:01:56.4]} 9. O-O-O {[%clk 0:03:47.1]} 9... O-O-O {[%clk 0:01:19.6]} 10. Bg4+ {[%clk 0:06:23]} 10... Kb8 {[%clk 0:03:27.8]} 11. Nbc5 {[%clk 0:02:48.6]} 11... Nf5 {[%clk 0:02:45.2]} 12. c3 {[%clk 0:29:25.8]} 12... b6 {[%clk 1:18:23.2]} 13. Ne6 {[%clk 0:10:16.7]} 13... Bxe6 {[%clk 0:00:47.7]} 14. Qxe6 {[%clk 0:01:46.2]} 14... Rd6 {[%clk 0:00:00]} 15. Qe2 {[%clk 0:00:01.6]} 15... h5 {[%clk 0:03:28.7]} 16. Bh3 {[%clk 0:01:19.7]} 16... Qd7 {[%clk 1:32:14.6]} 17. Rfe1 {[%clk 1:07:43.5]} 1-0\n",
+      "time_control": "1/86400",
+      "end_time": 1790978408,
+      "rated": true,
+      "accuracies": {
+        "white": 83.55,
+        "black": 78.39
+      },
+      "tcn": "nD1Low4PmCLChCZJCv6Rar2UlBPActYQdb75vE65rIRLksXPIS!SeS7RSm3NEx8Zfe",
+      "uuid": "98f089fa-bb98-11f1-96d9-cc110c01000b",
+      "initial_setup": "nrnkqrbb/pppppppp/8/8/8/8/PPPPPPPP/NRNKQRBB w KQkq - 0 1",
+      "fen": "1k3r1b/p2qp3/1ppr2p1/3p1n1p/2nP1P2/2PN2PB/PP2Q2P/2KRR1B1 b - - 3 17",
+      "start_time": 1790639950,
+      "time_class": "daily",
+      "rules": "chess960",
+      "white": {
+        "rating": 1440,
+        "result": "win",
+        "@id": "https://api.chess.com/pub/player/erik",
+        "username": "erik",
+        "uuid": "fe696c00-fcba-11db-8029-000000000000"
+      },
+      "black": {
+        "rating": 1270,
+        "result": "timeout",
+        "@id": "https://api.chess.com/pub/player/norwegianviking82",
+        "username": "NorwegianViking82",
+        "uuid": "2f772432-59f7-11f1-8db9-d357427ab7ec"
+      }
+    },
+    {
+      "url": "https://www.chess.com/game/daily/1033338800",
+      "pgn": "[Event \"Let's Play!\"]\n[Site \"Chess.com\"]\n[Date \"2026.09.22\"]\n[Round \"-\"]\n[White \"Rooketamine\"]\n[Black \"erik\"]\n[Result \"1-0\"]\n[CurrentPosition \"2Q5/pr3pkp/1r2pbp1/q3P3/b2N4/P1P3PP/5PB1/R1R3K1 b - - 0 28\"]\n[Timezone \"UTC\"]\n[ECO \"B07\"]\n[ECOUrl \"https://www.chess.com/openings/Pirc-Defense\"]\n[UTCDate \"2026.09.22\"]\n[UTCTime \"21:31:52\"]\n[WhiteElo \"1487\"]\n[BlackElo \"1500\"]\n[TimeControl \"1/604800\"]\n[Termination \"Rooketamine won by resignation\"]\n[StartTime \"21:31:52\"]\n[EndDate \"2026.10.01\"]\n[EndTime \"08:59:41\"]\n[Link \"https://www.chess.com/game/daily/1033338800\"]\n\n1. e4 {[%clk 0:00:00]} 1... d6 {[%clk 0:02:33.3]} 2. d3 {[%clk 0:03:58.5]} 2... Nf6 {[%clk 0:00:45.5]} 3. Nc3 {[%clk 0:08:56.4]} 3... g6 {[%clk 0:24:48.8]} 4. Be3 {[%clk 1:15:50.2]} 4... Bg7 {[%clk 0:01:01.1]} 5. h3 {[%clk 0:12:11.3]} 5... O-O {[%clk 0:01:56.8]} 6. Qd2 {[%clk 0:18:41.3]} 6... Re8 {[%clk 0:41:09.5]} 7. g3 {[%clk 1:09:06.7]} 7... c5 {[%clk 0:02:27.7]} 8. Bg2 {[%clk 0:09:40]} 8... Nc6 {[%clk 0:00:16]} 9. Nge2 {[%clk 0:26:14.2]} 9... Rb8 {[%clk 0:04:46.9]} 10. Rb1 {[%clk 0:02:55.4]} 10... Bd7 {[%clk 0:12:16.1]} 11. Nd5 {[%clk 0:01:34.8]} 11... b5 {[%clk 0:05:19]} 12. O-O {[%clk 0:05:18.5]} 12... e6 {[%clk 0:57:41.5]} 13. Nxf6+ {[%clk 0:18:57]} 13... Bxf6 {[%clk 0:14:00.5]} 14. d4 {[%clk 0:25:31]} 14... cxd4 {[%clk 0:12:13.5]} 15. Bxd4 {[%clk 1:42:28]} 15... Nxd4 {[%clk 0:02:00.3]} 16. Nxd4 {[%clk 2:22:22.9]} 16... Qb6 {[%clk 0:08:07.5]} 17. c3 {[%clk 2:07:55.5]} 17... b4 {[%clk 0:11:47.3]} 18. Qd3 {[%clk 0:01:19.7]} 18... Qa5 {[%clk 0:00:08.1]} 19. Ra1 {[%clk 0:37:59.6]} 19... Rec8 {[%clk 0:00:13.6]} 20. Rfc1 {[%clk 0:04:51.3]} 20... bxc3 {[%clk 0:53:29.2]} 21. bxc3 {[%clk 0:54:03.9]} 21... Rb2 {[%clk 0:03:32.6]} 22. a3 {[%clk 0:00:15.7]} 22... Rcb8 {[%clk 0:00:18.8]} 23. Nf3 {[%clk 0:14:05]} 23... R2b3 {[%clk 0:17:35.2]} 24. Qxd6 {[%clk 0:00:52.6]} 24... Ba4 {[%clk 0:05:50]} 25. Nd4 {[%clk 1:17:36.7]} 25... R3b6 {[%clk 0:04:21.8]} 26. Qc7 {[%clk 0:55:55.8]} 26... R8b7 {[%clk 0:12:29.2]} 27. Qc8+ {[%clk 0:04:31.6]} 27... Kg7 {[%clk 0:01:42.5]} 28. e5 {[%clk 0:12:26.4]} 1-0\n",
+      "time_control": "1/604800",
+      "end_time": 1790845181,
+      "rated": false,
+      "accuracies": {
+        "white": 80.25,
+        "black": 77.29
+      },
+      "tcn": "mCZRlt!Tbs2Ucu92px8!dl98owYIfo5Qgm45ab6ZsJXHeg0SJT2TtBIBuBQBmB7PksHzltPGba86fczsjs5jiq65BvjrtRZyvBrPRY5XY6!2CK",
+      "uuid": "07183746-b6cd-11f1-b011-111e1c01000b",
+      "initial_setup": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+      "fen": "2Q5/pr3pkp/1r2pbp1/q3P3/b2N4/P1P3PP/5PB1/R1R3K1 b - - 0 28",
+      "start_time": 1790112712,
+      "time_class": "daily",
+      "rules": "chess",
+      "white": {
+        "rating": 1487,
+        "result": "win",
+        "@id": "https://api.chess.com/pub/player/rooketamine",
+        "username": "Rooketamine",
+        "uuid": "1a6c211e-d414-11f0-936e-6362c72a02a7"
+      },
+      "black": {
+        "rating": 1500,
+        "result": "resigned",
+        "@id": "https://api.chess.com/pub/player/erik",
+        "username": "erik",
+        "uuid": "fe696c00-fcba-11db-8029-000000000000"
+      },
+      "eco": "https://www.chess.com/openings/Pirc-Defense"
+    }
+  ]
+}

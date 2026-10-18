@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Wizard's Chess capture</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header class="top">
+      <span class="mark" aria-hidden="true">♛</span>
+      <div>
+        <h1>Wizard's Chess capture</h1>
+        <p class="counts" data-testid="popup-counts">…</p>
+      </div>
+    </header>
+
+    <section class="failure" data-testid="popup-failure" hidden>
+      <p><b>Couldn't capture a game.</b> <span data-testid="popup-failure-text"></span></p>
+      <div class="row">
+        <button type="button" class="ghost" data-testid="popup-failure-use">Use this link</button>
+        <button type="button" class="ghost" data-testid="popup-failure-dismiss">Dismiss</button>
+      </div>
+    </section>
+
+    <section>
+      <h2>Add a game</h2>
+      <textarea
+        data-testid="popup-paste"
+        rows="4"
+        spellcheck="false"
+        placeholder="Paste a Lichess or Chess.com game link (one per line), or a PGN"
+        aria-label="Game link or PGN"
+      ></textarea>
+      <div class="row">
+        <button type="button" class="primary" data-testid="popup-save">Save</button>
+        <span class="result" data-testid="popup-result" role="status"></span>
+      </div>
+    </section>
+
+    <section>
+      <h2>Recent captures</h2>
+      <ul class="entries" data-testid="popup-entries"></ul>
+    </section>
+
+    <section>
+      <h2>Import my history</h2>
+      <div class="backfill" data-testid="popup-backfill-lichess">
+        <button type="button" data-testid="popup-backfill-lichess-btn" data-site="lichess">Lichess</button>
+        <span class="backfill-status" data-testid="popup-backfill-lichess-status"></span>
+      </div>
+      <div class="backfill" data-testid="popup-backfill-chesscom">
+        <button type="button" data-testid="popup-backfill-chesscom-btn" data-site="chesscom">Chess.com</button>
+        <span class="backfill-status" data-testid="popup-backfill-chesscom-status"></span>
+      </div>
+    </section>
+
+    <section>
+      <details data-testid="popup-settings">
+        <summary>Settings</summary>
+        <form data-testid="popup-settings-form" novalidate>
+          <label>Lichess username <input name="lichessUsername" data-testid="popup-lichess-user" autocomplete="off" /></label>
+          <label>Chess.com username <input name="chesscomUsername" data-testid="popup-chesscom-user" autocomplete="off" /></label>
+          <label>Analysis site URL <input name="siteUrl" data-testid="popup-site-url" autocomplete="off" /></label>
+          <label class="check"
+            ><input type="checkbox" name="autoCapture" data-testid="popup-auto-capture" /> Capture my games automatically when
+            they end</label
+          >
+          <div class="row">
+            <button type="submit" class="primary" data-testid="popup-settings-save">Save settings</button>
+            <span class="result" data-testid="popup-settings-result" role="status"></span>
+          </div>
+        </form>
+      </details>
+    </section>
+    <script src="popup.js"></script>
+  </body>
+</html>

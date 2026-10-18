@@ -1,0 +1,171 @@
+import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { chromium, expect, type BrowserContext, type Page, type Route, type Worker } from '@playwright/test';
+
+export const SITE_URL = 'http://127.0.0.1:4173';
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+export const EXTENSION_DIR = path.join(ROOT, 'dist-ext');
+export const CAPTURE_FIXTURES = path.join(ROOT, 'tests', 'fixtures', 'capture');
+
+/** Builds dist-ext/ from the current sources (once per worker). */
+let built = false;
+export function buildExtension(): void {
+  if (built) return;
+  execFileSync(process.execPath, [path.join(ROOT, 'scripts', 'build-extension.mjs')], {
+    cwd: ROOT,
+    stdio: 'pipe',
+    timeout: 120_000,
+  });
+  built = true;
+}
+
+export interface ExtensionSession {
+  context: BrowserContext;
+  extensionId: string;
+  worker: Worker;
+  /** Mocked responses for lichess.org / chess.com; the last matching one answers. */
+  mocks: MockRule[];
+  /** Every request to a site other than the analysis site (mocked or blocked). */
+  externalRequests: string[];
+  close(): Promise<void>;
+}
+
+export type MockHandler = MockResponse | ((route: Route) => Promise<void> | void);
+
+export interface MockRule {
+  method?: string;
+  /** A full URL, a URL prefix ending in "*", or a test. */
+  url: string | ((url: string) => boolean);
+  respond: MockHandler;
+}
+
+/** Adds a mock rule (later rules win over earlier ones). */
+export function mock(session: ExtensionSession, url: MockRule['url'], respond: MockHandler, method?: string): void {
+  session.mocks.push({ url, respond, method });
+}
+
+function ruleMatches(rule: MockRule, method: string, url: string): boolean {
+  if (rule.method && rule.method !== method) return false;
+  if (typeof rule.url === 'function') return rule.url(url);
+  return rule.url.endsWith('*') ? url.startsWith(rule.url.slice(0, -1)) : url === rule.url;
+}
+
+/** A recorded game page without its script and style links (nothing of the site runs). */
+export function stripPageAssets(html: string): string {
+  return html
+    .replace(/<script\b[^>]*\bsrc=[^>]*>\s*<\/script>/g, '')
+    .replace(/<link\b[^>]*>/g, '')
+    .replace(/<script nonce[^>]*>[\s\S]*?<\/script>/g, '');
+}
+
+export interface MockResponse {
+  status?: number;
+  body: string;
+  contentType?: string;
+  headers?: Record<string, string>;
+}
+
+/**
+ * Starts Chrome with a fresh profile and the unpacked extension. Branded Chrome ignores
+ * --load-extension (since Chrome 137), so the extension is loaded through CDP
+ * Extensions.loadUnpacked, which --enable-unsafe-extension-debugging allows.
+ *
+ * Nothing reaches the network: requests to the analysis site go to the local server,
+ * requests matching `mocks` get the recorded fixture, everything else is aborted.
+ */
+export async function launchWithExtension(): Promise<ExtensionSession> {
+  buildExtension();
+  const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wc-ext-e2e-'));
+  const context = await chromium.launchPersistentContext(userDataDir, {
+    channel: 'chrome',
+    headless: true,
+    viewport: { width: 1440, height: 900 },
+    args: ['--enable-unsafe-extension-debugging'],
+    ignoreDefaultArgs: ['--disable-extensions'],
+  });
+  const mocks: MockRule[] = [];
+  const externalRequests: string[] = [];
+  await context.route('**/*', async (route) => {
+    const req = route.request();
+    const url = req.url();
+    if (url.startsWith(SITE_URL) || url.startsWith('chrome-extension://') || url.startsWith('data:')) {
+      await route.continue();
+      return;
+    }
+    externalRequests.push(`${req.method()} ${url}`);
+    const mock = [...mocks].reverse().find((r) => ruleMatches(r, req.method(), url))?.respond;
+    if (!mock) {
+      await route.abort('blockedbyclient');
+      return;
+    }
+    if (typeof mock === 'function') {
+      await mock(route);
+      return;
+    }
+    await route.fulfill({
+      status: mock.status ?? 200,
+      body: mock.body,
+      contentType: mock.contentType ?? 'text/html; charset=utf-8',
+      headers: mock.headers,
+    });
+  });
+
+  const browser = context.browser();
+  if (!browser) throw new Error('No browser handle for CDP');
+  const cdp = await browser.newBrowserCDPSession();
+  const { id: extensionId } = (await cdp.send('Extensions.loadUnpacked' as never, { path: EXTENSION_DIR } as never)) as {
+    id: string;
+  };
+  const isOurs = (w: Worker) => w.url().startsWith(`chrome-extension://${extensionId}/`);
+  const worker =
+    context.serviceWorkers().find(isOurs) ?? (await context.waitForEvent('serviceworker', { predicate: isOurs, timeout: 15_000 }));
+  // onInstalled has registered the bridge on the default site URL
+  await expect
+    .poll(
+      () =>
+        worker.evaluate(async () =>
+          (await chrome.scripting.getRegisteredContentScripts()).map((s) => (s.matches ?? []).join(',')),
+        ),
+      { timeout: 10_000 },
+    )
+    .toEqual([`${SITE_URL}/*`]);
+
+  return {
+    context,
+    extensionId,
+    worker,
+    mocks,
+    externalRequests,
+    async close() {
+      await context.close();
+      fs.rmSync(userDataDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    },
+  };
+}
+
+export function readFixture(rel: string): string {
+  return fs.readFileSync(path.join(CAPTURE_FIXTURES, rel), 'utf8');
+}
+
+export async function badgeText(worker: Worker): Promise<string> {
+  return worker.evaluate(() => chrome.action.getBadgeText({}));
+}
+
+export async function openPopup(session: ExtensionSession): Promise<Page> {
+  const page = await session.context.newPage();
+  await page.goto(`chrome-extension://${session.extensionId}/popup.html`);
+  await expect(page.getByTestId('popup-counts')).toContainText('waiting');
+  return page;
+}
+
+/** Opens the analysis site on the Games list and waits for its library. */
+export async function openGamesList(session: ExtensionSession): Promise<Page> {
+  const page = await session.context.newPage();
+  await page.goto(`${SITE_URL}/#games`);
+  await page.evaluate(() => window.__wizardChessLibraryReady);
+  await expect(page.getByTestId('games-list')).toBeVisible();
+  return page;
+}

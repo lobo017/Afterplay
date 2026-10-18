@@ -12,7 +12,9 @@ import {
   mainLinePlies,
   type ReviewPly,
 } from './review-game';
+import { restoreSavedReview, type SavedReview } from '../library/saved-review';
 import {
+  DEFAULT_USER_ACCOUNTS,
   coversMove,
   defaultPerspective,
   movesOfClass,
@@ -24,6 +26,7 @@ import {
   playerInfo,
   stepCycle,
   type ReviewPerspective,
+  type UserAccount,
 } from './perspective';
 import { ReviewAnalysisClient } from './review-analysis-client';
 import { ReviewRunner, type ReviewRunResult } from './review-runner';
@@ -98,6 +101,10 @@ export interface ReviewPanelOptions {
   isBookPosition: (fen: string) => boolean;
   onPlayVsBot: (fen: string) => void;
   initialPreset?: ReviewPreset;
+  /** My accounts, for the default "Review as" side (the built-in default when absent). */
+  getAccounts?: () => readonly UserAccount[];
+  /** Called when a review run finishes (not when it is cancelled or fails). */
+  onReviewFinished?: (result: ReviewRunResult, tree: GameTree) => void;
 }
 
 type PanelState = 'idle' | 'running' | 'done' | 'cancelled' | 'error';
@@ -215,6 +222,8 @@ export class ReviewPanel {
   private lastError: string | null = null;
   /** Earlier engine annotations the current review replaced. */
   private strippedAnnotations = 0;
+  /** When the review shown was loaded from storage instead of run now. */
+  private savedAt: number | null = null;
   /** Classifies and explains moves in a worker, shared by every review. */
   private readonly analysisClient = new ReviewAnalysisClient();
 
@@ -602,8 +611,9 @@ export class ReviewPanel {
     this.lastError = null;
     this.state = 'running';
     this.els.body.hidden = false;
+    this.savedAt = null;
     this.renderPlayers(tree.getHeaders());
-    this.setPerspective(defaultPerspective(tree.getHeaders()));
+    this.setPerspective(defaultPerspective(tree.getHeaders(), this.accounts()));
     this.renderState();
     this.renderMoveCard(this.host.getCurrentNode());
 
@@ -625,6 +635,7 @@ export class ReviewPanel {
       this.positions = result.positions;
       this.state = result.cancelled ? 'cancelled' : 'done';
       this.acceptReview(result.review, true);
+      if (!result.cancelled) this.options.onReviewFinished?.(result, tree);
       return result;
     } catch (err) {
       if (generation !== this.runGeneration) return null;
@@ -643,6 +654,45 @@ export class ReviewPanel {
     }
   }
 
+  private accounts(): readonly UserAccount[] {
+    return this.options.getAccounts?.() ?? DEFAULT_USER_ACCOUNTS;
+  }
+
+  /**
+   * Shows a stored review of the board's game without running the engine. False (and
+   * nothing changes) when the board's main line isn't the one the review covers.
+   */
+  public showSavedReview(saved: SavedReview): boolean {
+    const tree = this.host.getGameTree();
+    const restored = restoreSavedReview(saved, tree);
+    if (!restored) return false;
+    this.cancel();
+    this.strippedAnnotations = this.host.stripEngineAnnotations();
+    this.runGeneration++;
+    this.tree = tree;
+    this.plies = restored.plies;
+    this.review = null;
+    this.result = restored;
+    this.positions = restored.positions;
+    this.byNode.clear();
+    this.appliedNodes.clear();
+    this.exitRetry();
+    this.lastError = null;
+    this.savedAt = saved.savedAt;
+    if (saved.preset) this.setPreset(saved.preset);
+    this.state = 'done';
+    this.els.body.hidden = false;
+    this.renderPlayers(tree.getHeaders());
+    this.setPerspective(defaultPerspective(tree.getHeaders(), this.accounts()));
+    this.acceptReview(restored.review, true);
+    return true;
+  }
+
+  /** When the review shown was saved (null for a review run in this session). */
+  public getSavedAt(): number | null {
+    return this.savedAt;
+  }
+
   // ------------------------------------------------------------------ review updates
 
   private reset(): void {
@@ -656,6 +706,7 @@ export class ReviewPanel {
     this.positions = [];
     this.byNode.clear();
     this.appliedNodes.clear();
+    this.savedAt = null;
     this.state = 'idle';
     this.perspective = 'both';
     this.els.body.hidden = true;
@@ -720,6 +771,7 @@ export class ReviewPanel {
         const seconds = (stats?.timeMs ?? 0) / 1000;
         text = `Reviewed · ${PRESET_LABEL[this.preset]} · ${seconds < 10 ? seconds.toFixed(1) : Math.round(seconds)} s`;
         details = [
+          this.savedAt !== null ? `saved review from ${new Date(this.savedAt).toLocaleString()}` : '',
           `${total} positions in ${seconds.toFixed(1)} s`,
           `mean depth ${(stats?.meanDepth ?? 0).toFixed(1)}`,
           `${(REVIEW_PRESET_MOVETIME_MS[this.preset] / 1000).toFixed(1)} s per position`,

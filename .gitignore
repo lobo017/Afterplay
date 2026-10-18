@@ -12,3 +12,4 @@ data/.cache/
 *.tsbuildinfo
 .DS_Store
 Thumbs.db
+dist-ext/

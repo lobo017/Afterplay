@@ -1,0 +1,75 @@
+{
+  "game": {
+    "canSendTrophy": false,
+    "changesPlayersRating": 1,
+    "colorOfWinner": "white",
+    "id": 185358990103,
+    "uuid": "6d400a34-bf48-11f1-85a4-6cfe54652c60",
+    "initialSetup": "",
+    "isLiveGame": true,
+    "isAbortable": false,
+    "isAnalyzable": true,
+    "isCheckmate": true,
+    "isStalemate": false,
+    "isFinished": true,
+    "isRated": true,
+    "isResignable": false,
+    "lastMove": "80",
+    "moveList": "jr!TcjZJlt6Lbl0Sow5Qfo90mCJCtCLUgm8!mD7ZpF3VDU1Uox47dmQBmtYIecZQCKTJcbJztUzklCkzjBIBUSQSxS!?nDBtdlWGhd7BCn97SAXHAHzJltBtdtJzt707iq?!HA!9qzGzFN7PnCPBbk90ktBgwEgptupguvgPCwPYwL09KSYRLR90RL09S098AH810~1T80",
+    "plyCount": 101,
+    "ratingChangeWhite": 0,
+    "ratingChangeBlack": 0,
+    "gameEndReason": "checkmated",
+    "resultMessage": "Hikaru won by checkmate",
+    "endTime": 1791045435,
+    "tournament": {
+      "name": "Bullet-Brawl-October-03-2026",
+      "url": "bullet-brawl-october-03-2026-31380389"
+    },
+    "arena": {
+      "name": "Bullet-Brawl-October-03-2026",
+      "url": "bullet-brawl-october-03-2026-31380389",
+      "id": 31380389
+    },
+    "turnColor": "black",
+    "type": "chess",
+    "typeName": "Standard Chess",
+    "allowVacation": false,
+    "pgnHeaders": {
+      "Event": "Live Chess",
+      "Site": "Chess.com",
+      "Date": "2026.10.03",
+      "White": "Hikaru",
+      "Black": "Superbeans",
+      "Result": "1-0",
+      "ECO": "A01",
+      "WhiteElo": 3374,
+      "BlackElo": 2699,
+      "TimeControl": "60",
+      "EndTime": "16:37:15 GMT+0000",
+      "Termination": "Hikaru won by checkmate",
+      "SetUp": "1",
+      "FEN": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+    },
+    "moveTimestamps": "574,586,573,579,563,573,562,568,559,562,556,557,553,541,549,537,547,532,544,501,535,445,527,444,519,409,509,396,451,366,443,356,431,332,407,324,399,315,358,241,253,240,248,229,247,218,246,197,241,185,236,178,222,173,216,152,205,149,200,128,194,113,190,112,186,111,178,102,177,95,171,94,168,90,167,80,163,75,159,74,149,67,147,64,146,63,144,56,143,50,137,41,136,39,132,38,128,30,127,22,126,22",
+    "baseTime1": 600,
+    "timeIncrement1": 0,
+    "timeControl": {
+      "baseMs": 60000
+    }
+  },
+  "players": {
+    "top": {
+      "username": "Superbeans",
+      "color": "black",
+      "rating": 2699,
+      "isComputer": false
+    },
+    "bottom": {
+      "username": "Hikaru",
+      "color": "white",
+      "rating": 3374,
+      "isComputer": false
+    }
+  }
+}

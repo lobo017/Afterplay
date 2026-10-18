@@ -101,8 +101,17 @@ import { ReviewPanel } from './review/review-panel';
 import { ReviewRunner } from './review/review-runner';
 import { buildGameReview, buildAnnotatedPgn } from './review/review-game';
 import { SAMPLE_GAME_PGN } from './review/sample-game';
+import { mainLinePlies } from './review/review-game';
+import { DEFAULT_USER_ACCOUNTS } from './review/perspective';
+import { GameLibrary } from './library/library';
+import { GamesList } from './library/games-list';
+import { ReviewQueue } from './library/review-queue';
+import { ExtensionBridgeClient } from './library/bridge-client';
+import { toSavedReview } from './library/saved-review';
+import type { StoredGameRecord } from './storage/db';
+import type { MessageWindow } from './capture/protocol';
 
-export type AppWorkspaceMode = 'play' | 'analysis';
+export type AppWorkspaceMode = 'play' | 'analysis' | 'games';
 
 export interface AppShellEnvironment {
   crossOriginIsolated: boolean;
@@ -221,8 +230,21 @@ export interface WizardChessReviewApi {
 export const REVIEW_ENGINE_THREADS = 1;
 export const REVIEW_ENGINE_HASH_MB = 32;
 
+export interface WizardChessLibraryApi {
+  library: GameLibrary;
+  gamesList: GamesList;
+  queue: ReviewQueue;
+  bridge: ExtensionBridgeClient;
+  openGame: (id: string) => Promise<boolean>;
+  /** The Games list game shown on the analysis board (null when the board shows something else). */
+  getOpenGameId: () => string | null;
+}
+
 declare global {
   interface Window {
+    __wizardChessLibrary?: WizardChessLibraryApi;
+    /** Resolves once the Games list's storage is open (rejects if IndexedDB is unavailable). */
+    __wizardChessLibraryReady?: Promise<WizardChessLibraryApi>;
     __wizardChessReview?: WizardChessReviewApi;
     __wizardChessCore?: WizardChessCoreApi;
     __wizardChessEngine?: WizardChessEngineApi;
@@ -285,6 +307,14 @@ export function mountAppShell(container: HTMLElement): {
             aria-selected="false"
           >
             🔍 Analysis Board
+          </button>
+          <button
+            type="button"
+            class="wc-mode-tab"
+            data-testid="mode-tab-games"
+            aria-selected="false"
+          >
+            📚 Games
           </button>
           <button
             type="button"
@@ -393,6 +423,16 @@ export function mountAppShell(container: HTMLElement): {
   const analysisRootEl = document.createElement('div');
   analysisRootEl.id = 'wc-analysis-root';
   analysisRootEl.className = 'wc-analysis-root';
+  const gamesRootEl = document.createElement('div');
+  gamesRootEl.id = 'wc-games-root';
+  gamesRootEl.className = 'wc-games-root';
+  gamesRootEl.innerHTML = '<p class="wc-games-loading" data-testid="games-loading">Opening the game library…</p>';
+
+  // The Games list's library opens in the background; the board doesn't wait for it
+  let library: GameLibrary | null = null;
+  /** The Games list game on the analysis board, so a review run there is saved with it. */
+  let openGameId: string | null = null;
+  let openingGame = false;
 
   const sharedEngine = createConnectedEngine({ variant: 'auto' });
   const botEngine = new EngineClient({
@@ -452,6 +492,22 @@ export function mountAppShell(container: HTMLElement): {
     },
     getEngine: getReviewEngine,
     isBookPosition: (fen) => lookupOpeningByFen(fen) !== null,
+    getAccounts: () => library?.getUserAccounts() ?? DEFAULT_USER_ACCOUNTS,
+    onReviewFinished: (result) => {
+      const id = openGameId;
+      const lib = library;
+      if (!id || !lib) return;
+      void lib.get(id).then((record) => {
+        const saved = toSavedReview(result);
+        if (!record || !saved) return undefined;
+        // Only when the board still shows the stored game's moves
+        const stored = mainLinePlies(parsePgn(record.pgn)).map((ply) => ply.uci);
+        if (stored.length === saved.ucis.length && stored.every((u, i) => u === saved.ucis[i])) {
+          return lib.saveReview(id, saved);
+        }
+        return undefined;
+      });
+    },
     onPlayVsBot: (fen) => {
       const turn = fen.trim().split(/\s+/)[1] === 'b' ? 'b' : 'w';
       setMode('play', false);
@@ -476,6 +532,10 @@ export function mountAppShell(container: HTMLElement): {
   const modeTabAnalysisBtn = container.querySelector(
     '[data-testid="mode-tab-analysis"]',
   ) as HTMLButtonElement;
+  const modeTabGamesBtn = container.querySelector(
+    '[data-testid="mode-tab-games"]',
+  ) as HTMLButtonElement;
+  let gamesList: GamesList | null = null;
   const analyzeGameBtn = container.querySelector(
     '[data-testid="btn-analyze-game"]',
   ) as HTMLButtonElement;
@@ -491,19 +551,24 @@ export function mountAppShell(container: HTMLElement): {
       return;
     }
     currentMode = mode;
-    const isPlay = mode === 'play';
 
-    modeTabPlayBtn.classList.toggle('wc-mode-tab-active', isPlay);
-    modeTabPlayBtn.setAttribute('aria-selected', String(isPlay));
-    modeTabAnalysisBtn.classList.toggle('wc-mode-tab-active', !isPlay);
-    modeTabAnalysisBtn.setAttribute('aria-selected', String(!isPlay));
+    const tabs: Array<[HTMLButtonElement, AppWorkspaceMode]> = [
+      [modeTabPlayBtn, 'play'],
+      [modeTabAnalysisBtn, 'analysis'],
+      [modeTabGamesBtn, 'games'],
+    ];
+    for (const [btn, m] of tabs) {
+      btn.classList.toggle('wc-mode-tab-active', m === mode);
+      btn.setAttribute('aria-selected', String(m === mode));
+    }
 
-    if (isPlay) {
-      analysisController.setActive(false);
-      workspaceHostEl.replaceChildren(playRootEl);
-    } else {
+    if (mode === 'analysis') {
       workspaceHostEl.replaceChildren(analysisRootEl);
       analysisController.setActive(true);
+    } else {
+      analysisController.setActive(false);
+      workspaceHostEl.replaceChildren(mode === 'play' ? playRootEl : gamesRootEl);
+      if (mode === 'games') void gamesList?.refresh();
     }
   };
 
@@ -514,6 +579,84 @@ export function mountAppShell(container: HTMLElement): {
   modeTabAnalysisBtn.addEventListener('click', () => {
     setMode('analysis', false);
   });
+
+  modeTabGamesBtn.addEventListener('click', () => {
+    setMode('games', false);
+  });
+
+  analysisController.onTreeReplaced(() => {
+    if (!openingGame) openGameId = null;
+  });
+
+  /** Opens a Games list game on the analysis board, with its saved review if it has one. */
+  const openLibraryGame = async (record: StoredGameRecord): Promise<boolean> => {
+    if (!library) return false;
+    const saved = record.analysis ? await library.getReview(record.id) : undefined;
+    setMode('analysis', false);
+    openingGame = true;
+    const ok = analysisController.importPgn(record.pgn);
+    openingGame = false;
+    if (!ok) return false;
+    openGameId = record.id;
+    analysisController.goToNode(analysisController.getGameTree().root.id);
+    if (saved) reviewPanel.showSavedReview(saved);
+    return true;
+  };
+
+  const libraryReady: Promise<WizardChessLibraryApi> = WizardChessStorage.create().then(async (storage) => {
+    const lib = new GameLibrary(storage);
+    await lib.init();
+    library = lib;
+    const queue = new ReviewQueue({
+      library: lib,
+      getEngine: getReviewEngine,
+      isBookPosition: (fen) => lookupOpeningByFen(fen) !== null,
+    });
+    const bridge = new ExtensionBridgeClient(window as unknown as MessageWindow, {
+      saveGames: (games) => lib.saveBridgeGames(games),
+      setAccounts: (accounts) => lib.setMyAccounts(accounts),
+    });
+    gamesRootEl.replaceChildren();
+    const list = new GamesList({
+      container: gamesRootEl,
+      library: lib,
+      queue,
+      onOpen: (record) => void openLibraryGame(record),
+      getExtensionStatus: () => bridge.getStatus(),
+      onExtensionStatus: (listener) => bridge.onStatus(listener),
+    });
+    gamesList = list;
+    if (currentMode === 'games') await list.refresh();
+    // Sync with the capture extension now, on focus and when the tab becomes visible
+    bridge.start((wake) => {
+      window.addEventListener('focus', wake);
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') wake();
+      });
+    });
+    const api: WizardChessLibraryApi = {
+      library: lib,
+      gamesList: list,
+      queue,
+      bridge,
+      openGame: async (id) => {
+        const record = await lib.get(id);
+        return record ? openLibraryGame(record) : false;
+      },
+      getOpenGameId: () => openGameId,
+    };
+    window.__wizardChessLibrary = api;
+    return api;
+  });
+  libraryReady.catch((err: unknown) => {
+    gamesRootEl.replaceChildren();
+    const msg = document.createElement('p');
+    msg.className = 'wc-games-loading';
+    msg.setAttribute('data-testid', 'games-loading');
+    msg.textContent = `The game library could not be opened: ${err instanceof Error ? err.message : String(err)}`;
+    gamesRootEl.appendChild(msg);
+  });
+  window.__wizardChessLibraryReady = libraryReady;
 
   analyzeGameBtn.addEventListener('click', () => {
     setMode('analysis', true);
@@ -526,6 +669,8 @@ export function mountAppShell(container: HTMLElement): {
       window.location.hash === '#analysis'
     ) {
       setMode('analysis', false);
+    } else if (params.get('mode') === 'games' || window.location.hash === '#games') {
+      setMode('games', false);
     }
   }
 

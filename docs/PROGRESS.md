@@ -10,6 +10,7 @@
 | **Phase 3** | 2D board and play mode | **Done** | Imperative SVG board (`translate3d` + Web Animations API), dirty-checked SVG overlay, 180-shard fixed `<canvas>` pool, Web Audio synth, clocks, vs-bot Play Mode, legacy bug regression suite. **2026-10-17 fixes:** drags survive board updates, drag cancel (right-click / Esc / off-board), premove queue (max 10) on a hypothetical board, same-frame premove execution |
 | **Phase 4** | Analysis board | **Done** | Animated mate-aware eval bar, live MultiPV 1–5 lines + ghost preview, best/threat/user arrows, variation tree & keyboard navigation, FEN position editor, ECO opening lookup. **2026-10-17 fixes:** zero layout shift while navigating (was 694 shifts), ~100 ms step animation with reverse and snap-on-repeat, engine lines batched to ≤ 1 DOM update per frame |
 | **Phase 5** | Game review | **Done** | MultiPV 2 review pipeline on its own 1-thread engine with verification searches, win%/accuracy/ACPL/performance formulas, 10 move classes (docs/classification.md), 8 motif detectors, one-sentence explanations computed in a worker, review panel (live win% chart, key moments, Retry / Refutation / Play vs Bot / annotated PGN, sample game). **2026-10-18:** Lichess-matched formulas and thresholds; "Review as" White / Black / Both perspective and redesigned summary |
+| **Phase 5b** | Capture extension + Games list | In progress | Chrome MV3 capture extension (Lichess, Chess.com, queue, popup, backfill), localhost bridge, Games list with background review queue |
 | **Phase 6** | Puzzles & spaced repetition | Pending | Personal mistake puzzles, bundled 20k Lichess puzzles, Glicko-2, FSRS scheduler, Today screen |
 | **Phase 7** | Repertoire, endgame & visualization | Pending | White/Black repertoire trees, 6 curated endgame drills, coordinate/blindfold/guess-the-move |
 | **Phase 8** | Library, insights, settings, offline | Pending | Auto-save library, worker bulk PGN import, insights charts, a11y, full offline PWA |
@@ -1865,3 +1866,139 @@ eval the review replaces), but it can surprise.
 **Checks (final run, 2026-10-18):** typecheck, lint, **286 unit tests** (22 files), build,
 **30/30 e2e** (29 earlier + the phone test): all pass; the sample-game review recorded
 zero long tasks.
+
+## Phase 5b — Capture extension + Games list (2026-10-18)
+
+### Findings before the plan (probed from this machine, 2026-10-18)
+
+- **Lichess single-game export needs a login.** Anonymous `GET /game/export/{id}` answers
+  303 → `/signup` (PGN) or 401 `{"error":"Login required"}` (JSON). Two official
+  endpoints still answer anonymously: `POST /api/games/export/_ids?clocks=true` (PGN with
+  `[%clk]`) and `GET /api/games/user/{name}` (history, NDJSON with `pgnInJson=true`).
+- **Lichess game pages embed the whole game.** `<script type="application/json"
+  id="page-init-data">` → `data.game` (id, variant, speed, status, winner, createdAt),
+  `data.clock` (initial, increment), `data.player` / `data.opponent` (user, rating,
+  ratingDiff; for a spectator `player` is White) and `data.treeParts` (one entry per ply:
+  `san`, `uci`, `fen`, `clock` in centiseconds after the move, increment included). No
+  opening name. A non-browser User-Agent gets a reduced page without this script.
+- **Session cookies and extension fetches** (probe with an unpacked extension in Chrome 155,
+  a `SameSite=Lax; HttpOnly; Secure` cookie on lichess.org): a fetch from a content script
+  on lichess.org carries the cookie; the same fetch from the extension's service worker
+  (`credentials: 'include'`) does not. So the logged-in export can only run on a
+  lichess.org page; links and backfill (service worker) use the anonymous endpoints.
+- **Chess.com game pages don't embed the game.** The HTML of `/game/live/{id}` has only
+  meta tags; the client loads `/callback/live/game/{id}` (or `/callback/daily/game/{id}`):
+  `game.moveList` (TCN: two characters per ply), `game.pgnHeaders`, `game.moveTimestamps`
+  (live: clock left after each ply, deciseconds; daily: `game.timestamps`), `isFinished`,
+  `colorOfWinner`, `gameEndReason`, `initialSetup` (Chess960), `players.top/bottom`.
+  TCN castling is king → rook square in Chess960 (`db` = Kd1×Rb1).
+- **Chess.com archive API**: `api.chess.com/pub/player/{u}/games/archives` and
+  `/games/{YYYY}/{MM}`, with `ETag` and `Last-Modified`; each game has `pgn` and `tcn`, so
+  the TCN decoder can be checked against Chess.com's own PGN. It rejects requests without a
+  User-Agent (403).
+- **Loading an unpacked extension in tests:** branded Chrome ignores `--load-extension`
+  since Chrome 137. Chrome 155 started by Playwright with `--enable-unsafe-extension-debugging`
+  loads it through CDP `Extensions.loadUnpacked`; `context.route` intercepts page,
+  content-script and service-worker requests, and `chrome.scripting.registerContentScripts`
+  works. No new browser download is needed.
+
+Recorded with `node scripts/record-capture-fixtures.mjs` into `tests/fixtures/capture/`
+(Lichess: two game pages, the anonymous export answer, two `_ids` exports, 4 history lines;
+Chess.com: two live and two daily callbacks incl. a Chess960 game, two trimmed monthly
+archives with the same games, an archive list).
+
+### Plan (written before code)
+
+**Extension** (`extension/`, TypeScript, built by `scripts/build-extension.mjs` with Vite's
+build API, one IIFE bundle per entry, into `dist-ext/`; `npm run build:ext`)
+- `extension/manifest.json` (MV3). Permissions: `storage`; `alarms` (pending Chess.com
+  retries, backfill resume: MV3 service workers can't keep timers); `contextMenus` (the
+  link menu); `notifications` (extraction-failure notice); `scripting` (registers the bridge
+  only on the configured site URL). Hosts: lichess.org, www.chess.com, api.chess.com,
+  `http://localhost/*`, `http://127.0.0.1/*` (any port: the site URL is a setting).
+- `extension/src/chrome.d.ts`: hand-written types for the chrome.* calls used (no
+  `@types/chrome` dependency).
+- Extractors behind one interface (`extractors/types.ts`), one file per method:
+  - `lichess-session-export.ts` (content script: `/game/export/{id}?clocks=true` with the
+    page's session; detects the login wall),
+  - `lichess-ids-export.ts` (`POST /api/games/export/_ids`, used where there is no session:
+    links, the popup),
+  - `lichess-page-data.ts` (`page-init-data` → PGN with `[%clk]`, headers from the data),
+  - `chesscom-callback.ts` + `chesscom-tcn.ts` (callback JSON → PGN, clocks for live games),
+  - `chesscom-share.ts` (fallback: the page's own Share → PGN dialog),
+  - `chesscom-archive.ts` (links and backfill: monthly archive; `pending` until it appears).
+  Order on a Lichess page: session export → page data (the user's instruction). Links:
+  `_ids` export → page data from the fetched page.
+- Content scripts `content/lichess.ts`, `content/chesscom.ts`: game-ID detection from the
+  URL, finished-game detection (page data / callback; DOM observer for a game that ends
+  while the page is open, then a single fetch), auto-capture only when the game ended live
+  and I played it (username settings), an injected "Save game" button (shadow DOM).
+- `background.ts`: the queue, badge (undelivered count), context menu on game links,
+  notifications, alarms, backfill runner, bridge registration, messages.
+- `queue.ts` (pure, storage adapter injected): one key per game plus a small index;
+  statuses pending / ready / delivered; a delivered game drops its PGN, keeps its index row
+  (dedupe, popup list).
+- `backfill.ts`: Lichess history (`since` = newest game seen, `sort=dateAsc`, pages of
+  200), Chess.com archives (months from the last one finished; ETag / `If-None-Match`,
+  304 = nothing new). One request at a time, a pause between requests, 429 → back off
+  (Lichess: ≥ 60 s; doubling), and a pause while ≥ 1000 games wait for the site (keeps
+  `chrome.storage.local` under its 10 MB quota).
+- `popup.html` / `popup.ts`: settings (usernames, site URL, auto-capture), paste link or
+  PGN (validated with the app's own PGN parser), recent captures with status, Import my
+  history per site with progress, retry for pending games.
+- `bridge.ts` (content script on the configured origin only).
+
+**Bridge protocol v1** (`src/capture/protocol.ts`, shared): page → `hello {version}`;
+bridge → `hello-ack {version, extensionVersion, accounts}` then `games {batchId, games[]}`
+(≤ 50 per batch); page → `saved {batchId, saved[], duplicates[], failed[]}`; the extension
+marks saved + duplicates delivered (a duplicate is already stored on the site, otherwise
+it would be re-sent forever), keeps failed ones ready for the next sync. Both sides check
+`event.source === window`, the origin, and the message shape. The page says hello on load,
+on `focus` and when its tab becomes visible; the bridge announces itself when it loads.
+
+**Website**
+- `src/library/game-record.ts` (pure): a stored game from a PGN (+ capture metadata):
+  id `lichess:<id>` / `chesscom:<id>` (from the capture, or the PGN's Site / Link header),
+  `paste:<hash>` otherwise; my color from my accounts; opponent, ratings, result, time
+  control, opening (the app's openings dataset), date.
+- `src/storage/db.ts`: optional fields on `StoredGameRecord` (`source`, `siteGameId`,
+  `timeControl`, ratings, `review`). **No schema change**: the id already makes
+  site + game ID unique, and nothing needs a new index yet (Phase 8 may add some).
+- `src/library/library.ts`: save with duplicate check, list, save a review.
+- `src/library/bridge-client.ts`: the page side of the protocol.
+- `src/library/review-queue.ts`: background reviews on the review engine (ReviewRunner on a
+  parsed tree, no board), one at a time; results saved in the game record.
+- `src/library/games-list.ts` + CSS: a "Games" workspace tab: columns as in the spec, sort
+  and filter (source, result, analyzed), multi-select → Analyze with a preset picker
+  (default **Standard**), per-game queue state, Auto-analyze new games toggle (off; uses
+  **Quick**), Paste PGN, drag-and-drop of .pgn files, extension status. Opening a game loads
+  it on the Analysis board; an analyzed one shows its saved review (no engine run).
+- `src/review/review-panel.ts`: `showSavedReview()` (remaps node IDs by ply after checking
+  the moves match) and a completion hook so a review run from the board on a library game
+  is saved too.
+- `src/review/perspective.ts`: accounts come from the extension's settings (sent in
+  `hello-ack`, kept in the site's settings store); the built-in `Lobo017` stays only as the
+  fallback until an extension has sent usernames.
+
+**Tests**
+- Unit: TCN decoder against the archives' own PGNs (all recorded games: castling both ways,
+  promotions, Chess960); each extractor against its fixture (page data vs. the `_ids`
+  export of the same game: same moves and clocks; callback vs. archive PGN; login-wall
+  detection); queue; backfill (pagination, ETag 304, 429 backoff, one request at a time,
+  with a fake fetch and clock); bridge protocol both sides incl. partial failure; game
+  records (ids, my color, metadata, dedupe).
+- E2E (site only): Games list without the extension: paste, drop a file, metadata, filters,
+  Analyze on Standard, saved review on open without an engine run, auto-analyze on Quick,
+  zero network requests.
+- E2E (extension): loads `dist-ext/` (CDP), mocked Lichess and Chess.com pages from the
+  fixtures, captures a game, badge updates, the site shows it exactly once (also after a
+  second sync) and analyzes it; popup paste; a live game that ends while the page is open.
+
+**Risks**
+- Chess.com's game-over DOM, its Share dialog and Lichess's live-game end markers can't be
+  recorded without a live game; those parts are tested on mocked pages modelled on what the
+  sites render and are marked unofficial in the README.
+- MV3 service workers stop when idle: everything long-running (retries, backfill) is
+  driven by alarms and stored state, not timers.
+- The site's existing e2e tests must not change: the Games tab is a new mode, and the
+  Lichess review test still opens as Black through the fallback account.

@@ -8,9 +8,11 @@ import {
 } from 'idb';
 import type { Color } from '../core/rules';
 import type { GameTermination, SerializedGameTree } from '../core/game-tree';
+import type { GameSource } from '../capture/game-id';
+import type { SavedReview } from '../library/saved-review';
 
 export const DEFAULT_DB_NAME = 'wizards-chess-db';
-export const LATEST_SCHEMA_VERSION = 3;
+export const LATEST_SCHEMA_VERSION = 4;
 
 export interface StoredGameRecord {
   id: string;
@@ -28,6 +30,36 @@ export interface StoredGameRecord {
   tags: string[];
   schemaVersion: number;
   createdAt: number;
+  updatedAt: number;
+  // Games list fields (Phase 5b). Optional, so records written before them stay valid;
+  // the id (`lichess:<id>`, `chesscom:<id>`, `paste:<hash>`) keeps a site game unique.
+  source?: GameSource;
+  /** The game's page on its site. */
+  url?: string | null;
+  whiteElo?: number | null;
+  blackElo?: number | null;
+  /** PGN TimeControl, e.g. "120+1", "180", "1/86400". */
+  timeControl?: string;
+  /** When the game was played (ms since the epoch), when the PGN says. */
+  playedAt?: number | null;
+  /** When the extension captured it. */
+  capturedAt?: number | null;
+  captureMethod?: string | null;
+  /** Summary of the saved review (the review itself is in the reviews store). */
+  analysis?: GameAnalysisSummary | null;
+}
+
+export interface GameAnalysisSummary {
+  preset: SavedReview['preset'];
+  savedAt: number;
+  whiteAccuracy: number | null;
+  blackAccuracy: number | null;
+}
+
+/** A finished game review, keyed by its game's id (schema v4). */
+export interface StoredReviewRecord {
+  id: string;
+  review: SavedReview;
   updatedAt: number;
 }
 
@@ -152,6 +184,10 @@ export interface WizardChessDBSchema extends DBSchema {
       'by-completed': number;
     };
   };
+  reviews: {
+    key: string;
+    value: StoredReviewRecord;
+  };
 }
 
 export interface GameFilterOptions {
@@ -173,6 +209,8 @@ export interface BackupPayload {
   srsCards: StoredSrsCardRecord[];
   repertoires: StoredRepertoireRecord[];
   endgameProgress: StoredEndgameProgressRecord[];
+  /** Saved game reviews (schema v4; absent in older backups). */
+  reviews?: StoredReviewRecord[];
 }
 
 export interface SchemaMigrationDefinition {
@@ -268,6 +306,16 @@ export const SCHEMA_MIGRATIONS: readonly SchemaMigrationDefinition[] = [
           };
           await gamesStore.put(updated);
         }
+      }
+    },
+  },
+  {
+    version: 4,
+    description:
+      'Create the reviews store (saved game reviews, kept apart so listing games stays light)',
+    migrate(db) {
+      if (!db.objectStoreNames.contains('reviews')) {
+        db.createObjectStore('reviews', { keyPath: 'id' });
       }
     },
   },
@@ -434,6 +482,20 @@ export class WizardChessStorage {
     return filtered.sort((a, b) => b.updatedAt - a.updatedAt);
   }
 
+  // --- Reviews Store ---
+
+  public async saveReview(id: string, review: SavedReview): Promise<void> {
+    await this.db.put('reviews', { id, review, updatedAt: Date.now() });
+  }
+
+  public async getReview(id: string): Promise<SavedReview | undefined> {
+    return (await this.db.get('reviews', id))?.review;
+  }
+
+  public async deleteReview(id: string): Promise<void> {
+    await this.db.delete('reviews', id);
+  }
+
   // --- Settings Store ---
 
   public async setSetting<T>(key: string, value: T): Promise<void> {
@@ -532,7 +594,7 @@ export class WizardChessStorage {
   // --- JSON Backup & Restore ---
 
   public async exportBackupJson(): Promise<string> {
-    const [games, settings, puzzles, srsCards, repertoires, endgameProgress] =
+    const [games, settings, puzzles, srsCards, repertoires, endgameProgress, reviews] =
       await Promise.all([
         this.db.getAll('games'),
         this.db.getAll('settings'),
@@ -548,6 +610,9 @@ export class WizardChessStorage {
         this.db.objectStoreNames.contains('endgame_progress')
           ? this.db.getAll('endgame_progress')
           : Promise.resolve([]),
+        this.db.objectStoreNames.contains('reviews')
+          ? this.db.getAll('reviews')
+          : Promise.resolve([]),
       ]);
 
     const payload: BackupPayload = {
@@ -560,6 +625,7 @@ export class WizardChessStorage {
       srsCards,
       repertoires,
       endgameProgress,
+      reviews,
     };
     return JSON.stringify(payload, null, 2);
   }
@@ -571,6 +637,7 @@ export class WizardChessStorage {
     srsCardsImported: number;
     repertoiresImported: number;
     endgameProgressImported: number;
+    reviewsImported: number;
   }> {
     const parsed = JSON.parse(jsonString) as Partial<BackupPayload>;
     if (parsed.format !== 'wizards-chess-backup') {
@@ -602,6 +669,10 @@ export class WizardChessStorage {
     if (this.db.objectStoreNames.contains('endgame_progress')) {
       for (const e of endgameProgress) await this.db.put('endgame_progress', e);
     }
+    const reviews = Array.isArray(parsed.reviews) ? parsed.reviews : [];
+    if (this.db.objectStoreNames.contains('reviews')) {
+      for (const r of reviews) await this.db.put('reviews', r);
+    }
 
     return {
       gamesImported: games.length,
@@ -610,6 +681,7 @@ export class WizardChessStorage {
       srsCardsImported: srsCards.length,
       repertoiresImported: repertoires.length,
       endgameProgressImported: endgameProgress.length,
+      reviewsImported: reviews.length,
     };
   }
 }

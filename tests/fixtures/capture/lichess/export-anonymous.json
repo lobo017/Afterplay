@@ -1,0 +1,11 @@
+{
+  "note": "GET /game/export/{id} without a session",
+  "pgnRequest": {
+    "status": 303,
+    "location": "/signup"
+  },
+  "jsonRequest": {
+    "status": 401,
+    "body": "{\"error\":\"Login required\"}"
+  }
+}

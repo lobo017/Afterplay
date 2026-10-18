@@ -1,0 +1,23 @@
+[Event "rated bullet game"]
+[Site "https://lichess.org/iTIXmTZF"]
+[Date "2026.10.15"]
+[Round "-"]
+[White "cauchyunderground"]
+[Black "Lobo017"]
+[Result "0-1"]
+[GameId "iTIXmTZF"]
+[UTCDate "2026.10.15"]
+[UTCTime "15:11:33"]
+[WhiteElo "1383"]
+[BlackElo "1395"]
+[WhiteRatingDiff "-5"]
+[BlackRatingDiff "+6"]
+[Variant "Standard"]
+[TimeControl "60+0"]
+[ECO "C44"]
+[Opening "Scotch Game: Haxo Gambit"]
+[Termination "Time forfeit"]
+
+1. e4 { [%clk 0:01:00] } 1... e5 { [%clk 0:01:00] } 2. Nf3 { [%clk 0:00:59] } 2... Nc6 { [%clk 0:00:59] } 3. d4 { [%clk 0:00:59] } 3... exd4 { [%clk 0:00:58] } 4. Bc4 { [%clk 0:00:58] } 4... Bc5 { [%clk 0:00:57] } 5. c3 { [%clk 0:00:57] } 5... Nf6 { [%clk 0:00:56] } 6. cxd4 { [%clk 0:00:55] } 6... Bb4+ { [%clk 0:00:53] } 7. Nc3 { [%clk 0:00:53] } 7... O-O { [%clk 0:00:52] } 8. O-O { [%clk 0:00:51] } 8... Bxc3 { [%clk 0:00:50] } 9. bxc3 { [%clk 0:00:51] } 9... Nxe4 { [%clk 0:00:49] } 10. Re1 { [%clk 0:00:50] } 10... Nxc3 { [%clk 0:00:48] } 11. Qb3 { [%clk 0:00:49] } 11... d5 { [%clk 0:00:42] } 12. Bb5 { [%clk 0:00:44] } 12... Nxb5 { [%clk 0:00:40] } 13. Qxb5 { [%clk 0:00:43] } 13... a6 { [%clk 0:00:40] } 14. Qd3 { [%clk 0:00:38] } 14... Be6 { [%clk 0:00:37] } 15. Ne5 { [%clk 0:00:37] } 15... Nb4 { [%clk 0:00:35] } 16. Qg3 { [%clk 0:00:34] } 16... Nc2 { [%clk 0:00:31] } 17. Bh6 { [%clk 0:00:33] } 17... Qf6 { [%clk 0:00:21] } 18. Bg5 { [%clk 0:00:24] } 18... Qf5 { [%clk 0:00:14] } 19. f4 { [%clk 0:00:04] } 19... Nxa1 { [%clk 0:00:08] } 20. Bh4 { [%clk 0:00:04] } 20... Nc2 { [%clk 0:00:06] } 21. Rc1 { [%clk 0:00:03] } 21... Nxd4 { [%clk 0:00:05] } 22. Rxc7 { [%clk 0:00:01] } 22... Ne2+ { [%clk 0:00:04] } 0-1
+
+
