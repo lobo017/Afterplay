@@ -9,7 +9,7 @@
 | **Phase 2** | Engine | **Done** | Stockfish 17.1 WASM worker client (MT + ST), MultiPV 1–5, priority queue, LRU cache, human-like bot (400–2400), Stockfish `go perft` cross-check suite |
 | **Phase 3** | 2D board and play mode | **Done** | Imperative SVG board (`translate3d` + Web Animations API), dirty-checked SVG overlay, 180-shard fixed `<canvas>` pool, Web Audio synth, clocks, vs-bot Play Mode, legacy bug regression suite. **2026-10-17 fixes:** drags survive board updates, drag cancel (right-click / Esc / off-board), premove queue (max 10) on a hypothetical board, same-frame premove execution |
 | **Phase 4** | Analysis board | **Done** | Animated mate-aware eval bar, live MultiPV 1–5 lines + ghost preview, best/threat/user arrows, variation tree & keyboard navigation, FEN position editor, ECO opening lookup. **2026-10-17 fixes:** zero layout shift while navigating (was 694 shifts), ~100 ms step animation with reverse and snap-on-repeat, engine lines batched to ≤ 1 DOM update per frame |
-| **Phase 5** | Game review | Pending | MultiPV 2 review pipeline, win%/accuracy formulas, move classifications, 8 motif detectors |
+| **Phase 5** | Game review | In progress | MultiPV 2 review pipeline, win%/accuracy formulas, move classifications, 8 motif detectors |
 | **Phase 6** | Puzzles & spaced repetition | Pending | Personal mistake puzzles, bundled 20k Lichess puzzles, Glicko-2, FSRS scheduler, Today screen |
 | **Phase 7** | Repertoire, endgame & visualization | Pending | White/Black repertoire trees, 6 curated endgame drills, coordinate/blindfold/guess-the-move |
 | **Phase 8** | Library, insights, settings, offline | Pending | Auto-save library, worker bulk PGN import, insights charts, a11y, full offline PWA |
@@ -1171,3 +1171,115 @@ One end-to-end check (`PERF_SCENARIOS=analysis PERF_ENGINE_THREADS=2`, no leftov
 
 The thread-count matrix was not run; Phase 5 will compare thread counts for background
 review itself.
+
+---
+
+## Phase 5 — Game Review (2026-10-17)
+
+### Plan (written before code)
+
+**Order of work:** fixtures first (classification and motif), then the code that makes them
+pass. Expected labels come from what the move means in chess (hangs a piece, only move,
+sound sacrifice, …), written down with a rationale before the classifier exists. If a
+fixture fails, the label or the rule is re-examined and the outcome written down; the
+thresholds are not nudged to fit.
+
+**Files to add**
+- `src/review/formulas.ts`: win%, move accuracy, Lichess-style game accuracy
+  (volatility-weighted mean blended with the harmonic mean), ACPL and estimated
+  performance rating.
+- `src/review/board.ts`: a small FEN board model for detectors: attack sets, x-ray aware
+  static exchange evaluation (SEE), material count, pins along lines.
+- `src/review/classification.ts`: thresholds as named constants and a pure
+  `classifyMove()` (Best / Excellent / Good / Inaccuracy / Mistake / Blunder, plus Great,
+  Brilliant, Book, Miss).
+- `src/review/motifs.ts`: hanging piece, fork, pin / skewer, discovered attack,
+  back-rank weakness, missed mate, trapped piece, promotion threat.
+- `src/review/explain.ts`: one rule-based sentence per Inaccuracy / Mistake / Blunder /
+  Miss.
+- `src/review/review-game.ts`: builds the per-ply review from engine results (pure), key
+  moments, annotated PGN.
+- `src/review/review-runner.ts`: runs the engine over a game's main line (MultiPV 2,
+  Quick 0.2 s / Standard 0.6 s / Deep 1.5 s per position), progress, cancel, partial
+  results.
+- `src/review/review-panel.ts` + CSS: progress bar and cancel, live win% chart (click
+  jumps), accuracy and performance rating per side with a formulas tooltip, key moments,
+  per-move class badge and explanation, Retry This Mistake, Show Refutation, Play vs Bot
+  Here, annotated PGN export, built-in sample game.
+- `src/review/sample-game.ts`: Morphy vs. Duke Karl / Count Isouard, Paris 1858 (public
+  domain).
+- `scripts/record-review-fixtures.mjs`: runs Node Stockfish (single-threaded lite build,
+  fixed depth, fresh hash) over the fixture lines and writes the engine results, so
+  unit tests are deterministic and don't need a live engine.
+- `scripts/perf-review.mjs`: measures review runs with and without live analysis at
+  different review thread counts (the thread decision below).
+- Fixtures: `tests/fixtures/review/classification-fixtures.json`,
+  `tests/fixtures/review/classification-evals.json` (generated),
+  `tests/fixtures/review/motif-fixtures.json`.
+- Tests: `tests/unit/review-*.test.ts`, `tests/e2e/phase5-review.spec.ts`.
+- `docs/classification.md`: every rule and threshold with its justification.
+
+**Files to change**
+- `src/analysis/analysis-controller.ts`: mounts the review panel, shows class badges in
+  the move tree, exposes a move hook for Retry This Mistake.
+- `src/app.ts`: a separate review `EngineClient` (created on first review), Play vs Bot
+  Here hand-off to Play mode, `window.__wizardChessReview` for tests.
+- `src/engine/engine-client.ts`: when a request passes `moves`, the side to move (used to
+  turn scores into White's view) must come from the position after those moves, not the
+  root FEN. The review sends the game's move history so Stockfish sees repetitions.
+
+**Thread decision (to measure):** review on its own engine instance. Compare review
+threads 1 / 2 / 4 alone and alongside live 4-thread MultiPV analysis: review time, depth
+reached per position, live-analysis NPS, frame times and long tasks.
+
+**Risks**
+- Engine results at a fixed movetime vary run to run, so fixtures use recorded fixed-depth
+  results; the e2e test checks structure, not exact classes.
+- Per-ply classification and motif work on the main thread must stay well under 50 ms
+  per task; measured, and moved to a worker if not.
+- The review panel must not break the Phase 4 zero-layout-shift test: fixed heights,
+  nothing resizes per move.
+- Two multi-threaded engines at once use more memory; measured in the thread comparison.
+
+### Status at pause (2026-10-17): in progress, not done
+
+**Done**
+- Fixtures written before the classifier:
+  - `tests/fixtures/review/classification-fixtures.json`: 24 lines, every class covered.
+  - `tests/fixtures/review/motif-fixtures.json`: 31 cases, each motif has positive and
+    negative cases.
+- `scripts/record-review-fixtures.mjs` (`npm run fixtures:review`): single thread, depth
+  18, MultiPV 2, hash cleared. The output is reproducible: two runs gave identical numbers.
+- `src/review/{types,formulas,board,motifs,classification}.ts`.
+- `src/engine/engine-client.ts`: the side to move now accounts for `request.moves`, with a
+  regression test.
+- Tests:
+  - `review-classification.test.ts`: 35 pass, using the spec thresholds unchanged.
+  - `review-motifs.test.ts`: 33 pass.
+  - Mutation checks: removing the recapture exclusion, the short-mate floor, the Miss rule,
+    the Miss "not worse than before the gift" bound, or the pending-threat subtraction
+    each makes a test fail.
+
+**Fixture corrections after recording.** My depth-14/16 probes were wrong about these;
+the thresholds did not change:
+- At depth 18 the top move in the Italian position is a4 (+25), not h3 (+24), so the Best
+  fixture now plays a4.
+- At depth 18, Bg5 is only about 10 cp worse than the best move, which is Excellent, not
+  Good. Replaced by Bd2 (passive development, drop 2.9).
+- "Misses mate in one but still mates": after h3 the mate is about 11 moves away, not
+  "a few". Relabelled Inaccuracy (forced mate moved beyond the 5-move horizon) and
+  rationale corrected.
+- The back-rank fixture was +696 cp (below 95%, so not decided). Added a white knight;
+  it is now +863.
+
+**Left to do**
+- `explain.ts` (sentence rules are designed; fixture sentences are in the JSON) and its
+  tests.
+- `review-game.ts`: per-ply review, key moments, annotated PGN.
+- `review-runner.ts`: engine loop, progress, cancel.
+- Review panel UI: chart, tools, sample game, formulas tooltip.
+- `formulas` unit tests.
+- `docs/classification.md`.
+- `scripts/perf-review.mjs` and the review-thread decision measurements.
+- `tests/e2e/phase5-review.spec.ts`, screenshots.
+- Full check run (build and e2e were not run in this session).

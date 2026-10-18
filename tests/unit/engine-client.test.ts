@@ -387,4 +387,18 @@ describe('Phase 2 — EngineClient, Thread Detection, Priority Queue & Cache', (
     expect(transports).toHaveLength(2);
     client.terminate();
   });
+
+  it('turns scores into White view from the side to move after request.moves', async () => {
+    const client = new EngineClient({
+      variant: 'single-threaded',
+      transportFactory: (v) => new MockStockfishTransport(v),
+    });
+    const start = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+    // The mock always reports cp +32 for the side to move
+    const whiteToMove = await client.analyze({ fen: start, moves: ['e2e4', 'e7e5'], depth: 10, multipv: 1 });
+    expect(whiteToMove.lines[0]?.scoreWhite).toEqual({ type: 'cp', value: 32 });
+    const blackToMove = await client.analyze({ fen: start, moves: ['e2e4'], depth: 10, multipv: 1 });
+    expect(blackToMove.lines[0]?.scoreWhite).toEqual({ type: 'cp', value: -32 });
+    client.terminate();
+  });
 });

@@ -297,12 +297,14 @@ interface QueuedPerftTask {
 
 type QueuedTask = QueuedAnalyzeTask | QueuedPerftTask;
 
-function extractSideToMove(fen: string): Color {
-  if (!fen || fen.trim().toLowerCase() === 'startpos') {
-    return 'w';
+function extractSideToMove(fen: string, movesPlayed = 0): Color {
+  let side: Color = 'w';
+  if (fen && fen.trim().toLowerCase() !== 'startpos') {
+    const parts = fen.trim().split(/\s+/);
+    side = parts[1] === 'b' ? 'b' : 'w';
   }
-  const parts = fen.trim().split(/\s+/);
-  return parts[1] === 'b' ? 'b' : 'w';
+  // `position fen … moves …` searches the position after those moves
+  return movesPlayed % 2 === 1 ? (side === 'w' ? 'b' : 'w') : side;
 }
 
 function detectChess960Need(fen: string, explicit?: boolean): boolean {
@@ -731,7 +733,7 @@ export class EngineClient {
           ...(targetDepth !== undefined ? { depth: targetDepth } : {}),
         },
         fen,
-        sideToMove: extractSideToMove(fen),
+        sideToMove: extractSideToMove(fen, request.moves?.length ?? 0),
         multipv,
         chess960,
         cacheable,

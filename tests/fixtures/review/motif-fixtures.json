@@ -1,0 +1,312 @@
+{
+  "description": "Motif-detector fixtures. Each case plays one UCI move from fen and states whether the named motif is created by that move (expect true) or not (expect false). Square and piece fields name the motif's target where it matters. missed-mate cases also carry the engine scores (mover's point of view) the detector needs.",
+  "fixtures": [
+    {
+      "id": "hanging-knight-to-pawn",
+      "motif": "hanging-piece",
+      "fen": "r1bq1rk1/ppp2ppp/2np1n2/2b1p3/2B1P3/2PP1N2/PP3PPP/RNBQ1RK1 w - - 0 7",
+      "move": "f3d4",
+      "expect": true,
+      "square": "d4",
+      "piece": "n",
+      "note": "The knight lands on a square attacked by the e5 pawn and defended by nothing."
+    },
+    {
+      "id": "hanging-bishop-to-pawn",
+      "motif": "hanging-piece",
+      "fen": "r1bq1rk1/ppp2ppp/2np1n2/2b1p3/2B1P3/2PP1N2/PP3PPP/RNBQ1RK1 w - - 0 7",
+      "move": "c4a6",
+      "expect": true,
+      "square": "a6",
+      "piece": "b"
+    },
+    {
+      "id": "hanging-by-removing-defender",
+      "motif": "hanging-piece",
+      "fen": "4k3/8/8/3r4/8/3N4/3Q4/4K3 w - - 0 1",
+      "move": "d2h6",
+      "expect": true,
+      "square": "d3",
+      "piece": "n",
+      "note": "The queen was the knight's only defender; after Qh6 the rook takes the knight for free."
+    },
+    {
+      "id": "not-hanging-even-trade",
+      "motif": "hanging-piece",
+      "fen": "r1bq1rk1/ppp2ppp/2np1n2/2b1p3/2B1P3/2PP1N2/PP3PPP/RNBQ1RK1 w - - 0 7",
+      "move": "c1e3",
+      "expect": false,
+      "note": "Be3 offers a bishop trade: Bxe3 fxe3 is equal material."
+    },
+    {
+      "id": "not-hanging-quiet",
+      "motif": "hanging-piece",
+      "fen": "r1bq1rk1/ppp2ppp/2np1n2/2b1p3/2B1P3/2PP1N2/PP3PPP/RNBQ1RK1 w - - 0 7",
+      "move": "h2h3",
+      "expect": false
+    },
+    {
+      "id": "fork-knight-king-rook",
+      "motif": "fork",
+      "fen": "r3k3/8/8/3N4/8/8/8/4K3 w - - 0 1",
+      "move": "d5c7",
+      "expect": true,
+      "square": "c7",
+      "targets": [
+        "e8",
+        "a8"
+      ]
+    },
+    {
+      "id": "fork-pawn-two-pieces",
+      "motif": "fork",
+      "fen": "4k3/8/3b1n2/8/3PP3/8/8/4K3 w - - 0 1",
+      "move": "e4e5",
+      "expect": true,
+      "square": "e5",
+      "targets": [
+        "d6",
+        "f6"
+      ],
+      "note": "The pawn is defended by d4, so Bxe5 dxe5 still loses a piece."
+    },
+    {
+      "id": "not-fork-forker-captured",
+      "motif": "fork",
+      "fen": "r2qk3/8/8/3N4/8/8/8/4K3 w - - 0 1",
+      "move": "d5c7",
+      "expect": false,
+      "note": "Nc7+ hits king and rook, but the queen on d8 simply takes the knight."
+    },
+    {
+      "id": "not-fork-pawns-only",
+      "motif": "fork",
+      "fen": "4k3/8/2p1p3/8/8/1N6/8/4K3 w - - 0 1",
+      "move": "b3d4",
+      "expect": false,
+      "note": "Attacking two pawns is not a fork."
+    },
+    {
+      "id": "pin-bishop-knight-to-king",
+      "motif": "pin",
+      "fen": "4k3/8/2n5/8/8/8/8/4KB2 w - - 0 1",
+      "move": "f1b5",
+      "expect": true,
+      "square": "c6",
+      "piece": "n",
+      "behind": "e8"
+    },
+    {
+      "id": "pin-rook-knight-to-queen",
+      "motif": "pin",
+      "fen": "3qk3/8/8/3n4/8/8/8/R3K3 w - - 0 1",
+      "move": "a1d1",
+      "expect": true,
+      "square": "d5",
+      "piece": "n",
+      "behind": "d8"
+    },
+    {
+      "id": "not-pin-nothing-behind",
+      "motif": "pin",
+      "fen": "6k1/8/2n5/8/8/8/8/4KB2 w - - 0 1",
+      "move": "f1b5",
+      "expect": false,
+      "note": "Bb5 attacks the knight but nothing stands behind it on the diagonal."
+    },
+    {
+      "id": "skewer-rook-king-queen",
+      "motif": "skewer",
+      "fen": "1q2k3/8/8/8/8/8/8/4K2R w - - 0 1",
+      "move": "h1h8",
+      "expect": true,
+      "square": "e8",
+      "piece": "k",
+      "behind": "b8"
+    },
+    {
+      "id": "not-skewer-defended-piece-behind",
+      "motif": "skewer",
+      "fen": "1r2k3/3n4/8/8/8/8/8/4K2Q w - - 0 1",
+      "move": "h1h8",
+      "expect": false,
+      "note": "Qh8+ lines up the king and the rook, but the rook is defended by the d7 knight: Qxb8 Nxb8 gives the queen for a rook, so nothing is won."
+    },
+    {
+      "id": "discovered-attack-bishop-on-rook",
+      "motif": "discovered-attack",
+      "fen": "4k2r/8/8/8/3N4/8/1B6/4K3 w - - 0 1",
+      "move": "d4f5",
+      "expect": true,
+      "square": "h8",
+      "piece": "r",
+      "note": "The knight leaves the long diagonal and the b2 bishop now hits the undefended rook."
+    },
+    {
+      "id": "discovered-check",
+      "motif": "discovered-attack",
+      "fen": "4k3/8/8/8/4N3/8/8/4RK2 w - - 0 1",
+      "move": "e4d6",
+      "expect": true,
+      "square": "e8",
+      "piece": "k"
+    },
+    {
+      "id": "discovered-attack-queen-on-knight",
+      "motif": "discovered-attack",
+      "fen": "r1bq1rk1/ppp2ppp/2np1n2/2b1p3/2B1P2N/2PP4/PP3PPP/RNBQ1RK1 b - - 1 7",
+      "move": "f6e4",
+      "expect": true,
+      "square": "h4",
+      "piece": "n",
+      "note": "...Nxe4 uncovers the d8 queen against the undefended knight on h4 (the refutation of Nh4 in the classification fixtures)."
+    },
+    {
+      "id": "not-discovered-pawn-target",
+      "motif": "discovered-attack",
+      "fen": "4k3/6p1/8/8/3N4/8/1B6/4K3 w - - 0 1",
+      "move": "d4b5",
+      "expect": false,
+      "note": "Uncovering an attack on a pawn is not counted."
+    },
+    {
+      "id": "back-rank-mate-white",
+      "motif": "back-rank",
+      "fen": "6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1",
+      "move": "d1d8",
+      "expect": true,
+      "square": "g8"
+    },
+    {
+      "id": "back-rank-mate-black",
+      "motif": "back-rank",
+      "fen": "3r2k1/5ppp/8/8/8/8/5PPP/6K1 b - - 0 1",
+      "move": "d8d1",
+      "expect": true,
+      "square": "g1"
+    },
+    {
+      "id": "not-back-rank-king-has-luft",
+      "motif": "back-rank",
+      "fen": "6k1/5pp1/7p/8/8/8/5PPP/3R2K1 w - - 0 1",
+      "move": "d1d8",
+      "expect": false,
+      "note": "The h6 pawn gives the king h7."
+    },
+    {
+      "id": "missed-mate-in-one",
+      "motif": "missed-mate",
+      "fen": "6rk/6pp/8/6N1/8/8/1Q6/R5K1 w - - 0 1",
+      "move": "g1f1",
+      "bestMove": "g5f7",
+      "bestScore": {
+        "type": "mate",
+        "value": 1
+      },
+      "afterScore": {
+        "type": "cp",
+        "value": 843
+      },
+      "expect": true,
+      "mateIn": 1
+    },
+    {
+      "id": "missed-mate-in-two",
+      "motif": "missed-mate",
+      "fen": "1r4k1/5ppp/8/8/8/8/3Q1PPP/3R2K1 w - - 0 1",
+      "move": "d2c3",
+      "bestMove": "d1d8",
+      "bestScore": {
+        "type": "mate",
+        "value": 2
+      },
+      "afterScore": {
+        "type": "cp",
+        "value": 420
+      },
+      "expect": true,
+      "mateIn": 2,
+      "note": "Rd8+ Rxd8 Qxd8# was mate in two; Qc3 leaves the d-file."
+    },
+    {
+      "id": "not-missed-mate-played-it",
+      "motif": "missed-mate",
+      "fen": "6rk/6pp/8/6N1/8/8/1Q6/R5K1 w - - 0 1",
+      "move": "g5f7",
+      "bestMove": "g5f7",
+      "bestScore": {
+        "type": "mate",
+        "value": 1
+      },
+      "expect": false
+    },
+    {
+      "id": "not-missed-mate-still-mating",
+      "motif": "missed-mate",
+      "fen": "6k1/5p1p/6p1/8/8/8/5PPP/R2Q2K1 w - - 0 1",
+      "move": "h2h3",
+      "bestMove": "a1a8",
+      "bestScore": {
+        "type": "mate",
+        "value": 6
+      },
+      "afterScore": {
+        "type": "mate",
+        "value": 6
+      },
+      "expect": false,
+      "note": "The mate is only delayed by one move; nothing was missed."
+    },
+    {
+      "id": "trapped-bishop-on-a2",
+      "motif": "trapped-piece",
+      "fen": "6k1/8/8/8/8/8/bPP5/R5K1 w - - 0 1",
+      "move": "b2b3",
+      "expect": true,
+      "square": "a2",
+      "piece": "b",
+      "note": "b3 cuts the a2-g8 diagonal; b1 is covered by the rook and Bxb3 cxb3 loses the bishop."
+    },
+    {
+      "id": "trapped-bishop-on-h4",
+      "motif": "trapped-piece",
+      "fen": "6k1/6p1/7p/8/7B/6P1/8/6K1 b - - 0 1",
+      "move": "g7g5",
+      "expect": true,
+      "square": "h4",
+      "piece": "b"
+    },
+    {
+      "id": "not-trapped-has-retreat",
+      "motif": "trapped-piece",
+      "fen": "6k1/6p1/7p/8/7B/8/5P2/6K1 b - - 0 1",
+      "move": "g7g5",
+      "expect": false,
+      "note": "Bg3 is a safe retreat."
+    },
+    {
+      "id": "promotion-threat-white",
+      "motif": "promotion-threat",
+      "fen": "k7/8/4P3/8/8/8/8/4K3 w - - 0 1",
+      "move": "e6e7",
+      "expect": true,
+      "square": "e7"
+    },
+    {
+      "id": "promotion-threat-black",
+      "motif": "promotion-threat",
+      "fen": "4k3/8/8/8/8/3p4/8/K7 b - - 0 1",
+      "move": "d3d2",
+      "expect": true,
+      "square": "d2"
+    },
+    {
+      "id": "not-promotion-threat-pawn-lost",
+      "motif": "promotion-threat",
+      "fen": "3k4/8/4P3/8/8/8/8/4K3 w - - 0 1",
+      "move": "e6e7",
+      "expect": false,
+      "note": "Kxe7 removes the pawn at once."
+    }
+  ]
+}

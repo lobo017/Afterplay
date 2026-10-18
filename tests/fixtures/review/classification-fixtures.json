@@ -1,0 +1,248 @@
+{
+  "description": "Move-classification fixtures. Each line starts at startFen and plays the UCI moves; the LAST move is the one under test. Labels and rationales were written from what the move means over the board, before the classifier existed. Engine results for every position on each line live in classification-evals.json (npm run fixtures:review regenerates them).",
+  "positions": {
+    "start": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+    "italian": "r1bq1rk1/ppp2ppp/2np1n2/2b1p3/2B1P3/2PP1N2/PP3PPP/RNBQ1RK1 w - - 0 7"
+  },
+  "fixtures": [
+    {
+      "id": "book-e4",
+      "startFen": "start",
+      "moves": [
+        "e2e4"
+      ],
+      "expected": "Book",
+      "rationale": "1.e4 reaches a position in the openings dataset."
+    },
+    {
+      "id": "book-philidor",
+      "startFen": "start",
+      "moves": [
+        "e2e4",
+        "e7e5",
+        "g1f3",
+        "d7d6"
+      ],
+      "expected": "Book",
+      "rationale": "2...d6 is the Philidor Defense, a named dataset position; Book applies to Black's moves too."
+    },
+    {
+      "id": "best-quiet-a4",
+      "startFen": "italian",
+      "moves": [
+        "a2a4"
+      ],
+      "expected": "Best",
+      "rationale": "A quiet Giuoco Pianissimo position with several reasonable plans; a4 (queenside space, preparing a5) is the engine's first choice at the recording depth. Other moves are close, so it is not an only move."
+    },
+    {
+      "id": "excellent-bb3",
+      "startFen": "italian",
+      "moves": [
+        "c4b3"
+      ],
+      "expected": "Excellent",
+      "rationale": "Bb3 (pre-empting ...d5 and ...Na5) is a standard, practically equal alternative to the top move: a couple of centipawns at most."
+    },
+    {
+      "id": "good-bd2",
+      "startFen": "italian",
+      "moves": [
+        "c1d2"
+      ],
+      "expected": "Good",
+      "rationale": "Bd2 develops, but passively: the bishop blocks the d-file and takes d2 from the b1 knight. It gives up a small part of White's edge (a few tenths of a pawn) without changing the character of the position."
+    },
+    {
+      "id": "inaccuracy-d4",
+      "startFen": "italian",
+      "moves": [
+        "d3d4"
+      ],
+      "expected": "Inaccuracy",
+      "rationale": "Moving the d-pawn a second time spends a tempo and releases the central tension at the wrong moment: no material is lost, but White hands over roughly half a pawn and the initiative."
+    },
+    {
+      "id": "mistake-nh4",
+      "startFen": "italian",
+      "moves": [
+        "f3h4"
+      ],
+      "expected": "Mistake",
+      "rationale": "Nh4 walks into ...Nxe4!: the knight leaves f6 and uncovers the d8 queen against the undefended knight on h4, so White loses the e4 pawn and gets a worse position. A pawn plus the initiative, but nothing decisive."
+    },
+    {
+      "id": "blunder-nd4-hangs-knight",
+      "startFen": "italian",
+      "moves": [
+        "f3d4"
+      ],
+      "expected": "Blunder",
+      "rationale": "Nd4 puts the knight on a square attacked by the e5 pawn and defended by nothing: exd4 wins a whole piece in a balanced position.",
+      "explanation": "Hangs the knight on d4 to exd4."
+    },
+    {
+      "id": "blunder-ba6-hangs-bishop",
+      "startFen": "italian",
+      "moves": [
+        "c4a6"
+      ],
+      "expected": "Blunder",
+      "rationale": "Ba6 drops the bishop to bxa6 for nothing.",
+      "explanation": "Hangs the bishop on a6 to bxa6."
+    },
+    {
+      "id": "blunder-unsound-sacrifice-bxf7",
+      "startFen": "italian",
+      "moves": [
+        "c4f7"
+      ],
+      "expected": "Blunder",
+      "rationale": "Bxf7+ gives a bishop for a pawn with no follow-up (Rxf7 and the king is safe). A sacrifice that isn't the best move is just lost material, not a Brilliant."
+    },
+    {
+      "id": "great-kpk-opposition",
+      "startFen": "4k3/8/8/4K3/4P3/8/8/8 b - - 0 1",
+      "moves": [
+        "e8e7"
+      ],
+      "expected": "Great",
+      "rationale": "King and pawn endgame: ...Ke7 takes the opposition and is the only drawing move. Every other king move lets the white king reach a key square and the pawn queens."
+    },
+    {
+      "id": "best-recapture-is-not-great",
+      "startFen": "italian",
+      "moves": [
+        "c1e3",
+        "c5e3",
+        "f2e3"
+      ],
+      "expected": "Best",
+      "rationale": "fxe3 takes back the bishop that was just captured. It is the only move that doesn't lose a piece, but an obvious recapture is not an outstanding find, so it is Best rather than Great."
+    },
+    {
+      "id": "brilliant-legal-queen-sacrifice",
+      "startFen": "start",
+      "moves": [
+        "e2e4",
+        "e7e5",
+        "g1f3",
+        "d7d6",
+        "f1c4",
+        "c8g4",
+        "b1c3",
+        "g7g6",
+        "f3e5"
+      ],
+      "expected": "Brilliant",
+      "rationale": "Legal's pattern: Nxe5! leaves the queen en prise (Bxd1 Bxf7+ Ke7 Nd5#) in a roughly balanced position, and it is the engine's best move. A sound queen sacrifice when nothing was already decided."
+    },
+    {
+      "id": "miss-ignores-hanging-knight",
+      "startFen": "italian",
+      "moves": [
+        "f3d4",
+        "h7h6"
+      ],
+      "expected": "Miss",
+      "rationale": "White just hung the knight on d4. Black answers with a routine ...h6 instead of exd4, letting White save the piece and giving back the whole gift.",
+      "explanation": "Misses exd4, which wins the knight on d4."
+    },
+    {
+      "id": "best-punishes-hanging-knight",
+      "startFen": "italian",
+      "moves": [
+        "f3d4",
+        "e5d4"
+      ],
+      "expected": "Best",
+      "rationale": "exd4 simply takes the hung knight."
+    },
+    {
+      "id": "blunder-after-opponent-blunder-is-not-miss",
+      "startFen": "italian",
+      "moves": [
+        "f3d4",
+        "c8f5"
+      ],
+      "expected": "Blunder",
+      "rationale": "After White's Nd4??, Black not only ignores the knight but hangs the bishop on f5 (Nxf5 or exf5). Black ends up clearly worse than before White's error, so this is Black's own Blunder, not merely a missed chance."
+    },
+    {
+      "id": "decided-winning-mate-delayed",
+      "startFen": "6k1/5p1p/6p1/8/8/8/5PPP/R2Q2K1 w - - 0 1",
+      "moves": [
+        "h2h3"
+      ],
+      "expected": "Excellent",
+      "rationale": "Queen and rook against a bare king with pawns: mate is coming whatever White does. A slow move only delays it, so it must not show up as an error."
+    },
+    {
+      "id": "decided-lost-side-hangs-rook",
+      "startFen": "r5k1/5pp1/7p/8/8/1QN5/5PPP/3R2K1 b - - 0 1",
+      "moves": [
+        "a8a3"
+      ],
+      "expected": "Good",
+      "rationale": "Black is already lost (a queen and knight down for a rook). Hanging the rook doesn't change the result and no quick mate follows, so it is not a Mistake or Blunder."
+    },
+    {
+      "id": "decided-lost-side-allows-quick-mate",
+      "startFen": "4r1k1/2R2ppp/8/8/8/2N5/5PPP/3Q2K1 b - - 0 1",
+      "moves": [
+        "e8e2"
+      ],
+      "expected": "Inaccuracy",
+      "rationale": "Black is already lost, but ...Re2 abandons the back rank and allows a short forced mate (Qd8+). Shortening a lost game into a forced mate is worth flagging, but the result was already decided, so not a Blunder.",
+      "explanationPrefix": "Allows mate in"
+    },
+    {
+      "id": "decided-misses-smothered-mate",
+      "startFen": "6rk/6pp/8/6N1/8/8/1Q6/R5K1 w - - 0 1",
+      "moves": [
+        "g1f1"
+      ],
+      "expected": "Inaccuracy",
+      "rationale": "Nf7# is a smothered mate. Kf1 lets Black play ...h6 and the mate is gone; White is still completely winning on material, so this is not a Blunder, but throwing away a mate in one should be flagged.",
+      "explanation": "Misses mate in 1 with Nf7#."
+    },
+    {
+      "id": "decided-misses-mate-in-one-mate-far-away",
+      "startFen": "6k1/5ppp/8/8/8/8/5PPP/R2Q2K1 w - - 0 1",
+      "moves": [
+        "h2h3"
+      ],
+      "expected": "Inaccuracy",
+      "rationale": "Qd8# and Ra8# are both mate in one. After h3 Black makes luft (...h6) and White still mates by force, but only in about eleven moves. Turning a mate in one into a long, hard-to-find mate is worth flagging; White stays completely winning, so not a Blunder."
+    },
+    {
+      "id": "decided-winning-allows-back-rank-mate",
+      "startFen": "4r1k1/2R2ppp/8/8/8/1N6/PP3PPP/3Q2K1 w - - 0 1",
+      "moves": [
+        "d1g4"
+      ],
+      "expected": "Blunder",
+      "rationale": "White is a queen and a knight up (beyond 95% win), but Qg4 leaves the first rank and ...Re1# is mate. Turning a won game into a loss is a Blunder even from a decided position.",
+      "explanation": "Allows Re1#, a back-rank mate."
+    },
+    {
+      "id": "decided-winning-stalemates",
+      "startFen": "k7/8/1K6/8/8/8/8/2Q5 w - - 0 1",
+      "moves": [
+        "c1c7"
+      ],
+      "expected": "Blunder",
+      "rationale": "Qc7 stalemates the black king; Qc8# was mate. A won game becomes a draw.",
+      "explanation": "Stalemates the opponent; Qc8# was mate."
+    },
+    {
+      "id": "best-second-mate-in-one",
+      "startFen": "6k1/5ppp/8/8/8/8/5PPP/R2Q2K1 w - - 0 1",
+      "moves": [
+        "d1d8"
+      ],
+      "expected": "Best",
+      "rationale": "Qd8# is checkmate. When two moves mate at once, either one is the best move, whichever the engine happens to list first."
+    }
+  ]
+}
