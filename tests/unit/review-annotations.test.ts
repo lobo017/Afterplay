@@ -106,7 +106,9 @@ describe('Phase 5 — earlier engine annotations never mix with a review', () =>
     ]);
 
     // No Lichess analysis text survives; the human note and clocks do
-    expect(pgn).not.toMatch(/was best|Inaccuracy\.|→/);
+    expect(pgn).not.toMatch(/was best|Inaccuracy\./);
+    // The app's own sentences may quote an evaluation change; nothing else may
+    expect(pgn.replace(/Review:[^}]*/g, '')).not.toMatch(/→/);
     expect(pgn).toContain('My first blitz game! — Review: Blunder.');
     expect(pgn).toContain('[%clk 0:04:50]');
     expect(pgn.match(/\[%eval/g)).toHaveLength(6);

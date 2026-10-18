@@ -208,6 +208,10 @@ export class ReviewPanel {
   /** The mistake just solved in Retry, until the next navigation (next/previous keeps retrying). */
   private retrySolved: ReviewedMove | null = null;
   private perspective: ReviewPerspective = 'both';
+  /** The tooltip opened by a tap, click or Enter (hover and keyboard focus show them too). */
+  private openTip: 'formulas' | 'status' | null = null;
+  /** The status line's details, shown in its tooltip ('' while there are none). */
+  private statusDetails = '';
   private lastError: string | null = null;
   /** Earlier engine annotations the current review replaced. */
   private strippedAnnotations = 0;
@@ -220,6 +224,8 @@ export class ReviewPanel {
     cancel: HTMLButtonElement;
     sample: HTMLButtonElement;
     progress: HTMLElement;
+    statusTip: HTMLElement;
+    info: HTMLButtonElement;
     progressFill: HTMLElement;
     progressText: HTMLElement;
     body: HTMLElement;
@@ -313,9 +319,13 @@ export class ReviewPanel {
           <button type="button" class="wc-btn wc-btn-ghost wc-btn-xs" data-testid="btn-review-sample" title="Morphy vs. Duke Karl / Count Isouard, Paris 1858">Sample Game</button>
         </div>
       </div>
-      <div class="wc-review-progress" data-testid="review-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
-        <div class="wc-review-progress-fill" data-testid="review-progress-fill"></div>
-        <span class="wc-review-progress-text" data-testid="review-progress-text">Not reviewed</span>
+      <div class="wc-review-status" data-tip="status" data-has-details="false">
+        <div class="wc-review-progress" data-testid="review-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-describedby="wc-review-status-tip">
+          <div class="wc-review-progress-fill" data-testid="review-progress-fill"></div>
+          <span class="wc-review-progress-text" data-testid="review-progress-text">Not reviewed</span>
+          <span class="wc-review-status-more" aria-hidden="true">i</span>
+        </div>
+        <div class="wc-review-tooltip wc-review-status-tip" id="wc-review-status-tip" role="tooltip" data-testid="review-status-tooltip"></div>
       </div>
       <div class="wc-review-body" data-testid="review-body" hidden>
         <div class="wc-review-perspective" role="radiogroup" aria-label="Review as" data-testid="review-perspective">
@@ -336,8 +346,8 @@ export class ReviewPanel {
         <div class="wc-review-summary">
           ${side('w')}
           ${side('b')}
-          <div class="wc-review-formulas">
-            <button type="button" class="wc-review-info-btn" data-testid="btn-review-formulas" aria-describedby="wc-review-formulas-tip" aria-expanded="false" title="How these numbers are computed">i</button>
+          <div class="wc-review-formulas" data-tip="formulas">
+            <button type="button" class="wc-review-info-btn" data-testid="btn-review-formulas" aria-describedby="wc-review-formulas-tip" aria-expanded="false" aria-label="How these numbers are computed">i</button>
             <div class="wc-review-tooltip" id="wc-review-formulas-tip" role="tooltip" data-testid="review-formulas-tooltip">
               <p class="wc-review-tooltip-levels"><b>Bot level (approx.)</b>: <span data-testid="review-bot-name-w">White</span> <b data-testid="review-bot-level-w">—</b> · <span data-testid="review-bot-name-b">Black</span> <b data-testid="review-bot-level-b">—</b></p>
               <p><b>Win%</b> = 50 + 50·(2 / (1 + e<sup>−0.00368208·cp</sup>) − 1), from the engine score in centipawns, clamped to ±1000. A forced mate counts as ±1000 (97.5% / 2.5%), as on Lichess.</p>
@@ -405,6 +415,8 @@ export class ReviewPanel {
       cancel: q('btn-review-cancel'),
       sample: q('btn-review-sample'),
       progress: q('review-progress'),
+      statusTip: q('review-status-tooltip'),
+      info: q('btn-review-formulas'),
       progressFill: q('review-progress-fill'),
       progressText: q('review-progress-text'),
       body: q('review-body'),
@@ -460,11 +472,33 @@ export class ReviewPanel {
     });
     this.els.errorPrev.addEventListener('click', () => this.stepError(-1));
     this.els.errorNext.addEventListener('click', () => this.stepError(1));
-    const info = q<HTMLButtonElement>('btn-review-formulas');
-    info.addEventListener('click', () => {
-      const open = !this.root.classList.contains('wc-review-tooltip-open');
-      this.root.classList.toggle('wc-review-tooltip-open', open);
-      info.setAttribute('aria-expanded', String(open));
+    // Tooltips open on hover (devices that hover), keyboard focus, or a tap / click, which
+    // toggles; a tap outside or Escape closes them
+    this.els.info.addEventListener('click', () => this.toggleTip('formulas'));
+    this.els.progress.addEventListener('click', () => {
+      if (this.statusDetails) this.toggleTip('status');
+    });
+    this.els.progress.addEventListener('keydown', (e) => {
+      if ((e.key === 'Enter' || e.key === ' ') && this.statusDetails) {
+        e.preventDefault();
+        this.toggleTip('status');
+      }
+    });
+    document.addEventListener(
+      'pointerdown',
+      (e) => {
+        const tip = this.openTip;
+        if (tip && !(e.target as Element | null)?.closest?.(`[data-tip="${tip}"]`)) this.setTip(null);
+      },
+      true,
+    );
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape' || !this.openTip) return;
+      const focused = document.activeElement;
+      if (focused instanceof HTMLElement && focused.closest('[data-tip]') && this.root.contains(focused)) {
+        focused.blur();
+      }
+      this.setTip(null);
     });
     this.els.retryBtn.addEventListener('click', () => this.startRetry());
     this.els.refutationBtn.addEventListener('click', () => this.showRefutation());
@@ -474,6 +508,17 @@ export class ReviewPanel {
     this.els.exportBtn.addEventListener('click', () => {
       this.exportAnnotatedPgn();
     });
+  }
+
+  private toggleTip(tip: 'formulas' | 'status'): void {
+    this.setTip(this.openTip === tip ? null : tip);
+  }
+
+  private setTip(tip: 'formulas' | 'status' | null): void {
+    this.openTip = tip;
+    if (tip) this.root.setAttribute('data-tip-open', tip);
+    else this.root.removeAttribute('data-tip-open');
+    this.els.info.setAttribute('aria-expanded', String(tip === 'formulas'));
   }
 
   // ------------------------------------------------------------------ public API
@@ -678,7 +723,9 @@ export class ReviewPanel {
           `${total} positions in ${seconds.toFixed(1)} s`,
           `mean depth ${(stats?.meanDepth ?? 0).toFixed(1)}`,
           `${(REVIEW_PRESET_MOVETIME_MS[this.preset] / 1000).toFixed(1)} s per position`,
-          this.strippedAnnotations > 0 ? `replaced ${this.strippedAnnotations} earlier engine annotations` : '',
+          this.strippedAnnotations > 0
+            ? `replaced ${this.strippedAnnotations} earlier engine annotation${this.strippedAnnotations === 1 ? '' : 's'}`
+            : '',
         ]
           .filter(Boolean)
           .join(' · ');
@@ -692,9 +739,18 @@ export class ReviewPanel {
         break;
     }
     this.els.progressText.textContent = text;
-    if (details) this.els.progress.title = details;
-    else this.els.progress.removeAttribute('title');
+    this.statusDetails = details;
+    this.els.statusTip.textContent = details;
     this.els.progress.setAttribute('data-details', details);
+    this.els.progress.parentElement?.setAttribute('data-has-details', String(details !== ''));
+    if (details) {
+      this.els.progress.tabIndex = 0;
+      this.els.progress.setAttribute('aria-label', `${text}. Press for details.`);
+    } else {
+      this.els.progress.removeAttribute('tabindex');
+      this.els.progress.removeAttribute('aria-label');
+      if (this.openTip === 'status') this.setTip(null);
+    }
     this.els.exportBtn.disabled = !review || review.moves.length === 0 || running;
   }
 

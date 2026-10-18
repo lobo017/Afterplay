@@ -99,7 +99,9 @@ describe('Phase 5 — Lichess reference game Bjl39T9x', () => {
     expect(mainLinePlies(imported).length).toBe(46);
     const { positions, review } = reviewWithLichessEvals(imported);
     const pgn = buildAnnotatedPgn(imported, review, positions, 'Stockfish 17.1');
-    expect(pgn).not.toMatch(/was best\.|Checkmate is now unavoidable|→/);
+    expect(pgn).not.toMatch(/was best\.|Checkmate is now unavoidable/);
+    // The app's own sentences may quote an evaluation change; nothing else may
+    expect(pgn.replace(/Review:[^}]*/g, '')).not.toMatch(/→/);
     expect(pgn.match(/\[%eval /g)).toHaveLength(45); // every move but the mate itself
     expect(pgn).toContain('[%clk 0:02:00]');
 
@@ -126,5 +128,16 @@ describe('Phase 5 — Lichess reference game Bjl39T9x', () => {
     // Recorded so a change is noticed; see BOT_LEVEL_ANCHORS for why this isn't a rating
     expect(review.white.botLevel?.rating).toBeLessThan(lichessGame.game.players.white.rating - 400);
     expect(review.black.botLevel?.rating).toBeLessThan(lichessGame.game.players.black.rating - 400);
+  });
+});
+
+describe('Phase 5 — fallback sentences on the Lichess reference game', () => {
+  it('6...Be6 says what Black threw away, by how much, and what kept it', () => {
+    const { review } = reviewWithLichessEvals();
+    const be6 = review.moves.find((m) => m.moveNumber === 6 && m.color === 'b')!;
+    expect(be6.san).toBe('Be6');
+    expect(be6.explanation).not.toBe('Lets part of the advantage slip.');
+    expect(be6.classification).toBe('Blunder');
+    expect(be6.explanation).toBe("Throws away Black's winning advantage (−2.0 → 0.0); Bf5 kept it.");
   });
 });

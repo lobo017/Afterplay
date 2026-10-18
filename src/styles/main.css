@@ -2093,12 +2093,70 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-.wc-review-formulas:hover .wc-review-tooltip,
-.wc-review-formulas:focus-within .wc-review-tooltip,
-.wc-review-tooltip-open .wc-review-tooltip {
+/* Open on a tap or click (toggled by the panel; outside tap and Escape close it), on hover
+   where the device can hover, and on keyboard focus. Not on plain :focus: a tapped button
+   keeps focus, which would keep the tooltip open after a second tap. */
+.wc-review-panel[data-tip-open='formulas'] .wc-review-formulas .wc-review-tooltip,
+.wc-review-panel[data-tip-open='status'] .wc-review-status-tip,
+.wc-review-formulas:has(:focus-visible) .wc-review-tooltip,
+.wc-review-progress:focus-visible + .wc-review-status-tip {
   visibility: visible;
   opacity: 1;
   pointer-events: auto;
+}
+
+@media (hover: hover) {
+  .wc-review-formulas:hover .wc-review-tooltip,
+  .wc-review-status[data-has-details='true']:hover .wc-review-status-tip {
+    visibility: visible;
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+.wc-review-status {
+  position: relative;
+}
+
+.wc-review-status-tip {
+  left: 0;
+  right: auto;
+  width: min(23rem, 100%);
+  font-variant-numeric: tabular-nums;
+}
+
+.wc-review-status[data-has-details='true'] .wc-review-progress {
+  cursor: pointer;
+}
+
+.wc-review-progress:focus-visible {
+  outline: 2px solid var(--accent-arcane);
+  outline-offset: 1px;
+}
+
+/* A small "i" shows that the status line has details */
+.wc-review-status-more {
+  position: absolute;
+  top: 50%;
+  right: 0.35rem;
+  width: 0.95rem;
+  height: 0.95rem;
+  margin-top: -0.475rem;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 1px solid rgba(252, 211, 77, 0.7);
+  color: #fcd34d;
+  font: italic 700 0.6rem Georgia, serif;
+}
+
+.wc-review-status[data-has-details='true'] .wc-review-status-more {
+  display: inline-flex;
+}
+
+.wc-review-status[data-has-details='true'] .wc-review-progress-text {
+  padding-right: 1.6rem;
 }
 
 /* Counts table and key moments: side by side when the panel is wide, stacked otherwise */
@@ -2337,6 +2395,22 @@ body {
 
   .wc-review-card .wc-review-card-eval {
     width: 6.4rem;
+  }
+
+  /* The formulas tooltip spans the summary instead of hanging off the "i" button, which
+     would push it past the left edge of a phone screen */
+  .wc-review-summary {
+    position: relative;
+  }
+
+  .wc-review-summary .wc-review-formulas {
+    position: static;
+  }
+
+  .wc-review-summary .wc-review-formulas .wc-review-tooltip {
+    left: 0;
+    right: 0;
+    width: auto;
   }
 }
 

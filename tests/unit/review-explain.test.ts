@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { classifyMove, isErrorClass } from '../../src/review/classification';
-import { explainMove } from '../../src/review/explain';
-import type { PositionAnalysis } from '../../src/review/types';
+import {
+  STANDING_MIN_WIN,
+  explainMove,
+  fallbackSentence,
+  formatEvalShort,
+  standingFromWin,
+} from '../../src/review/explain';
+import { winPercentFromCp } from '../../src/review/formulas';
+import type { MoveClassification, PositionAnalysis } from '../../src/review/types';
 import { classificationFixtures, classifyInputFor } from '../helpers/review-fixtures';
 
 function explainFixture(id: string) {
@@ -134,27 +141,106 @@ describe('Phase 5 — explanation rules (hand-set engine scores)', () => {
       ]),
     });
     expect(result.explanation).not.toMatch(/knight on c4|Hangs/);
-    expect(result.explanation).toBe('Lets part of the advantage slip.');
+    expect(result.explanation).toBe("Gives back some of White's winning advantage (+3.7 → +2.7); Qa4 was stronger.");
     expect(result.motifs).toEqual([]);
   });
 
-  it('falls back to the evaluation when there is no tactic', () => {
-    const fen = 'r1bq1rk1/ppp2ppp/2np1n2/2b1p3/2B1P3/2PP1N2/PP3PPP/RNBQ1RK1 w - - 0 7';
-    const after = 'r1bq1rk1/ppp2ppp/2np1n2/2b1p3/2B1P3/P1PP1N2/1P3PPP/RNBQ1RK1 b - - 0 7';
-    const explain = (winBefore: number, winAfter: number) =>
+  describe('falls back to the standing, the evaluation change and the move that kept it', () => {
+    // A quiet Italian: no capture or tactic for either side, so only rule 7 (or the Miss
+    // fallback) can explain the move. White plays a3 (best a4); Black plays ...h6 (best ...a6).
+    const whiteFen = 'r1bq1rk1/ppp2ppp/2np1n2/2b1p3/2B1P3/2PP1N2/PP3PPP/RNBQ1RK1 w - - 0 7';
+    const blackFen = 'r1bq1rk1/ppp2ppp/2np1n2/2b1p3/2B1P3/P1PP1N2/1P3PPP/RNBQ1RK1 b - - 0 7';
+    const afterBlack = 'r1bq1rk1/ppp2pp1/2np1n1p/2b1p3/2B1P3/P1PP1N2/1P3PPP/RNBQ1RK1 w - - 0 8';
+    const cp = (value: number) => ({ type: 'cp' as const, value });
+    /** `before` / `after` in centipawns from the mover's side. */
+    const explain = (side: 'w' | 'b', classification: MoveClassification, before: number, after: number) =>
       explainMove({
-        classification: 'Inaccuracy',
-        fenBefore: fen,
-        uci: 'a2a3',
-        winBefore,
-        winAfter,
-        before: analysis(fen, [[['a2a4'], { type: 'cp', value: 25 }]]),
-        after: analysis(after, [[['a7a6'], { type: 'cp', value: 40 }]]),
+        classification,
+        fenBefore: side === 'w' ? whiteFen : blackFen,
+        uci: side === 'w' ? 'a2a3' : 'h7h6',
+        winBefore: winPercentFromCp(before),
+        winAfter: winPercentFromCp(after),
+        before: analysis(side === 'w' ? whiteFen : blackFen, [[[side === 'w' ? 'a2a4' : 'a7a6'], cp(before)]]),
+        after: analysis(side === 'w' ? blackFen : afterBlack, [[[side === 'w' ? 'a7a6' : 'a3a4'], cp(-after)]]),
       }).explanation;
-    // The best move isn't repeated in the sentence (the card and the PGN name it once)
-    expect(explain(54, 40)).toBe('Hands the opponent the advantage.');
-    expect(explain(80, 70)).toBe('Lets part of the advantage slip.');
-    expect(explain(45, 37)).toBe('Loses ground.');
-    expect(explain(30, 15)).toBe('Makes a difficult position worse.');
+
+    // [side, class, before, after, sentence]
+    const cases: Array<[side: 'w' | 'b', cls: MoveClassification, before: number, after: number, text: string]> = [
+      // From winning
+      ['w', 'Inaccuracy', 400, 250, "Gives back some of White's winning advantage (+4.0 → +2.5); a4 was stronger."],
+      ['w', 'Mistake', 500, 250, "Gives back much of White's winning advantage (+5.0 → +2.5); a4 was stronger."],
+      ['w', 'Blunder', 900, 250, "Gives back a large part of White's winning advantage (+9.0 → +2.5); a4 was stronger."],
+      ['w', 'Mistake', 300, 100, "Lets White's winning advantage shrink to a small edge (+3.0 → +1.0); a4 kept the win."],
+      ['w', 'Blunder', 400, 100, "Throws away most of White's winning advantage (+4.0 → +1.0); a4 kept the win."],
+      ['w', 'Blunder', 200, 0, "Throws away White's winning advantage (+2.0 → 0.0); a4 kept it."],
+      ['b', 'Blunder', 200, 0, "Throws away Black's winning advantage (−2.0 → 0.0); a6 kept it."],
+      [
+        'w',
+        'Blunder',
+        300,
+        -100,
+        "Throws away White's winning advantage and gives the opponent the better game (+3.0 → −1.0); a4 kept the win.",
+      ],
+      ['w', 'Blunder', 300, -400, "Turns White's winning position into a losing one (+3.0 → −4.0); a4 kept the win."],
+      ['b', 'Blunder', 300, -400, "Turns Black's winning position into a losing one (−3.0 → +4.0); a6 kept the win."],
+      // From a smaller advantage
+      ['w', 'Inaccuracy', 150, 80, "Gives back some of White's advantage (+1.5 → +0.8); a4 was stronger."],
+      ['w', 'Mistake', 150, 0, "Lets White's advantage slip away (+1.5 → 0.0); a4 kept it."],
+      // 6...Be6 in https://lichess.org/Bjl39T9x, a Blunder: −1.57 → +0.23, best ...Bf5
+      ['b', 'Blunder', 157, -23, "Throws away Black's advantage (−1.6 → +0.2); a6 kept it."],
+      ['w', 'Blunder', 150, -100, "Turns White's advantage into the worse position (+1.5 → −1.0); a4 kept the advantage."],
+      ['w', 'Blunder', 150, -300, "Turns White's advantage into a losing position (+1.5 → −3.0); a4 kept the advantage."],
+      // From a level position
+      ['w', 'Inaccuracy', 50, -40, 'Gives the opponent the easier game (+0.5 → −0.4); a4 was stronger.'],
+      ['b', 'Mistake', 0, -150, 'Hands the opponent the advantage in a level position (0.0 → +1.5); a6 kept the balance.'],
+      ['w', 'Blunder', 0, -300, 'Turns a level position into a losing one for White (0.0 → −3.0); a4 kept the balance.'],
+      // From a worse or losing position
+      ['w', 'Inaccuracy', -100, -170, "Makes White's difficult position harder (−1.0 → −1.7); a4 defended better."],
+      ['w', 'Blunder', -100, -400, "Turns White's difficult position into a losing one (−1.0 → −4.0); a4 held on."],
+      ['b', 'Inaccuracy', -300, -450, "Makes Black's losing position worse (+3.0 → +4.5); a6 was the toughest defence."],
+      ['w', 'Mistake', -300, -600, "Makes White's losing position much worse (−3.0 → −6.0); a4 was the toughest defence."],
+      // Miss: the opponent's mistake went unpunished
+      ['w', 'Miss', 300, 50, 'Misses the win for White (+3.0 → +0.5); a4 was winning.'],
+      ['b', 'Miss', 150, 0, "Lets the opponent off the hook (−1.5 → 0.0); a6 kept Black's advantage."],
+      ['w', 'Miss', 30, -100, "Leaves the opponent's mistake unpunished (+0.3 → −1.0); a4 punished it."],
+    ];
+    for (const [side, cls, before, after, text] of cases) {
+      it(`${cls}, ${side === 'w' ? 'White' : 'Black'} ${before} → ${after} cp`, () => {
+        const sentence = explain(side, cls, before, after)!;
+        expect(sentence).toBe(text);
+        // Still one sentence
+        expect(sentence.slice(0, -1).includes('. ')).toBe(false);
+      });
+    }
+
+    it('every error class has a severity-matched sentence for the same drop', () => {
+      const sentences = (['Inaccuracy', 'Mistake', 'Blunder'] as const).map((c) => explain('w', c, 700, 300));
+      expect(new Set(sentences).size).toBe(3);
+    });
+
+    it('formats evaluations as the eval bar does, one decimal, White’s side', () => {
+      expect(formatEvalShort({ type: 'cp', value: -200 })).toBe('−2.0');
+      expect(formatEvalShort({ type: 'cp', value: 4 })).toBe('0.0');
+      expect(formatEvalShort({ type: 'cp', value: -4 })).toBe('0.0');
+      expect(formatEvalShort({ type: 'cp', value: 155 })).toBe('+1.6');
+      expect(formatEvalShort({ type: 'mate', value: 3 })).toBe('M3');
+      expect(formatEvalShort({ type: 'mate', value: -2 })).toBe('−M2');
+    });
+
+    it('leaves the second half out when there is no better move to name', () => {
+      expect(
+        fallbackSentence({
+          classification: 'Mistake',
+          side: 'w',
+          winBefore: 60,
+          winAfter: 50,
+          evalChange: '+1.0 → 0.0',
+          bestSan: null,
+        }),
+      ).toBe("Lets White's advantage slip away (+1.0 → 0.0).");
+      // An error never reads as an improvement: noise across a band edge stays in the band
+      expect(standingFromWin(STANDING_MIN_WIN.winning)).toBe('winning');
+      expect(standingFromWin(STANDING_MIN_WIN.equal)).toBe('worse');
+    });
   });
 });

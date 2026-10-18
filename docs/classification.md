@@ -248,8 +248,7 @@ order:
 3. **A short mate was missed**: "Misses mate in 1 with Nf7#." / "Misses mate in 3,
    starting with …".
 4. **Miss**: what the best move would have done, if realized: "Misses exd4, which wins
-   the knight on d4.", or the motif it creates, or "…, which keeps the advantage from the
-   opponent's mistake."
+   the knight on d4.", or the motif it creates; otherwise the Miss line of rule 7.
 5. **Material left en prise and taken by the engine's line**: "Hangs the knight on d4 to
    exd4."; a sacrifice that doesn't work: "Gives up the bishop on f7 for a pawn; Rxf7
    takes it."; a piece that was already attacked and was ignored: "Leaves the pawn on e4
@@ -257,21 +256,45 @@ order:
 6. **The opponent's best reply is a realized tactic**: "Allows Nxe4, a discovered attack
    on the knight on h4.", "Allows Nc2+, forking the king and queen.", pins, skewers,
    trapped pieces, promotion threats, or a plain winning capture.
-7. **No realized tactic**: "Hands the opponent the advantage." / "Lets part of the
-   advantage slip." / "Makes a difficult position worse." / "Loses ground."
+7. **No realized tactic**: what happened to the mover's standing, the evaluation change
+   (White's side, one decimal, as on the eval bar) and the move that kept it, joined with
+   a semicolon so it stays one sentence: "Throws away Black's winning advantage
+   (−2.0 → 0.0); Bf5 kept it." Standing comes from the mover's win% (`standingFromWin`):
 
-The best move is named once: next to the sentence in the move card, and in the export as
-"Best: X." only when the sentence doesn't already name it (no more "X was better. Best
-was X.").
+   | Standing | Win% | About |
+   |---|---|---|
+   | winning | ≥ 67 | ≥ +1.9 |
+   | better | 56–67 | +0.65 to +1.9 |
+   | equal | 44–56 | ±0.65 |
+   | worse | 33–44 | −0.65 to −1.9 |
+   | losing | < 33 | ≤ −1.9 |
+
+   One sentence per (before → after) pair (`fallbackSentence`), e.g. winning → equal
+   "Throws away …'s winning advantage", winning → losing "Turns …'s winning position into
+   a losing one", equal → worse "Hands the opponent the advantage in a level position",
+   worse → losing "Turns …'s difficult position into a losing one". The class sets the
+   severity: inside one band "Gives back some of / much of / a large part of …"
+   (Inaccuracy / Mistake / Blunder), and a Blunder "throws away" an advantage another class
+   "lets slip". A Miss says what was missed by the standing before it: "Misses the win
+   for White (+3.0 → +0.5); a4 was winning.", "Lets the opponent off the hook …", "Leaves
+   the opponent's mistake unpunished …". Every pair has a unit test
+   (`review-explain.test.ts`); 6...Be6 of the reference game has a regression test.
+
+The best move is named once: in the move card's line, and in the export as "Best: X."
+only when the sentence doesn't already name it. Fallback sentences name it, so their
+export carries no separate "Best:".
 
 **The three sentences reported from https://lichess.org/Bjl39T9x**, now fixtures:
 - 17.Nc4 "Hangs the knight on c4": the knight is defended by d3; ...Nxc4 dxc4 is an even
   trade (the static exchange also counted ...Qxc4 winning a pawn, which is not a hung
-  knight). Now "Lets part of the advantage slip."
+  knight). Now (Inaccuracy, depth 18) "Gives back some of White's winning advantage
+  (+3.8 → +2.4); Qa4 was stronger."
 - 20.cxd4 "…, trapping the queen on d1": after ...Rxd4 the queen has no safe square of its
-  own but Bd2 blocks the attack. Now "Lets part of the advantage slip."
+  own but Bd2 blocks the attack. Now (Blunder) "Throws away White's winning advantage
+  (+2.0 → −0.4); Bf4+ kept it."
 - 15...axb5 "Allows axb5, winning the pawn on b5": axb5 is a recapture; the problem is
-  the opened a-file, which no motif describes. Now "Loses ground."
+  the opened a-file, which no motif describes. Now (Mistake) "Turns Black's difficult
+  position into a losing one (+1.3 → +2.8); Na5 held on."
 
 ## Motif detectors
 

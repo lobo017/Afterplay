@@ -1780,3 +1780,88 @@ clipped "Sample Game" button.
 **29/29 e2e** (26 earlier + 3 perspective): all pass. The sample-game review recorded zero
 long tasks; Phase 4's navigation test and the Phase 5 stepping test still record zero
 layout shifts. The 46-move Lichess game reviews in 29–31 s on Quick.
+
+## Phase 5 — Explanation wording and phone fixes (2026-10-18)
+
+### Plan (written before code)
+
+1. **Fallback sentences** (`src/review/explain.ts`, rule 7 and the Miss fallback in rule 4):
+   name the side, how the standing changed and how badly, the evaluation change (White's
+   view, as on the eval bar), and the move that kept it. Standing from the mover's win%:
+   winning ≥ 67 (about +1.9), better ≥ 56, equal 44–56, worse ≥ 33, losing below. One
+   sentence per (from → to) pair; inside one band the class sets the amount ("some of" /
+   "much of" / "a large part of"). The best move is joined with a semicolon so the
+   explanation stays one sentence (spec: one sentence per mistake; the explain test checks
+   it): "Throws away Black's winning advantage (−1.6 → +0.1); Bf5 kept it." This reverses
+   the earlier decision to keep the best move out of fallback sentences; the export
+   already skips its own "Best: X." when the sentence names it.
+   Tests: a table test per class (Inaccuracy, Mistake, Blunder, Miss) and per transition;
+   two existing expectations that quote the old sentences get the new text.
+   docs/classification.md updated.
+2. **Tap-to-open tooltips** (`review-panel.ts`, CSS): the formulas "i" button already
+   toggles on click but never closes on an outside tap or Escape; add both. The status
+   line becomes a button-like toggle that shows its details in a tooltip of the same
+   style (tap, outside tap, Escape; hover and focus still work on desktop). Only one open
+   at a time.
+3. **Clipped "Sample Game"**: already fixed in 04592d1 (the panel header wraps); verified
+   again in the phone screenshots.
+
+**Risks:** an absolutely positioned status tooltip must not cause layout shift or page
+overflow at 390 px; the explanation fixtures that pin exact sentences.
+
+### Result (2026-10-18)
+
+**1. Fallback sentences.** `explain.ts`: `standingFromWin`, `formatEvalShort`,
+`fallbackSentence`. Rule 7 and the Miss fallback (rule 4 with no capture or motif) now
+say the side, how its standing changed, the evaluation change and the move that kept it.
+Severity follows the class: within a band "some of / much of / a large part of", and a
+Blunder "throws away" what another class "lets slip". The table is in
+docs/classification.md. 6...Be6 of the reference game, fed Lichess's evals, now reads
+"Throws away Black's winning advantage (−2.0 → 0.0); Bf5 kept it." (regression test).
+- **Deviation from the request, on purpose:** the best move is joined with a semicolon
+  instead of a second sentence, so the spec's "one sentence per mistake" and the existing
+  one-sentence test still hold.
+- Tests: 27 new cases in `review-explain.test.ts` (every transition, each error class and
+  Miss, both sides, no-best-move, formatting); the 17.Nc4 expectation and the old 4-case
+  fallback test quoted the old sentences and now quote the new ones.
+- Three tests used any "→" in an exported PGN as a sign of a leftover Lichess comment
+  (`(a → b) Mistake.`). The new sentences contain "→", so those checks now strip the app's
+  own `Review:` text first and still fail on a "→" anywhere else; the "was best" /
+  "Checkmate is now unavoidable" / "Inaccuracy." checks are unchanged. The Lichess comment
+  stripper itself needs `(a → b)` followed by a judgement word, so it can't eat the app's
+  sentences (idempotent re-export tests still pass).
+
+**2. Tap-to-open tooltips.** Both tooltips are driven by one state in the panel
+(`data-tip-open`): a tap/click toggles, a tap outside or Escape closes, only one is open.
+Hover shows them only on devices that can hover (`@media (hover: hover)`), keyboard focus
+via `:focus-visible`. The old `:focus-within` rule is gone: a tapped button keeps focus,
+so it kept the tooltip open after a second tap. The status line is now focusable when it
+has details (Enter / Space), shows a small "i", and its details moved from `title` to a
+tooltip of the same style (`review-status-tooltip`). On a narrow panel the formulas
+tooltip spans the summary; anchored to the "i" it ran off the left edge of a 390 px
+screen (seen in the first phone screenshot). "replaced 1 earlier engine annotations" is
+now singular.
+
+**3. "Sample Game" clipped:** already fixed in 04592d1 (the header wraps). The new phone
+test checks that every header control is inside the panel, not truncated and not covered.
+
+**Tests:** new e2e "Review panel on a phone" (390 × 844, touch, `isMobile`, no hover):
+header fits; status and formulas tooltips open on tap, close on an outside tap, a second
+tap and Escape; one at a time; both stay on screen; no layout shift and no horizontal
+scroll. The sample-game test checks hover still opens the status tooltip on desktop. The
+two assertions that read the status details from `title` read the tooltip instead.
+
+**Screenshots looked at** (`test-results/phase5-screens/`): `phone-status-tooltip.png`,
+`phone-formulas-tooltip.png`, `phone-panel.png`, `perspective-black-phone-panel.png`
+(card on 6...Be6 with the new sentence), desktop perspective screenshots.
+
+**Known issue (existing, not changed):** live analysis stores its eval on the current
+move for PGN export, so reviewing a plain PGN after the engine has looked at a position
+reports "replaced 1 earlier engine annotation". The count is accurate (it is an engine
+eval the review replaces), but it can surprise.
+- At phone width the key-moment rows clamp longer sentences to two lines (the move card
+  and the row's title show the full sentence).
+
+**Checks (final run, 2026-10-18):** typecheck, lint, **286 unit tests** (22 files), build,
+**30/30 e2e** (29 earlier + the phone test): all pass; the sample-game review recorded
+zero long tasks.

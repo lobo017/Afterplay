@@ -197,7 +197,13 @@ test.describe('Phase 5 — Game review', () => {
 
     // Summary, counts, progress text: a short status line, the details in its tooltip
     await expect(page.getByTestId('review-progress-text')).toHaveText(/^Reviewed · Quick · \d+(\.\d)? s$/);
-    await expect(page.getByTestId('review-progress')).toHaveAttribute('title', /^34 positions in \d+\.\d s · mean depth/);
+    await expect(page.getByTestId('review-status-tooltip')).toHaveText(/^34 positions in \d+\.\d s · mean depth/);
+    // On a device that hovers, hovering the status line shows its details
+    await expect(page.getByTestId('review-status-tooltip')).toBeHidden();
+    await page.getByTestId('review-progress').hover();
+    await expect(page.getByTestId('review-status-tooltip')).toBeVisible();
+    await page.mouse.move(5, 450);
+    await expect(page.getByTestId('review-status-tooltip')).toBeHidden();
     await expect(page.getByTestId('review-accuracy-w')).toHaveText(review.white.accuracy!.toFixed(1));
     await expect(page.getByTestId('review-count-book')).toBeVisible();
     // Neither player is one of my accounts: both sides, White's chart, names from the PGN
@@ -436,8 +442,7 @@ test.describe('Phase 5 — Game review', () => {
     await expect(page.getByTestId('review-panel')).toHaveAttribute('data-state', 'done', {
       timeout: 90_000,
     });
-    await expect(page.getByTestId('review-progress')).toHaveAttribute(
-      'title',
+    await expect(page.getByTestId('review-status-tooltip')).toContainText(
       /replaced \d+ earlier engine annotations/,
     );
 
@@ -472,7 +477,9 @@ test.describe('Phase 5 — Game review', () => {
     await page.getByTestId('btn-review-export').click();
     await page.waitForTimeout(600);
     const pgn = await page.getByTestId('textarea-pgn').inputValue();
-    expect(pgn).not.toMatch(/was best|Checkmate is now unavoidable|→/);
+    expect(pgn).not.toMatch(/was best|Checkmate is now unavoidable/);
+    // The app's own sentences may quote an evaluation change; nothing else may
+    expect(pgn.replace(/Review:[^}]*/g, '')).not.toMatch(/→/);
     expect(pgn).toContain('[Annotator "Wizard\'s Chess review');
     const exported = await page.evaluate((text) => {
       const tree = window.__wizardChessCore!.parsePgn(text);
@@ -799,5 +806,113 @@ test.describe('Phase 5 — Review perspective', () => {
     await screenshotPanel(page, 'perspective-black-phone');
     await page.getByTestId('review-perspective-both').click();
     await screenshotPanel(page, 'perspective-both-phone');
+  });
+});
+
+test.describe('Phase 5 — Review panel on a phone', () => {
+  test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+
+  test('tooltips open on tap and close on an outside tap or Escape; the header fits', async ({ page }) => {
+    test.setTimeout(120_000);
+    await page.goto('/');
+    await page.getByTestId('mode-tab-analysis').tap();
+    await expect(page.getByTestId('review-panel')).toBeVisible();
+    // A touch screen: nothing can hover, so taps are the only way in
+    expect(await page.evaluate(() => matchMedia('(hover: hover)').matches)).toBe(false);
+
+    // The header's buttons all fit inside the panel, none clipped or covered
+    const panelBox = (await page.getByTestId('review-panel').boundingBox())!;
+    for (const id of ['select-review-preset', 'btn-review-start', 'btn-review-cancel', 'btn-review-sample']) {
+      const el = page.getByTestId(id);
+      await el.scrollIntoViewIfNeeded();
+      const box = (await el.boundingBox())!;
+      expect(box.x, id).toBeGreaterThanOrEqual(panelBox.x);
+      expect(box.x + box.width, id).toBeLessThanOrEqual(panelBox.x + panelBox.width);
+      expect(await el.evaluate((n) => n.scrollWidth <= n.clientWidth), `${id} text fits`).toBe(true);
+      expect(
+        await el.evaluate((n) => {
+          const r = n.getBoundingClientRect();
+          return n.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2));
+        }),
+        `${id} is not covered`,
+      ).toBe(true);
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+
+    await page.evaluate((pgn) => window.__wizardChessAnalysis!.controller.importPgn(pgn), QUEEN_BLUNDER_PGN);
+    await page.getByTestId('btn-review-start').tap();
+    await expect(page.getByTestId('review-panel')).toHaveAttribute('data-state', 'done', { timeout: 60_000 });
+
+    const status = page.getByTestId('review-progress');
+    const statusTip = page.getByTestId('review-status-tooltip');
+    const info = page.getByTestId('btn-review-formulas');
+    const formulas = page.getByTestId('review-formulas-tooltip');
+    // Outside both tooltips: the panel title (each tooltip opens below its trigger)
+    const outside = page.locator('[data-testid="review-panel"] > .wc-panel-section-title > span');
+    await status.scrollIntoViewIfNeeded();
+
+    // Status details: tap opens, an outside tap closes, tap again opens, Escape closes
+    await expect(statusTip).toBeHidden();
+    await status.tap();
+    await expect(statusTip).toBeVisible();
+    // (Live analysis stores its eval on the current move, which the review then replaces)
+    await expect(statusTip).toHaveText(
+      /^7 positions in \d+\.\d s · mean depth \d+\.\d · 0\.2 s per position( · replaced 1 earlier engine annotation| · replaced \d+ earlier engine annotations)?$/,
+    );
+    const statusBox = (await statusTip.boundingBox())!;
+    expect(statusBox.x).toBeGreaterThanOrEqual(0);
+    expect(statusBox.x + statusBox.width).toBeLessThanOrEqual(390);
+    fs.mkdirSync(SCREENSHOT_DIR, { recursive: true });
+    await page.getByTestId('review-panel').screenshot({ path: path.join(SCREENSHOT_DIR, 'phone-status-tooltip.png') });
+    await outside.tap();
+    await expect(statusTip).toBeHidden();
+    await status.tap();
+    await expect(statusTip).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(statusTip).toBeHidden();
+    // Tapping the status line again toggles it closed
+    await status.tap();
+    await status.tap();
+    await expect(statusTip).toBeHidden();
+
+    // Formulas: the same, and a second tap on the button closes it even though it has focus
+    await info.tap();
+    await expect(formulas).toBeVisible();
+    await expect(info).toHaveAttribute('aria-expanded', 'true');
+    await expect(formulas).toContainText('Bot level (approx.)');
+    {
+      const tip = formulas;
+      const box = (await tip.boundingBox())!;
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(390);
+    }
+    await page.getByTestId('review-panel').screenshot({ path: path.join(SCREENSHOT_DIR, 'phone-formulas-tooltip.png') });
+    await info.tap();
+    await expect(formulas).toBeHidden();
+    await expect(info).toHaveAttribute('aria-expanded', 'false');
+    await info.tap();
+    await expect(formulas).toBeVisible();
+    await outside.tap();
+    await expect(formulas).toBeHidden();
+    await info.tap();
+    await page.keyboard.press('Escape');
+    await expect(formulas).toBeHidden();
+    // Only one open at a time
+    await info.tap();
+    await status.tap();
+    await expect(statusTip).toBeVisible();
+    await expect(formulas).toBeHidden();
+    await outside.tap();
+
+    // Opening a tooltip never moves the layout or scrolls sideways
+    await startLayoutShiftRecorder(page);
+    await status.tap();
+    await info.tap();
+    await outside.tap();
+    const shifts = await stopLayoutShiftRecorder(page);
+    expect(summarizeShiftSources(shifts)).toEqual([]);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+
+    await page.getByTestId('review-panel').screenshot({ path: path.join(SCREENSHOT_DIR, 'phone-panel.png') });
   });
 });

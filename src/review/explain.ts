@@ -257,6 +257,107 @@ function winningCapture(
     : null;
 }
 
+/** How a side stands, from its win%. */
+export type Standing = 'winning' | 'better' | 'equal' | 'worse' | 'losing';
+
+/** Lower bounds of the bands (mover's win%): +1.9, +0.65, −0.65, −1.9 pawns or so. */
+export const STANDING_MIN_WIN = { winning: 67, better: 56, equal: 44, worse: 33 } as const;
+
+const STANDING_RANK: Record<Standing, number> = { losing: 0, worse: 1, equal: 2, better: 3, winning: 4 };
+
+export function standingFromWin(win: number): Standing {
+  if (win >= STANDING_MIN_WIN.winning) return 'winning';
+  if (win >= STANDING_MIN_WIN.better) return 'better';
+  if (win > STANDING_MIN_WIN.equal) return 'equal';
+  if (win >= STANDING_MIN_WIN.worse) return 'worse';
+  return 'losing';
+}
+
+/** An evaluation from White's side, as the eval bar shows it: "+1.5", "−2.0", "0.0", "M3", "−M3". */
+export function formatEvalShort(scoreWhite: UciScore | null): string {
+  if (!scoreWhite) return '0.0';
+  if (scoreWhite.type === 'mate') {
+    return scoreWhite.value < 0 ? `−M${-scoreWhite.value}` : `M${scoreWhite.value}`;
+  }
+  const text = (Math.abs(scoreWhite.value) / 100).toFixed(1);
+  if (text === '0.0') return text;
+  return scoreWhite.value < 0 ? `−${text}` : `+${text}`;
+}
+
+/** How much of an edge a drop inside one band gave back, by class. */
+const SHARE_BY_CLASS: Partial<Record<MoveClassification, string>> = {
+  Inaccuracy: 'some of',
+  Mistake: 'much of',
+  Blunder: 'a large part of',
+};
+
+/**
+ * The sentence when no tactic explains an error: the side, how its standing changed,
+ * the evaluation change (White's view) and the move that kept it. One sentence: the best
+ * move is joined with a semicolon.
+ */
+export function fallbackSentence(params: {
+  classification: MoveClassification;
+  side: Color;
+  winBefore: number;
+  winAfter: number;
+  evalChange: string;
+  bestSan: string | null;
+}): string {
+  const s = params.side === 'w' ? 'White' : 'Black';
+  const e = `(${params.evalChange})`;
+  const from = standingFromWin(params.winBefore);
+  let to = standingFromWin(params.winAfter);
+  // An error never improves the standing; noise at a band edge is read as staying put
+  if (STANDING_RANK[to] > STANDING_RANK[from]) to = from;
+  const share = SHARE_BY_CLASS[params.classification] ?? 'some of';
+  const tail = (what: string) => (params.bestSan ? `; ${params.bestSan} ${what}` : '');
+
+  let text: string;
+  if (params.classification === 'Miss') {
+    if (from === 'winning') text = `Misses the win for ${s} ${e}${tail('was winning')}`;
+    else if (from === 'better') text = `Lets the opponent off the hook ${e}${tail(`kept ${s}'s advantage`)}`;
+    else text = `Leaves the opponent's mistake unpunished ${e}${tail('punished it')}`;
+    return `${text}.`;
+  }
+  switch (from) {
+    case 'winning':
+      if (to === 'winning') text = `Gives back ${share} ${s}'s winning advantage ${e}${tail('was stronger')}`;
+      else if (to === 'better')
+        text =
+          params.classification === 'Blunder'
+            ? `Throws away most of ${s}'s winning advantage ${e}${tail('kept the win')}`
+            : `Lets ${s}'s winning advantage shrink to a small edge ${e}${tail('kept the win')}`;
+      else if (to === 'equal') text = `Throws away ${s}'s winning advantage ${e}${tail('kept it')}`;
+      else if (to === 'worse') text = `Throws away ${s}'s winning advantage and gives the opponent the better game ${e}${tail('kept the win')}`;
+      else text = `Turns ${s}'s winning position into a losing one ${e}${tail('kept the win')}`;
+      break;
+    case 'better':
+      if (to === 'better') text = `Gives back ${share} ${s}'s advantage ${e}${tail('was stronger')}`;
+      else if (to === 'equal')
+        text =
+          params.classification === 'Blunder'
+            ? `Throws away ${s}'s advantage ${e}${tail('kept it')}`
+            : `Lets ${s}'s advantage slip away ${e}${tail('kept it')}`;
+      else if (to === 'worse') text = `Turns ${s}'s advantage into the worse position ${e}${tail('kept the advantage')}`;
+      else text = `Turns ${s}'s advantage into a losing position ${e}${tail('kept the advantage')}`;
+      break;
+    case 'equal':
+      if (to === 'equal') text = `Gives the opponent the easier game ${e}${tail('was stronger')}`;
+      else if (to === 'worse') text = `Hands the opponent the advantage in a level position ${e}${tail('kept the balance')}`;
+      else text = `Turns a level position into a losing one for ${s} ${e}${tail('kept the balance')}`;
+      break;
+    case 'worse':
+      if (to === 'worse') text = `Makes ${s}'s difficult position harder ${e}${tail('defended better')}`;
+      else text = `Turns ${s}'s difficult position into a losing one ${e}${tail('held on')}`;
+      break;
+    case 'losing':
+      text = `Makes ${s}'s losing position ${params.classification === 'Inaccuracy' ? 'worse' : 'much worse'} ${e}${tail('was the toughest defence')}`;
+      break;
+  }
+  return `${text}.`;
+}
+
 function mateDistance(analysis: PositionAnalysis): number | null {
   const score = analysis.lines[0]?.score;
   return score && score.type === 'mate' && score.value > 0 ? score.value : null;
@@ -336,6 +437,22 @@ export function explainMove(input: ExplainInput): ExplainResult {
   motifs.push(...missedMotifs);
 
   const better = bestSan && bestUci !== input.uci ? bestSan : null;
+  // The evaluation before and after the move, from White's side
+  const toWhite = (score: UciScore | undefined, pov: Color): UciScore | null =>
+    score ? (pov === 'w' ? score : { type: score.type, value: -score.value }) : null;
+  const whiteBefore = toWhite(best?.score, mover);
+  const whiteAfter: UciScore | null = input.after.terminal
+    ? { type: 'cp', value: 0 }
+    : toWhite(input.after.lines[0]?.score, opposite(mover));
+  const fallback = () =>
+    fallbackSentence({
+      classification: input.classification,
+      side: mover,
+      winBefore: input.winBefore,
+      winAfter: input.winAfter,
+      evalChange: `${formatEvalShort(whiteBefore)} → ${formatEvalShort(whiteAfter)}`,
+      bestSan: better,
+    });
 
   // 1. A won position thrown away by stalemate
   if (input.after.terminal === 'stalemate' && input.winBefore >= DECIDED_WIN_PERCENT) {
@@ -374,15 +491,15 @@ export function explainMove(input: ExplainInput): ExplainResult {
   // 4. Miss: the opponent's error went unpunished; say what the best move would have won
   if (input.classification === 'Miss' && better && bestUci) {
     const capture = winningCapture(input.fenBefore, bestUci, forMover);
-    let what: string;
     if (capture) {
-      what = `which wins the ${PIECE_NAME[capture.piece]} on ${capture.square}`;
-    } else {
-      const motif = missedMotifs.find((m) => m.kind !== 'back-rank');
-      const phrase = motif ? motifPhrase(motif, applyUci(input.fenBefore, bestUci)?.after ?? input.fenBefore) : null;
-      what = phrase ?? "which keeps the advantage from the opponent's mistake";
+      return {
+        explanation: `Misses ${better}, which wins the ${PIECE_NAME[capture.piece]} on ${capture.square}.`,
+        motifs,
+      };
     }
-    return { explanation: `Misses ${better}, ${what}.`, motifs };
+    const motif = missedMotifs.find((m) => m.kind !== 'back-rank');
+    const phrase = motif ? motifPhrase(motif, applyUci(input.fenBefore, bestUci)?.after ?? input.fenBefore) : null;
+    return { explanation: phrase ? `Misses ${better}, ${phrase}.` : fallback(), motifs };
   }
 
   // 5. The move leaves material en prise and the opponent's best reply takes it
@@ -415,17 +532,7 @@ export function explainMove(input: ExplainInput): ExplainResult {
     }
   }
 
-  // 7. No realized tactic: say what happened to the evaluation (the best move is shown
-  // next to the sentence, so it isn't repeated here)
-  let explanation: string;
-  if (input.winBefore >= 50 && input.winAfter < 45) {
-    explanation = 'Hands the opponent the advantage.';
-  } else if (input.winBefore >= 60) {
-    explanation = 'Lets part of the advantage slip.';
-  } else if (input.winAfter < 20) {
-    explanation = 'Makes a difficult position worse.';
-  } else {
-    explanation = 'Loses ground.';
-  }
-  return { explanation, motifs };
+  // 7. No realized tactic: what happened to the side's standing, the evaluation change and
+  // the move that kept it
+  return { explanation: fallback(), motifs };
 }
