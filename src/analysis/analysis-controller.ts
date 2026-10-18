@@ -870,6 +870,14 @@ export class AnalysisController {
     this.evalBar.setFlipped(next);
   }
 
+  /** Shows the board (and eval bar) from `color`'s side. */
+  public setOrientation(color: 'w' | 'b'): void {
+    const flipped = color === 'b';
+    if (this.board.isFlipped() === flipped) return;
+    this.board.setFlipped(flipped);
+    this.evalBar.setFlipped(flipped);
+  }
+
   public setEngineEnabled(enabled: boolean): void {
     this.engineEnabled = enabled;
     this.linesPanel.setEnabled(enabled);

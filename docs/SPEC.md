@@ -364,9 +364,37 @@ through a game ends on the correct position with no layout shift.
   - Play vs Bot Here
   - Annotated PGN export
   - A built-in sample game
+- **Review perspective:** a "Review as: White / Black / Both" control.
+  - Default: if the PGN's White or Black header matches one of my usernames (Lichess
+    `Lobo017` for now; Phase 5b adds a settings field), my side; otherwise Both.
+  - With one side selected:
+    - The summary shows that side's stats prominently.
+    - Key moments and the mistake list show only that side's errors, including Misses
+      (the opponent's blunders that side failed to punish).
+    - The board flips to that side, and the win% chart is drawn from that side's point of
+      view (its advantage up).
+    - Retry This Mistake and next / previous-mistake navigation cycle through only that
+      side's moves.
+  - Both keeps the two-sided behavior. The choice applies to the current review only and
+    never re-runs the engine.
+- **Summary panel:**
+  - Player headers from the PGN headers (e.g. "Lobo017 · 1397 · Black"), with accuracy as
+    the large number and ACPL small beneath it. "Bot level (approx.)" lives in the info
+    tooltip.
+  - Classification counts as one table: label (icon + name) | White | Black, with the
+    player names as column headers. Rows in a fixed order: Brilliant, Great, Best,
+    Excellent, Good, Book, Inaccuracy, Mistake, Miss, Blunder. Zero counts are dimmed.
+    With one perspective selected, that side's column is emphasized. Clicking a count
+    jumps through those moves.
+  - Key moments: each entry shows the move, its classification icon and its one-sentence
+    explanation.
+  - Status line kept short ("Reviewed · Deep · 124 s"); details such as positions, depth
+    and replaced annotations go in a tooltip.
+  - No layout shift when switching perspective; works at phone width.
 
 **Done when:** fixture tests cover every class and every motif, and an end-to-end test
-reviews the sample game.
+reviews the sample game. End-to-end tests cover each perspective (White, Black, Both),
+including zero layout shift while switching.
 
 ### Phase 5b — Capture extension + Games list
 The website stays fully offline (zero runtime network requests, unchanged). A separate

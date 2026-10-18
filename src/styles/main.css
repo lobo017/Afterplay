@@ -1726,6 +1726,7 @@ body {
    Every box whose content changes per move has a fixed height, so stepping through a
    reviewed game never shifts the layout. */
 .wc-review-panel {
+  container: wc-review / inline-size;
   --wc-class-brilliant: #2dd4bf;
   --wc-class-great: #60a5fa;
   --wc-class-best: #4ade80;
@@ -1745,8 +1746,14 @@ body {
   border: 1px solid var(--border-subtle);
 }
 
+.wc-review-panel > .wc-panel-section-title {
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
 .wc-review-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.3rem;
   text-transform: none;
@@ -1862,47 +1869,170 @@ body {
   stroke: var(--wc-class-miss);
 }
 
+/* Black's view: the area under the line is Black's share, drawn dark on light */
+.wc-review-chart[data-perspective='b'] .wc-review-chart-bg {
+  fill: #e8e4da;
+}
+
+.wc-review-chart[data-perspective='b'] .wc-review-chart-area {
+  fill: #1c1f27;
+}
+
+.wc-review-chart-wrap {
+  position: relative;
+}
+
+.wc-review-chart-label {
+  position: absolute;
+  top: 0.25rem;
+  left: 0.35rem;
+  padding: 0 0.3rem;
+  border-radius: 0.25rem;
+  background: rgba(9, 11, 16, 0.78);
+  color: var(--text-marble);
+  font-size: 0.62rem;
+  font-weight: 700;
+  line-height: 1rem;
+  pointer-events: none;
+}
+
+/* "Review as": a fixed-size segmented control */
+.wc-review-perspective {
+  display: grid;
+  grid-template-columns: auto repeat(3, minmax(0, 4.6rem));
+  justify-content: start;
+  align-items: center;
+  gap: 0.25rem;
+  height: 1.6rem;
+}
+
+.wc-review-perspective-label {
+  padding-right: 0.3rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.wc-review-perspective-btn {
+  height: 1.5rem;
+  border-radius: 0.35rem;
+  border: 1px solid var(--border-subtle);
+  background: #090b10;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.wc-review-perspective-btn:hover {
+  color: var(--text-marble);
+}
+
+.wc-review-perspective-btn[aria-checked='true'] {
+  border-color: var(--accent-gold);
+  background: rgba(212, 175, 55, 0.2);
+  color: #fcd34d;
+}
+
+.wc-review-perspective-btn:focus-visible,
+.wc-review-count-btn:focus-visible,
+.wc-review-moment:focus-visible {
+  outline: 2px solid var(--accent-arcane);
+  outline-offset: 1px;
+}
+
+/* Player headers: name · rating · color, accuracy large, ACPL small */
 .wc-review-summary {
   display: grid;
-  grid-template-columns: 1fr 1fr auto;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
   gap: 0.4rem;
-  height: 3.3rem;
+  height: 4.6rem;
 }
 
 .wc-review-side {
   display: grid;
-  grid-template-columns: auto 1fr;
-  grid-template-rows: auto auto auto;
-  column-gap: 0.45rem;
-  align-items: baseline;
-  padding: 0.25rem 0.5rem;
+  grid-template-rows: 1rem 2rem 0.95rem;
+  align-content: center;
+  min-width: 0;
+  padding: 0.3rem 0.55rem;
   border-radius: 0.45rem;
   background: #090b10;
   border: 1px solid var(--border-subtle);
   overflow: hidden;
+  transition: opacity 120ms ease;
+}
+
+.wc-review-side[data-emphasis='primary'] {
+  border-color: var(--accent-gold);
+  background: linear-gradient(180deg, rgba(212, 175, 55, 0.16), #090b10 85%);
+}
+
+.wc-review-side[data-emphasis='secondary'] {
+  opacity: 0.55;
 }
 
 .wc-review-side-name {
-  font-size: 0.7rem;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 0;
+  font-size: 0.72rem;
   font-weight: 700;
-  color: var(--text-muted);
+  line-height: 1rem;
+  color: var(--text-marble);
+}
+
+.wc-review-side-name > span {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wc-review-side-dot {
+  flex-shrink: 0;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  border: 1px solid #94a3b8;
+}
+
+.wc-review-side-w .wc-review-side-dot {
+  background: #f4f1ea;
+}
+
+.wc-review-side-b .wc-review-side-dot {
+  background: #111318;
+}
+
+.wc-review-accuracy-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.3rem;
+  line-height: 2rem;
 }
 
 .wc-review-accuracy {
-  grid-row: 1 / span 3;
-  grid-column: 2;
-  align-self: center;
-  justify-self: end;
-  font-size: 1.35rem;
+  font-size: 1.6rem;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   color: var(--text-marble);
 }
 
-.wc-review-side-meta {
-  grid-column: 1;
+.wc-review-side[data-emphasis='primary'] .wc-review-accuracy {
+  color: #fcd34d;
+}
+
+.wc-review-accuracy-unit {
   font-size: 0.64rem;
-  line-height: 0.85rem;
+  color: var(--text-muted);
+}
+
+.wc-review-side-meta {
+  font-size: 0.66rem;
+  line-height: 0.95rem;
   color: var(--text-muted);
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
@@ -1957,6 +2087,12 @@ body {
   margin-bottom: 0;
 }
 
+.wc-review-tooltip-levels {
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid var(--border-subtle);
+  font-variant-numeric: tabular-nums;
+}
+
 .wc-review-formulas:hover .wc-review-tooltip,
 .wc-review-formulas:focus-within .wc-review-tooltip,
 .wc-review-tooltip-open .wc-review-tooltip {
@@ -1965,59 +2101,252 @@ body {
   pointer-events: auto;
 }
 
-.wc-review-counts {
+/* Counts table and key moments: side by side when the panel is wide, stacked otherwise */
+.wc-review-breakdown {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  grid-auto-flow: column;
-  grid-template-rows: repeat(5, 1.15rem);
-  column-gap: 0.9rem;
-  row-gap: 0.12rem;
-  height: 6.3rem;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.5rem;
+}
+
+@container wc-review (min-width: 32rem) {
+  .wc-review-breakdown {
+    grid-template-columns: minmax(12.5rem, 15rem) minmax(0, 1fr);
+  }
+}
+
+.wc-review-counts {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
   font-size: 0.72rem;
 }
 
-.wc-review-count-row {
-  display: grid;
-  grid-template-columns: 1.4rem 1.6rem 1fr 1.4rem;
-  align-items: center;
-  gap: 0.25rem;
+.wc-review-counts thead th {
+  height: 1.35rem;
+  padding: 0 0.2rem;
+  font-size: 0.66rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
-.wc-review-count-num {
-  text-align: center;
-  font-variant-numeric: tabular-nums;
-  font-weight: 700;
+.wc-review-counts thead th:first-child {
+  width: 46%;
+}
+
+.wc-review-counts tbody th {
+  height: 1.3rem;
+  padding: 0 0.2rem;
+  text-align: left;
+  font-weight: 400;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.wc-review-counts tbody th .wc-class-badge {
+  margin-right: 0.35rem;
+  vertical-align: middle;
 }
 
 .wc-review-count-label {
+  color: var(--text-muted);
+  vertical-align: middle;
+}
+
+.wc-review-counts td {
+  padding: 0.05rem 0.2rem;
+  text-align: center;
+}
+
+.wc-review-count-btn {
+  width: 100%;
+  height: 1.15rem;
+  border: 1px solid transparent;
+  border-radius: 0.3rem;
+  background: transparent;
+  color: var(--text-marble);
+  font: inherit;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.wc-review-count-btn:not(:disabled):hover {
+  border-color: var(--accent-gold);
+  background: rgba(212, 175, 55, 0.12);
+}
+
+.wc-review-count-btn:disabled {
+  cursor: default;
+}
+
+.wc-review-count-btn[data-zero='true'] {
+  color: var(--text-muted);
+  opacity: 0.35;
+  font-weight: 400;
+}
+
+/* The perspective's column is emphasized, the other one recedes */
+.wc-review-counts[data-perspective='w'] .wc-review-col-w,
+.wc-review-counts[data-perspective='b'] .wc-review-col-b {
+  background: rgba(212, 175, 55, 0.1);
+}
+
+.wc-review-counts[data-perspective='w'] thead .wc-review-col-w,
+.wc-review-counts[data-perspective='b'] thead .wc-review-col-b {
+  color: #fcd34d;
+}
+
+.wc-review-counts[data-perspective='w'] .wc-review-col-b,
+.wc-review-counts[data-perspective='b'] .wc-review-col-w {
+  opacity: 0.5;
+}
+
+.wc-review-moments-box {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.wc-review-subhead {
+  height: 1.35rem;
+  display: flex;
+  align-items: center;
+  font-size: 0.66rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+/* Room for the 5 entries is always reserved, whatever the perspective shows */
+.wc-review-moments {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-rows: repeat(5, 2.35rem);
+  gap: 0.22rem;
+  height: calc(5 * 2.35rem + 4 * 0.22rem);
+  overflow: hidden;
+}
+
+.wc-review-moment {
+  display: grid;
+  grid-template-columns: 1.5rem 4.4rem minmax(0, 1fr);
+  align-items: center;
+  column-gap: 0.35rem;
+  width: 100%;
+  height: 100%;
+  padding: 0 0.45rem;
+  border-radius: 0.4rem;
+  border: 1px solid var(--border-subtle);
+  background: #090b10;
+  color: var(--text-marble);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.wc-review-moment:hover {
+  border-color: var(--accent-gold);
+}
+
+.wc-review-moment-move {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wc-review-moment-text {
+  font-size: 0.7rem;
+  line-height: 0.95rem;
+  color: var(--text-muted);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.wc-review-muted {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+/* Previous / next error of the perspective */
+.wc-review-errnav {
+  display: grid;
+  grid-template-columns: 4.6rem minmax(0, 1fr) 4.6rem;
+  align-items: center;
+  gap: 0.3rem;
+  height: 1.6rem;
+}
+
+.wc-review-errnav-label {
+  text-align: center;
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
   color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.wc-review-moments {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.3rem;
-  height: 1.95rem;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: thin;
+/* Narrow panel (phones): rating and color go under the name; a narrower eval */
+@container wc-review (max-width: 26rem) {
+  .wc-review-summary {
+    height: 5.4rem;
+  }
+
+  .wc-review-side {
+    grid-template-rows: 1.85rem 2rem 0.95rem;
+  }
+
+  .wc-review-side-name {
+    align-items: flex-start;
+    line-height: 0.95rem;
+  }
+
+  .wc-review-side-dot {
+    margin-top: 0.18rem;
+  }
+
+  .wc-review-player-sep {
+    display: none;
+  }
+
+  .wc-review-player-name,
+  .wc-review-player-meta {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .wc-review-player-meta {
+    font-size: 0.64rem;
+    font-weight: 400;
+    color: var(--text-muted);
+  }
+
+  .wc-review-card .wc-review-card-eval {
+    width: 6.4rem;
+  }
 }
 
-.wc-review-moment {
-  flex-shrink: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  font-family: var(--font-mono);
-  height: 1.5rem;
-}
-
-.wc-review-muted {
-  font-size: 0.72rem;
-  color: var(--text-muted);
+.wc-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 
 .wc-review-card {

@@ -299,13 +299,17 @@ function moveLabel(move: ReviewedMove): string {
   return `${move.moveNumber}${move.color === 'w' ? '.' : '...'} ${move.san}`;
 }
 
-/** The 3–5 biggest swings in White's win%, in game order. */
-export function findKeyMoments(moves: readonly ReviewedMove[]): KeyMoment[] {
+/**
+ * The 3–5 biggest swings in White's win%, in game order. With `side`, only that side's
+ * moves that lowered its own win% count (its errors, Misses included).
+ */
+export function findKeyMoments(moves: readonly ReviewedMove[], side?: Color): KeyMoment[] {
   const withSwing = moves.map((move) => {
     const whiteBefore = move.color === 'w' ? move.winBefore : 100 - move.winBefore;
     return { move, swing: move.whiteWinAfter - whiteBefore };
   });
-  const bySize = [...withSwing]
+  const bySize = withSwing
+    .filter((m) => !side || (m.move.color === side && (side === 'w' ? m.swing < 0 : m.swing > 0)))
     .filter((m) => Math.abs(m.swing) > 0.5)
     .sort((a, b) => Math.abs(b.swing) - Math.abs(a.swing));
   let chosen = bySize.filter((m) => Math.abs(m.swing) >= KEY_MOMENT_MIN_SWING).slice(0, KEY_MOMENT_MAX);

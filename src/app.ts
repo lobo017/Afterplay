@@ -439,6 +439,7 @@ export function mountAppShell(container: HTMLElement): {
       goToNode: (nodeId) => {
         analysisController.goToNode(nodeId);
       },
+      setOrientation: (color) => analysisController.setOrientation(color),
       importPgn: (pgn) => analysisController.importPgn(pgn),
       addLine: (fromNodeId, ucis, options) => analysisController.addLine(fromNodeId, ucis, options),
       deleteNode: (nodeId) => analysisController.deleteNode(nodeId),

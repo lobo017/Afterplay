@@ -7,12 +7,24 @@ import { lookupOpeningByFen } from '../analysis/opening-lookup';
 import { CLASS_THRESHOLDS, classFromWinDrop, isErrorClass } from './classification';
 import { formatBotLevel, winPercentFromScore } from './formulas';
 import {
-  ALL_CLASSIFICATIONS,
   buildAnnotatedPgn,
   evalAnnotation,
   mainLinePlies,
   type ReviewPly,
 } from './review-game';
+import {
+  coversMove,
+  defaultPerspective,
+  movesOfClass,
+  perspectiveErrors,
+  perspectiveKeyMoments,
+  perspectiveSeries,
+  playerHeading,
+  playerMeta,
+  playerInfo,
+  stepCycle,
+  type ReviewPerspective,
+} from './perspective';
 import { ReviewAnalysisClient } from './review-analysis-client';
 import { ReviewRunner, type ReviewRunResult } from './review-runner';
 import { SAMPLE_GAME_PGN } from './sample-game';
@@ -56,6 +68,8 @@ export interface ReviewPanelHost {
   getGameTree(): GameTree;
   getCurrentNode(): GameNode;
   goToNode(nodeId: string): void;
+  /** Shows the board from this side. */
+  setOrientation(color: 'w' | 'b'): void;
   importPgn(pgn: string): boolean;
   /**
    * Adds the moves as a line from `fromNodeId` without navigating; returns the nodes.
@@ -111,6 +125,32 @@ const PRESET_LABEL: Record<ReviewPreset, string> = {
   deep: 'Deep',
 };
 
+/** Rows of the counts table, in the spec's order (Miss before Blunder). */
+const COUNT_ORDER: readonly MoveClassification[] = [
+  'Brilliant',
+  'Great',
+  'Best',
+  'Excellent',
+  'Good',
+  'Book',
+  'Inaccuracy',
+  'Mistake',
+  'Miss',
+  'Blunder',
+];
+
+const PERSPECTIVES: ReadonlyArray<{ value: ReviewPerspective; label: string }> = [
+  { value: 'w', label: 'White' },
+  { value: 'b', label: 'Black' },
+  { value: 'both', label: 'Both' },
+];
+
+const SIDE_NAME: Record<'w' | 'b', string> = { w: 'White', b: 'Black' };
+
+function moveLabel(move: ReviewedMove): string {
+  return `${move.moveNumber}${move.color === 'w' ? '.' : '...'} ${move.san}`;
+}
+
 function escapeHtml(text: string): string {
   return text
     .replace(/&/g, '&amp;')
@@ -165,6 +205,9 @@ export class ReviewPanel {
   private appliedNodes = new Set<string>();
   private retry: RetryState | null = null;
   private retryMessage: { text: string; tone: 'info' | 'ok' | 'bad' } | null = null;
+  /** The mistake just solved in Retry, until the next navigation (next/previous keeps retrying). */
+  private retrySolved: ReviewedMove | null = null;
+  private perspective: ReviewPerspective = 'both';
   private lastError: string | null = null;
   /** Earlier engine annotations the current review replaced. */
   private strippedAnnotations = 0;
@@ -176,17 +219,34 @@ export class ReviewPanel {
     start: HTMLButtonElement;
     cancel: HTMLButtonElement;
     sample: HTMLButtonElement;
+    progress: HTMLElement;
     progressFill: HTMLElement;
     progressText: HTMLElement;
     body: HTMLElement;
+    perspective: HTMLElement;
     chart: SVGSVGElement;
+    chartLabel: HTMLElement;
     chartArea: SVGPathElement;
     chartLine: SVGPathElement;
     chartMarkers: SVGGElement;
     chartCursor: SVGLineElement;
-    sides: Record<'w' | 'b', { accuracy: HTMLElement; botLevel: HTMLElement; acpl: HTMLElement }>;
-    counts: HTMLElement;
+    sides: Record<
+      'w' | 'b',
+      {
+        card: HTMLElement;
+        heading: HTMLElement;
+        accuracy: HTMLElement;
+        acpl: HTMLElement;
+        botName: HTMLElement;
+        botLevel: HTMLElement;
+        countHead: HTMLElement;
+      }
+    >;
+    counts: HTMLTableElement;
     moments: HTMLElement;
+    errorPrev: HTMLButtonElement;
+    errorNext: HTMLButtonElement;
+    errorLabel: HTMLElement;
     cardBadge: HTMLElement;
     cardTitle: HTMLElement;
     cardEval: HTMLElement;
@@ -222,13 +282,26 @@ export class ReviewPanel {
           `<option value="${p}" ${p === this.preset ? 'selected' : ''}>${PRESET_LABEL[p]} · ${(REVIEW_PRESET_MOVETIME_MS[p] / 1000).toFixed(1)} s</option>`,
       )
       .join('');
-    const side = (c: 'w' | 'b', name: string) => `
-      <div class="wc-review-side wc-review-side-${c}">
-        <span class="wc-review-side-name">${name}</span>
-        <span class="wc-review-accuracy" data-testid="review-accuracy-${c}">—</span>
-        <span class="wc-review-side-meta" title="Approximate: the in-app bot level whose average centipawn loss matches this game. Not a rating estimate; see the i tooltip.">Bot level (approx.) <b data-testid="review-bot-level-${c}">—</b></span>
+    const side = (c: 'w' | 'b') => `
+      <div class="wc-review-side wc-review-side-${c}" data-testid="review-side-${c}" data-emphasis="none">
+        <span class="wc-review-side-name"><i class="wc-review-side-dot" aria-hidden="true"></i><span data-testid="review-player-${c}">${SIDE_NAME[c]}</span></span>
+        <span class="wc-review-accuracy-row"><span class="wc-review-accuracy" data-testid="review-accuracy-${c}">—</span><span class="wc-review-accuracy-unit">accuracy</span></span>
         <span class="wc-review-side-meta">ACPL <b data-testid="review-acpl-${c}">—</b></span>
       </div>`;
+    const countCell = (c: 'w' | 'b', cls: MoveClassification) =>
+      `<td class="wc-review-col-${c}"><button type="button" class="wc-review-count-btn" data-testid="review-count-${CLASS_BADGE[cls].slug}-${c}" data-class="${cls}" data-color="${c}" disabled>0</button></td>`;
+    const countRows = COUNT_ORDER.map(
+      (cls) => `
+        <tr data-testid="review-count-${CLASS_BADGE[cls].slug}">
+          <th scope="row">${classBadgeHtml(cls)}<span class="wc-review-count-label">${cls}</span></th>
+          ${countCell('w', cls)}
+          ${countCell('b', cls)}
+        </tr>`,
+    ).join('');
+    const perspectiveButtons = PERSPECTIVES.map(
+      (p) =>
+        `<button type="button" role="radio" class="wc-review-perspective-btn" data-perspective="${p.value}" data-testid="review-perspective-${p.value}" aria-checked="${p.value === this.perspective}">${p.label}</button>`,
+    ).join('');
 
     this.root.innerHTML = `
       <div class="wc-panel-section-title">
@@ -245,20 +318,28 @@ export class ReviewPanel {
         <span class="wc-review-progress-text" data-testid="review-progress-text">Not reviewed</span>
       </div>
       <div class="wc-review-body" data-testid="review-body" hidden>
-        <svg class="wc-review-chart" data-testid="review-chart" viewBox="0 0 ${CHART_W} ${CHART_H}" preserveAspectRatio="none" role="img" aria-label="White's win percentage through the game; click to jump to a move">
-          <rect class="wc-review-chart-bg" x="0" y="0" width="${CHART_W}" height="${CHART_H}"></rect>
-          <path class="wc-review-chart-area" data-testid="review-chart-area" d=""></path>
-          <path class="wc-review-chart-line" d=""></path>
-          <line class="wc-review-chart-mid" x1="0" y1="${CHART_H / 2}" x2="${CHART_W}" y2="${CHART_H / 2}"></line>
-          <g class="wc-review-chart-markers"></g>
-          <line class="wc-review-chart-cursor" data-testid="review-chart-cursor" x1="0" y1="0" x2="0" y2="${CHART_H}"></line>
-        </svg>
+        <div class="wc-review-perspective" role="radiogroup" aria-label="Review as" data-testid="review-perspective">
+          <span class="wc-review-perspective-label">Review as</span>
+          ${perspectiveButtons}
+        </div>
+        <div class="wc-review-chart-wrap">
+          <svg class="wc-review-chart" data-testid="review-chart" viewBox="0 0 ${CHART_W} ${CHART_H}" preserveAspectRatio="none" role="img" aria-label="White's win percentage through the game; click to jump to a move">
+            <rect class="wc-review-chart-bg" x="0" y="0" width="${CHART_W}" height="${CHART_H}"></rect>
+            <path class="wc-review-chart-area" data-testid="review-chart-area" d=""></path>
+            <path class="wc-review-chart-line" d=""></path>
+            <line class="wc-review-chart-mid" x1="0" y1="${CHART_H / 2}" x2="${CHART_W}" y2="${CHART_H / 2}"></line>
+            <g class="wc-review-chart-markers"></g>
+            <line class="wc-review-chart-cursor" data-testid="review-chart-cursor" x1="0" y1="0" x2="0" y2="${CHART_H}"></line>
+          </svg>
+          <span class="wc-review-chart-label" data-testid="review-chart-label" aria-hidden="true">White ↑</span>
+        </div>
         <div class="wc-review-summary">
-          ${side('w', 'White')}
-          ${side('b', 'Black')}
+          ${side('w')}
+          ${side('b')}
           <div class="wc-review-formulas">
             <button type="button" class="wc-review-info-btn" data-testid="btn-review-formulas" aria-describedby="wc-review-formulas-tip" aria-expanded="false" title="How these numbers are computed">i</button>
             <div class="wc-review-tooltip" id="wc-review-formulas-tip" role="tooltip" data-testid="review-formulas-tooltip">
+              <p class="wc-review-tooltip-levels"><b>Bot level (approx.)</b>: <span data-testid="review-bot-name-w">White</span> <b data-testid="review-bot-level-w">—</b> · <span data-testid="review-bot-name-b">Black</span> <b data-testid="review-bot-level-b">—</b></p>
               <p><b>Win%</b> = 50 + 50·(2 / (1 + e<sup>−0.00368208·cp</sup>) − 1), from the engine score in centipawns, clamped to ±1000. A forced mate counts as ±1000 (97.5% / 2.5%), as on Lichess.</p>
               <p><b>Move accuracy</b> = 103.1668·e<sup>−0.04354·drop</sup> − 3.1669 + 1, clamped to 0–100, where drop is how much the move lowered your Win% (the +1 is Lichess's allowance for imprecise evaluations).</p>
               <p><b>Game accuracy</b> (Lichess method): the average of (a) your move accuracies weighted by how volatile the game was around each move (standard deviation of Win% over a sliding window) and (b) their harmonic mean, which pulls the result down for a few very bad moves.</p>
@@ -267,8 +348,27 @@ export class ReviewPanel {
             </div>
           </div>
         </div>
-        <div class="wc-review-counts" data-testid="review-counts"></div>
-        <div class="wc-review-moments" data-testid="review-key-moments" aria-label="Key moments"></div>
+        <div class="wc-review-breakdown">
+          <table class="wc-review-counts" data-testid="review-counts" data-perspective="both">
+            <thead>
+              <tr>
+                <th scope="col"><span class="wc-sr-only">Move class</span></th>
+                <th scope="col" class="wc-review-col-w" data-testid="review-counts-head-w">White</th>
+                <th scope="col" class="wc-review-col-b" data-testid="review-counts-head-b">Black</th>
+              </tr>
+            </thead>
+            <tbody>${countRows}</tbody>
+          </table>
+          <div class="wc-review-moments-box">
+            <div class="wc-review-subhead">Key moments</div>
+            <ol class="wc-review-moments" data-testid="review-key-moments" aria-label="Key moments"></ol>
+          </div>
+        </div>
+        <div class="wc-review-errnav">
+          <button type="button" class="wc-btn wc-btn-ghost wc-btn-xs" data-testid="btn-review-prev-mistake" aria-label="Previous mistake">◀ Prev</button>
+          <span class="wc-review-errnav-label" data-testid="review-mistake-position">No errors</span>
+          <button type="button" class="wc-btn wc-btn-ghost wc-btn-xs" data-testid="btn-review-next-mistake" aria-label="Next mistake">Next ▶</button>
+        </div>
         <div class="wc-review-card" data-testid="review-move-card">
           <div class="wc-review-card-head">
             <span class="wc-review-card-badge" data-testid="review-card-badge"></span>
@@ -290,25 +390,37 @@ export class ReviewPanel {
     const q = <T extends Element>(id: string) =>
       this.root.querySelector(`[data-testid="${id}"]`) as T;
     const chart = q<SVGSVGElement>('review-chart');
+    const sideEls = (c: 'w' | 'b') => ({
+      card: q<HTMLElement>(`review-side-${c}`),
+      heading: q<HTMLElement>(`review-player-${c}`),
+      accuracy: q<HTMLElement>(`review-accuracy-${c}`),
+      acpl: q<HTMLElement>(`review-acpl-${c}`),
+      botName: q<HTMLElement>(`review-bot-name-${c}`),
+      botLevel: q<HTMLElement>(`review-bot-level-${c}`),
+      countHead: q<HTMLElement>(`review-counts-head-${c}`),
+    });
     this.els = {
       preset: q('select-review-preset'),
       start: q('btn-review-start'),
       cancel: q('btn-review-cancel'),
       sample: q('btn-review-sample'),
+      progress: q('review-progress'),
       progressFill: q('review-progress-fill'),
       progressText: q('review-progress-text'),
       body: q('review-body'),
+      perspective: q('review-perspective'),
       chart,
+      chartLabel: q('review-chart-label'),
       chartArea: q('review-chart-area'),
       chartLine: chart.querySelector('.wc-review-chart-line') as SVGPathElement,
       chartMarkers: chart.querySelector('.wc-review-chart-markers') as SVGGElement,
       chartCursor: q('review-chart-cursor'),
-      sides: {
-        w: { accuracy: q('review-accuracy-w'), botLevel: q('review-bot-level-w'), acpl: q('review-acpl-w') },
-        b: { accuracy: q('review-accuracy-b'), botLevel: q('review-bot-level-b'), acpl: q('review-acpl-b') },
-      },
+      sides: { w: sideEls('w'), b: sideEls('b') },
       counts: q('review-counts'),
       moments: q('review-key-moments'),
+      errorPrev: q('btn-review-prev-mistake'),
+      errorNext: q('btn-review-next-mistake'),
+      errorLabel: q('review-mistake-position'),
       cardBadge: q('review-card-badge'),
       cardTitle: q('review-card-title'),
       cardEval: q('review-card-eval'),
@@ -330,12 +442,24 @@ export class ReviewPanel {
     this.els.sample.addEventListener('click', () => {
       void this.loadSampleGame();
     });
+    this.els.perspective.addEventListener('click', (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-perspective]');
+      const value = btn?.getAttribute('data-perspective') as ReviewPerspective | null;
+      if (value) this.setPerspective(value);
+    });
     chart.addEventListener('click', (e) => this.handleChartClick(e));
     this.els.moments.addEventListener('click', (e) => {
       const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-node-id]');
       const id = btn?.getAttribute('data-node-id');
       if (id) this.host.goToNode(id);
     });
+    this.els.counts.addEventListener('click', (e) => {
+      const btn = (e.target as HTMLElement).closest<HTMLElement>('button[data-class]');
+      if (!btn) return;
+      this.stepThroughClass(btn.getAttribute('data-color') as 'w' | 'b', btn.getAttribute('data-class') as MoveClassification);
+    });
+    this.els.errorPrev.addEventListener('click', () => this.stepError(-1));
+    this.els.errorNext.addEventListener('click', () => this.stepError(1));
     const info = q<HTMLButtonElement>('btn-review-formulas');
     info.addEventListener('click', () => {
       const open = !this.root.classList.contains('wc-review-tooltip-open');
@@ -384,6 +508,20 @@ export class ReviewPanel {
     this.els.preset.value = preset;
   }
 
+  public getPerspective(): ReviewPerspective {
+    return this.perspective;
+  }
+
+  /**
+   * Shows the review from one side (or both). Only the view changes: the engine results
+   * are reused. Choosing a side flips the board to it; Both leaves the board as it is.
+   */
+  public setPerspective(perspective: ReviewPerspective): void {
+    this.perspective = perspective;
+    if (perspective !== 'both') this.host.setOrientation(perspective);
+    this.renderPerspective();
+  }
+
   public async loadSampleGame(): Promise<ReviewRunResult | null> {
     this.cancel();
     if (!this.host.importPgn(SAMPLE_GAME_PGN)) return null;
@@ -419,6 +557,8 @@ export class ReviewPanel {
     this.lastError = null;
     this.state = 'running';
     this.els.body.hidden = false;
+    this.renderPlayers(tree.getHeaders());
+    this.setPerspective(defaultPerspective(tree.getHeaders()));
     this.renderState();
     this.renderMoveCard(this.host.getCurrentNode());
 
@@ -472,7 +612,9 @@ export class ReviewPanel {
     this.byNode.clear();
     this.appliedNodes.clear();
     this.state = 'idle';
+    this.perspective = 'both';
     this.els.body.hidden = true;
+    this.renderPerspective();
     this.renderState();
   }
 
@@ -495,7 +637,9 @@ export class ReviewPanel {
     if (fresh.length > 0 || final) this.host.applyReview(fresh, final);
     this.renderState();
     this.renderSummary(review);
+    this.renderMoments(review);
     this.renderChart(review);
+    this.renderErrorNav();
     this.renderMoveCard(this.host.getCurrentNode());
   }
 
@@ -517,6 +661,7 @@ export class ReviewPanel {
     this.els.progressFill.parentElement?.setAttribute('aria-valuenow', String(Math.round(fraction * 100)));
 
     let text: string;
+    let details = '';
     switch (this.state) {
       case 'idle':
         text = 'Not reviewed. Choose a preset and press Review Game.';
@@ -525,10 +670,18 @@ export class ReviewPanel {
         text = `Reviewing (${PRESET_LABEL[this.preset]})… ${done} / ${total || '…'} positions`;
         break;
       case 'done': {
+        // Short line; the details go in the tooltip
         const stats = this.result?.stats;
-        text = `Reviewed · ${PRESET_LABEL[this.preset]} · ${total} positions in ${((stats?.timeMs ?? 0) / 1000).toFixed(1)} s · mean depth ${(stats?.meanDepth ?? 0).toFixed(1)}${
-          this.strippedAnnotations > 0 ? ` · replaced ${this.strippedAnnotations} earlier engine annotations` : ''
-        }`;
+        const seconds = (stats?.timeMs ?? 0) / 1000;
+        text = `Reviewed · ${PRESET_LABEL[this.preset]} · ${seconds < 10 ? seconds.toFixed(1) : Math.round(seconds)} s`;
+        details = [
+          `${total} positions in ${seconds.toFixed(1)} s`,
+          `mean depth ${(stats?.meanDepth ?? 0).toFixed(1)}`,
+          `${(REVIEW_PRESET_MOVETIME_MS[this.preset] / 1000).toFixed(1)} s per position`,
+          this.strippedAnnotations > 0 ? `replaced ${this.strippedAnnotations} earlier engine annotations` : '',
+        ]
+          .filter(Boolean)
+          .join(' · ');
         break;
       }
       case 'cancelled':
@@ -539,7 +692,30 @@ export class ReviewPanel {
         break;
     }
     this.els.progressText.textContent = text;
+    if (details) this.els.progress.title = details;
+    else this.els.progress.removeAttribute('title');
+    this.els.progress.setAttribute('data-details', details);
     this.els.exportBtn.disabled = !review || review.moves.length === 0 || running;
+  }
+
+  /** Player names and ratings from the PGN headers: the side cards, the table, the tooltip. */
+  private renderPlayers(headers: Readonly<Record<string, string>>): void {
+    for (const c of ['w', 'b'] as const) {
+      const info = playerInfo(headers, c);
+      const els = this.els.sides[c];
+      // Name, then "rating · color"; on a narrow panel the second part gets its own line
+      const meta = playerMeta(info);
+      els.heading.innerHTML = `<span class="wc-review-player-name">${escapeHtml(info.name)}</span>${
+        meta ? `<span class="wc-review-player-sep"> · </span><span class="wc-review-player-meta">${escapeHtml(meta)}</span>` : ''
+      }`;
+      els.heading.title = playerHeading(info);
+      els.botName.textContent = info.name;
+      els.countHead.textContent = info.name;
+      els.countHead.title = `${info.name} (${SIDE_NAME[c]})`;
+      this.els.perspective
+        .querySelector(`[data-perspective="${c}"]`)
+        ?.setAttribute('title', `Review as ${SIDE_NAME[c]}: ${info.name}`);
+    }
   }
 
   private renderSummary(review: GameReview): void {
@@ -548,36 +724,77 @@ export class ReviewPanel {
       els.accuracy.textContent = side.accuracy === null ? '—' : side.accuracy.toFixed(1);
       els.botLevel.textContent = formatBotLevel(side.botLevel);
       els.acpl.textContent = side.acpl === null ? '—' : Math.round(side.acpl).toString();
+      for (const cls of COUNT_ORDER) {
+        const btn = this.els.counts.querySelector<HTMLButtonElement>(
+          `[data-testid="review-count-${CLASS_BADGE[cls].slug}-${c}"]`,
+        );
+        if (!btn) continue;
+        const count = side.counts[cls];
+        btn.textContent = String(count);
+        btn.disabled = count === 0;
+        btn.setAttribute('data-zero', String(count === 0));
+        btn.setAttribute(
+          'aria-label',
+          `${SIDE_NAME[c]}: ${count} ${cls}${count === 0 ? '' : ', jump to the next one'}`,
+        );
+      }
     };
     fill('w', review.white);
     fill('b', review.black);
+  }
 
-    this.els.counts.innerHTML = ALL_CLASSIFICATIONS.map(
-      (c) => `
-        <div class="wc-review-count-row" data-testid="review-count-${CLASS_BADGE[c].slug}">
-          <span class="wc-review-count-num">${review.white.counts[c]}</span>
-          ${classBadgeHtml(c)}
-          <span class="wc-review-count-label">${c}</span>
-          <span class="wc-review-count-num">${review.black.counts[c]}</span>
-        </div>`,
-    ).join('');
+  /** Everything the perspective changes; the engine results are untouched. */
+  private renderPerspective(): void {
+    const p = this.perspective;
+    this.root.setAttribute('data-perspective', p);
+    for (const btn of this.els.perspective.querySelectorAll<HTMLElement>('[data-perspective]')) {
+      btn.setAttribute('aria-checked', String(btn.getAttribute('data-perspective') === p));
+    }
+    for (const c of ['w', 'b'] as const) {
+      this.els.sides[c].card.setAttribute('data-emphasis', p === 'both' ? 'none' : p === c ? 'primary' : 'secondary');
+    }
+    this.els.counts.setAttribute('data-perspective', p);
+    this.els.chartLabel.textContent = `${p === 'b' ? 'Black' : 'White'} ↑`;
+    this.els.chart.setAttribute(
+      'aria-label',
+      `${p === 'b' ? 'Black' : 'White'}'s win percentage through the game; click to jump to a move`,
+    );
+    this.els.chart.setAttribute('data-perspective', p);
+    const review = this.review;
+    if (!review) {
+      this.renderErrorNav();
+      return;
+    }
+    this.renderMoments(review);
+    this.renderChart(review);
+    this.renderErrorNav();
+    this.renderMoveCard(this.host.getCurrentNode());
+  }
 
+  private renderMoments(review: GameReview): void {
+    const moments = perspectiveKeyMoments(review, this.perspective);
     const byId = new Map(review.moves.map((m) => [m.nodeId, m]));
-    this.els.moments.innerHTML =
-      review.keyMoments.length === 0
-        ? '<span class="wc-review-muted">Key moments appear as the review runs.</span>'
-        : review.keyMoments
-            .map((k) => {
-              const move = byId.get(k.nodeId);
-              const glyph = move ? classBadgeHtml(move.classification) : '';
-              const label = move ? `${move.moveNumber}${move.color === 'w' ? '.' : '...'}${move.san}` : k.label;
-              return `<button type="button" class="wc-btn wc-btn-ghost wc-btn-xs wc-review-moment" data-node-id="${k.nodeId}" data-testid="review-moment-${k.ply}" title="${escapeHtml(k.label)} (${k.swing > 0 ? '+' : ''}${k.swing.toFixed(0)}% for White)">${glyph}<span>${escapeHtml(label)}</span></button>`;
-            })
-            .join('');
+    if (moments.length === 0) {
+      this.els.moments.innerHTML = `<li class="wc-review-muted">${
+        review.complete || this.state !== 'running' ? 'No big swings.' : 'Key moments appear as the review runs.'
+      }</li>`;
+      return;
+    }
+    const forSide = this.perspective === 'both' ? 'White' : SIDE_NAME[this.perspective];
+    this.els.moments.innerHTML = moments
+      .map((k) => {
+        const move = byId.get(k.nodeId);
+        if (!move) return '';
+        const sentence = move.explanation ?? this.classSentence(move);
+        const swing = this.perspective === 'b' ? -k.swing : k.swing;
+        const title = `${moveLabel(move)} — ${move.classification} (${swing > 0 ? '+' : ''}${swing.toFixed(0)}% for ${forSide}). ${sentence}`;
+        return `<li><button type="button" class="wc-review-moment" data-node-id="${k.nodeId}" data-testid="review-moment-${k.ply}" data-color="${move.color}" title="${escapeHtml(title)}">${classBadgeHtml(move.classification)}<span class="wc-review-moment-move">${escapeHtml(moveLabel(move))}</span><span class="wc-review-moment-text">${escapeHtml(sentence)}</span></button></li>`;
+      })
+      .join('');
   }
 
   private renderChart(review: GameReview): void {
-    const series = review.whiteWinSeries;
+    const series = perspectiveSeries(review.whiteWinSeries, this.perspective);
     const n = Math.max(1, series.length - 1);
     const x = (i: number) => (i / n) * CHART_W;
     const y = (w: number) => CHART_H - (w / 100) * CHART_H;
@@ -602,14 +819,29 @@ export class ReviewPanel {
     this.els.chart.setAttribute('data-analyzed', String(last + 1));
 
     const markers = review.moves
+      .filter((m) => coversMove(this.perspective, m))
       .filter((m) => isErrorClass(m.classification) || m.classification === 'Brilliant' || m.classification === 'Great')
       .map(
         (m) =>
-          `<line class="wc-review-chart-marker wc-class-${CLASS_BADGE[m.classification].slug}" x1="${x(m.ply).toFixed(1)}" x2="${x(m.ply).toFixed(1)}" y1="0" y2="${CHART_H}" data-ply="${m.ply}"><title>${escapeHtml(`${m.moveNumber}${m.color === 'w' ? '.' : '...'} ${m.san}: ${m.classification}`)}</title></line>`,
+          `<line class="wc-review-chart-marker wc-class-${CLASS_BADGE[m.classification].slug}" x1="${x(m.ply).toFixed(1)}" x2="${x(m.ply).toFixed(1)}" y1="0" y2="${CHART_H}" data-ply="${m.ply}"><title>${escapeHtml(`${moveLabel(m)}: ${m.classification}`)}</title></line>`,
       )
       .join('');
     this.els.chartMarkers.innerHTML = markers;
     this.positionChartCursor(this.host.getCurrentNode());
+  }
+
+  /** The perspective's errors and where the current move is among them. */
+  private renderErrorNav(): void {
+    const errors = this.review ? perspectiveErrors(this.review.moves, this.perspective) : [];
+    const whose = this.perspective === 'both' ? 'All' : SIDE_NAME[this.perspective];
+    const current = this.retry?.move ?? this.retrySolved ?? this.currentReviewedMove();
+    const index = current ? errors.findIndex((m) => m.nodeId === current.nodeId) : -1;
+    this.els.errorPrev.disabled = errors.length === 0;
+    this.els.errorNext.disabled = errors.length === 0;
+    this.els.errorLabel.textContent =
+      errors.length === 0
+        ? `${whose === 'All' ? 'No' : `No ${whose}`} errors`
+        : `${whose} errors · ${index >= 0 ? index + 1 : '–'} / ${errors.length}`;
   }
 
   private plyOfNode(node: GameNode): number | null {
@@ -651,8 +883,10 @@ export class ReviewPanel {
     if (this.retry && node.id !== this.retry.parentId && node.parentId !== this.retry.parentId) {
       this.exitRetry();
     }
+    this.retrySolved = null;
     this.positionChartCursor(node);
     this.renderMoveCard(node);
+    this.renderErrorNav();
   }
 
   private renderMoveCard(node: GameNode): void {
@@ -710,7 +944,12 @@ export class ReviewPanel {
     els.cardDetail.title = detail;
 
     const isError = Boolean(reviewed && isErrorClass(reviewed.classification));
-    els.retryBtn.disabled = !isError && !this.retry;
+    const canRetry = Boolean(isError && reviewed && coversMove(this.perspective, reviewed));
+    els.retryBtn.disabled = !canRetry && !this.retry;
+    els.retryBtn.title =
+      isError && !canRetry && this.perspective !== 'both'
+        ? `Reviewing as ${SIDE_NAME[this.perspective]}: retry covers ${SIDE_NAME[this.perspective]}'s moves`
+        : '';
     els.retryBtn.textContent = this.retry ? 'Stop Retrying' : 'Retry This Mistake';
     els.refutationBtn.disabled = !isError || (reviewed?.refutationUci.length ?? 0) === 0;
     let gameOver = false;
@@ -750,13 +989,39 @@ export class ReviewPanel {
       return;
     }
     const move = this.currentReviewedMove();
-    if (!move || !isErrorClass(move.classification)) return;
+    if (!move || !isErrorClass(move.classification) || !coversMove(this.perspective, move)) return;
     const node = this.host.getGameTree().getNode(move.nodeId);
     if (!node?.parentId) return;
     this.retry = { move, parentId: node.parentId, attempt: 0 };
     this.retryMessage = null;
     this.host.setMoveInterceptor((played, created) => this.handleRetryMove(played, created));
     this.host.goToNode(node.parentId);
+  }
+
+  /**
+   * Jumps to the perspective's next (1) or previous (−1) error, wrapping around. While
+   * retrying (or right after solving one), the retry moves on to that error.
+   */
+  private stepError(dir: 1 | -1): void {
+    const review = this.review;
+    if (!review) return;
+    const errors = perspectiveErrors(review.moves, this.perspective);
+    const from = this.retry?.move ?? this.retrySolved ?? this.currentReviewedMove();
+    const fromPly = from?.ply ?? this.plyOfNode(this.host.getCurrentNode()) ?? 0;
+    const target = stepCycle(errors, fromPly, dir);
+    if (!target) return;
+    const keepRetrying = this.retry !== null || this.retrySolved !== null;
+    this.host.goToNode(target.nodeId);
+    if (keepRetrying) this.startRetry();
+  }
+
+  /** A click on a count: the next move of that class by that side, wrapping around. */
+  private stepThroughClass(color: 'w' | 'b', classification: MoveClassification): void {
+    const review = this.review;
+    if (!review) return;
+    const fromPly = this.plyOfNode(this.host.getCurrentNode()) ?? 0;
+    const target = stepCycle(movesOfClass(review.moves, color, classification), fromPly, 1);
+    if (target) this.host.goToNode(target.nodeId);
   }
 
   private exitRetry(): void {
@@ -849,6 +1114,7 @@ export class ReviewPanel {
   }
 
   private retrySucceed(text: string): void {
+    this.retrySolved = this.retry?.move ?? null;
     this.retry = null;
     this.host.setMoveInterceptor(null);
     this.retryMessage = null;

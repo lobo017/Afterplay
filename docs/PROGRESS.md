@@ -9,7 +9,7 @@
 | **Phase 2** | Engine | **Done** | Stockfish 17.1 WASM worker client (MT + ST), MultiPV 1–5, priority queue, LRU cache, human-like bot (400–2400), Stockfish `go perft` cross-check suite |
 | **Phase 3** | 2D board and play mode | **Done** | Imperative SVG board (`translate3d` + Web Animations API), dirty-checked SVG overlay, 180-shard fixed `<canvas>` pool, Web Audio synth, clocks, vs-bot Play Mode, legacy bug regression suite. **2026-10-17 fixes:** drags survive board updates, drag cancel (right-click / Esc / off-board), premove queue (max 10) on a hypothetical board, same-frame premove execution |
 | **Phase 4** | Analysis board | **Done** | Animated mate-aware eval bar, live MultiPV 1–5 lines + ghost preview, best/threat/user arrows, variation tree & keyboard navigation, FEN position editor, ECO opening lookup. **2026-10-17 fixes:** zero layout shift while navigating (was 694 shifts), ~100 ms step animation with reverse and snap-on-repeat, engine lines batched to ≤ 1 DOM update per frame |
-| **Phase 5** | Game review | **Done** | MultiPV 2 review pipeline on its own 1-thread engine with verification searches, win%/accuracy/ACPL/performance formulas, 10 move classes (docs/classification.md), 8 motif detectors, one-sentence explanations computed in a worker, review panel (live win% chart, key moments, Retry / Refutation / Play vs Bot / annotated PGN, sample game) |
+| **Phase 5** | Game review | **Done** | MultiPV 2 review pipeline on its own 1-thread engine with verification searches, win%/accuracy/ACPL/performance formulas, 10 move classes (docs/classification.md), 8 motif detectors, one-sentence explanations computed in a worker, review panel (live win% chart, key moments, Retry / Refutation / Play vs Bot / annotated PGN, sample game). **2026-10-18:** Lichess-matched formulas and thresholds; "Review as" White / Black / Both perspective and redesigned summary |
 | **Phase 6** | Puzzles & spaced repetition | Pending | Personal mistake puzzles, bundled 20k Lichess puzzles, Glicko-2, FSRS scheduler, Today screen |
 | **Phase 7** | Repertoire, endgame & visualization | Pending | White/Black repertoire trees, 6 curated endgame drills, coordinate/blindfold/guess-the-move |
 | **Phase 8** | Library, insights, settings, offline | Pending | Auto-save library, worker bulk PGN import, insights charts, a11y, full offline PWA |
@@ -1658,3 +1658,125 @@ unattributed long tasks under load noted for Phase 9). Screenshots looked at:
 `test-results/phase5-screens/lichess-review-panel.png` (the reference game reviewed in
 the app: "Bot level (approx.)", 17.Nc4 "Lets part of the advantage slip.") and
 `lichess-review-tooltip.png` (formulas tooltip with the Lichess formulas).
+
+## Phase 5 — Review perspective and summary redesign (2026-10-18)
+
+### Plan (written before code)
+
+Requirements are in SPEC.md, Phase 5 ("Review perspective", "Summary panel").
+
+**Files to add**
+- `src/review/perspective.ts` (pure): `ReviewPerspective` (`'w' | 'b' | 'both'`), my
+  accounts (Lichess `Lobo017` until the Phase 5b settings field), the default perspective
+  from the PGN headers, player name / rating from the headers, the moves and errors a
+  perspective covers, key moments per side, the chart series from a side's point of view,
+  and the "next / previous in cycle" step used by mistake navigation and count clicks.
+- `tests/unit/review-perspective.test.ts`.
+
+**Files to change**
+- `src/review/review-game.ts`: `findKeyMoments` takes an optional side (that side's moves
+  that lowered its win%).
+- `src/review/review-panel.ts`: the perspective control; player headers (name · rating ·
+  color, accuracy large, ACPL small); bot level moved into the info tooltip; one counts
+  table (rows in the spec's order, zero counts dimmed, the perspective's column
+  emphasized, counts are buttons that cycle through those moves); key moments as a list
+  with badge, move and explanation; previous / next-mistake navigation (new, filtered by
+  perspective; while retrying it moves the retry on to the next mistake); Retry enabled
+  only on the perspective side's errors; chart drawn from the side's point of view, with
+  that side's markers only; short status line with the details in a tooltip.
+- `src/analysis/analysis-controller.ts` + `src/app.ts`: `setOrientation(color)` on the
+  review host, so the board and eval bar flip to the perspective side.
+- `src/styles/main.css`: the new summary styles; fixed sizes for everything that changes
+  with the perspective; phone-width rules.
+- `tests/e2e/phase5-review.spec.ts`: a test per perspective, layout shift recorded while
+  switching, desktop and phone screenshots. Two existing assertions read the status line
+  ("34 positions", "replaced"); they move to the status tooltip, which now holds that text.
+
+**Risks**
+- Flipping the board while switching perspective must not count as a layout shift (pieces
+  move by transform; to verify in the e2e).
+- The counts table and key-moment list are taller than before; the reviewed-game
+  navigation test (zero shift) must still pass.
+- The Lichess fixture game has Black = Lobo017, so that e2e test now starts in the Black
+  perspective (board flipped); its assertions don't depend on orientation.
+
+### Result (2026-10-18)
+
+**Review perspective** (`src/review/perspective.ts`, panel, `setOrientation` on the host)
+- "Review as: White / Black / Both" is a radio group above the chart. At review start the
+  default comes from the PGN headers: my side if exactly one player is one of my accounts
+  (`DEFAULT_USER_ACCOUNTS`: Lichess `Lobo017`, case-insensitive, ignored when the Site
+  header names another site), otherwise Both. A new game resets it to Both.
+- One side: that side's player card is emphasized (gold border, gold accuracy) and the
+  other dimmed; key moments are that side's biggest drops (`findKeyMoments(moves, side)`:
+  its own moves that lowered its win%, Misses included); the chart is drawn from that
+  side (Black: `100 − White's win%`, dark area = Black's share, label "Black ↑") with that
+  side's markers only; the board and eval bar flip to that side.
+- Previous / next error navigation is new (there was none): "◀ Prev · Black errors · 3 / 8 ·
+  Next ▶", wrapping around, over the perspective's Inaccuracies, Mistakes, Misses and
+  Blunders. While retrying (or right after solving a retry) it moves the retry on to the
+  next error, so Retry cycles through that side's mistakes. Retry is disabled on the
+  other side's errors (tooltip says why); Show Refutation stays available on every error.
+- Switching only re-renders: the review object and run result are the same objects
+  before and after (checked in the e2e), nothing is sent to the engine. Both leaves the
+  board orientation as it is.
+- The spec's "mistake list" had no separate widget before this change; the error
+  navigation, the chart markers and the key moments are the lists the perspective filters.
+  The move tree keeps both sides' class badges.
+
+**Summary panel**
+- Player cards: "GEU3 · 1374 · White" from the PGN headers (name only / "White" when the
+  headers have none), accuracy large, ACPL small beneath. On a narrow panel (container
+  query, < 26rem) rating and color move under the name instead of being cut off.
+- Bot level (approx.) moved into the "i" tooltip, as its first line with both names.
+- Counts: one `<table>` (label with icon | White | Black, player names as column heads), rows
+  Brilliant … Inaccuracy, Mistake, Miss, Blunder. Zero counts are dimmed and disabled; the
+  perspective's column is tinted and the other dimmed. Each count is a button that jumps to
+  the next move of that class by that side, wrapping around.
+- Key moments: a list of up to 5 rows, each with the class icon, the move and its sentence
+  (the explanation, or the class sentence for non-errors), 2-line clamp, full text in the
+  title. Side by side with the counts table when the panel is ≥ 32rem wide, stacked below.
+- Status line: "Reviewed · Quick · 29 s" (one decimal under 10 s). Positions, time, mean
+  depth, time per position and replaced annotations are in its tooltip (`title`).
+- The panel header (preset and buttons) now wraps at phone width; "Sample Game" was clipped
+  at 390 px before.
+
+**No layout shift.** Everything the perspective changes has a fixed size: the 5 key-moment
+rows are always reserved, the table is fixed (10 rows), the error label is ellipsized, the
+side cards only change border/opacity/color. The e2e switches W → B → Both → W → Both → B at
+1440 × 900 and again at 390 × 844 with the layout-shift observer: zero shifts, no scroll
+change, no horizontal scroll at phone width. Flipping the board (transforms) records none.
+
+**Tests**
+- `tests/unit/review-perspective.test.ts` (6): default perspective (Lichess name, case,
+  missing / other Site, both / neither players, a passed-in Chess.com account), names and
+  ratings, errors per side with Misses, key moments per side, the chart series, cycling.
+- `tests/e2e/phase5-review.spec.ts`, new "Review perspective" block on my Lichess game
+  (Bjl39T9x, Lobo017 as Black): **Black** (default; flipped board; chart from Black;
+  headings; moments, markers and error navigation Black-only with wrap-around; Retry
+  disabled on White's error, Retry → Next retries the next Black error; count clicks cycle;
+  zero counts disabled), **White** (switch; board unflipped; White-only moments, markers,
+  navigation and Retry; review not re-run), **Both** (all errors; moments equal the game's;
+  zero layout shift while switching, desktop and phone; screenshots).
+- Changed existing assertions (moved, not weakened): the sample-game test read
+  "34 positions" from the status line and the Lichess test read "replaced"; both now read
+  the status tooltip, which holds that text. The sample-game test also checks it opens in
+  Both with Morphy's name in the headings.
+
+**Screenshots looked at** (`test-results/phase5-screens/`): `perspective-black-desktop-*`,
+`perspective-white-desktop-*`, `perspective-both-desktop-*`, `perspective-black-phone-*`,
+`perspective-both-phone-*` (`-panel.png` and full `-page.png`). Fixed after looking: the
+"Review as" buttons sat far from their label; the phone player headings cut the rating
+("Lobo017 · 139…"); the phone move-card title was cut by the fixed eval width; the
+clipped "Sample Game" button.
+
+**Known issues**
+- The status details are in a `title` tooltip, which touch screens don't show.
+- Some sentences are weak for the class they explain (6...Be6, a Blunder in one Quick run,
+  reads "Lets part of the advantage slip."). That is the existing fallback in
+  `explain.ts`; this change only displays it.
+
+**Checks (final run, 2026-10-18):** typecheck, lint, **258 unit tests** (22 files), build,
+**29/29 e2e** (26 earlier + 3 perspective): all pass. The sample-game review recorded zero
+long tasks; Phase 4's navigation test and the Phase 5 stepping test still record zero
+layout shifts. The 46-move Lichess game reviews in 29–31 s on Quick.

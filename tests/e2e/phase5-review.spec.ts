@@ -195,10 +195,16 @@ test.describe('Phase 5 — Game review', () => {
     // Zero runtime network requests
     expect(externalRequests).toEqual([]);
 
-    // Summary, counts, progress text
-    await expect(page.getByTestId('review-progress-text')).toContainText('Reviewed · Quick · 34 positions');
+    // Summary, counts, progress text: a short status line, the details in its tooltip
+    await expect(page.getByTestId('review-progress-text')).toHaveText(/^Reviewed · Quick · \d+(\.\d)? s$/);
+    await expect(page.getByTestId('review-progress')).toHaveAttribute('title', /^34 positions in \d+\.\d s · mean depth/);
     await expect(page.getByTestId('review-accuracy-w')).toHaveText(review.white.accuracy!.toFixed(1));
     await expect(page.getByTestId('review-count-book')).toBeVisible();
+    // Neither player is one of my accounts: both sides, White's chart, names from the PGN
+    await expect(page.getByTestId('review-panel')).toHaveAttribute('data-perspective', 'both');
+    await expect(page.getByTestId('review-perspective-both')).toHaveAttribute('aria-checked', 'true');
+    await expect(page.getByTestId('review-player-w')).toHaveText('Paul Morphy · White');
+    await expect(page.getByTestId('review-counts-head-w')).toHaveText('Paul Morphy');
     // Class badges in the move tree, each with a label
     const lastBadge = page.locator(`[data-testid="tree-node-${review.moves[32]!.nodeId}"] .wc-tree-class`);
     await expect(lastBadge).toHaveAttribute('aria-label', review.moves[32]!.classification);
@@ -430,7 +436,10 @@ test.describe('Phase 5 — Game review', () => {
     await expect(page.getByTestId('review-panel')).toHaveAttribute('data-state', 'done', {
       timeout: 90_000,
     });
-    await expect(page.getByTestId('review-progress-text')).toContainText('replaced');
+    await expect(page.getByTestId('review-progress')).toHaveAttribute(
+      'title',
+      /replaced \d+ earlier engine annotations/,
+    );
 
     const state = await page.evaluate(() => {
       const tree = window.__wizardChessAnalysis!.controller.getGameTree();
@@ -514,5 +523,281 @@ test.describe('Phase 5 — Game review', () => {
     await page.evaluate(() => window.__wizardChessAnalysis!.controller.loadFen('8/8/8/4k3/8/8/4P3/4K3 w - - 0 1'));
     await expect(page.getByTestId('review-panel')).toHaveAttribute('data-state', 'idle');
     await expect(page.getByTestId('review-body')).toBeHidden();
+  });
+});
+
+const ERROR_CLASSES = ['Inaccuracy', 'Mistake', 'Blunder', 'Miss'];
+
+/** https://lichess.org/Bjl39T9x: GEU3 (1374) – Lobo017 (1397), my game as Black. */
+const MY_LICHESS_PGN = (
+  JSON.parse(fs.readFileSync(path.join('tests', 'fixtures', 'review', 'lichess-Bjl39T9x.json'), 'utf8')) as {
+    pgn: string;
+  }
+).pgn;
+
+type SnapshotMove = ReviewSnapshot['moves'][number];
+
+async function reviewMyLichessGame(page: Page): Promise<ReviewSnapshot> {
+  await openAnalysis(page);
+  await page.evaluate((pgn) => window.__wizardChessAnalysis!.controller.importPgn(pgn), MY_LICHESS_PGN);
+  await page.getByTestId('btn-review-start').click();
+  await expect(page.getByTestId('review-panel')).toHaveAttribute('data-state', 'done', { timeout: 90_000 });
+  // Keep the finished review so the tests can check that switching never re-runs it
+  await page.evaluate(() => {
+    const w = window as unknown as { __reviewAtEnd: unknown; __runAtEnd: unknown };
+    w.__reviewAtEnd = window.__wizardChessReview!.panel.getReview();
+    w.__runAtEnd = window.__wizardChessReview!.panel.getRunResult();
+  });
+  return readReview(page);
+}
+
+/** What the perspective changes on screen. */
+async function perspectiveView(page: Page) {
+  return page.evaluate(() => {
+    const panel = window.__wizardChessReview!.panel;
+    const w = window as unknown as { __reviewAtEnd: unknown; __runAtEnd: unknown };
+    const line = document.querySelector('.wc-review-chart-line')!.getAttribute('d') ?? '';
+    const first = /^M([\d.]+),([\d.]+)/.exec(line);
+    return {
+      perspective: panel.getPerspective(),
+      flipped: window.__wizardChessAnalysis!.controller.getBoard().isFlipped(),
+      sameReview: panel.getReview() === w.__reviewAtEnd && panel.getRunResult() === w.__runAtEnd,
+      state: panel.getState(),
+      chartStartY: first ? Number(first[2]) : null,
+      markerPlies: [...document.querySelectorAll('.wc-review-chart-marker')].map((el) =>
+        Number(el.getAttribute('data-ply')),
+      ),
+      moments: [...document.querySelectorAll<HTMLElement>('[data-testid="review-key-moments"] [data-node-id]')].map(
+        (el) => ({
+          nodeId: el.getAttribute('data-node-id')!,
+          color: el.getAttribute('data-color')!,
+          move: el.querySelector('.wc-review-moment-move')?.textContent ?? '',
+          text: el.querySelector('.wc-review-moment-text')?.textContent ?? '',
+          badge: el.querySelector('.wc-class-badge')?.getAttribute('aria-label') ?? '',
+        }),
+      ),
+    };
+  });
+}
+
+/** Clicks Next (or Prev) `times` times and returns the node ids it landed on. */
+async function stepErrors(page: Page, dir: 'next' | 'prev', times: number): Promise<string[]> {
+  const visited: string[] = [];
+  for (let i = 0; i < times; i++) {
+    await page.getByTestId(`btn-review-${dir}-mistake`).click();
+    visited.push((await currentNode(page)).id);
+  }
+  return visited;
+}
+
+function errorsOf(review: ReviewSnapshot, color: 'w' | 'b' | 'both'): SnapshotMove[] {
+  return review.moves.filter(
+    (m) => (color === 'both' || m.color === color) && ERROR_CLASSES.includes(m.classification),
+  );
+}
+
+function retryTitle(move: SnapshotMove): RegExp {
+  const san = move.san.replace(/[+]/g, '\\+');
+  return new RegExp(`^Retry: \\d+${move.color === 'w' ? '\\.' : '\\.\\.\\.'} ${san}$`);
+}
+
+async function screenshotPanel(page: Page, name: string): Promise<void> {
+  fs.mkdirSync(SCREENSHOT_DIR, { recursive: true });
+  await page.getByTestId('review-panel').screenshot({ path: path.join(SCREENSHOT_DIR, `${name}-panel.png`) });
+  await page.screenshot({ path: path.join(SCREENSHOT_DIR, `${name}-page.png`), fullPage: true });
+}
+
+test.describe('Phase 5 — Review perspective', () => {
+  test('Black: my Lichess game opens from my side; only my errors, my chart, my retries', async ({ page }) => {
+    test.setTimeout(150_000);
+    const review = await reviewMyLichessGame(page);
+    const view = await perspectiveView(page);
+
+    // Lobo017 is Black: the default is Black, the board is flipped, the chart is Black's
+    expect(view.perspective).toBe('b');
+    expect(view.flipped).toBe(true);
+    await expect(page.getByTestId('review-perspective-b')).toHaveAttribute('aria-checked', 'true');
+    await expect(page.getByTestId('review-chart-label')).toHaveText('Black ↑');
+    // Black's win% at the start, measured from the bottom: y = 100 − (100 − White's win%)
+    expect(view.chartStartY).toBeCloseTo(review.series[0]!, 1);
+
+    // Player headers and table columns from the PGN headers; my side emphasized
+    await expect(page.getByTestId('review-player-b')).toHaveText('Lobo017 · 1397 · Black');
+    await expect(page.getByTestId('review-player-w')).toHaveText('GEU3 · 1374 · White');
+    await expect(page.getByTestId('review-counts-head-b')).toHaveText('Lobo017');
+    await expect(page.getByTestId('review-counts-head-w')).toHaveText('GEU3');
+    await expect(page.getByTestId('review-side-b')).toHaveAttribute('data-emphasis', 'primary');
+    await expect(page.getByTestId('review-side-w')).toHaveAttribute('data-emphasis', 'secondary');
+    await expect(page.getByTestId('review-counts')).toHaveAttribute('data-perspective', 'b');
+    await expect(page.getByTestId('review-accuracy-b')).toHaveText(review.black.accuracy!.toFixed(1));
+    await expect(page.getByTestId('review-acpl-b')).toHaveText(String(Math.round(review.black.acpl!)));
+    // Bot level lives in the info tooltip
+    await page.getByTestId('btn-review-formulas').hover();
+    await expect(page.getByTestId('review-formulas-tooltip')).toContainText('Bot level (approx.): GEU3');
+    await expect(page.getByTestId('review-bot-level-b')).toHaveText(/^(≈\d+|≤\d+|≥\d+|—)$/);
+    await page.mouse.move(5, 450);
+
+    // Key moments: Black's moves only, each with its icon and its sentence
+    expect(view.moments.length).toBeGreaterThanOrEqual(1);
+    expect(view.moments.length).toBeLessThanOrEqual(5);
+    for (const m of view.moments) {
+      const move = review.moves.find((x) => x.nodeId === m.nodeId)!;
+      expect(m.color).toBe('b');
+      expect(m.badge).toBe(move.classification);
+      expect(m.move).toMatch(/^\d+\.\.\. \S+$/);
+      expect(m.text.length).toBeGreaterThan(5);
+      if (move.explanation) expect(m.text).toBe(move.explanation);
+    }
+    // Chart markers: Black's moves only
+    expect(view.markerPlies.length).toBeGreaterThan(0);
+    expect(view.markerPlies.every((p) => p % 2 === 0)).toBe(true);
+
+    // Next / previous error: Black's errors (Misses included), in order, wrapping around
+    const blackErrors = errorsOf(review, 'b');
+    expect(blackErrors.length).toBeGreaterThanOrEqual(2);
+    await page.evaluate(() => window.__wizardChessAnalysis!.controller.goToStart());
+    const forward = await stepErrors(page, 'next', blackErrors.length + 1);
+    expect(forward).toEqual([...blackErrors.map((m) => m.nodeId), blackErrors[0]!.nodeId]);
+    await expect(page.getByTestId('review-mistake-position')).toHaveText(`Black errors · 1 / ${blackErrors.length}`);
+    expect(await stepErrors(page, 'prev', 1)).toEqual([blackErrors[blackErrors.length - 1]!.nodeId]);
+
+    // Retry covers only Black's mistakes
+    await goToNode(page, errorsOf(review, 'w')[0]!.nodeId);
+    await expect(page.getByTestId('btn-review-refutation')).toBeEnabled();
+    await expect(page.getByTestId('btn-review-retry')).toBeDisabled();
+    const first = blackErrors[0]!;
+    const second = blackErrors[1]!;
+    await goToNode(page, first.nodeId);
+    await page.getByTestId('btn-review-retry').click();
+    await expect(page.getByTestId('review-card-title')).toHaveText(retryTitle(first));
+    // While retrying, Next moves the retry on to Black's next error
+    await page.getByTestId('btn-review-next-mistake').click();
+    await expect(page.getByTestId('review-card-title')).toHaveText(retryTitle(second));
+    const secondParent = await page.evaluate(
+      (id) => window.__wizardChessAnalysis!.controller.getGameTree().getNode(id)!.parentId,
+      second.nodeId,
+    );
+    expect((await currentNode(page)).id).toBe(secondParent);
+    await page.getByTestId('btn-review-retry').click();
+    await expect(page.getByTestId('btn-review-retry')).toHaveText('Retry This Mistake');
+
+    // A count jumps through those moves, wrapping around; zero counts are dimmed and inert
+    const cls = ERROR_CLASSES.find((c) => blackErrors.some((m) => m.classification === c))!;
+    const ofClass = blackErrors.filter((m) => m.classification === cls);
+    const slug = cls.toLowerCase();
+    await expect(page.getByTestId(`review-count-${slug}-b`)).toHaveText(String(ofClass.length));
+    await page.evaluate(() => window.__wizardChessAnalysis!.controller.goToStart());
+    for (const expected of [...ofClass, ofClass[0]!]) {
+      await page.getByTestId(`review-count-${slug}-b`).click();
+      expect((await currentNode(page)).id).toBe(expected.nodeId);
+    }
+    const zeroClass = ['Brilliant', 'Great', 'Book', 'Blunder', 'Miss', 'Mistake'].find(
+      (c) => !review.moves.some((m) => m.color === 'b' && m.classification === c),
+    )!;
+    const zero = page.getByTestId(`review-count-${zeroClass.toLowerCase()}-b`);
+    await expect(zero).toHaveText('0');
+    await expect(zero).toBeDisabled();
+    await expect(zero).toHaveAttribute('data-zero', 'true');
+
+    expect((await perspectiveView(page)).sameReview).toBe(true);
+    await goToNode(page, first.nodeId);
+    await screenshotPanel(page, 'perspective-black-desktop');
+  });
+
+  test('White: switching shows the opponent side without re-running the engine', async ({ page }) => {
+    test.setTimeout(150_000);
+    const review = await reviewMyLichessGame(page);
+    await page.getByTestId('review-perspective-w').click();
+    const view = await perspectiveView(page);
+
+    expect(view.perspective).toBe('w');
+    expect(view.flipped).toBe(false);
+    expect(view.state).toBe('done');
+    expect(view.sameReview).toBe(true);
+    await expect(page.getByTestId('review-chart-label')).toHaveText('White ↑');
+    expect(view.chartStartY).toBeCloseTo(100 - review.series[0]!, 1);
+    await expect(page.getByTestId('review-side-w')).toHaveAttribute('data-emphasis', 'primary');
+    await expect(page.getByTestId('review-side-b')).toHaveAttribute('data-emphasis', 'secondary');
+    await expect(page.getByTestId('review-counts')).toHaveAttribute('data-perspective', 'w');
+
+    expect(view.moments.length).toBeGreaterThanOrEqual(1);
+    for (const m of view.moments) {
+      expect(m.color).toBe('w');
+      expect(m.move).toMatch(/^\d+\. \S+$/);
+      expect(m.text.length).toBeGreaterThan(5);
+    }
+    expect(view.markerPlies.every((p) => p % 2 === 1)).toBe(true);
+    const whiteErrors = errorsOf(review, 'w');
+    await page.evaluate(() => window.__wizardChessAnalysis!.controller.goToStart());
+    expect(await stepErrors(page, 'next', whiteErrors.length)).toEqual(whiteErrors.map((m) => m.nodeId));
+    await expect(page.getByTestId('review-mistake-position')).toHaveText(
+      `White errors · ${whiteErrors.length} / ${whiteErrors.length}`,
+    );
+    await expect(page.getByTestId('btn-review-retry')).toBeEnabled();
+    await goToNode(page, errorsOf(review, 'b')[0]!.nodeId);
+    await expect(page.getByTestId('btn-review-retry')).toBeDisabled();
+    await goToNode(page, whiteErrors[0]!.nodeId);
+    await screenshotPanel(page, 'perspective-white-desktop');
+  });
+
+  test('Both: two-sided view; switching perspective shifts nothing, desktop and phone', async ({ page }) => {
+    test.setTimeout(150_000);
+    const review = await reviewMyLichessGame(page);
+    await page.getByTestId('review-perspective-both').click();
+    const view = await perspectiveView(page);
+
+    expect(view.perspective).toBe('both');
+    // Both leaves the board where it was (Black, from the default)
+    expect(view.flipped).toBe(true);
+    expect(view.sameReview).toBe(true);
+    await expect(page.getByTestId('review-chart-label')).toHaveText('White ↑');
+    expect(view.chartStartY).toBeCloseTo(100 - review.series[0]!, 1);
+    await expect(page.getByTestId('review-side-w')).toHaveAttribute('data-emphasis', 'none');
+    await expect(page.getByTestId('review-side-b')).toHaveAttribute('data-emphasis', 'none');
+    expect(view.moments.map((m) => m.nodeId)).toEqual(review.keyMoments.map((k) => k.nodeId));
+    expect(new Set(view.markerPlies.map((p) => p % 2)).size).toBe(2);
+    const allErrors = errorsOf(review, 'both');
+    await page.evaluate(() => window.__wizardChessAnalysis!.controller.goToStart());
+    expect(await stepErrors(page, 'next', allErrors.length)).toEqual(allErrors.map((m) => m.nodeId));
+    await expect(page.getByTestId('review-mistake-position')).toHaveText(
+      `All errors · ${allErrors.length} / ${allErrors.length}`,
+    );
+    await goToNode(page, errorsOf(review, 'w')[0]!.nodeId);
+    await expect(page.getByTestId('btn-review-retry')).toBeEnabled();
+    await goToNode(page, errorsOf(review, 'b')[0]!.nodeId);
+    await expect(page.getByTestId('btn-review-retry')).toBeEnabled();
+    await screenshotPanel(page, 'perspective-both-desktop');
+
+    const switchAround = async () => {
+      const scrollBefore = await page.evaluate(() => window.scrollY);
+      await startLayoutShiftRecorder(page);
+      for (const p of ['w', 'b', 'both', 'w', 'both', 'b']) {
+        await page.getByTestId(`review-perspective-${p}`).click();
+        await page.waitForTimeout(120);
+      }
+      const shifts = await stopLayoutShiftRecorder(page);
+      const summary = summarizeShiftSources(shifts);
+      for (const s of summary) {
+        console.log(
+          `[layout-shift] ${s.count}× ${s.node} prev=${JSON.stringify(s.example.previousRect)} curr=${JSON.stringify(s.example.currentRect)}`,
+        );
+      }
+      expect(summary).toEqual([]);
+      expect(shifts.length).toBe(0);
+      expect(await page.evaluate(() => window.scrollY)).toBe(scrollBefore);
+    };
+    // Desktop
+    await switchAround();
+
+    // Phone width: one column, no horizontal scroll, still no shift
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.waitForTimeout(300);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+    await page.getByTestId('review-perspective').scrollIntoViewIfNeeded();
+    await switchAround();
+    expect((await perspectiveView(page)).perspective).toBe('b');
+    await screenshotPanel(page, 'perspective-black-phone');
+    await page.getByTestId('review-perspective-both').click();
+    await screenshotPanel(page, 'perspective-both-phone');
   });
 });
