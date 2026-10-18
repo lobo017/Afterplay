@@ -1512,3 +1512,149 @@ and a flipped sign would put White near 90%.
   parse + render): under 50 ms, but the largest single task the review flow causes.
 - A Chess960 game goes through the same path (`chess960` is passed to every search and
   board helper), but no Chess960 game is in the review tests.
+
+## Phase 5 — Lichess comparison fixes (2026-10-18)
+
+### Plan (written before code)
+
+Reference game: https://lichess.org/Bjl39T9x (Lichess analysis: accuracy White 56% /
+Black 63%, ACPL 149 / 104; players rated 1374 / 1397).
+
+1. **Thresholds** → Lichess's (`lila` `Advice.scala`: winning-chance drop ≥ 0.1 / 0.2 /
+   0.3, i.e. win% drop ≥ 5 / 10 / 15). Excellent stays ≤ 2, Good is 2–5. Constants that
+   were tied to the old bands (Great gap, Miss bounds, Retry success) follow the new
+   bands. Re-check every classification fixture; relabel with a rationale where the
+   meaning of the band moved. SPEC.md and docs/classification.md updated.
+2. **Imported annotations**: before a review, the reviewed main line is cleaned of
+   engine-generated annotations (Lichess `(a → b) Mistake. X was best.` comments,
+   `[%eval]`, move-quality NAGs 1–6, the engine variation that names the "best" move,
+   and the app's own earlier review comments). Plain human comments stay, and the
+   app's review text is written after them behind a fixed `Review:` marker, so it can be
+   told apart and stripped again on the next review. The export runs the same cleaning,
+   so it is idempotent. Unit test on a Lichess-annotated PGN plus an e2e check.
+3. **Explanations**: a motif is named only when the engine's best line realizes it
+   (material actually changes hands along the line, or the trapped piece is actually
+   lost); otherwise a general sentence. The three positions from the game become
+   negative motif/explanation fixtures. The best move is named once ("Best: X") and only
+   if the sentence doesn't already name it.
+4. **Accuracy / ACPL**: `scripts/fetch-lichess-game.mjs` saves the game (PGN with evals
+   and the JSON analysis) as `tests/fixtures/review/lichess-Bjl39T9x.json`. Compare our
+   formulas with `lila` (`AccuracyPercent.scala`, `Accuracy.scala`, `WinPercent.scala`):
+   eval ceiling ±1000 cp, mate as ±1000 cp, the +1 accuracy bonus, start eval, ACPL
+   averaging and which moves count. Fix and add a regression test that reproduces
+   56 / 63 and 149 / 104 from Lichess's evals.
+5. **Performance rating**: check the ACPL → rating mapping against this game (794 / 1050
+   for 1374 / 1397). Recalibrate if possible; otherwise label it as approximate or hide
+   it.
+
+**Risks:** the network fetch may be blocked in this environment (then the command is
+handed over); changing win%'s mate value and thresholds moves many existing results
+(fixtures, e2e expectations, the Quick vs. depth-18 tables, which get re-measured).
+
+### Result (2026-10-18)
+
+**Reference data.** Lichess now redirects anonymous game exports to `/signup` (JSON:
+"Login required"), so `scripts/fetch-lichess-game.mjs` takes a personal API token in
+`LICHESS_TOKEN` (no scopes needed). The game page was not scraped to get around the
+login. The user ran the script; the fixture is `tests/fixtures/review/lichess-Bjl39T9x.json`
+(PGN with evals, clocks and Lichess's annotations, plus the JSON analysis).
+
+**1. Thresholds.** `CLASS_THRESHOLDS` = Excellent ≤ 2, Inaccuracy ≥ 5, Mistake ≥ 10,
+Blunder ≥ 15 (Lichess's, inclusive). Great now needs a gap ≥ 15, Miss an opponent error
+≥ 10 and a drop ≥ 5, Retry succeeds below 5. Win% clamps cp to ±1000 and counts a mate as
+±1000 (lila), so a mate is 97.5%, not 100. Fixture changes, each with a rationale:
+`mistake-nh4` → `blunder-nh4-drops-e4-pawn` (16.2); new Mistake fixture
+`mistake-g3-drops-e4-pawn` (4.g3? in the Two Knights, 13.5; h4 in the Italian was tried
+first and recorded at 9.7, too close to the line); `best-punishes-hanging-knight` would
+have become Great, so taking material that was simply en prise is now excluded from
+Great, like recaptures. SPEC.md and docs/classification.md updated.
+
+**2. Imported annotations.** New `src/review/annotations.ts`. Review start strips the
+reviewed main line (live tree; the status line says how many annotations were replaced)
+and the export strips its copy: `[%eval]`, NAGs $1–$6, Lichess `Advice` comments
+(`(a → b) Mistake. X was best.`, the mate sentences), the app's own `Review:` text, and the
+variation that starts with the move the comment named as best. Human comments and
+`[%clk]` stay; review text follows them as `— Review: …`. Tests: `review-annotations`
+(Lichess-style PGN with a human note, idempotent re-export), `review-lichess` (the real
+Lichess PGN: one NAG per move equal to the app's class, one eval per move, at most one
+"best" variation and only after the app's own errors, idempotent), and an e2e test that
+imports the real game, reviews it with the app's engine and checks the live move list
+and the export.
+
+**3. Explanations.** Motifs and material claims are used only when realized along the
+engine's line, counted from before the move where the material settles (first two quiet
+plies after the first capture, with no profitable capture pending), backed by the
+evaluation (it must move by at least half the material claimed), and for a trapped piece
+only if it is actually captured. Detector fixes found on the reference game: hanging-piece
+needs a gain worth the piece (17.Nc4: the SEE line Nxc4 dxc4 Qxc4 nets a pawn, not a
+knight); trapped-piece needs that no legal reply keeps the piece (20.cxd4 Rxd4: Bd2
+blocks). The fallback sentences no longer repeat the best move; the export adds
+"Best: X." once, only if the sentence doesn't name it. The three positions are negative
+motif fixtures (a negative case with a square rules the motif out on that square only)
+and classification fixtures with `explanationNot`. The live Quick review then still wrote
+"winning the knight on c4" for 17.Nc4 (its line stopped at 18.Qa4, before dxc4); the
+evaluation-backing rule fixed it, with a unit test on those numbers.
+
+**4. Accuracy and ACPL from Lichess's evals** (`review-lichess.test.ts`):
+
+| | Lichess | App, from Lichess's evals |
+|---|---|---|
+| Accuracy White / Black | 56 / 63 | 55.63 / 63.38 → 56 / 63 |
+| ACPL White / Black | 149 / 104 | 149.00 / 103.52 → 149 / 104 |
+| White inaccuracies / mistakes / blunders | 4 / 3 / 3 | 4 / 3 / 2 + 1 Miss (11.Na3) |
+| Black inaccuracies / mistakes / blunders | 3 / 1 / 4 | 3 / 1 / 4 |
+
+Differences from lila found and fixed: no +1 accuracy bonus (53.8 / 61.7 without it);
+no ±1000 cp ceiling and mates as 100 / 0; ACPL filtered to ±650 cp positions, capped at
+420 and with mates as ±(10000 − 10·n) (88.5 / 94.2 here); ACPL truncated instead of
+rounded (103.52 → 104). Kept on purpose: the app's own start evaluation instead of
+Lichess's 15 cp, and the Miss / Great / Brilliant / Book classes. Every move but 11.Na3
+gets Lichess's label.
+
+**5. Performance rating → "Bot level (approx.)".** The mapping is the in-app bots'
+calibrated ACPL, not a human rating model. On this game it gives ≈768 / ≈708 from
+Lichess's evals (≤400 / ≈609 on Lichess's ACPL scale; 794 / 1050 from the app's own
+review) for players rated 1374 / 1397. It can't be made reasonable without human
+(ACPL, rating, time control) data, which an offline app doesn't have: limited Stockfish
+loses far less per move than a person of the same nominal rating, and one game's ACPL is
+dominated by a few big losses (two of White's moves are 55% of its total). It is now
+labelled "Bot level (approx.)" with a tooltip saying it is not a rating, formatted
+"≈708", computed on the calibration's own scale (`calibrationCentipawnLoss`); the shown
+ACPL is Lichess's. SPEC.md changed accordingly.
+
+**Side effect found while re-measuring: false error on 15.Bxd7+ again.** With the Blunder
+line at 15, the 1 s verification search after Morphy's 15.Bxd7+ (+3.9 instead of mate) was
+again enough for a false Blunder in one of three Quick runs. Added a same-root check
+(`review-runner.ts`): when the position before a suspicious move holds a short forced mate
+for the mover, the played move is searched from there with `searchmoves` to depth 2n + 6;
+if it still mates and the search after the move missed it, the after position takes that
+result. Two intermediate versions were measured and rejected: a time-limited same-root
+search applied to any score (fixed Bxd7+ but mixed lines from different searches, so
+16.Qb8+ lost Brilliant in two of three runs), and a time-limited one for mates only (one
+run still gave Bxd7+ a Mistake). Unit test with a scripted engine.
+
+**Quick vs. depth 18, re-measured** (docs/classification.md): sample game 79/99 labels
+agree (80%; 78/99 before the changes); Brilliant 3/3, Great 8/9, Best 34/36, Book 15/15;
+no Quick run gives a Mistake, Blunder or Miss that depth 18 doesn't. The small-drop
+classes (Excellent / Good / Inaccuracy) still agree only about half the time at 0.2 s.
+
+**Known issues**
+- The app's own engine and Lichess's disagree on some drops (15...axb5: 12.2 here, 19.0 on
+  Lichess; 17.Nc4: 9.2 vs 11.3), so a review of the same game can still label a few
+  moves one band apart from Lichess. Fed Lichess's evaluations, the labels match.
+- Lichess's `MateAdvice` and the app's 5-move horizon differ on mates that only got
+  longer (Lichess: no error; app: Inaccuracy if a mate within 5 moves was lost).
+- The bot level is approximate by design; there is no human calibration data offline.
+
+**Bug found by the e2e and fixed:** the PGN box refresh scheduled 400 ms after a review's
+last update replaced an annotated PGN exported within that window with the plain game.
+`showPgnText` now cancels the pending refresh; the Lichess e2e test reads the box after
+the refresh would have fired.
+
+**Checks (final run, 2026-10-18):** typecheck, lint, **252 unit tests** (21 files), build,
+**26/26 e2e** — all pass. In the first full e2e run the sample-game review recorded one
+50 ms long task; four repeats of that test and the next two full runs had none (the
+unattributed long tasks under load noted for Phase 9). Screenshots looked at:
+`test-results/phase5-screens/lichess-review-panel.png` (the reference game reviewed in
+the app: "Bot level (approx.)", 17.Nc4 "Lets part of the advantage slip.") and
+`lichess-review-tooltip.png` (formulas tooltip with the Lichess formulas).

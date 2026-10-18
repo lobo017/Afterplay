@@ -32,6 +32,7 @@ describe('Phase 5 — explanations from the classification fixtures', () => {
       if (fixture.explanationPrefix) {
         expect(explanation!.startsWith(fixture.explanationPrefix), explanation!).toBe(true);
       }
+      if (fixture.explanationNot) expect(explanation).not.toContain(fixture.explanationNot);
     });
   }
 
@@ -43,7 +44,7 @@ describe('Phase 5 — explanations from the classification fixtures', () => {
 
   it('explains a discovered attack in the refutation', () => {
     // Nh4 lets ...Nxe4 uncover the d8 queen against the loose knight on h4
-    expect(explainFixture('mistake-nh4').explanation).toBe(
+    expect(explainFixture('blunder-nh4-drops-e4-pawn').explanation).toBe(
       'Allows Nxe4, a discovered attack on the knight on h4.',
     );
   });
@@ -117,6 +118,26 @@ describe('Phase 5 — explanation rules (hand-set engine scores)', () => {
     expect(result.explanation).toBe('Leaves the rook on d3 hanging to Bxd3+.');
   });
 
+  it('a short line that stops before the recapture names nothing (17.Nc4 from the Lichess game)', () => {
+    // The in-app Quick review saw only 17...Nxc4 18.Qa4 (dxc4 still to come) and +3.74 →
+    // +2.74 for White: the knight is not lost, so no "winning the knight on c4"
+    const before = '1k1r1b1r/1pp1pp2/4qnp1/nP6/3p4/N1PP3P/4PPB1/R1BQK2R w KQ - 1 17';
+    const result = explainMove({
+      classification: 'Inaccuracy',
+      fenBefore: before,
+      uci: 'a3c4',
+      winBefore: 80.8,
+      winAfter: 73.2,
+      before: analysis(before, [[['d1a4', 'b8c8'], { type: 'cp', value: 374 }]]),
+      after: analysis('1k1r1b1r/1pp1pp2/4qnp1/nP6/2Np4/2PP3P/4PPB1/R1BQK2R b KQ - 2 17', [
+        [['a5c4', 'd1a4'], { type: 'cp', value: -274 }],
+      ]),
+    });
+    expect(result.explanation).not.toMatch(/knight on c4|Hangs/);
+    expect(result.explanation).toBe('Lets part of the advantage slip.');
+    expect(result.motifs).toEqual([]);
+  });
+
   it('falls back to the evaluation when there is no tactic', () => {
     const fen = 'r1bq1rk1/ppp2ppp/2np1n2/2b1p3/2B1P3/2PP1N2/PP3PPP/RNBQ1RK1 w - - 0 7';
     const after = 'r1bq1rk1/ppp2ppp/2np1n2/2b1p3/2B1P3/P1PP1N2/1P3PPP/RNBQ1RK1 b - - 0 7';
@@ -130,8 +151,10 @@ describe('Phase 5 — explanation rules (hand-set engine scores)', () => {
         before: analysis(fen, [[['a2a4'], { type: 'cp', value: 25 }]]),
         after: analysis(after, [[['a7a6'], { type: 'cp', value: 40 }]]),
       }).explanation;
-    expect(explain(54, 40)).toBe('Hands the opponent the advantage; a4 was better.');
-    expect(explain(80, 70)).toBe('Lets part of the advantage slip; a4 was better.');
-    expect(explain(45, 37)).toBe('Loses ground; a4 was better.');
+    // The best move isn't repeated in the sentence (the card and the PGN name it once)
+    expect(explain(54, 40)).toBe('Hands the opponent the advantage.');
+    expect(explain(80, 70)).toBe('Lets part of the advantage slip.');
+    expect(explain(45, 37)).toBe('Loses ground.');
+    expect(explain(30, 15)).toBe('Makes a difficult position worse.');
   });
 });

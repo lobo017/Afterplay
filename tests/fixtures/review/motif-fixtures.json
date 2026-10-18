@@ -1,5 +1,5 @@
 {
-  "description": "Motif-detector fixtures. Each case plays one UCI move from fen and states whether the named motif is created by that move (expect true) or not (expect false). Square and piece fields name the motif's target where it matters. missed-mate cases also carry the engine scores (mover's point of view) the detector needs.",
+  "description": "Motif-detector fixtures. Each case plays one UCI move from fen and states whether the named motif is created by that move (expect true) or not (expect false). Square and piece fields name the motif's target where it matters. missed-mate cases also carry the engine scores (mover's point of view) the detector needs. A negative case with a square (expect false) means the motif must not be reported on that square; other squares may still have it.",
   "fixtures": [
     {
       "id": "hanging-knight-to-pawn",
@@ -291,6 +291,32 @@
       "move": "d1d8",
       "expect": false,
       "note": "Qd8+ leaves the e2 rook (attacked by the knight) with only the block on e8, but that is the check talking: once Black is out of check the rook has its normal moves. A side in check is never reported as having a trapped piece."
+    },
+    {
+      "id": "lichess-17-nc4-even-trade-not-hanging",
+      "motif": "hanging-piece",
+      "fen": "1k1r1b1r/1pp1pp2/4qnp1/nP6/3p4/N1PP3P/4PPB1/R1BQK2R w KQ - 1 17",
+      "move": "a3c4",
+      "expect": false,
+      "note": "From https://lichess.org/Bjl39T9x, 17.Nc4. The knight is defended by d3: ...Nxc4 dxc4 is an even trade. The static exchange also counts ...Qxc4 picking up the c4 pawn, a net pawn, but that is a pawn lost on the recapture, not a hung knight (Lichess: 18.Qa4 was the better answer to ...Nxc4). (The c3 pawn, already attacked by d4 before the move, is a separate matter: it can be taken.)",
+      "square": "c4"
+    },
+    {
+      "id": "lichess-15-axb5-recapture-not-hanging",
+      "motif": "hanging-piece",
+      "fen": "1k1r1b1r/1pp1pp2/p1n1qnp1/1P6/P2p4/N1PP3P/4PPB1/R1BQK2R b KQ - 0 15",
+      "move": "a6b5",
+      "expect": false,
+      "note": "From https://lichess.org/Bjl39T9x, 15...axb5. White answers axb5, a recapture: pawns are traded and nothing hangs. What makes the move bad is the opened a-file, which no motif detector describes."
+    },
+    {
+      "id": "lichess-20-rxd4-queen-not-trapped",
+      "motif": "trapped-piece",
+      "fen": "1k1r1b1r/1p2pp2/1Pp2np1/8/2qP4/7P/4PPB1/R1BQK2R b KQ - 0 20",
+      "move": "d8d4",
+      "expect": false,
+      "note": "From https://lichess.org/Bjl39T9x, after 20.cxd4 Rxd4. The rook attacks the d1 queen, which has no safe square of its own, but Bd2 blocks the d-file and keeps it. Attacked is not trapped.",
+      "square": "d1"
     },
     {
       "id": "promotion-threat-white",

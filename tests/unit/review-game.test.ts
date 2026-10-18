@@ -73,10 +73,12 @@ describe('Phase 5 — game review assembly', () => {
     expect(nd4.whiteWinAfter).toBeCloseTo(r.whiteWinSeries[1]!, 6);
     expect(h6.whiteWinAfter).toBeCloseTo(r.whiteWinSeries[2]!, 6);
     expect(r.whiteWinSeries[1]!).toBeLessThan(20);
-    // Too few counted moves for a performance estimate
-    expect(r.white.performance).toBeNull();
-    expect(r.white.countedMoves).toBe(1);
-    expect(r.white.acpl).toBeGreaterThan(300);
+    // Too few counted moves for a bot-level comparison
+    expect(r.white.botLevel).toBeNull();
+    // Lichess ACPL: +25 before Nd4, −417 after (ceiled) → a loss of 442
+    expect(r.white.acpl).toBe(442);
+    expect(nd4.cpLoss).toBe(442);
+    expect(nd4.calibrationCpLoss).toBe(420);
   });
 
   it('gives White and Black win% the right sign for a Black-to-move position', () => {
@@ -99,9 +101,12 @@ describe('Phase 5 — game review assembly', () => {
   it('handles a game that ends in checkmate', () => {
     const { review: r } = review('best-second-mate-in-one');
     expect(r.moves[0]!.classification).toBe('Best');
-    expect(r.whiteWinSeries).toEqual([100, 100]);
-    // A position beyond ±650 cp doesn't count toward ACPL
-    expect(r.moves[0]!.cpLoss).toBeNull();
+    // Mate in one counts as +1000 cp (97.5%), and so does the mated position for the winner
+    expect(r.whiteWinSeries[0]).toBeCloseTo(97.54, 2);
+    expect(r.whiteWinSeries[1]).toBeCloseTo(97.54, 2);
+    expect(r.moves[0]!.cpLoss).toBe(0);
+    // The bot calibration scale skips positions beyond ±650 cp
+    expect(r.moves[0]!.calibrationCpLoss).toBeNull();
     expect(r.white.accuracy).toBeCloseTo(100, 6);
   });
 
@@ -169,11 +174,13 @@ describe('Phase 5 — game review assembly', () => {
     expect(main[0]!.nags).toContain(4);
     expect(main[1]!.nags).toContain(2);
     expect(main[0]!.eval).toEqual({ cp: -417, depth: 18 });
-    expect(main[0]!.comment).toContain('Blunder. Hangs the knight on d4 to exd4. Best was a4.');
+    expect(main[0]!.comment).toBe('Review: Blunder. Hangs the knight on d4 to exd4. Best: a4.');
     // The engine's best line hangs off the parent as a variation
     const root = parsed.root;
     expect(root.children.map((c) => c.san)).toEqual(['Nd4', 'a4']);
-    expect(root.comment).toMatch(/^White accuracy \d+\.\d%, ACPL \d+, performance —\. Black accuracy/);
+    expect(root.comment).toMatch(
+      /^Review: White accuracy \d+\.\d%, ACPL \d+, approximate bot level —\. Black accuracy/,
+    );
     // The original tree is untouched
     expect(tree.getMainLine()[1]!.classification).toBeUndefined();
   });

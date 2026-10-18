@@ -63,13 +63,23 @@
       "rationale": "Moving the d-pawn a second time spends a tempo and releases the central tension at the wrong moment: no material is lost, but White hands over roughly half a pawn and the initiative."
     },
     {
-      "id": "mistake-nh4",
+      "id": "mistake-g3-drops-e4-pawn",
+      "startFen": "r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4",
+      "moves": [
+        "g2g3"
+      ],
+      "expected": "Mistake",
+      "rationale": "Two Knights Defence after 3...Nf6: the f6 knight attacks e4, and 4.g3 ignores it. ...Nxe4 simply wins a central pawn (no tactic gets it back), and White is clearly worse but far from lost (depth 18: +0.21 to about -1.3, a 13-point win% drop). Added when the bands moved to Lichess's, to keep a Mistake fixture (a drop of 10 to 15): a pawn lost for nothing from a level position is a Mistake there, not yet a Blunder.",
+      "explanation": "Leaves the pawn on e4 hanging to Nxe4."
+    },
+    {
+      "id": "blunder-nh4-drops-e4-pawn",
       "startFen": "italian",
       "moves": [
         "f3h4"
       ],
-      "expected": "Mistake",
-      "rationale": "Nh4 walks into ...Nxe4!: the knight leaves f6 and uncovers the d8 queen against the undefended knight on h4, so White loses the e4 pawn and gets a worse position. A pawn plus the initiative, but nothing decisive."
+      "expected": "Blunder",
+      "rationale": "Nh4 walks into ...Nxe4!: the knight leaves f6 and uncovers the d8 queen against the undefended knight on h4, so White loses the e4 pawn and gets a worse position (depth 18: +0.25 to about -1.55, a 16-point win% drop). Relabelled from Mistake when the bands moved to Lichess's (2026-10-18): losing a clean central pawn and the initiative from a level position is a drop of 15 or more, which Lichess, the tool users compare against, calls a Blunder."
     },
     {
       "id": "blunder-nd4-hangs-knight",
@@ -253,6 +263,36 @@
       ],
       "expected": "Best",
       "rationale": "Qd8# is checkmate. When two moves mate at once, either one is the best move, whichever the engine happens to list first."
+    },
+    {
+      "id": "lichess-15-axb5-opens-a-file",
+      "startFen": "1k1r1b1r/1pp1pp2/p1n1qnp1/1P6/P2p4/N1PP3P/4PPB1/R1BQK2R b KQ - 0 15",
+      "moves": [
+        "a6b5"
+      ],
+      "expected": "Mistake",
+      "rationale": "From https://lichess.org/Bjl39T9x (Lichess: Blunder, +2.11 to +5.28). ...axb5 axb5 trades pawns, but it opens the a-file toward the king on b8 for White's rook, and the c6 knight has to leave. Nothing hangs: the recapture restores the material. Label: Lichess's evaluations drop 19.0 win% points (Blunder); this engine at depth 18 (Stockfish 17.1 lite) sees a 12.2-point drop, a Mistake. The bands are the same; the engines disagree on how bad the open a-file is. The fixture keeps what this engine sees and checks the explanation names no motif.",
+      "explanationNot": "winning the pawn on b5"
+    },
+    {
+      "id": "lichess-17-nc4-even-trade",
+      "startFen": "1k1r1b1r/1pp1pp2/4qnp1/nP6/3p4/N1PP3P/4PPB1/R1BQK2R w KQ - 1 17",
+      "moves": [
+        "a3c4"
+      ],
+      "expected": "Inaccuracy",
+      "rationale": "From https://lichess.org/Bjl39T9x (Lichess: Mistake, +6.53 to +3.84; Qa4 was best). Nc4 offers a knight trade that lets Black's pieces back into play; the knight is defended by d3, so ...Nxc4 is an even exchange, not a hung piece. Label: Lichess's evaluations drop 11.3 win% points (Mistake); this engine at depth 18 sees 9.2, an Inaccuracy, just under the Mistake line. The fixture keeps what this engine sees and checks the explanation no longer calls the knight hung.",
+      "explanationNot": "Hangs the knight on c4"
+    },
+    {
+      "id": "lichess-20-cxd4-queen-not-trapped",
+      "startFen": "1k1r1b1r/1p2pp2/1Pp2np1/8/2qp4/2P4P/4PPB1/R1BQK2R w KQ - 0 20",
+      "moves": [
+        "c3d4"
+      ],
+      "expected": "Blunder",
+      "rationale": "From https://lichess.org/Bjl39T9x (Lichess: Blunder, +3.49 to -0.74; Bf4+ was best). cxd4 opens the d-file: ...Rxd4 hits the d1 queen and Black takes over. The queen is attacked, not trapped (Bd2 shields it), so no trapped-piece motif.",
+      "explanationNot": "trapping the queen"
     }
   ]
 }

@@ -2,8 +2,10 @@ import type { MoveClassification } from '../core/game-tree';
 import type { UciScore } from '../engine/uci-parser';
 import {
   applyUci,
+  captureGain,
   captureThreats,
   capturedValue,
+  parseSquares,
   passTurnFen,
 } from './board';
 import { winPercentFromScore } from './formulas';
@@ -13,12 +15,17 @@ import type { PositionAnalysis } from './types';
  * Every rule and number here is explained in docs/classification.md.
  */
 
-/** Upper bounds of the mover's win% drop for each class; above `mistake` is a Blunder. */
+/**
+ * Win% drop bands, Lichess's (lila `Advice.scala`: a winning-chance drop of 0.1 / 0.2 /
+ * 0.3 on the −1…1 scale, i.e. 5 / 10 / 15 win% points). A drop of at most `excellent`
+ * is Excellent; at least `inaccuracy` / `mistake` / `blunder` is that class; Good is
+ * in between.
+ */
 export const CLASS_THRESHOLDS = {
   excellent: 2,
-  good: 5,
-  inaccuracy: 10,
-  mistake: 20,
+  inaccuracy: 5,
+  mistake: 10,
+  blunder: 15,
 } as const;
 
 /** Mates up to this many moves are found reliably at review depth; longer ones flicker. */
@@ -27,8 +34,8 @@ export const MATE_HORIZON_MOVES = 5;
 /** A side at or beyond this win% (or at or below 100 − it) is in a decided position. */
 export const DECIDED_WIN_PERCENT = 95;
 
-/** Great: the second-best move would be a Blunder (gap above the Blunder threshold). */
-export const GREAT_MIN_GAP = CLASS_THRESHOLDS.mistake;
+/** Great: the second-best move would be a Blunder (gap at the Blunder threshold or more). */
+export const GREAT_MIN_GAP = CLASS_THRESHOLDS.blunder;
 
 /** Brilliant: material given up, in pawns (a minor piece for a pawn, or the exchange). */
 export const BRILLIANT_MIN_SACRIFICE = 2;
@@ -37,7 +44,7 @@ export const BRILLIANT_MIN_SACRIFICE = 2;
 export const BRILLIANT_MIN_WIN_AFTER = 50;
 
 /** Miss: the opponent's previous move must have been a Mistake or a Blunder. */
-export const MISS_MIN_OPPONENT_DROP = CLASS_THRESHOLDS.inaccuracy;
+export const MISS_MIN_OPPONENT_DROP = CLASS_THRESHOLDS.mistake;
 
 /** Miss: the player gave back at least this share of what the opponent's error handed over. */
 export const MISS_MIN_GIVEN_BACK = 0.5;
@@ -51,11 +58,11 @@ const SEVERITY: Partial<Record<MoveClassification, number>> = {
 };
 
 export function classFromWinDrop(drop: number): MoveClassification {
+  if (drop >= CLASS_THRESHOLDS.blunder) return 'Blunder';
+  if (drop >= CLASS_THRESHOLDS.mistake) return 'Mistake';
+  if (drop >= CLASS_THRESHOLDS.inaccuracy) return 'Inaccuracy';
   if (drop <= CLASS_THRESHOLDS.excellent) return 'Excellent';
-  if (drop <= CLASS_THRESHOLDS.good) return 'Good';
-  if (drop <= CLASS_THRESHOLDS.inaccuracy) return 'Inaccuracy';
-  if (drop <= CLASS_THRESHOLDS.mistake) return 'Mistake';
-  return 'Blunder';
+  return 'Good';
 }
 
 export function isErrorClass(c: MoveClassification | undefined): boolean {
@@ -183,8 +190,9 @@ export function classifyMove(input: ClassifyInput): ClassifyResult | null {
     }
     if (
       winAlternative !== null &&
-      winBefore - winAlternative > GREAT_MIN_GAP &&
-      !isRecapture(input)
+      winBefore - winAlternative >= GREAT_MIN_GAP &&
+      !isRecapture(input) &&
+      !winsMaterialEnPrise(input)
     ) {
       return { ...base, classification: 'Great', isTopMove };
     }
@@ -201,6 +209,13 @@ export function classifyMove(input: ClassifyInput): ClassifyResult | null {
   }
 
   return { ...base, classification, isTopMove };
+}
+
+/** The move captures material that was simply en prise (it wins on the exchange). */
+function winsMaterialEnPrise(input: ClassifyInput): boolean {
+  const applied = applyUci(input.fenBefore, input.uci);
+  if (!applied?.move.isCapture) return false;
+  return captureGain(parseSquares(input.fenBefore), applied.move) > 0;
 }
 
 /** The move captures on the square where the opponent just captured. */
@@ -224,9 +239,9 @@ function isMiss(
   const winPrior = 100 - winPercentFromScore(opponentBest.score);
   const gift = winBefore - winPrior;
   return (
-    gift > MISS_MIN_OPPONENT_DROP &&
-    winDrop > CLASS_THRESHOLDS.good &&
+    gift >= MISS_MIN_OPPONENT_DROP &&
+    winDrop >= CLASS_THRESHOLDS.inaccuracy &&
     winDrop >= MISS_MIN_GIVEN_BACK * gift &&
-    winAfter >= winPrior - CLASS_THRESHOLDS.inaccuracy
+    winAfter > winPrior - CLASS_THRESHOLDS.mistake
   );
 }

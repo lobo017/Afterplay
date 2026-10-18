@@ -13,6 +13,8 @@ export interface ClassificationFixture {
   rationale: string;
   explanation?: string;
   explanationPrefix?: string;
+  /** Text the explanation must not contain (a motif the engine's line doesn't realize). */
+  explanationNot?: string;
 }
 
 interface RecordedPosition {

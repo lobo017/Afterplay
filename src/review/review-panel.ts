@@ -5,7 +5,7 @@ import type { UciScore } from '../engine/uci-parser';
 import { formatEvalBarScore } from '../analysis/eval-bar';
 import { lookupOpeningByFen } from '../analysis/opening-lookup';
 import { CLASS_THRESHOLDS, classFromWinDrop, isErrorClass } from './classification';
-import { formatPerformanceEstimate, winPercentFromScore } from './formulas';
+import { formatBotLevel, winPercentFromScore } from './formulas';
 import {
   ALL_CLASSIFICATIONS,
   buildAnnotatedPgn,
@@ -63,6 +63,11 @@ export interface ReviewPanelHost {
    */
   addLine(fromNodeId: string, ucis: readonly string[], options?: { forceNewVariation?: boolean }): GameNode[];
   deleteNode(nodeId: string): void;
+  /**
+   * Removes earlier engine annotations (imported analysis, an earlier review) from the
+   * main line before a review writes its own; returns how many were removed.
+   */
+  stripEngineAnnotations(): number;
   /** Writes classifications (and missing evals) onto the tree and shows the badges. */
   applyReview(entries: readonly ReviewTreeEntry[], rerender: boolean): void;
   showPgnText(pgn: string, status: string): void;
@@ -136,7 +141,7 @@ function whiteView(score: UciScore | null, mover: 'w' | 'b'): UciScore | null {
 
 /**
  * Game review panel: preset and start/cancel, progress, the live win% chart, accuracy
- * and performance per side (with the formulas in a tooltip), move counts, key moments,
+ * and an approximate bot level per side (formulas in a tooltip), move counts, key moments,
  * the current move's class and explanation, and the review tools.
  *
  * Everything that changes while navigating has a fixed size, so stepping through a
@@ -161,6 +166,8 @@ export class ReviewPanel {
   private retry: RetryState | null = null;
   private retryMessage: { text: string; tone: 'info' | 'ok' | 'bad' } | null = null;
   private lastError: string | null = null;
+  /** Earlier engine annotations the current review replaced. */
+  private strippedAnnotations = 0;
   /** Classifies and explains moves in a worker, shared by every review. */
   private readonly analysisClient = new ReviewAnalysisClient();
 
@@ -177,7 +184,7 @@ export class ReviewPanel {
     chartLine: SVGPathElement;
     chartMarkers: SVGGElement;
     chartCursor: SVGLineElement;
-    sides: Record<'w' | 'b', { accuracy: HTMLElement; performance: HTMLElement; acpl: HTMLElement }>;
+    sides: Record<'w' | 'b', { accuracy: HTMLElement; botLevel: HTMLElement; acpl: HTMLElement }>;
     counts: HTMLElement;
     moments: HTMLElement;
     cardBadge: HTMLElement;
@@ -219,7 +226,7 @@ export class ReviewPanel {
       <div class="wc-review-side wc-review-side-${c}">
         <span class="wc-review-side-name">${name}</span>
         <span class="wc-review-accuracy" data-testid="review-accuracy-${c}">—</span>
-        <span class="wc-review-side-meta">Perf <b data-testid="review-performance-${c}">—</b></span>
+        <span class="wc-review-side-meta" title="Approximate: the in-app bot level whose average centipawn loss matches this game. Not a rating estimate; see the i tooltip.">Bot level (approx.) <b data-testid="review-bot-level-${c}">—</b></span>
         <span class="wc-review-side-meta">ACPL <b data-testid="review-acpl-${c}">—</b></span>
       </div>`;
 
@@ -252,11 +259,11 @@ export class ReviewPanel {
           <div class="wc-review-formulas">
             <button type="button" class="wc-review-info-btn" data-testid="btn-review-formulas" aria-describedby="wc-review-formulas-tip" aria-expanded="false" title="How these numbers are computed">i</button>
             <div class="wc-review-tooltip" id="wc-review-formulas-tip" role="tooltip" data-testid="review-formulas-tooltip">
-              <p><b>Win%</b> = 50 + 50·(2 / (1 + e<sup>−0.00368208·cp</sup>) − 1), from the engine score in centipawns. A forced mate counts as 100 or 0.</p>
-              <p><b>Move accuracy</b> = 103.1668·e<sup>−0.04354·drop</sup> − 3.1669, clamped to 0–100, where drop is how much the move lowered your Win%.</p>
+              <p><b>Win%</b> = 50 + 50·(2 / (1 + e<sup>−0.00368208·cp</sup>) − 1), from the engine score in centipawns, clamped to ±1000. A forced mate counts as ±1000 (97.5% / 2.5%), as on Lichess.</p>
+              <p><b>Move accuracy</b> = 103.1668·e<sup>−0.04354·drop</sup> − 3.1669 + 1, clamped to 0–100, where drop is how much the move lowered your Win% (the +1 is Lichess's allowance for imprecise evaluations).</p>
               <p><b>Game accuracy</b> (Lichess method): the average of (a) your move accuracies weighted by how volatile the game was around each move (standard deviation of Win% over a sliding window) and (b) their harmonic mean, which pulls the result down for a few very bad moves.</p>
-              <p><b>ACPL</b>: average centipawn loss over moves played within ±6.5 pawns, each loss capped at 4.2 pawns.</p>
-              <p><b>Performance</b>: the rating of the in-app bot level whose calibrated ACPL matches yours (8 or more counted moves needed).</p>
+              <p><b>ACPL</b> (as on Lichess): the average over all your moves of how many centipawns each lost, with evaluations clamped to ±1000 and a mate counted as ±1000.</p>
+              <p><b>Bot level (approx.)</b>: the in-app bot whose calibrated average loss matches yours in this game. It is not a rating estimate: the bots are calibrated against Stockfish, not people, and one game's average is dominated by its few biggest mistakes, so it usually reads far below a human player's rating.</p>
             </div>
           </div>
         </div>
@@ -297,8 +304,8 @@ export class ReviewPanel {
       chartMarkers: chart.querySelector('.wc-review-chart-markers') as SVGGElement,
       chartCursor: q('review-chart-cursor'),
       sides: {
-        w: { accuracy: q('review-accuracy-w'), performance: q('review-performance-w'), acpl: q('review-acpl-w') },
-        b: { accuracy: q('review-accuracy-b'), performance: q('review-performance-b'), acpl: q('review-acpl-b') },
+        w: { accuracy: q('review-accuracy-w'), botLevel: q('review-bot-level-w'), acpl: q('review-acpl-w') },
+        b: { accuracy: q('review-accuracy-b'), botLevel: q('review-bot-level-b'), acpl: q('review-acpl-b') },
       },
       counts: q('review-counts'),
       moments: q('review-key-moments'),
@@ -397,6 +404,7 @@ export class ReviewPanel {
       this.renderState();
       return null;
     }
+    this.strippedAnnotations = this.host.stripEngineAnnotations();
     const generation = ++this.runGeneration;
     const abort = new AbortController();
     this.abort = abort;
@@ -518,7 +526,9 @@ export class ReviewPanel {
         break;
       case 'done': {
         const stats = this.result?.stats;
-        text = `Reviewed · ${PRESET_LABEL[this.preset]} · ${total} positions in ${((stats?.timeMs ?? 0) / 1000).toFixed(1)} s · mean depth ${(stats?.meanDepth ?? 0).toFixed(1)}`;
+        text = `Reviewed · ${PRESET_LABEL[this.preset]} · ${total} positions in ${((stats?.timeMs ?? 0) / 1000).toFixed(1)} s · mean depth ${(stats?.meanDepth ?? 0).toFixed(1)}${
+          this.strippedAnnotations > 0 ? ` · replaced ${this.strippedAnnotations} earlier engine annotations` : ''
+        }`;
         break;
       }
       case 'cancelled':
@@ -536,7 +546,7 @@ export class ReviewPanel {
     const fill = (c: 'w' | 'b', side: SideReviewSummary) => {
       const els = this.els.sides[c];
       els.accuracy.textContent = side.accuracy === null ? '—' : side.accuracy.toFixed(1);
-      els.performance.textContent = formatPerformanceEstimate(side.performance);
+      els.botLevel.textContent = formatBotLevel(side.botLevel);
       els.acpl.textContent = side.acpl === null ? '—' : Math.round(side.acpl).toString();
     };
     fill('w', review.white);
@@ -799,7 +809,7 @@ export class ReviewPanel {
       if (!this.retry || this.retry.attempt !== attempt) return;
       const drop = Math.max(0, target.winBefore - winAfter);
       const cls = classFromWinDrop(drop);
-      if (drop <= CLASS_THRESHOLDS.good) {
+      if (drop < CLASS_THRESHOLDS.inaccuracy) {
         this.retrySucceed(`${node.san} works (${cls}).`);
       } else {
         this.retryFail(`${node.san} is also a ${cls.toLowerCase()}. Try again.`, node, created);

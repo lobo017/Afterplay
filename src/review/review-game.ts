@@ -3,12 +3,17 @@ import { writePgn } from '../core/pgn';
 import { RulesAdapter, type Color } from '../core/rules';
 import { scoreToCentipawns, type UciScore } from '../engine/uci-parser';
 import { fenTurn, lineToSan, uciToSan } from './board';
+import { stripEngineAnnotations, withReviewComment } from './annotations';
 import { classifyMove, isErrorClass } from './classification';
 import { explainMove } from './explain';
 import {
+  WIN_PERCENT_CP_CEILING,
+  calibrationCentipawnLoss,
+  ceiledCentipawns,
   centipawnLoss,
-  estimatePerformanceRating,
-  formatPerformanceEstimate,
+  estimateBotLevel,
+  formatBotLevel,
+  winPercentFromCp,
   gameAccuracy,
   moveAccuracy,
   winPercentFromScore,
@@ -90,7 +95,10 @@ export function mainLinePlies(tree: GameTree): ReviewPly[] {
 export function whiteWinPercent(analysis: PositionAnalysis | undefined): number | null {
   if (!analysis) return null;
   const turn = fenTurn(analysis.fen);
-  if (analysis.terminal === 'checkmate') return turn === 'w' ? 0 : 100;
+  // A checkmated side counts as −1000 cp, as in Lichess's analysis (2.5% / 97.5%)
+  if (analysis.terminal === 'checkmate') {
+    return winPercentFromCp(turn === 'w' ? -WIN_PERCENT_CP_CEILING : WIN_PERCENT_CP_CEILING);
+  }
   if (analysis.terminal) return 50;
   const best = analysis.lines[0];
   if (!best) return null;
@@ -215,11 +223,17 @@ export function analyzeMove(input: ReviewMoveInput): MoveAnalysis {
     : { explanation: null, motifs: [] };
 
   const deliveredMate = after.terminal === 'checkmate';
-  let playedCp = 0; // stalemate or insufficient material: a draw
+  // Lichess's loss: ceiled evaluations before and after, every move counted
+  let afterCeiled = 0; // stalemate or insufficient material: a draw
+  if (deliveredMate) afterCeiled = WIN_PERCENT_CP_CEILING;
+  else if (result.scoreAfter) afterCeiled = ceiledCentipawns(result.scoreAfter);
+  const cpLoss = best ? centipawnLoss(ceiledCentipawns(best.score), afterCeiled) : 0;
+  // The bot calibration's loss, for the bot-level comparison only
+  let playedCp = 0;
   if (deliveredMate) playedCp = 10000;
   else if (result.scoreAfter) playedCp = scoreToCentipawns(result.scoreAfter);
-  const cpLoss = best
-    ? centipawnLoss({
+  const calibrationCpLoss = best
+    ? calibrationCentipawnLoss({
         bestCp: scoreToCentipawns(best.score),
         playedCp,
         legalMoveCount: legalMoveCount(ply.fenBefore),
@@ -243,6 +257,7 @@ export function analyzeMove(input: ReviewMoveInput): MoveAnalysis {
     winDrop: result.winDrop,
     accuracy: moveAccuracy(result.winDrop),
     cpLoss,
+    calibrationCpLoss,
     classification: result.classification,
     bestMoveUci,
     bestMoveSan: bestMoveUci ? uciToSan(ply.fenBefore, bestMoveUci) : null,
@@ -264,17 +279,18 @@ function summarize(
 ): SideReviewSummary {
   const counts = emptyCounts();
   const losses: number[] = [];
+  const calibrationLosses: number[] = [];
   for (const move of moves) {
     if (move.color !== color) continue;
     counts[move.classification]++;
-    if (move.cpLoss !== null) losses.push(move.cpLoss);
+    losses.push(move.cpLoss);
+    if (move.calibrationCpLoss !== null) calibrationLosses.push(move.calibrationCpLoss);
   }
-  const acpl = losses.length > 0 ? losses.reduce((a, v) => a + v, 0) / losses.length : null;
+  const mean = (xs: number[]) => (xs.length > 0 ? xs.reduce((a, v) => a + v, 0) / xs.length : null);
   return {
     accuracy,
-    acpl,
-    countedMoves: losses.length,
-    performance: estimatePerformanceRating(acpl, losses.length),
+    acpl: mean(losses),
+    botLevel: estimateBotLevel(mean(calibrationLosses), calibrationLosses.length),
     counts,
   };
 }
@@ -378,8 +394,6 @@ export const CLASSIFICATION_NAG: Partial<Record<MoveClassification, number>> = {
   Miss: 2,
 };
 
-const MOVE_QUALITY_NAGS = new Set([1, 2, 3, 4, 5, 6]);
-
 function budgetLabel(review: GameReview): string {
   const preset = review.preset ? `${review.preset[0]!.toUpperCase()}${review.preset.slice(1)}, ` : '';
   if (review.budget.depth !== undefined) return `${preset}depth ${review.budget.depth}`;
@@ -389,14 +403,15 @@ function budgetLabel(review: GameReview): string {
 function sideSummaryText(name: string, side: SideReviewSummary): string {
   const accuracy = side.accuracy === null ? '—' : side.accuracy.toFixed(1);
   const acpl = side.acpl === null ? '—' : Math.round(side.acpl).toString();
-  return `${name} accuracy ${accuracy}%, ACPL ${acpl}, performance ${formatPerformanceEstimate(side.performance)}`;
+  return `${name} accuracy ${accuracy}%, ACPL ${acpl}, approximate bot level ${formatBotLevel(side.botLevel)}`;
 }
 
 /**
  * The game with the review written into it: `[%eval]` on every reviewed move, a NAG and
  * a comment for each error, Great and Brilliant move, the engine's best line as a
  * variation after each Mistake, Blunder and Miss, and a summary in the game comment.
- * Existing comments and NAGs are kept.
+ * Earlier engine annotations are removed first (annotations.ts); human comments and
+ * other NAGs are kept, with the review text after them behind the `Review:` marker.
  */
 export function buildAnnotatedPgn(
   tree: GameTree,
@@ -405,6 +420,9 @@ export function buildAnnotatedPgn(
   engineName: string,
 ): string {
   const copy = GameTree.fromJSON(tree.toJSON());
+  // Earlier engine annotations (an imported Lichess analysis, an earlier review) go first,
+  // so every NAG, eval and engine comment in the export is this review's
+  stripEngineAnnotations(copy);
   copy.setHeader('Annotator', `Wizard's Chess review (${engineName}, ${budgetLabel(review)})`);
 
   for (const move of review.moves) {
@@ -416,21 +434,22 @@ export function buildAnnotatedPgn(
     copy.setClassification(node.id, move.classification);
 
     const nag = CLASSIFICATION_NAG[move.classification];
-    if (nag !== undefined && !node.nags.some((n) => MOVE_QUALITY_NAGS.has(n))) {
-      copy.addNag(node.id, nag);
-    }
+    if (nag !== undefined) copy.addNag(node.id, nag);
 
     const notes: string[] = [];
     if (isErrorClass(move.classification)) {
       notes.push(`${move.classification}.`);
       if (move.explanation) notes.push(move.explanation);
-      if (move.bestMoveSan && move.bestMoveUci !== move.uci) notes.push(`Best was ${move.bestMoveSan}.`);
+      // Name the best move once: only if the sentence doesn't already
+      const best = move.bestMoveSan;
+      if (best && move.bestMoveUci !== move.uci && !move.explanation?.includes(best)) {
+        notes.push(`Best: ${best}.`);
+      }
     } else if (move.classification === 'Brilliant' || move.classification === 'Great') {
       notes.push(`${move.classification} move.`);
     }
     if (notes.length > 0) {
-      const existing = node.comment.trim();
-      copy.setComment(node.id, existing ? `${existing} ${notes.join(' ')}` : notes.join(' '));
+      copy.setComment(node.id, withReviewComment(node.comment.trim(), notes.join(' ')));
     }
 
     const before = positions[move.ply - 1];
@@ -455,7 +474,6 @@ export function buildAnnotatedPgn(
   }
 
   const summary = `${sideSummaryText('White', review.white)}. ${sideSummaryText('Black', review.black)}.`;
-  const rootComment = copy.root.comment.trim();
-  copy.setComment(copy.root.id, rootComment ? `${rootComment} ${summary}` : summary);
+  copy.setComment(copy.root.id, withReviewComment(copy.root.comment.trim(), summary));
   return writePgn(copy);
 }

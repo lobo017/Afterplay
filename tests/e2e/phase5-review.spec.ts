@@ -37,8 +37,8 @@ interface ReviewSnapshot {
     whiteWinAfter: number;
   }>;
   series: Array<number | null>;
-  white: { accuracy: number | null; performance: unknown };
-  black: { accuracy: number | null; performance: unknown };
+  white: { accuracy: number | null; acpl: number | null };
+  black: { accuracy: number | null; acpl: number | null };
   keyMoments: Array<{ ply: number; nodeId: string }>;
 }
 
@@ -72,8 +72,8 @@ async function readReview(page: Page): Promise<ReviewSnapshot> {
         whiteWinAfter: m.whiteWinAfter,
       })),
       series: r?.whiteWinSeries ?? [],
-      white: { accuracy: r?.white.accuracy ?? null, performance: r?.white.performance ?? null },
-      black: { accuracy: r?.black.accuracy ?? null, performance: r?.black.performance ?? null },
+      white: { accuracy: r?.white.accuracy ?? null, acpl: r?.white.acpl ?? null },
+      black: { accuracy: r?.black.accuracy ?? null, acpl: r?.black.acpl ?? null },
       keyMoments: (r?.keyMoments ?? []).map((k) => ({ ply: k.ply, nodeId: k.nodeId })),
     };
   });
@@ -170,7 +170,8 @@ test.describe('Phase 5 — Game review', () => {
     // Rd8# is the top move; after 16...Nxb8 every other move loses, so it can be Great
     expect(review.moves[32]!.san).toBe('Rd8#');
     expect(['Best', 'Great']).toContain(review.moves[32]!.classification);
-    expect(review.series[33]).toBe(100);
+    // The mated side counts as −1000 cp, as in Lichess's analysis: 97.5% for White
+    expect(review.series[33]).toBeCloseTo(97.54, 1);
     // Black lost to a mating attack: Black made errors, and Morphy played more accurately
     const blackErrors = review.moves.filter(
       (m) => m.color === 'b' && ['Inaccuracy', 'Mistake', 'Blunder', 'Miss'].includes(m.classification),
@@ -405,6 +406,83 @@ test.describe('Phase 5 — Game review', () => {
     });
     expect(play.fen).toBe(parent.fen);
     expect(play.flipped).toBe(false);
+  });
+
+  test('reviewing an imported Lichess analysis replaces it: one consistent annotation per move', async ({
+    page,
+  }) => {
+    test.setTimeout(150_000);
+    const fixture = JSON.parse(
+      fs.readFileSync(path.join('tests', 'fixtures', 'review', 'lichess-Bjl39T9x.json'), 'utf8'),
+    ) as { pgn: string };
+    await openAnalysis(page);
+    await page.evaluate((pgn) => window.__wizardChessAnalysis!.controller.importPgn(pgn), fixture.pgn);
+    // Before the review, the move list shows Lichess's ?! / ? / ?? and evals
+    const before = await page.evaluate(() =>
+      window.__wizardChessAnalysis!.controller
+        .getGameTree()
+        .getMainLine()
+        .filter((n) => n.nags.length > 0).length,
+    );
+    expect(before).toBeGreaterThan(10);
+
+    await page.getByTestId('btn-review-start').click();
+    await expect(page.getByTestId('review-panel')).toHaveAttribute('data-state', 'done', {
+      timeout: 90_000,
+    });
+    await expect(page.getByTestId('review-progress-text')).toContainText('replaced');
+
+    const state = await page.evaluate(() => {
+      const tree = window.__wizardChessAnalysis!.controller.getGameTree();
+      const review = window.__wizardChessReview!.panel.getReview()!;
+      return {
+        main: tree.getMainLine().map((n) => ({
+          id: n.id,
+          nags: n.nags,
+          classification: n.classification ?? null,
+          comment: n.comment,
+          siblings: tree.getNode(n.parentId!)!.children.length,
+        })),
+        moves: review.moves.map((m) => ({ nodeId: m.nodeId, classification: m.classification })),
+      };
+    });
+    // The live move tree: no imported quality NAGs, no Lichess comments or variations left,
+    // and every move carries the app's own class
+    expect(state.moves).toHaveLength(46);
+    for (const [i, node] of state.main.entries()) {
+      expect(node.nags.filter((n) => n >= 1 && n <= 6), `ply ${i + 1}`).toEqual([]);
+      expect(node.comment).not.toMatch(/was best|Checkmate is now unavoidable/);
+      expect(node.siblings, `ply ${i + 1}`).toBe(1);
+      expect(node.classification).toBe(state.moves[i]!.classification);
+    }
+    await expect(page.locator('[data-testid="analysis-move-tree"] .wc-tree-class')).toHaveCount(46);
+
+    // The export: exactly the app's NAG per move, one eval per move, no Lichess text. It is
+    // clicked right after the review ends and read after the board's 400 ms PGN refresh,
+    // which used to overwrite the annotated PGN with the plain game
+    await page.getByTestId('btn-review-export').click();
+    await page.waitForTimeout(600);
+    const pgn = await page.getByTestId('textarea-pgn').inputValue();
+    expect(pgn).not.toMatch(/was best|Checkmate is now unavoidable|→/);
+    expect(pgn).toContain('[Annotator "Wizard\'s Chess review');
+    const exported = await page.evaluate((text) => {
+      const tree = window.__wizardChessCore!.parsePgn(text);
+      return tree.getMainLine().map((n) => ({ nags: n.nags, hasEval: Boolean(n.eval), reviews: (n.comment.match(/Review:/g) ?? []).length }));
+    }, pgn);
+    const nagFor: Record<string, number | undefined> = {
+      Brilliant: 3,
+      Great: 1,
+      Inaccuracy: 6,
+      Mistake: 2,
+      Blunder: 4,
+      Miss: 2,
+    };
+    exported.forEach((node, i) => {
+      const expected = nagFor[state.moves[i]!.classification];
+      expect(node.nags, `ply ${i + 1}`).toEqual(expected === undefined ? [] : [expected]);
+      expect(node.reviews).toBeLessThanOrEqual(1);
+      if (i < 45) expect(node.hasEval, `ply ${i + 1}`).toBe(true);
+    });
   });
 
   test('cancelling keeps a partial review; a new game resets the panel', async ({ page }) => {

@@ -1,7 +1,7 @@
 import type { Color, PieceSymbol, Square } from '../core/rules';
 import type { MoveClassification } from '../core/game-tree';
 import type { UciScore } from '../engine/uci-parser';
-import type { PerformanceEstimate } from './formulas';
+import type { BotLevelEstimate } from './formulas';
 
 export type { MoveClassification };
 
@@ -96,8 +96,10 @@ export interface ReviewedMove {
   /** max(0, winBefore − winAfter). */
   winDrop: number;
   accuracy: number;
-  /** Centipawn loss used for ACPL (null when the position was out of the counted range). */
-  cpLoss: number | null;
+  /** Centipawn loss as Lichess counts it (ceiled evals before and after; every move). */
+  cpLoss: number;
+  /** Loss on the bot calibration's scale (null where that scale doesn't count the move). */
+  calibrationCpLoss: number | null;
   classification: MoveClassification;
   bestMoveUci: string | null;
   bestMoveSan: string | null;
@@ -115,10 +117,10 @@ export interface ReviewedMove {
 
 export interface SideReviewSummary {
   accuracy: number | null;
+  /** Lichess ACPL: mean centipawn loss over all of the side's reviewed moves (unrounded). */
   acpl: number | null;
-  /** Moves that counted toward the ACPL (see `centipawnLoss`). */
-  countedMoves: number;
-  performance: PerformanceEstimate | null;
+  /** Approximate comparison with the in-app bots (not a human rating; formulas.ts). */
+  botLevel: BotLevelEstimate | null;
   counts: Record<MoveClassification, number>;
 }
 

@@ -75,18 +75,18 @@ describe('Phase 5 — review runner', () => {
     });
 
     // Nd4 (Blunder) and h6 (Miss) each trigger a verification search of the positions
-    // around them, every position at most once
-    expect(engine.requests.map((r) => [r.moves, r.movetime])).toEqual([
-      [[], 600],
-      [['f3d4'], 600],
-      [[], 2000],
-      [['f3d4'], 2000],
-      [['f3d4', 'h7h6'], 600],
-      [['f3d4', 'h7h6'], 2000],
+    // around them, every position at most once (no mate before them: no same-root search)
+    expect(engine.requests.map((r) => [r.moves, r.movetime, r.searchMoves ?? null])).toEqual([
+      [[], 600, null],
+      [['f3d4'], 600, null],
+      [[], 2000, null],
+      [['f3d4'], 2000, null],
+      [['f3d4', 'h7h6'], 600, null],
+      [['f3d4', 'h7h6'], 2000, null],
     ]);
     for (const [i, r] of engine.requests.entries()) {
       expect(r.fen).toBe(tree.root.fen);
-      expect(r.multipv).toBe(2);
+      expect(r.multipv).toBe(r.searchMoves ? 1 : 2);
       expect(r.depth).toBeUndefined();
       expect(r.priority).toBe('review');
       expect(r.useCache).toBe(false);
@@ -161,16 +161,58 @@ describe('Phase 5 — review runner', () => {
       preset: 'quick',
       isBookPosition: () => false,
     });
-    expect(requests.map((r) => [r.moves?.length, r.movetime])).toEqual([
-      [0, 200],
-      [1, 200],
-      [0, 1000],
-      [1, 1000],
+    // A mate in 3 before the move: the same-root search goes to depth 2·3 + 6
+    expect(requests.map((r) => [r.moves?.length, r.movetime ?? r.depth, r.searchMoves ?? null])).toEqual([
+      [0, 200, null],
+      [1, 200, null],
+      [0, 1000, null],
+      [1, 1000, null],
+      [0, 12, ['d2d4']],
     ]);
     expect(result.positions.map((p) => p?.depth)).toEqual([16, 16]);
     expect(result.review.moves[0]!.classification).toBe('Excellent');
     expect(result.review.moves[0]!.winDrop).toBe(0);
     expect(result.stats.verifiedPositions).toBe(2);
+  });
+
+  it('the played move searched from before overturns a false blunder the after search keeps', async () => {
+    // Even the longer search after 1.d4 misses the mate (+3 only), but searching 1.d4 itself
+    // from the start position, on the same budget as the best line, finds mate in 4
+    const requests: EngineAnalyzeRequest[] = [];
+    const reply = (lines: Array<{ score: { type: 'cp' | 'mate'; value: number }; pv: string[] }>, depth: number) => ({
+      fen: '',
+      normalizedFen: '',
+      depth,
+      multipv: lines.length,
+      bestMove: lines[0]!.pv[0]!,
+      ponder: null,
+      lines: lines.map((l, i) => ({ multipv: i + 1, ...l, depth, seldepth: depth, scoreWhite: l.score, evalCp: 0, nodes: 0, nps: 0, timeMs: 0 })),
+      nodes: 0,
+      nps: 0,
+      timeMs: 0,
+      cached: false,
+    });
+    const engine: ReviewEngine = {
+      analyze: async (request) => {
+        requests.push(request);
+        if (request.searchMoves) {
+          return reply([{ score: { type: 'mate', value: 4 }, pv: ['d2d4', 'g8f6', 'c1g5'] }], 14);
+        }
+        if ((request.moves?.length ?? 0) === 0) {
+          return reply([{ score: { type: 'mate', value: 3 }, pv: ['e2e4'] }], request.movetime === 200 ? 10 : 16);
+        }
+        return reply([{ score: { type: 'cp', value: -300 }, pv: ['g8f6'] }], request.movetime === 200 ? 10 : 16);
+      },
+    };
+    const tree = new GameTree();
+    tree.addMove('d2d4');
+    const result = await new ReviewRunner(engine).run({ tree, preset: 'quick', isBookPosition: () => false });
+    expect(requests.at(-1)).toMatchObject({ searchMoves: ['d2d4'], depth: 12, multipv: 1 });
+    // After 1.d4 Black is mated in 3 (White's mate in 4 counted the move itself)
+    expect(result.positions[1]!.lines[0]!.score).toEqual({ type: 'mate', value: -3 });
+    expect(result.positions[1]!.lines[0]!.pv).toEqual(['g8f6', 'c1g5']);
+    expect(result.review.moves[0]!.winDrop).toBe(0);
+    expect(['Excellent', 'Best']).toContain(result.review.moves[0]!.classification);
   });
 
   it('uses a fixed depth when given a custom budget', async () => {

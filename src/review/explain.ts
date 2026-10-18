@@ -1,8 +1,13 @@
-import type { PieceSymbol, Square } from '../core/rules';
+import { RulesAdapter, type Color, type PieceSymbol, type Square } from '../core/rules';
 import {
   PIECE_NAME,
+  PIECE_VALUE,
   applyUci,
+  bestCaptureThreat,
   captureThreats,
+  fenTurn,
+  materialCount,
+  opposite,
   parseSquares,
   squareIndex,
   uciToSan,
@@ -18,13 +23,128 @@ import {
   detectPromotionThreat,
   detectTrappedPiece,
 } from './motifs';
+import { scoreToCentipawns, type UciScore } from '../engine/uci-parser';
 import type { Motif, MoveClassification, PositionAnalysis } from './types';
 
 /*
  * One rule-based sentence per Inaccuracy, Mistake, Blunder or Miss. The rules are tried
  * in order and the first that applies writes the sentence (docs/classification.md lists
  * them). Every motif found on the way is returned too, tagged with whose move it is.
+ *
+ * A motif or a material claim is only used when the engine's line realizes it: following
+ * the move and the engine's best line from the position before the move, the material
+ * really changes hands (or the trapped piece is really captured). A recapture that only
+ * restores the balance, or a piece that is attacked but can step away, names nothing;
+ * the sentence then falls back to what happened to the evaluation.
  */
+
+/** Plies of the engine line followed to see whether material really changes hands. */
+export const REALIZE_PLIES = 10;
+
+/** Material (pawns) a claim must actually win: the piece's value, at most 2. */
+function requiredGain(value: number): number {
+  return Math.min(value, 2);
+}
+
+/**
+ * Material `color` gains (pawns; negative when it loses) from `fen` along `ucis`, measured
+ * where the material settles: after the line's first capture, at the first two quiet
+ * plies in a row. An even exchange therefore counts as nothing, however it starts. A line
+ * that doesn't settle within REALIZE_PLIES is measured at its end, counting the best
+ * capture pending for the side to move there.
+ */
+export function lineMaterialGain(fen: string, ucis: readonly string[], color: Color): number {
+  const balance = (f: string) => {
+    const sq = parseSquares(f);
+    return materialCount(sq, color) - materialCount(sq, opposite(color));
+  };
+  const start = balance(fen);
+  let adapter: RulesAdapter;
+  try {
+    adapter = new RulesAdapter(fen);
+  } catch {
+    return 0;
+  }
+  let seenCapture = false;
+  let quiet = 0;
+  for (const uci of ucis.slice(0, REALIZE_PLIES)) {
+    let move;
+    try {
+      move = adapter.move(uci);
+    } catch {
+      break;
+    }
+    if (move.captured || move.promotion) {
+      seenCapture = true;
+      quiet = 0;
+    } else if (++quiet >= 2 && seenCapture && !adapter.isGameOver()) {
+      // Settled only if no profitable capture is pending (an in-between move such as
+      // ...Nxc4 Qa4 Kc8 dxc4 delays a recapture, it doesn't cancel it)
+      const now = adapter.fen();
+      if (!bestCaptureThreat(now)) return balance(now) - start;
+    }
+  }
+  const end = adapter.fen();
+  const pending = adapter.isGameOver() ? null : bestCaptureThreat(end);
+  const pendingGain = pending ? (fenTurn(end) === color ? pending.gain : -pending.gain) : 0;
+  return balance(end) - start + pendingGain;
+}
+
+/** Follows the piece on `square` along `ucis`: is it captured? */
+export function capturedAlongLine(fen: string, ucis: readonly string[], square: Square): boolean {
+  let adapter: RulesAdapter;
+  try {
+    adapter = new RulesAdapter(fen);
+  } catch {
+    return false;
+  }
+  let at: string = square;
+  for (const uci of ucis.slice(0, REALIZE_PLIES)) {
+    let move;
+    try {
+      move = adapter.move(uci);
+    } catch {
+      return false;
+    }
+    if (move.to === at && move.captured) return true;
+    if (move.from === at) at = move.to;
+  }
+  return false;
+}
+
+/** The most valuable piece a motif goes after (a king counts as 2: it forces material). */
+function claimedValue(motif: Motif, fen: string): number {
+  if (motif.kind === 'promotion-threat') return PIECE_VALUE.q - PIECE_VALUE.p;
+  const board = parseSquares(fen);
+  const squares = motif.kind === 'fork' ? (motif.targets ?? []) : [motif.square];
+  let best = 0;
+  for (const sq of squares) {
+    const piece = board[squareIndex(sq)];
+    if (!piece) continue;
+    best = Math.max(best, piece.type === 'k' ? 2 : PIECE_VALUE[piece.type]);
+  }
+  return best;
+}
+
+/** Where a realization count starts, the line followed, and who should gain. */
+interface Realize {
+  baseFen: string;
+  line: readonly string[];
+  beneficiary: Color;
+  /**
+   * How much the engine's evaluation moved in the beneficiary's favour (pawns). A claim
+   * must be backed by it: a short line can stop before a recapture (...Nxc4 Qa4, with
+   * dxc4 still to come), but then the evaluation hasn't moved by a knight either.
+   */
+  evalSwing: number;
+}
+
+/** The evaluation must move by at least this share of the material claimed. */
+const EVAL_BACKING_SHARE = 0.5;
+
+function backedByEval(claimed: number, realize: Realize): boolean {
+  return realize.evalSwing >= claimed * EVAL_BACKING_SHARE;
+}
 
 export interface ExplainInput {
   classification: MoveClassification;
@@ -66,18 +186,32 @@ function tagged(motif: Motif | null, role: Motif['role']): Motif | null {
   return motif ? { ...motif, role } : null;
 }
 
-/** Motifs a move creates (not hanging-piece: that is about the mover's own material). */
-function attackMotifs(fen: string, uci: string, role: Motif['role']): Motif[] {
-  return [
+/**
+ * Motifs `uci` creates from `fen` (not hanging-piece: that is about the mover's own
+ * material) that `realize`'s line actually cashes in.
+ */
+function attackMotifs(fen: string, uci: string, role: Motif['role'], realize: Realize): Motif[] {
+  const after = applyUci(fen, uci)?.after ?? fen;
+  // The line from `fen` on (the count may start one move earlier, before the reviewed move)
+  const fromHere = realize.baseFen === fen ? realize.line : realize.line.slice(1);
+  const gain = lineMaterialGain(realize.baseFen, realize.line, realize.beneficiary);
+  const found = [
     detectBackRank(fen, uci),
     detectFork(fen, uci),
     detectPinOrSkewer(fen, uci),
     detectDiscoveredAttack(fen, uci),
     detectTrappedPiece(fen, uci),
     detectPromotionThreat(fen, uci),
-  ]
-    .map((m) => tagged(m, role))
-    .filter((m): m is Motif => m !== null);
+  ].filter((m): m is Motif => m !== null);
+  return found
+    .filter((m) => {
+      if (m.kind === 'back-rank') return true; // only named when the line is a forced mate
+      if (m.kind === 'trapped-piece') return capturedAlongLine(fen, fromHere, m.square);
+      // The tactic has to net material; what it wins needn't be the piece it attacks
+      // (Nh4? Nxe4!: the discovered attack on h4 wins the e4 pawn)
+      return claimedValue(m, after) > 0 && gain >= 1 && backedByEval(gain, realize);
+    })
+    .map((m) => ({ ...m, role }));
 }
 
 /** What the motif does to the opponent, as a participle phrase ("forking the king and rook"). */
@@ -107,10 +241,20 @@ function motifPhrase(motif: Motif, fen: string): string | null {
   }
 }
 
-/** A capture that nets material for the side to move in `fen` with `uci`, if it is one. */
-function winningCapture(fen: string, uci: string): { piece: PieceSymbol; square: string } | null {
+/** A capture with `uci` that nets material, if `realize`'s line really wins that much. */
+function winningCapture(
+  fen: string,
+  uci: string,
+  realize: Realize,
+): { piece: PieceSymbol; square: string } | null {
   const threat = captureThreats(fen).find((t) => t.move.uci === uci && t.gain > 0);
-  return threat ? { piece: threat.move.captured ?? 'p', square: threat.move.to } : null;
+  if (!threat) return null;
+  const piece = threat.move.captured ?? 'p';
+  const gain = lineMaterialGain(realize.baseFen, realize.line, realize.beneficiary);
+  const claimed = PIECE_VALUE[piece];
+  return gain >= requiredGain(claimed) && backedByEval(claimed, realize)
+    ? { piece, square: threat.move.to }
+    : null;
 }
 
 function mateDistance(analysis: PositionAnalysis): number | null {
@@ -128,13 +272,43 @@ export function explainMove(input: ExplainInput): ExplainResult {
   const applied = applyUci(input.fenBefore, input.uci);
   if (!applied) return { explanation: null, motifs };
   const fenAfter = applied.after;
-  const refutationUci = input.after.lines[0]?.pv[0] ?? null;
+  const refutationLine = input.after.terminal ? [] : (input.after.lines[0]?.pv ?? []);
+  const refutationUci = refutationLine[0] ?? null;
   const refutationSan = refutationUci ? uciToSan(fenAfter, refutationUci) : null;
+  const mover = applied.move.color;
+  // Mover's evaluation (pawns) before the move, after it, and after the best move
+  const pawns = (score: UciScore | undefined) => (score ? scoreToCentipawns(score) / 100 : 0);
+  const evalBefore = pawns(best?.score);
+  const evalAfter = input.after.terminal === 'checkmate'
+    ? 100
+    : input.after.terminal
+      ? 0
+      : -pawns(input.after.lines[0]?.score);
+  // The reviewed move and the opponent's best line, counted from before the move
+  const againstMover: Realize = {
+    baseFen: input.fenBefore,
+    line: [input.uci, ...refutationLine],
+    beneficiary: opposite(mover),
+    evalSwing: evalBefore - evalAfter,
+  };
+  const moverLoss = lineMaterialGain(againstMover.baseFen, againstMover.line, opposite(mover));
 
   // What the move itself and the opponent's best reply do
-  const hanging = tagged(detectHangingPiece(input.fenBefore, input.uci), 'played');
+  let hanging = tagged(detectHangingPiece(input.fenBefore, input.uci), 'played');
+  if (
+    hanging &&
+    !(
+      capturedAlongLine(fenAfter, refutationLine, hanging.square) &&
+      moverLoss >= requiredGain(PIECE_VALUE[hanging.piece ?? 'p']) &&
+      backedByEval(PIECE_VALUE[hanging.piece ?? 'p'], againstMover)
+    )
+  ) {
+    hanging = null; // attacked, but the engine's line doesn't actually win it
+  }
   if (hanging) motifs.push(hanging);
-  const refutationMotifs = refutationUci ? attackMotifs(fenAfter, refutationUci, 'refutation') : [];
+  const refutationMotifs = refutationUci
+    ? attackMotifs(fenAfter, refutationUci, 'refutation', againstMover)
+    : [];
   motifs.push(...refutationMotifs);
   const missedMate = tagged(
     detectMissedMate({
@@ -149,9 +323,15 @@ export function explainMove(input: ExplainInput): ExplainResult {
     'missed',
   );
   if (missedMate) motifs.push(missedMate);
+  const forMover: Realize = {
+    baseFen: input.fenBefore,
+    line: best?.pv ?? [],
+    beneficiary: mover,
+    evalSwing: evalBefore - evalAfter,
+  };
   const missedMotifs =
     input.classification === 'Miss' && bestUci && bestUci !== input.uci
-      ? attackMotifs(input.fenBefore, bestUci, 'missed')
+      ? attackMotifs(input.fenBefore, bestUci, 'missed', forMover)
       : [];
   motifs.push(...missedMotifs);
 
@@ -193,7 +373,7 @@ export function explainMove(input: ExplainInput): ExplainResult {
 
   // 4. Miss: the opponent's error went unpunished; say what the best move would have won
   if (input.classification === 'Miss' && better && bestUci) {
-    const capture = winningCapture(input.fenBefore, bestUci);
+    const capture = winningCapture(input.fenBefore, bestUci, forMover);
     let what: string;
     if (capture) {
       what = `which wins the ${PIECE_NAME[capture.piece]} on ${capture.square}`;
@@ -206,7 +386,7 @@ export function explainMove(input: ExplainInput): ExplainResult {
   }
 
   // 5. The move leaves material en prise and the opponent's best reply takes it
-  if (hanging && hanging.san && (!refutationUci || refutationUci.slice(2, 4) === hanging.square)) {
+  if (hanging && hanging.san && refutationUci?.slice(2, 4) === hanging.square) {
     const piece = pieceOn(hanging);
     let explanation: string;
     if (hanging.preexisting) {
@@ -226,7 +406,7 @@ export function explainMove(input: ExplainInput): ExplainResult {
       ? motifPhrase(motif, applyUci(fenAfter, refutationUci)?.after ?? fenAfter)
       : null;
     if (phrase) return { explanation: `Allows ${refutationSan}, ${phrase}.`, motifs };
-    const capture = winningCapture(fenAfter, refutationUci);
+    const capture = winningCapture(fenAfter, refutationUci, againstMover);
     if (capture) {
       return {
         explanation: `Allows ${refutationSan}, winning the ${PIECE_NAME[capture.piece]} on ${capture.square}.`,
@@ -235,14 +415,17 @@ export function explainMove(input: ExplainInput): ExplainResult {
     }
   }
 
-  // 7. No concrete tactic: describe what happened to the evaluation
+  // 7. No realized tactic: say what happened to the evaluation (the best move is shown
+  // next to the sentence, so it isn't repeated here)
   let explanation: string;
   if (input.winBefore >= 50 && input.winAfter < 45) {
-    explanation = 'Hands the opponent the advantage';
+    explanation = 'Hands the opponent the advantage.';
   } else if (input.winBefore >= 60) {
-    explanation = 'Lets part of the advantage slip';
+    explanation = 'Lets part of the advantage slip.';
+  } else if (input.winAfter < 20) {
+    explanation = 'Makes a difficult position worse.';
   } else {
-    explanation = 'Loses ground';
+    explanation = 'Loses ground.';
   }
-  return { explanation: better ? `${explanation}; ${better} was better.` : `${explanation}.`, motifs };
+  return { explanation, motifs };
 }

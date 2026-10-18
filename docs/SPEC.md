@@ -304,26 +304,36 @@ through a game ends on the correct position with no layout shift.
   - Analyze with MultiPV 2.
   - Show a progress bar and allow cancelling.
   - The win% chart fills in live; clicking it jumps to that move.
-- **Formulas** (explain them in an in-app tooltip):
-  - Win% = 50 + 50·(2/(1+e^(−0.00368208·cp)) − 1). A forced mate counts as 0 or 100.
-  - Move accuracy = 103.1668·e^(−0.04354·win%drop) − 3.1669, clamped to 0–100.
+- **Formulas** (explain them in an in-app tooltip). They follow Lichess's implementation
+  (lila `WinPercent`, `AccuracyPercent`, `Accuracy`), so that given Lichess's evaluations
+  they reproduce Lichess's numbers; a regression test checks this on a real game:
+  - Win% = 50 + 50·(2/(1+e^(−0.00368208·cp)) − 1), with cp clamped to ±1000. A forced
+    mate counts as ±1000 cp (97.5% / 2.5%).
+  - Move accuracy = 103.1668·e^(−0.04354·win%drop) − 3.1669 + 1 (Lichess's uncertainty
+    bonus), clamped to 0–100.
   - Game accuracy = Lichess-style volatility-weighted average blended with the harmonic
     mean.
-  - Estimated performance rating for each side.
+  - ACPL = per side, the rounded mean over every move of max(0, eval before − eval after)
+    for the mover, evaluations clamped to ±1000 cp and mates counted as ±1000.
+  - An approximate bot-level comparison for each side (the in-app bot whose calibrated
+    ACPL matches), clearly labelled as approximate. It is not a performance rating: the
+    bots are calibrated against Stockfish, not people, and there is no human
+    ACPL-to-rating data offline (see docs/classification.md).
 - **Classification** (rules documented in docs/classification.md, with test fixtures for
   each class):
-  - Starting thresholds, by win% drop:
+  - Thresholds, by win% drop. Inaccuracy / Mistake / Blunder are Lichess's (a winning-
+    chance drop of 0.1 / 0.2 / 0.3), the reference users compare reviews against:
 
     | Class | Win% drop |
     |-------|-----------|
     | Best | Matches the engine's top move |
     | Excellent | ≤ 2 |
-    | Good | ≤ 5 |
-    | Inaccuracy | ≤ 10 |
-    | Mistake | ≤ 20 |
-    | Blunder | > 20 |
+    | Good | more than 2, less than 5 |
+    | Inaccuracy | ≥ 5 |
+    | Mistake | ≥ 10 |
+    | Blunder | ≥ 15 |
 
-    Tune them so already-decided positions (beyond ±95%) don't produce false blunders.
+    Already-decided positions (beyond ±95%) must not produce false blunders.
   - **Great:** the only move that keeps the result.
   - **Brilliant:** a Best or Great move that gives up material, in a position that isn't
     trivially winning.
@@ -340,6 +350,13 @@ through a game ends on the correct position with no layout shift.
     - trapped piece
     - promotion threat
   - Write one rule-based sentence per mistake, e.g. "Hangs the knight on f6 to Bxf6".
+    Name a motif only when the engine's best line realizes it (the material really
+    changes hands, or the trapped piece is really lost); otherwise use a general sentence.
+    Name the best move once.
+- **Imported annotations:** a review replaces earlier engine annotations on the reviewed
+  line (Lichess's or an earlier review's evals, move-quality NAGs, engine comments and the
+  engine's "best" variations). Plain human comments are kept, separated from the review
+  text, so every move's NAG matches the app's classification.
 - **Key moments:** the 3–5 biggest swings, with jump buttons.
 - **Review tools:**
   - Retry This Mistake

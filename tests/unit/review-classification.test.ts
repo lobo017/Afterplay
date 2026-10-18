@@ -69,13 +69,17 @@ describe('Phase 5 — move classification fixtures', () => {
   });
 
   it('maps win% drops onto the spec bands', () => {
+    // Lichess's bands: Inaccuracy from 5, Mistake from 10, Blunder from 15 (inclusive)
+    expect(CLASS_THRESHOLDS).toEqual({ excellent: 2, inaccuracy: 5, mistake: 10, blunder: 15 });
     expect(classFromWinDrop(0)).toBe('Excellent');
-    expect(classFromWinDrop(CLASS_THRESHOLDS.excellent)).toBe('Excellent');
-    expect(classFromWinDrop(CLASS_THRESHOLDS.excellent + 0.01)).toBe('Good');
-    expect(classFromWinDrop(CLASS_THRESHOLDS.good)).toBe('Good');
-    expect(classFromWinDrop(CLASS_THRESHOLDS.inaccuracy)).toBe('Inaccuracy');
-    expect(classFromWinDrop(CLASS_THRESHOLDS.mistake)).toBe('Mistake');
-    expect(classFromWinDrop(CLASS_THRESHOLDS.mistake + 0.01)).toBe('Blunder');
+    expect(classFromWinDrop(2)).toBe('Excellent');
+    expect(classFromWinDrop(2.01)).toBe('Good');
+    expect(classFromWinDrop(4.99)).toBe('Good');
+    expect(classFromWinDrop(5)).toBe('Inaccuracy');
+    expect(classFromWinDrop(9.99)).toBe('Inaccuracy');
+    expect(classFromWinDrop(10)).toBe('Mistake');
+    expect(classFromWinDrop(14.99)).toBe('Mistake');
+    expect(classFromWinDrop(15)).toBe('Blunder');
   });
 });
 

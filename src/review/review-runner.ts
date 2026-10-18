@@ -5,6 +5,8 @@ import {
   type EngineAnalysisResult,
   type EngineAnalyzeRequest,
 } from '../engine/engine-client';
+import { scoreToCentipawns, type UciScore } from '../engine/uci-parser';
+import { MATE_HORIZON_MOVES, negateScore } from './classification';
 import { ReviewAnalysisClient } from './review-analysis-client';
 import {
   buildGameReview,
@@ -65,6 +67,18 @@ function terminalKind(adapter: RulesAdapter): TerminalKind | undefined {
   return undefined;
 }
 
+/**
+ * The score of the position after a move, from the side then to move, given the mover's
+ * score for that move from the position before it: a mate in n for the mover is a mate
+ * in n − 1 against the opponent; a mate against the mover keeps its distance.
+ */
+export function scoreAfterMove(moverScore: UciScore): UciScore {
+  if (moverScore.type === 'cp') return { type: 'cp', value: -moverScore.value };
+  return moverScore.value > 0
+    ? { type: 'mate', value: -(moverScore.value - 1) }
+    : { type: 'mate', value: -moverScore.value };
+}
+
 export function budgetForPreset(preset: ReviewPreset): ReviewBudget {
   return { movetimeMs: REVIEW_PRESET_MOVETIME_MS[preset] };
 }
@@ -79,8 +93,11 @@ export function budgetForPreset(preset: ReviewPreset): ReviewBudget {
  * other, which shows up as a large false drop. When a move's first-pass class is
  * Mistake, Blunder or Miss, or a short forced mate appears or disappears across it, the
  * positions before and after it are searched again for the preset's verification time
- * (each position at most once) and the deeper result is kept. Fixed-depth reviews skip
- * this: their results are already consistent.
+ * (each position at most once) and the deeper result is kept. If the position before the
+ * move holds a short forced mate for the mover, the played move itself is searched from
+ * there (`searchmoves`, to a depth that finds that mate); if it still mates and the search
+ * after the move missed it, the after position takes that result.
+ * Fixed-depth reviews skip this: their results are already consistent.
  *
  * Each move is classified and explained once, through `analysis` (a worker in the
  * browser), as soon as the positions around it are final; the progress snapshots only
@@ -131,13 +148,15 @@ export class ReviewRunner {
     const search = async (
       i: number,
       limit: { movetime: number } | { depth: number },
+      searchMoves?: string[],
     ): Promise<PositionAnalysis | null> => {
       try {
         const result = await this.engine.analyze({
           fen: startFen,
           moves: ucis.slice(0, i),
           ...limit,
-          multipv: REVIEW_MULTIPV,
+          multipv: searchMoves ? 1 : REVIEW_MULTIPV,
+          ...(searchMoves ? { searchMoves } : {}),
           chess960,
           priority: 'review',
           useCache: false,
@@ -205,6 +224,43 @@ export class ReviewRunner {
             }
           }
           if (cancelled) break;
+          // Same-root check, when the position before the move holds a short forced mate
+          // for the mover: the played move is searched from there (root restricted to it,
+          // deep enough for that mate). If it still mates and the search after the move
+          // missed it (or saw it longer), the after position takes that, keeping only the
+          // other lines that agree the opponent is mated
+          const after = positions[i];
+          const beforeBest = positions[i - 1]?.lines[0]?.score;
+          const shortMate =
+            beforeBest?.type === 'mate' && beforeBest.value > 0 && beforeBest.value <= MATE_HORIZON_MOVES
+              ? beforeBest.value
+              : null;
+          if (shortMate !== null && after && !after.terminal && after.lines[0]) {
+            const played = await search(i - 1, { depth: 2 * shortMate + 6 }, [ucis[i - 1]!]);
+            if (!played) {
+              cancelled = true;
+              break;
+            }
+            const line = played.lines[0];
+            if (line && line.pv[0] === ucis[i - 1] && line.score.type === 'mate' && line.score.value > 1) {
+              const viaAfter = negateScore(after.lines[0].score);
+              if (scoreToCentipawns(line.score) > scoreToCentipawns(viaAfter)) {
+                const mated = scoreAfterMove(line.score);
+                const limit = scoreToCentipawns(mated);
+                positions[i] = {
+                  ...after,
+                  lines: [
+                    { multipv: 1, score: mated, pv: line.pv.slice(1) },
+                    ...after.lines
+                      .slice(1)
+                      .filter((l) => scoreToCentipawns(l.score) <= limit)
+                      .map((l, k) => ({ ...l, multipv: k + 2 })),
+                  ],
+                };
+                afterChanged = true;
+              }
+            }
+          }
           // The previous move ended on position i − 1: review it again if that changed
           if (beforeChanged && i >= 2) await storeMove(i - 2);
           if (beforeChanged || afterChanged) analysis = await this.analysis.analyze(moveInput(i - 1)!);

@@ -86,7 +86,9 @@ describe('Phase 5 — motif detector fixtures', () => {
     it(`${f.id} (${f.motif}: ${f.expect ? 'yes' : 'no'})`, () => {
       const motif = detect(f);
       if (!f.expect) {
-        expect(motif, f.id).toBeNull();
+        // With a square: not reported there (the position may have it elsewhere)
+        if (f.square) expect(motif?.square, f.id).not.toBe(f.square);
+        else expect(motif, f.id).toBeNull();
         return;
       }
       expect(motif, f.id).not.toBeNull();

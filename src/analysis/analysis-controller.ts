@@ -48,6 +48,7 @@ import {
 } from './opening-lookup';
 import { PositionEditor } from './position-editor';
 import { classBadgeHtml, type ReviewTreeEntry } from '../review/review-panel';
+import { stripEngineAnnotations } from '../review/annotations';
 import {
   detectOpponentThreat,
   type ThreatDetectionResult,
@@ -1834,8 +1835,33 @@ export class AnalysisController {
     }
   }
 
+  /**
+   * Removes earlier engine annotations (evals, move-quality NAGs, engine comments and
+   * their variations) from the main line before a review; returns how many went.
+   */
+  public stripEngineAnnotations(): number {
+    const currentBefore = this.gameTree.currentNodeId;
+    const r = stripEngineAnnotations(this.gameTree);
+    const total = r.evals + r.nags + r.comments + r.variations;
+    if (total > 0) {
+      if (this.gameTree.currentNodeId !== currentBefore) {
+        this.syncAllFromCurrentNode({ treeChanged: true });
+      } else {
+        this.renderMoveTree();
+        this.syncAnnotationControls();
+        this.syncPgnTextarea();
+      }
+    }
+    return total;
+  }
+
   /** Shows PGN text in the PGN box with a status note. */
   public showPgnText(pgn: string, status: string): void {
+    // A pending refresh (scheduled by the review's last update) would replace this text
+    if (this.pgnSyncTimer !== null) {
+      clearTimeout(this.pgnSyncTimer);
+      this.pgnSyncTimer = null;
+    }
     this.pgnTextareaEl.value = pgn;
     this.pgnStatusEl.textContent = status;
     this.pgnStatusEl.setAttribute('data-status', 'ok');

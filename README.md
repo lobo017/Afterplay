@@ -45,6 +45,8 @@ npm run perf:review      # Game review speed and review-engine threads (needs a 
 npm run calibrate:bots   # Bot strength calibration (ACPL and blunder rate per level)
 npm run fixtures:review  # Re-record the engine results behind the classification fixtures
 npm run review:compare   # Quick preset vs. depth-18 classifications (docs/classification.md)
+# Re-fetch the Lichess reference game (needs a Lichess API token, no scopes):
+#   PowerShell: $env:LICHESS_TOKEN = "lip_..."; node scripts/fetch-lichess-game.mjs
 ```
 
 How the game review classifies moves, and why: [docs/classification.md](docs/classification.md).

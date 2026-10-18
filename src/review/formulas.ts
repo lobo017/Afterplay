@@ -5,32 +5,90 @@ import type { UciScore } from '../engine/uci-parser';
 export const WIN_PERCENT_SLOPE = 0.00368208;
 
 /**
- * Win% for a centipawn score from the side's own point of view:
+ * Evaluations are clamped to ±1000 cp before conversion, and a forced mate counts as
+ * ±1000 cp, as on Lichess (lila `Eval.Cp.ceiled`, `WinPercent.fromMate`): 97.5% / 2.5%.
+ */
+export const WIN_PERCENT_CP_CEILING = 1000;
+
+/**
+ * Win% for a centipawn score from the side's own point of view, cp clamped to ±1000:
  * Win% = 50 + 50·(2/(1+e^(−0.00368208·cp)) − 1)
  */
 export function winPercentFromCp(cp: number): number {
-  return 50 + 50 * (2 / (1 + Math.exp(-WIN_PERCENT_SLOPE * cp)) - 1);
+  const ceiled = Math.max(-WIN_PERCENT_CP_CEILING, Math.min(WIN_PERCENT_CP_CEILING, cp));
+  return 50 + 50 * (2 / (1 + Math.exp(-WIN_PERCENT_SLOPE * ceiled)) - 1);
 }
 
 /**
- * Win% for a UCI score from the scored side's point of view. A forced mate counts as 100
- * (the side mates) or 0 (the side gets mated); `mate 0` means the side is already mated.
+ * Win% for a UCI score from the scored side's point of view. A forced mate counts as
+ * +1000 cp (the side mates) or −1000 cp (it gets mated; `mate 0`: already mated).
  */
 export function winPercentFromScore(score: UciScore): number {
   if (score.type === 'mate') {
-    return score.value > 0 ? 100 : 0;
+    return winPercentFromCp(score.value > 0 ? WIN_PERCENT_CP_CEILING : -WIN_PERCENT_CP_CEILING);
   }
   return winPercentFromCp(score.value);
 }
 
+/** Lichess adds 1 point to every move accuracy for the imprecision of the evaluations. */
+export const ACCURACY_UNCERTAINTY_BONUS = 1;
+
 /**
- * Move accuracy from the mover's win% drop:
- * 103.1668·e^(−0.04354·drop) − 3.1669, clamped to 0–100. No drop (or a gain) is 100.
+ * Move accuracy from the mover's win% drop, as on Lichess (lila
+ * `AccuracyPercent.fromWinPercents`): 103.1668·e^(−0.04354·drop) − 3.1669 + 1, clamped to
+ * 0–100. No drop (or a gain) is 100.
  */
 export function moveAccuracy(winDrop: number): number {
   if (winDrop <= 0) return 100;
-  const raw = 103.1668 * Math.exp(-0.04354 * winDrop) - 3.1669;
+  const raw =
+    103.1668100711649 * Math.exp(-0.04354415386753951 * winDrop) -
+    3.166924740191411 +
+    ACCURACY_UNCERTAINTY_BONUS;
   return Math.max(0, Math.min(100, raw));
+}
+
+/**
+ * A score as Lichess counts centipawns: cp clamped to ±1000, a forced mate as ±1000 (the
+ * side to move mates / gets mated; `mate 0`: it is mated).
+ */
+export function ceiledCentipawns(score: UciScore): number {
+  if (score.type === 'mate') {
+    return score.value > 0 ? WIN_PERCENT_CP_CEILING : -WIN_PERCENT_CP_CEILING;
+  }
+  return Math.max(-WIN_PERCENT_CP_CEILING, Math.min(WIN_PERCENT_CP_CEILING, score.value));
+}
+
+/** Lichess's evaluation of the starting position (lila `Eval.Cp.initial`). */
+export const LICHESS_INITIAL_CP = 15;
+
+/**
+ * Centipawn loss of one move, as on Lichess (lila `Accuracy.diffsList`): the mover's
+ * evaluation before minus after, both ceiled (`ceiledCentipawns`), never below 0. Every
+ * move counts. ACPL is the rounded mean of these per side.
+ */
+export function centipawnLoss(beforeCp: number, afterCp: number): number {
+  const clamp = (cp: number) =>
+    Math.max(-WIN_PERCENT_CP_CEILING, Math.min(WIN_PERCENT_CP_CEILING, cp));
+  return Math.max(0, clamp(beforeCp) - clamp(afterCp));
+}
+
+/**
+ * Lichess ACPL for both sides from White's centipawn evaluation of every position (start
+ * first). Losses are averaged per side and the mean is rounded.
+ */
+export function averageCentipawnLoss(
+  whiteCps: readonly number[],
+  firstMover: Color = 'w',
+): { white: number | null; black: number | null } {
+  const losses: Record<Color, number[]> = { w: [], b: [] };
+  for (let i = 0; i + 1 < whiteCps.length; i++) {
+    const mover: Color = i % 2 === 0 ? firstMover : firstMover === 'w' ? 'b' : 'w';
+    const sign = mover === 'w' ? 1 : -1;
+    losses[mover].push(centipawnLoss(sign * whiteCps[i]!, sign * whiteCps[i + 1]!));
+  }
+  const mean = (xs: number[]) =>
+    xs.length > 0 ? Math.round(xs.reduce((a, v) => a + v, 0) / xs.length) : null;
+  return { white: mean(losses.w), black: mean(losses.b) };
 }
 
 /** Population standard deviation. */
@@ -116,15 +174,17 @@ export function gameAccuracy(
 }
 
 /**
- * Centipawn loss of one move, measured the way `npm run calibrate:bots` measures the bots
- * (so the two scales match): only positions where the best line is within ±650 cp for the
- * mover and there are at least two legal moves count, mate scores convert to ±(10000 −
- * 10·n) cp, and the loss is capped at 420 cp. Returns null for positions that don't count.
+ * Centipawn loss on the bot calibration's scale, measured the way `npm run calibrate:bots`
+ * measures the bots, so it can be compared with their ACPL: only positions where the best
+ * line is within ±650 cp for the mover and there are at least two legal moves count,
+ * mate scores convert to ±(10000 − 10·n) cp, and the loss is capped at 420 cp. Returns
+ * null for positions that don't count. Used only for the bot-level comparison; the ACPL
+ * the review shows is Lichess's (`centipawnLoss`).
  */
 export const ACPL_COUNTED_EVAL_LIMIT_CP = 650;
 export const ACPL_LOSS_CAP_CP = 420;
 
-export function centipawnLoss(input: {
+export function calibrationCentipawnLoss(input: {
   bestCp: number;
   playedCp: number;
   legalMoveCount: number;
@@ -138,10 +198,18 @@ export function centipawnLoss(input: {
 }
 
 /**
- * Anchors for the performance estimate: each in-app bot level and the middle of the ACPL
- * band it is calibrated to (`npm run calibrate:bots` targets, PROGRESS.md Phase 3).
+ * Anchors for the bot-level comparison: each in-app bot level and the middle of the ACPL
+ * band it is calibrated to (`npm run calibrate:bots` targets, PROGRESS.md Phase 3), on
+ * the calibration's own scale (`calibrationCentipawnLoss`).
+ *
+ * This is not a human rating model. The bots are limited Stockfish, which loses far less
+ * per move than a person of the same nominal rating, and one game's ACPL is dominated by
+ * a few large losses: in the Lichess reference game (tests/fixtures/review), players
+ * rated 1374 and 1397 come out at ≈770 and ≈710. Without human (ACPL, rating, time
+ * control) data, which an offline app doesn't have, it can't be turned into one, so the
+ * review shows it as an approximate bot comparison, labelled as such.
  */
-export const PERFORMANCE_ANCHORS: ReadonlyArray<{ rating: number; acpl: number }> = [
+export const BOT_LEVEL_ANCHORS: ReadonlyArray<{ rating: number; acpl: number }> = [
   { rating: 400, acpl: 141.5 },
   { rating: 600, acpl: 105 },
   { rating: 1000, acpl: 70 },
@@ -151,31 +219,31 @@ export const PERFORMANCE_ANCHORS: ReadonlyArray<{ rating: number; acpl: number }
   { rating: 2400, acpl: 5 },
 ];
 
-/** Below this many counted moves an average is dominated by single moves: no estimate. */
-export const PERFORMANCE_MIN_COUNTED_MOVES = 8;
+/** Below this many counted moves an average is dominated by single moves: no comparison. */
+export const BOT_LEVEL_MIN_COUNTED_MOVES = 8;
 
-export interface PerformanceEstimate {
+export interface BotLevelEstimate {
   rating: number;
-  /** The ACPL was outside the calibrated range, so the rating is a bound ("≤400", "2400+"). */
+  /** The ACPL was outside the calibrated range, so the level is a bound ("≤400", "2400+"). */
   clamped: 'low' | 'high' | null;
 }
 
 /**
- * Estimated performance rating from ACPL: the rating of the in-app bot level whose
- * calibrated ACPL matches, interpolated linearly in log(ACPL) between anchors.
+ * The in-app bot level whose calibrated ACPL matches a side's calibration ACPL,
+ * interpolated linearly in log(ACPL) between anchors. Approximate; see BOT_LEVEL_ANCHORS.
  */
-export function estimatePerformanceRating(
+export function estimateBotLevel(
   acpl: number | null,
   countedMoves: number,
-): PerformanceEstimate | null {
-  if (acpl === null || countedMoves < PERFORMANCE_MIN_COUNTED_MOVES) return null;
-  const first = PERFORMANCE_ANCHORS[0]!;
-  const last = PERFORMANCE_ANCHORS[PERFORMANCE_ANCHORS.length - 1]!;
+): BotLevelEstimate | null {
+  if (acpl === null || countedMoves < BOT_LEVEL_MIN_COUNTED_MOVES) return null;
+  const first = BOT_LEVEL_ANCHORS[0]!;
+  const last = BOT_LEVEL_ANCHORS[BOT_LEVEL_ANCHORS.length - 1]!;
   if (acpl >= first.acpl) return { rating: first.rating, clamped: 'low' };
   if (acpl <= last.acpl) return { rating: last.rating, clamped: 'high' };
-  for (let i = 0; i < PERFORMANCE_ANCHORS.length - 1; i++) {
-    const hi = PERFORMANCE_ANCHORS[i]!;
-    const lo = PERFORMANCE_ANCHORS[i + 1]!;
+  for (let i = 0; i < BOT_LEVEL_ANCHORS.length - 1; i++) {
+    const hi = BOT_LEVEL_ANCHORS[i]!;
+    const lo = BOT_LEVEL_ANCHORS[i + 1]!;
     if (acpl <= hi.acpl && acpl >= lo.acpl) {
       const t =
         (Math.log(hi.acpl) - Math.log(acpl)) /
@@ -189,11 +257,10 @@ export function estimatePerformanceRating(
   return null;
 }
 
-export function formatPerformanceEstimate(
-  estimate: PerformanceEstimate | null,
-): string {
+/** "≈700", "≤400", "2400+" or "—": always visibly approximate. */
+export function formatBotLevel(estimate: BotLevelEstimate | null): string {
   if (!estimate) return '—';
   if (estimate.clamped === 'low') return `≤${estimate.rating}`;
   if (estimate.clamped === 'high') return `${estimate.rating}+`;
-  return String(estimate.rating);
+  return `≈${estimate.rating}`;
 }

@@ -683,7 +683,112 @@
     }
    ]
   },
-  "mistake-nh4": {
+  "mistake-g3-drops-e4-pawn": {
+   "key": "r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4|g2g3",
+   "positions": [
+    {
+     "ply": 0,
+     "fen": "r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4",
+     "depth": 18,
+     "nodes": 765910,
+     "lines": [
+      {
+       "multipv": 1,
+       "score": {
+        "type": "cp",
+        "value": 21
+       },
+       "pv": [
+        "d2d3",
+        "f8c5",
+        "b1c3",
+        "h7h6",
+        "h2h3",
+        "a7a6",
+        "e1g1",
+        "d7d6",
+        "c3d5",
+        "f6d5",
+        "c4d5",
+        "e8g8"
+       ]
+      },
+      {
+       "multipv": 2,
+       "score": {
+        "type": "cp",
+        "value": 18
+       },
+       "pv": [
+        "f3g5",
+        "d7d5",
+        "e4d5",
+        "c6d4",
+        "c2c3",
+        "b7b5",
+        "c4f1",
+        "f6d5",
+        "c3d4",
+        "d8g5",
+        "f1b5",
+        "e8d8"
+       ]
+      }
+     ]
+    },
+    {
+     "ply": 1,
+     "fen": "r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5NP1/PPPP1P1P/RNBQK2R b KQkq - 0 4",
+     "depth": 18,
+     "nodes": 715347,
+     "lines": [
+      {
+       "multipv": 1,
+       "score": {
+        "type": "cp",
+        "value": 113
+       },
+       "pv": [
+        "f6e4",
+        "e1g1",
+        "d7d5",
+        "c4b5",
+        "f7f6",
+        "d2d4",
+        "f8e7",
+        "d4e5",
+        "e8g8",
+        "c2c4",
+        "c6e5",
+        "f3e5"
+       ]
+      },
+      {
+       "multipv": 2,
+       "score": {
+        "type": "cp",
+        "value": 71
+       },
+       "pv": [
+        "f8e7",
+        "d2d4",
+        "e5d4",
+        "f3d4",
+        "f6e4",
+        "d4f5",
+        "e8g8",
+        "d1g4",
+        "e4g5",
+        "c4d5",
+        "g8h8",
+        "h2h4"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  "blunder-nh4-drops-e4-pawn": {
    "key": "r1bq1rk1/ppp2ppp/2np1n2/2b1p3/2B1P3/2PP1N2/PP3PPP/RNBQ1RK1 w - - 0 7|f3h4",
    "positions": [
     {
@@ -2688,6 +2793,321 @@
      "terminal": "checkmate",
      "depth": 0,
      "lines": []
+    }
+   ]
+  },
+  "lichess-15-axb5-opens-a-file": {
+   "key": "1k1r1b1r/1pp1pp2/p1n1qnp1/1P6/P2p4/N1PP3P/4PPB1/R1BQK2R b KQ - 0 15|a6b5",
+   "positions": [
+    {
+     "ply": 0,
+     "fen": "1k1r1b1r/1pp1pp2/p1n1qnp1/1P6/P2p4/N1PP3P/4PPB1/R1BQK2R b KQ - 0 15",
+     "depth": 18,
+     "nodes": 889657,
+     "lines": [
+      {
+       "multipv": 1,
+       "score": {
+        "type": "cp",
+        "value": -126
+       },
+       "pv": [
+        "c6a5",
+        "c3d4",
+        "f8h6",
+        "c1h6",
+        "h8h6",
+        "d1d2",
+        "a5b3",
+        "d2h6",
+        "b3a1",
+        "e1g1",
+        "a1b3",
+        "e2e3"
+       ]
+      },
+      {
+       "multipv": 2,
+       "score": {
+        "type": "cp",
+        "value": -147
+       },
+       "pv": [
+        "c6a7",
+        "c3d4",
+        "f6d5",
+        "b5a6",
+        "e6a6",
+        "a3c4",
+        "h8h4",
+        "e1g1",
+        "a6f6",
+        "a1b1",
+        "a7c6",
+        "c1d2"
+       ]
+      }
+     ]
+    },
+    {
+     "ply": 1,
+     "fen": "1k1r1b1r/1pp1pp2/2n1qnp1/1p6/P2p4/N1PP3P/4PPB1/R1BQK2R w KQ - 0 16",
+     "depth": 18,
+     "nodes": 437764,
+     "lines": [
+      {
+       "multipv": 1,
+       "score": {
+        "type": "cp",
+        "value": 279
+       },
+       "pv": [
+        "a4b5",
+        "c6e5",
+        "c3d4",
+        "d8d4",
+        "c1e3",
+        "d4b4",
+        "a3c2",
+        "b4b2",
+        "e1g1",
+        "e5g4",
+        "h3g4",
+        "e6d6"
+       ]
+      },
+      {
+       "multipv": 2,
+       "score": {
+        "type": "cp",
+        "value": 50
+       },
+       "pv": [
+        "a3b5",
+        "d4c3",
+        "b5c3",
+        "f8h6",
+        "a1b1",
+        "h6c1",
+        "d1c1",
+        "h8h4",
+        "e1g1",
+        "h4b4",
+        "b1b4",
+        "c6b4"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  "lichess-17-nc4-even-trade": {
+   "key": "1k1r1b1r/1pp1pp2/4qnp1/nP6/3p4/N1PP3P/4PPB1/R1BQK2R w KQ - 1 17|a3c4",
+   "positions": [
+    {
+     "ply": 0,
+     "fen": "1k1r1b1r/1pp1pp2/4qnp1/nP6/3p4/N1PP3P/4PPB1/R1BQK2R w KQ - 1 17",
+     "depth": 18,
+     "nodes": 419708,
+     "lines": [
+      {
+       "multipv": 1,
+       "score": {
+        "type": "cp",
+        "value": 377
+       },
+       "pv": [
+        "d1a4",
+        "e6b3",
+        "a4a5",
+        "b3c3",
+        "a5c3",
+        "d4c3",
+        "b5b6",
+        "h8h5",
+        "b6c7",
+        "b8c7",
+        "a1b1",
+        "f6d5"
+       ]
+      },
+      {
+       "multipv": 2,
+       "score": {
+        "type": "cp",
+        "value": 277
+       },
+       "pv": [
+        "c3c4",
+        "f8h6",
+        "c1h6",
+        "h8h6",
+        "a3c2",
+        "a5c4",
+        "d3c4",
+        "e6c4",
+        "e1g1",
+        "h6h5",
+        "c2e3",
+        "c4b5"
+       ]
+      }
+     ]
+    },
+    {
+     "ply": 1,
+     "fen": "1k1r1b1r/1pp1pp2/4qnp1/nP6/2Np4/2PP3P/4PPB1/R1BQK2R b KQ - 2 17",
+     "depth": 18,
+     "nodes": 623101,
+     "lines": [
+      {
+       "multipv": 1,
+       "score": {
+        "type": "cp",
+        "value": -241
+       },
+       "pv": [
+        "a5c4",
+        "d1a4",
+        "b8c8",
+        "d3c4",
+        "d4d3",
+        "c1e3",
+        "d3d2",
+        "e3d2",
+        "f6e4",
+        "a4a8",
+        "c8d7",
+        "a8b7"
+       ]
+      },
+      {
+       "multipv": 2,
+       "score": {
+        "type": "cp",
+        "value": -486
+       },
+       "pv": [
+        "d4c3",
+        "a1a5",
+        "b8c8",
+        "d1a4",
+        "f8h6",
+        "c1h6",
+        "h8h6",
+        "a5a8",
+        "c8d7",
+        "g2b7",
+        "d8a8",
+        "a4a8"
+       ]
+      }
+     ]
+    }
+   ]
+  },
+  "lichess-20-cxd4-queen-not-trapped": {
+   "key": "1k1r1b1r/1p2pp2/1Pp2np1/8/2qp4/2P4P/4PPB1/R1BQK2R w KQ - 0 20|c3d4",
+   "positions": [
+    {
+     "ply": 0,
+     "fen": "1k1r1b1r/1p2pp2/1Pp2np1/8/2qp4/2P4P/4PPB1/R1BQK2R w KQ - 0 20",
+     "depth": 18,
+     "nodes": 803473,
+     "lines": [
+      {
+       "multipv": 1,
+       "score": {
+        "type": "cp",
+        "value": 205
+       },
+       "pv": [
+        "c1f4",
+        "b8c8",
+        "e1g1",
+        "f8g7",
+        "a1a8",
+        "c8d7",
+        "a8a4",
+        "c4c5",
+        "a4d4",
+        "d7c8",
+        "d1a4",
+        "f6d5"
+       ]
+      },
+      {
+       "multipv": 2,
+       "score": {
+        "type": "cp",
+        "value": 185
+       },
+       "pv": [
+        "a1a4",
+        "c4c3",
+        "c1d2",
+        "c3b2",
+        "d2f4",
+        "b8c8",
+        "e1g1",
+        "f8g7",
+        "f4c7",
+        "d8d5",
+        "a4a8",
+        "c8d7"
+       ]
+      }
+     ]
+    },
+    {
+     "ply": 1,
+     "fen": "1k1r1b1r/1p2pp2/1Pp2np1/8/2qP4/7P/4PPB1/R1BQK2R b KQ - 0 20",
+     "depth": 18,
+     "nodes": 965972,
+     "lines": [
+      {
+       "multipv": 1,
+       "score": {
+        "type": "cp",
+        "value": 44
+       },
+       "pv": [
+        "d8d4",
+        "c1f4",
+        "b8c8",
+        "e1g1",
+        "d4d1",
+        "f1d1",
+        "f6d5",
+        "g2d5",
+        "c6d5",
+        "d1c1",
+        "c8d7",
+        "c1c4"
+       ]
+      },
+      {
+       "multipv": 2,
+       "score": {
+        "type": "cp",
+        "value": -39
+       },
+       "pv": [
+        "e7e5",
+        "e1g1",
+        "c4d4",
+        "d1d4",
+        "d8d4",
+        "c1b2",
+        "f6d7",
+        "b2d4",
+        "e5d4",
+        "a1d1",
+        "f8c5",
+        "e2e3"
+       ]
+      }
+     ]
     }
    ]
   }

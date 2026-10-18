@@ -59,7 +59,9 @@ function opponentWinsOn(fenAfter: string, square: number): boolean {
 
 /**
  * Hanging piece: after the move the opponent has a legal capture that wins material
- * (after the full exchange on that square), more than the move itself captured.
+ * (after the full exchange on that square), more than the move itself captured, and
+ * worth the piece: at least 2 pawns for a piece, 1 for a pawn. A knight that is traded
+ * off while a pawn falls on the recapture (Nc4 Nxc4 dxc4 Qxc4) isn't a hanging knight.
  */
 export function detectHangingPiece(fenBefore: string, uci: string): Motif | null {
   const ctx = context(fenBefore, uci);
@@ -67,7 +69,8 @@ export function detectHangingPiece(fenBefore: string, uci: string): Motif | null
   const gainedByMove = capturedValue(ctx.move);
   let best: { gain: number; move: ExecutedMove } | null = null;
   for (const threat of captureThreats(ctx.fenAfter)) {
-    if (threat.gain - gainedByMove <= 0) continue;
+    const worth = Math.min(PIECE_VALUE[threat.move.captured ?? 'p'], 2);
+    if (threat.gain - gainedByMove < worth) continue;
     const better =
       !best ||
       threat.gain > best.gain ||
@@ -312,11 +315,12 @@ function isTrapped(fen: string, square: number, captor: Color): boolean {
   } catch {
     return false;
   }
-  for (const escape of adapter.verboseMoves({ square: squareName(square) })) {
-    const next = squares.slice();
-    next[squareIndex(escape.to)] = next[square]!;
-    next[square] = null;
-    const net = capturedValue(escape) - exchangeGain(next, squareIndex(escape.to), captor);
+  // Any reply that keeps the piece (moving it, blocking the attack, defending it,
+  // capturing the attacker) means it isn't trapped
+  for (const reply of adapter.verboseMoves()) {
+    const next = parseSquares(applyUci(fen, reply.uci)?.after ?? fen);
+    const at = reply.from === squareName(square) ? squareIndex(reply.to) : square;
+    const net = capturedValue(reply) - exchangeGain(next, at, captor);
     if (net >= 0) return false;
   }
   return true;
@@ -324,7 +328,9 @@ function isTrapped(fen: string, square: number, captor: Color): boolean {
 
 /**
  * Trapped piece: after the move an enemy knight, bishop, rook or queen is attacked and
- * lost where it stands, and every legal move it has also loses material. It must be newly
+ * lost where it stands, and no legal reply keeps it: not a move of the piece, nor a block,
+ * a defence or a capture of the attacker (a queen whose attacker can be blocked isn't
+ * trapped just because it has no safe square of its own). It must be newly
  * trapped (with the turn passed back, it wasn't trapped before the move). A side in check
  * is never reported: the check, not the piece's surroundings, is what limits its moves.
  */

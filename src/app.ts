@@ -442,6 +442,7 @@ export function mountAppShell(container: HTMLElement): {
       importPgn: (pgn) => analysisController.importPgn(pgn),
       addLine: (fromNodeId, ucis, options) => analysisController.addLine(fromNodeId, ucis, options),
       deleteNode: (nodeId) => analysisController.deleteNode(nodeId),
+      stripEngineAnnotations: () => analysisController.stripEngineAnnotations(),
       applyReview: (entries, rerender) => analysisController.applyReview(entries, rerender),
       showPgnText: (pgn, status) => analysisController.showPgnText(pgn, status),
       setMoveInterceptor: (fn) => analysisController.setMoveInterceptor(fn),
