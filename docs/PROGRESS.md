@@ -9,7 +9,7 @@
 | **Phase 2** | Engine | **Done** | Stockfish 17.1 WASM worker client (MT + ST), MultiPV 1–5, priority queue, LRU cache, human-like bot (400–2400), Stockfish `go perft` cross-check suite |
 | **Phase 3** | 2D board and play mode | **Done** | Imperative SVG board (`translate3d` + Web Animations API), dirty-checked SVG overlay, 180-shard fixed `<canvas>` pool, Web Audio synth, clocks, vs-bot Play Mode, legacy bug regression suite. **2026-10-17 fixes:** drags survive board updates, drag cancel (right-click / Esc / off-board), premove queue (max 10) on a hypothetical board, same-frame premove execution |
 | **Phase 4** | Analysis board | **Done** | Animated mate-aware eval bar, live MultiPV 1–5 lines + ghost preview, best/threat/user arrows, variation tree & keyboard navigation, FEN position editor, ECO opening lookup. **2026-10-17 fixes:** zero layout shift while navigating (was 694 shifts), ~100 ms step animation with reverse and snap-on-repeat, engine lines batched to ≤ 1 DOM update per frame |
-| **Phase 5** | Game review | In progress | MultiPV 2 review pipeline, win%/accuracy formulas, move classifications, 8 motif detectors |
+| **Phase 5** | Game review | **Done** | MultiPV 2 review pipeline on its own 1-thread engine with verification searches, win%/accuracy/ACPL/performance formulas, 10 move classes (docs/classification.md), 8 motif detectors, one-sentence explanations computed in a worker, review panel (live win% chart, key moments, Retry / Refutation / Play vs Bot / annotated PGN, sample game) |
 | **Phase 6** | Puzzles & spaced repetition | Pending | Personal mistake puzzles, bundled 20k Lichess puzzles, Glicko-2, FSRS scheduler, Today screen |
 | **Phase 7** | Repertoire, endgame & visualization | Pending | White/Black repertoire trees, 6 curated endgame drills, coordinate/blindfold/guess-the-move |
 | **Phase 8** | Library, insights, settings, offline | Pending | Auto-save library, worker bulk PGN import, insights charts, a11y, full offline PWA |
@@ -1241,7 +1241,7 @@ reached per position, live-analysis NPS, frame times and long tasks.
   nothing resizes per move.
 - Two multi-threaded engines at once use more memory; measured in the thread comparison.
 
-### Status at pause (2026-10-17): in progress, not done
+### Status at pause (2026-10-17, first session; superseded by the result below)
 
 **Done**
 - Fixtures written before the classifier:
@@ -1283,3 +1283,232 @@ the thresholds did not change:
 - `scripts/perf-review.mjs` and the review-thread decision measurements.
 - `tests/e2e/phase5-review.spec.ts`, screenshots.
 - Full check run (build and e2e were not run in this session).
+
+### Resumed session plan (2026-10-17, written before code)
+
+**Baseline at resume:** typecheck, lint, 176 unit tests, build and 21/21 e2e all pass on
+bd65045.
+
+**Engine sign bug, impact on Phase 4 (checked before any change):** `extractSideToMove`
+was only wrong when a request passes `moves`. No Phase 2–4 caller does: the analysis
+board (`analysis-controller.ts` `startPositionAnalysis`), the threat detector, the bot
+and play-mode live eval all send the current node's own FEN, which already names the side
+to move. Requests with `moves` are also never cached (`hasCustomMoves`), so no wrong
+score could have been cached and replayed. **The Phase 4 eval bar and engine lines were
+not affected.** Phase 5 is the first caller that passes `moves`, and the review writes
+`[%eval]` onto tree nodes, which the eval bar shows on navigation. The Phase 5 e2e test
+therefore checks the sign on a Black-to-move position reached through move history, in
+the review chart, the move card, the eval bar and the engine lines.
+
+**Remaining work, in order**
+1. Fixtures: add a line that throws away a forced mate entirely (mate in 1 → a drawn
+   rook ending with no mate); correct the smothered-mate rationale (at depth 18 White
+   still mates in 16 after Kf1, so the mate is pushed past the horizon, not gone).
+   Re-record `classification-evals.json`.
+2. `src/review/explain.ts` + `tests/unit/review-explain.test.ts` (fixture sentences).
+3. `tests/unit/review-formulas.test.ts`.
+4. `src/review/review-game.ts` (pure: per-ply review, Book prefix, ACPL, performance,
+   key moments, annotated PGN) + `tests/unit/review-game.test.ts`.
+5. `src/review/review-runner.ts` (engine loop, MultiPV 2, preset movetime or fixed depth,
+   progress, cancel with partial results) + unit test with a mock engine.
+6. `src/review/sample-game.ts`, `src/review/review-panel.ts`, CSS; mount in
+   `analysis-controller.ts` (class badges in the tree, move hook for Retry, line insert
+   for Show Refutation); `app.ts` (review engine, Play vs Bot Here,
+   `window.__wizardChessReview`).
+7. `tests/e2e/phase5-review.spec.ts`: reviews the sample game; zero layout shift while
+   stepping through the reviewed game; tools; sign check; screenshots.
+8. `scripts/compare-review-presets.mjs`: the sample game at Quick (0.2 s, 1 thread) and
+   at the fixture settings (depth 18, 1 thread, MultiPV 2), per-class agreement →
+   `docs/classification.md`.
+9. `scripts/perf-review.mjs` + the review-thread measurement (1 / 2 / 4 threads, alone
+   and next to live MultiPV 5 analysis).
+10. Full check run, commit "Phase 5: game review".
+
+**Risks:** main-thread time per reviewed ply (motif detection uses chess.js move
+generation; measured in the e2e with a long-task observer); two multi-threaded engines
+at once (memory, measured in step 9); the review panel must not shift the layout while
+navigating (fixed heights, checked in the e2e).
+
+### Result (2026-10-17)
+
+**New files**
+- `src/review/explain.ts`: one sentence per Inaccuracy / Mistake / Blunder / Miss (7 rules
+  in order, docs/classification.md), plus the motifs found, tagged `played` /
+  `refutation` / `missed` (new optional `Motif.role`).
+- `src/review/review-game.ts`: pure review assembly. Per-move classification, Book only
+  for the unbroken opening run, ACPL and performance per side, Lichess game accuracy,
+  key moments (3–5 biggest White win% swings, ≥ 5 points, in game order), and the
+  annotated PGN (`[%eval]`, class NAGs, comments, the best line as a variation after each
+  Mistake / Blunder / Miss, a summary in the game comment, `[Annotator]`). Moves are
+  cached between progress updates, so each is classified and explained once.
+- `src/review/review-runner.ts`: engine loop over the main line (MultiPV 2, preset
+  movetime or fixed depth, move history sent, `priority: 'review'`, no cache),
+  progress, cancel with the partial review, and **verification searches** (below).
+- `src/review/review-panel.ts`: the panel (preset, start / cancel / sample game, progress
+  bar, live win% chart that jumps on click, accuracy / performance / ACPL per side,
+  formulas tooltip, class counts, key moments, current-move card, Retry This Mistake,
+  Show Refutation, Play vs Bot Here, Export Annotated PGN (PGN box + download)).
+- `src/review/review-analysis.worker.ts` + `review-analysis-client.ts`: per-move
+  classification, explanation and motifs (`analyzeMove`) run in a module worker, with an
+  inline fallback where `Worker` doesn't exist (Node), like the bot-selection worker.
+- `src/review/sample-game.ts`: Morphy vs. Duke Karl / Count Isouard, Paris 1858.
+- `scripts/compare-review-presets.mjs` (`npm run review:compare`),
+  `scripts/perf-review.mjs` (`npm run perf:review`), `scripts/lib/node-stockfish.mjs`
+  (the Node Stockfish transport, moved out of the fixture recorder; re-recording after
+  the move gives byte-identical evals).
+- Tests: `review-explain` (20), `review-formulas` (17), `review-game` (7),
+  `review-runner` (5) unit tests; `tests/e2e/phase5-review.spec.ts` (4 tests).
+- `docs/classification.md`: every rule and number with its reason, the fixtures, and the
+  Quick vs. depth-18 agreement.
+
+**Changed**
+- `analysis-controller.ts`: review mount slot; `onNavigate`, `onTreeReplaced`,
+  `setMoveInterceptor` (Retry), `addLine` (Show Refutation; `forceNewVariation` option),
+  `deleteNode`, `applyReview` (classifications + evals onto the tree, badges patched in
+  during the run, one re-render at the end), `showPgnText`; class badges in the move
+  tree (icon + `aria-label`, not color alone).
+- `app.ts`: a separate review `EngineClient`, created on the first review;
+  Play vs Bot Here starts a Play game from the position with the side to move as the
+  player; `window.__wizardChessReview`.
+- `motifs.ts`: trapped-piece is never reported for a side in check (found while
+  checking the explanation motifs: Qd8+ made the e2 rook look "trapped"); new negative
+  fixture `not-trapped-only-in-check`, which failed before the fix.
+- `process-guard.mjs`: perf-review / review-compare / fixture-recorder runs count as
+  leftovers (e2e and perf refuse to start next to them).
+- `eslint.config.js`: `setInterval` / `clearInterval` globals.
+
+**Fixtures**
+- Added `blunder-throws-away-mate-entirely`: Rd8# is mate in one; after h3 it is a level
+  rook ending (depth 18: Black +0.50, no mate anywhere). Blunder, "Misses mate in 1 with
+  Rd8#."
+- Corrected the `decided-misses-smothered-mate` rationale: at depth 18 White still mates
+  in 16 after Kf1 (the mate moves past the horizon; the label, Inaccuracy, stands).
+- Re-recorded: the 24 existing lines are byte-identical, the new one was added.
+
+**Engine sign bug and Phase 4:** not affected (see the plan above: no Phase 2–4 caller
+passes `moves`, and such requests are never cached). The new e2e test reviews
+1.e4 e5 2.Qh5 Nc6 3.Qxe5+?? Nxe5 and checks, at the Black-to-move node after 3.Qxe5+
+reached through move history: review win% < 10 for White, the move card's eval goes
+negative, the eval bar (seeded from the review's `[%eval]`, then live) shows a negative
+score below 20% for White, the first two engine lines are negative, the eval pill is
+negative, and the annotated PGN writes `[%eval -x.xx]` there. It passes.
+
+**Verification searches (new rule, docs/classification.md).** The Quick vs. depth-18
+comparison found a false Blunder: in one of three Quick runs Morphy's 15.Bxd7+ (part of
+the forced mate) dropped 21.6 points, because the 0.2 s search before the move saw the
+mate and the one after it didn't. Thresholds were not touched. Instead, when a move's
+first-pass class is Mistake / Blunder / Miss or a short mate appears or disappears across
+it, both positions are searched again (Quick 1 s, Standard 2 s, Deep 3 s; each position
+once; the deeper result is kept). Unit test with a scripted engine: the false Blunder
+becomes Excellent. After the change, no Quick run produced a Blunder that depth 18
+didn't.
+
+**Quick vs. depth 18 (single thread, 3 Quick runs):** sample game 78/99 labels agree
+(79%); per class: Brilliant 100%, Great 100%, Best 92%, Book 100%, Inaccuracy 61%,
+Excellent 50%, Good 17% (2 moves). With Fischer–Spassky 1972 g6 added (114 moves in
+total): Best 78%, Excellent 52%, Good 57%, Inaccuracy 63%, the rest 100%. The small-drop
+classes straddle the 2 / 5 thresholds at 0.2 s. Full tables in docs/classification.md.
+
+**Main-thread cost (long tasks found and fixed twice).**
+1. The first version of Sample Game ran the PGN import (27–33 ms) and the review start
+   (~20 ms) in one click task: a 55 ms long task. They now run as two tasks.
+2. Repeating the e2e three times then showed 64 ms and 52 + 54 ms long tasks in two of
+   three runs. Instrumented: classifying and explaining one move took up to 24 ms warm
+   (chess.js move generation in the sacrifice check and motif detectors), more on a cold
+   JIT or with two engines busy. That work now runs in the review worker; the main thread
+   only assembles results (chart, summary, card: ≤ 9 ms per update). Afterwards three
+   repeats had zero long tasks, and the e2e test asserts zero long tasks and that every
+   move was analyzed in the worker (none inline).
+
+**UI checks (screenshots looked at):** `test-results/phase5-screens/`: the sample game
+reviewed at 16.Qb8+ (Brilliant, M2 → M1), the panel on a Black error (9...b5, explanation,
+best line and refutation), and Retry solved ("✓ Bc4 is the best move."). Fixed after
+looking: key-moment labels used "…", which looked like "9_b5" in the monospace font; the
+key-moment strip reserved an empty second row.
+
+**Bugs found by the e2e and fixed**
+- Show Refutation extended the game: when the refutation started with the move actually
+  played (3...Nxe5), the rest of the line was appended after the game's last move and
+  became part of the main line (and of the annotated export). The line now goes into a
+  variation of its own whenever it would run past the end of the main line; the e2e
+  test checks the main line stays at 6 plies.
+
+### Review engine threads (`npm run perf:review`, 2026-10-17)
+
+The review has its own `EngineClient` (multi-threaded build under COOP/COEP), so live
+analysis keeps its worker. Each run: fresh page, the 81-ply Fischer–Spassky game on
+Quick, review threads 1 / 2 / 4, either alone or next to live MultiPV 5 `go infinite`
+(4 threads) on the analysis board. No leftover processes before any pass; the machine
+(8 logical cores, 16 GB) also ran OneDrive sync, Edge and Spotify, which varied between
+passes.
+
+**Pass 1** (review analysis still on the main thread; 4.7–5.2 GB free):
+
+| Scenario | Threads | Review time | Mean / min depth | Live kN/s before → during | p95 / p99 frame | Long tasks |
+|---|---|---|---|---|---|---|
+| alone | 1 | 18.1 / 18.4 s | 15.5 / 15.4 | — | 16.8 / 16.9–17.1 ms | 0 / 0 |
+| alone | 2 | 18.3 / 17.9 s | 15.2 / 15.5 | — | 16.8 / 16.8–16.9 ms | 0 / 0 |
+| alone | 4 | 18.0 / 18.7 s | 15.3 / 15.1 | — | 16.8 / 16.8 ms | 0 / 0 |
+| live | 1 | 18.5 / 18.8 s | 15.0 / 14.5 | 2262 → 2138, 1722 → 1722 | 16.7 / 16.8 ms | 0 / 0 |
+| live | 2 | 18.5 / 19.2 s | 14.8 / 13.9 | 2187 → 2119, 1800 → 1691 | 16.7 / 16.8–33.3 ms | 0 / 0 |
+| live | 4 | 19.1 / 19.3 s | 14.2 / 13.6 | 2179 → 1841, 1797 → 1531 | 16.7 / 33.2–33.3 ms | 52 / 50 ms |
+
+Speed check (review alone, one round, node counts added): Quick 1 / 2 / 4 threads search
+861 / 1599 / 2323 kN/s at mean depth 16.0 / 15.9 / 15.2; Standard (0.6 s) 851 / 1603 /
+2452 kN/s at mean depth 18.9 / 18.5 / 17.8 (51 s per review at every count). The threads
+do run; at these time budgets the extra nodes don't turn into depth.
+
+**Pass 2** (final code, analysis in the worker; machine busier: 4.8 GB free at start,
+3.0 GB at the end, every speed lower):
+
+| Scenario | Threads | Review time | Mean depth | Review kN/s | Live kN/s before → during | p99 frame | Long tasks |
+|---|---|---|---|---|---|---|---|
+| alone | 1 | 17.9 / 18.3 s | 15.6 / 14.8 | 712 / 542 | — | 16.9 ms | 0 / 0 |
+| alone | 2 | 18.2 / 18.2 s | 15.1 / 14.9 | 1145 / 1130 | — | 16.9 ms | 0 / 0 |
+| alone | 4 | 18.4 / 18.7 s | 14.3 / 14.1 | 1755 / 1575 | — | 16.8–16.9 ms | 0 / 0 |
+| live | 1 | 18.8 / 19.4 s | 14.2 / 13.8 | 368 / 309 | 1466 → 1470, 1715 → 1431 | 16.9 / 33.3 ms | 0 / 54 ms |
+| live | 2 | 19.1 / 20.5 s | 14.2 / 13.0 | 743 / 528 | 1651 → 1445, 1521 → 1333 | 16.8 / 33.3 ms | 0 / 55, 59, 62 ms |
+| live | 4 | 19.2 / 19.7 s | 13.2 / 13.5 | 1212 / 1018 | 1518 → 1295, 1404 → 1200 | 16.8 / 33.3 ms | 0 / 76 ms |
+
+p95 was 16.7–16.8 ms in every run of both passes. Free memory before vs. lowest during a
+review moved by 0.1–0.6 GB in every configuration, too noisy to price the second engine.
+
+**Decision: the review engine runs 1 thread** (`REVIEW_ENGINE_THREADS` in `app.ts`).
+- More threads buy no depth at the review's time budgets (both passes, Quick and
+  Standard), so they don't improve the review.
+- They do cost live analysis: next to live analysis, 4 review threads cut its speed by
+  15% in all four runs and produced long tasks in three of four; 2 threads cost 3–12%.
+  1 thread cost nothing in three of four runs (−17% in the loaded pass).
+- Review time is the same at every count (time-limited): 17.9–19.4 s for the 81-ply
+  game on Quick with 1 thread, inside the spec's ~30 s budget.
+
+### Checks (final run, 2026-10-17)
+
+typecheck, lint, **227 unit tests** (19 files; 176 at the start of the session), build,
+**25/25 e2e** (21 earlier + 4 Phase 5): all pass. Phase 4's layout-shift test still
+records zero shifts; the Phase 5 test steps through the reviewed sample game with zero
+shifts and zero page scroll. The Phase 5 spec also passed 3 × 3 repeats after the worker
+change.
+
+One threshold in the new sign test was set while the review still ran 2 threads
+(White's win% after 3.Qxe5+ < 10). With 1 thread, Quick read −5.8 (10.4%). The bound
+is now < 25 for the review series, the move and the eval bar: the test checks the sign,
+and a flipped sign would put White near 90%.
+
+### Known issues
+
+- **Quick grades small drops loosely.** Excellent / Good / Inaccuracy agree with depth 18
+  only about half the time (docs/classification.md); errors and the wide-margin classes
+  agree. Standard / Deep are the presets for fine grading.
+- **Occasional 50–76 ms long tasks with live MultiPV 5 `go infinite` plus a review**,
+  under background load. The review's own main-thread work is ≤ 9 ms per update and the
+  per-move analysis runs in a worker; the long tasks carry no attribution (container
+  "window", name "unknown") and also appeared with 1 review thread in one of four runs
+  on a loaded machine. Probably CPU contention (4 + 1 engine threads on 8 logical cores
+  plus the page). For the Phase 9 profiling pass.
+- The second engine's memory cost isn't measured: free system memory moved 0.1–0.6 GB
+  per review in every configuration, which is noise from other applications.
+- `importPgn` of the 33-move sample game is 27–33 ms on the main thread (Phase 1/4
+  parse + render): under 50 ms, but the largest single task the review flow causes.
+- A Chess960 game goes through the same path (`chess960` is passed to every search and
+  board helper), but no Chess960 game is in the review tests.

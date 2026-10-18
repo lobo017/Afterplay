@@ -8,53 +8,21 @@
 // after it) with the single-threaded Stockfish build at a fixed depth, MultiPV 2, after
 // `ucinewgame`. Single thread + fixed depth + cleared hash makes the output reproducible,
 // so the unit tests can classify from these numbers without running an engine.
-import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'vite';
+import { createNodeStockfishTransport } from './lib/node-stockfish.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, '..');
 const fixturesPath = path.join(rootDir, 'tests/fixtures/review/classification-fixtures.json');
 const outPath = path.join(rootDir, 'tests/fixtures/review/classification-evals.json');
-const stockfishJsPath = path.join(
-  rootDir,
-  'node_modules/stockfish/src/stockfish-17.1-lite-single-03e3232.js',
-);
 
 const RECORD_DEPTH = Number(process.env.REVIEW_FIXTURE_DEPTH ?? 18);
 const MULTIPV = 2;
 const HASH_MB = 32;
 const PV_PLIES = 12;
-
-function createNodeStockfishTransport() {
-  const proc = spawn(process.execPath, [stockfishJsPath], { stdio: 'pipe' });
-  const messageHandlers = [];
-  const errorHandlers = [];
-  let stdoutBuffer = '';
-  const flushLines = (chunk) => {
-    stdoutBuffer += chunk.toString('utf8');
-    let newlineIdx = stdoutBuffer.indexOf('\n');
-    while (newlineIdx !== -1) {
-      const line = stdoutBuffer.slice(0, newlineIdx).replace(/\r$/, '');
-      stdoutBuffer = stdoutBuffer.slice(newlineIdx + 1);
-      if (line) for (const h of messageHandlers) h(line);
-      newlineIdx = stdoutBuffer.indexOf('\n');
-    }
-  };
-  proc.stdout.on('data', flushLines);
-  proc.stderr.on('data', flushLines);
-  proc.on('error', (err) => {
-    for (const h of errorHandlers) h(err);
-  });
-  return {
-    send: (command) => proc.stdin.write(`${command}\n`),
-    onMessage: (handler) => messageHandlers.push(handler),
-    onError: (handler) => errorHandlers.push(handler),
-    terminate: () => proc.kill(),
-  };
-}
 
 async function main() {
   const spec = JSON.parse(fs.readFileSync(fixturesPath, 'utf8'));

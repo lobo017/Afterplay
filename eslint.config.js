@@ -28,6 +28,8 @@ export default tseslint.config(
         AbortController: 'readonly',
         setTimeout: 'readonly',
         clearTimeout: 'readonly',
+        setInterval: 'readonly',
+        clearInterval: 'readonly',
         window: 'readonly',
         document: 'readonly',
         navigator: 'readonly',

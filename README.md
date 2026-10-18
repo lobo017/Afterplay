@@ -37,6 +37,18 @@ npm run build       # Production build to dist/
 npm run test:e2e    # Playwright end-to-end tests
 ```
 
+Slower measurement scripts, kept out of `npm test`:
+
+```bash
+npm run perf:drag        # Frame times while dragging during engine analysis (needs a build)
+npm run perf:review      # Game review speed and review-engine threads (needs a build)
+npm run calibrate:bots   # Bot strength calibration (ACPL and blunder rate per level)
+npm run fixtures:review  # Re-record the engine results behind the classification fixtures
+npm run review:compare   # Quick preset vs. depth-18 classifications (docs/classification.md)
+```
+
+How the game review classifies moves, and why: [docs/classification.md](docs/classification.md).
+
 ## Dataset Generation (`scripts/` -> `data/`)
 
 Runtime code makes **zero network requests**. All datasets live in `data/` and are generated via dev-time scripts under `scripts/`:

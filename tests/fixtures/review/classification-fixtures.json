@@ -203,7 +203,7 @@
         "g1f1"
       ],
       "expected": "Inaccuracy",
-      "rationale": "Nf7# is a smothered mate. Kf1 lets Black play ...h6 and the mate is gone; White is still completely winning on material, so this is not a Blunder, but throwing away a mate in one should be flagged.",
+      "rationale": "Nf7# is a smothered mate. After Kf1 Black makes luft (...h6) and the mate in one is gone; White, a queen and a knight up, still mates by force but only in about sixteen moves, far past the 5-move horizon. White stays completely winning, so this is not a Blunder, but throwing away a mate in one should be flagged.",
       "explanation": "Misses mate in 1 with Nf7#."
     },
     {
@@ -234,6 +234,16 @@
       "expected": "Blunder",
       "rationale": "Qc7 stalemates the black king; Qc8# was mate. A won game becomes a draw.",
       "explanation": "Stalemates the opponent; Qc8# was mate."
+    },
+    {
+      "id": "blunder-throws-away-mate-entirely",
+      "startFen": "6k1/5ppp/8/8/8/8/r4PPP/3R2K1 w - - 0 1",
+      "moves": [
+        "h2h3"
+      ],
+      "expected": "Blunder",
+      "rationale": "Rd8# is a back-rank mate in one. After h3 Black makes luft or covers the back rank, and what is left is a level rook ending with three pawns each on the same side: a dead draw with no forced mate at all. A won game becomes a draw, so this is a Blunder even though the position before it was decided.",
+      "explanation": "Misses mate in 1 with Rd8#."
     },
     {
       "id": "best-second-mate-in-one",

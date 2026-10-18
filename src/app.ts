@@ -97,6 +97,10 @@ import {
 } from './analysis/position-editor';
 import { AnalysisController } from './analysis/analysis-controller';
 import { BotSelectionClient } from './engine/bot-selection-client';
+import { ReviewPanel } from './review/review-panel';
+import { ReviewRunner } from './review/review-runner';
+import { buildGameReview, buildAnnotatedPgn } from './review/review-game';
+import { SAMPLE_GAME_PGN } from './review/sample-game';
 
 export type AppWorkspaceMode = 'play' | 'analysis';
 
@@ -195,8 +199,31 @@ export interface WizardChessAnalysisApi {
   detectOpponentThreat: typeof detectOpponentThreat;
 }
 
+export interface WizardChessReviewApi {
+  panel: ReviewPanel;
+  /** The review's own engine (created on first use). */
+  getEngine: () => EngineClient;
+  /** Threads for the review engine; a change restarts it (EngineClient.configure). */
+  setThreads: (threads: number) => Promise<void>;
+  ReviewRunner: typeof ReviewRunner;
+  buildGameReview: typeof buildGameReview;
+  buildAnnotatedPgn: typeof buildAnnotatedPgn;
+  SAMPLE_GAME_PGN: string;
+}
+
+/**
+ * Threads for the review engine. A review searches each position for a fixed time, so
+ * threads could only buy depth, and measured they don't: 2 and 4 threads search 1.9× and
+ * 2.7× the nodes but reach no greater depth at 0.2 s or 0.6 s, while 4 threads next to
+ * live analysis caused long tasks and slowed it by 15%. One thread leaves live analysis
+ * untouched. See PROGRESS.md (Phase 5, review engine threads).
+ */
+export const REVIEW_ENGINE_THREADS = 1;
+export const REVIEW_ENGINE_HASH_MB = 32;
+
 declare global {
   interface Window {
+    __wizardChessReview?: WizardChessReviewApi;
     __wizardChessCore?: WizardChessCoreApi;
     __wizardChessEngine?: WizardChessEngineApi;
     __wizardChessPlay?: WizardChessPlayApi;
@@ -392,6 +419,44 @@ export function mountAppShell(container: HTMLElement): {
     initialActive: false,
   });
 
+  // The review runs on its own engine, so live analysis keeps its worker while a review
+  // runs. Created on the first review.
+  let reviewEngine: EngineClient | null = null;
+  let reviewThreads = REVIEW_ENGINE_THREADS;
+  const getReviewEngine = (): EngineClient => {
+    reviewEngine ??= createConnectedEngine({
+      variant: 'auto',
+      threads: reviewThreads,
+      hashMb: REVIEW_ENGINE_HASH_MB,
+    });
+    return reviewEngine;
+  };
+
+  const reviewPanel = new ReviewPanel(analysisController.getReviewMount(), {
+    host: {
+      getGameTree: () => analysisController.getGameTree(),
+      getCurrentNode: () => analysisController.getGameTree().currentNode,
+      goToNode: (nodeId) => {
+        analysisController.goToNode(nodeId);
+      },
+      importPgn: (pgn) => analysisController.importPgn(pgn),
+      addLine: (fromNodeId, ucis, options) => analysisController.addLine(fromNodeId, ucis, options),
+      deleteNode: (nodeId) => analysisController.deleteNode(nodeId),
+      applyReview: (entries, rerender) => analysisController.applyReview(entries, rerender),
+      showPgnText: (pgn, status) => analysisController.showPgnText(pgn, status),
+      setMoveInterceptor: (fn) => analysisController.setMoveInterceptor(fn),
+      onNavigate: (listener) => analysisController.onNavigate(listener),
+      onTreeReplaced: (listener) => analysisController.onTreeReplaced(listener),
+    },
+    getEngine: getReviewEngine,
+    isBookPosition: (fen) => lookupOpeningByFen(fen) !== null,
+    onPlayVsBot: (fen) => {
+      const turn = fen.trim().split(/\s+/)[1] === 'b' ? 'b' : 'w';
+      setMode('play', false);
+      playController.startNewGame({ fen, playerColor: turn });
+    },
+  });
+
   // Building an AudioContext blocks the main thread for ~200 ms on some systems. Do it on
   // the first pointer movement, before the first click, so the first piece pickup isn't
   // where that stall lands. Sound still starts on the first gesture (init() resumes it).
@@ -525,6 +590,19 @@ export function mountAppShell(container: HTMLElement): {
       TIME_CONTROL_PRESETS,
       PARTICLE_POOL_SIZE,
       SHARDS_PER_CAPTURE,
+    };
+
+    window.__wizardChessReview = {
+      panel: reviewPanel,
+      getEngine: getReviewEngine,
+      setThreads: async (threads) => {
+        reviewThreads = threads;
+        if (reviewEngine) await reviewEngine.configure({ threads });
+      },
+      ReviewRunner,
+      buildGameReview,
+      buildAnnotatedPgn,
+      SAMPLE_GAME_PGN,
     };
 
     window.__wizardChessAnalysis = {

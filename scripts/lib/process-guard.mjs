@@ -64,7 +64,8 @@ const isPlaywrightBrowser = (p) =>
 /**
  * Processes left over from earlier perf or e2e runs:
  * - headless Chrome started by Playwright
- * - another perf-drag.mjs or calibrate-bots.mjs
+ * - another perf-drag.mjs, perf-review.mjs or calibrate-bots.mjs, or a review script
+ *   that runs Stockfish in Node (compare-review-presets.mjs, record-review-fixtures.mjs)
  * - a Playwright test runner or worker
  * - this repo's serve.mjs on one of `ports`
  * The current process and its ancestors are never included.
@@ -77,7 +78,13 @@ export function findLeftoverTestProcesses({ ports = [] } = {}) {
     if (self.has(p.pid)) return false;
     if (isPlaywrightBrowser(p)) return true;
     if (!/node/i.test(p.name)) return false;
-    if (/scripts[\\/](perf-drag|calibrate-bots)\.mjs/.test(p.cmd)) return true;
+    if (
+      /scripts[\\/](perf-drag|perf-review|calibrate-bots|compare-review-presets|record-review-fixtures)\.mjs/.test(
+        p.cmd,
+      )
+    ) {
+      return true;
+    }
     if (/playwright[\\/].*(cli\.js|process\.js)|playwright(\.cmd)?"?\s+test\b/.test(p.cmd)) return true;
     return Boolean(portRe && /scripts[\\/]serve\.mjs/.test(p.cmd) && portRe.test(p.cmd));
   });

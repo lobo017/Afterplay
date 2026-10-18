@@ -325,11 +325,13 @@ function isTrapped(fen: string, square: number, captor: Color): boolean {
 /**
  * Trapped piece: after the move an enemy knight, bishop, rook or queen is attacked and
  * lost where it stands, and every legal move it has also loses material. It must be newly
- * trapped (with the turn passed back, it wasn't trapped before the move).
+ * trapped (with the turn passed back, it wasn't trapped before the move). A side in check
+ * is never reported: the check, not the piece's surroundings, is what limits its moves.
  */
 export function detectTrappedPiece(fenBefore: string, uci: string): Motif | null {
   const ctx = context(fenBefore, uci);
   if (!ctx) return null;
+  if (ctx.move.san.endsWith('+') || ctx.move.san.endsWith('#')) return null;
   const enemy = opposite(ctx.mover);
   const passed = passTurnFen(fenBefore);
   let best: Motif | null = null;

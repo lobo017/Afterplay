@@ -47,6 +47,7 @@ import {
   lookupOpeningByFen,
 } from './opening-lookup';
 import { PositionEditor } from './position-editor';
+import { classBadgeHtml, type ReviewTreeEntry } from '../review/review-panel';
 import {
   detectOpponentThreat,
   type ThreatDetectionResult,
@@ -155,6 +156,11 @@ export class AnalysisController {
   private latestNps = 0;
   private latestScoreWhite: UciScore = { type: 'cp', value: 0 };
   private latestThreat: ThreatDetectionResult | null = null;
+
+  // Game review hooks (src/review/review-panel.ts)
+  private readonly navigateListeners: Array<(node: GameNode) => void> = [];
+  private readonly treeReplacedListeners: Array<() => void> = [];
+  private moveInterceptor: ((node: GameNode, created: boolean) => void) | null = null;
 
   // Cached DOM references
   private openingEcoEl!: HTMLElement;
@@ -288,6 +294,9 @@ export class AnalysisController {
 
           <!-- Engine Lines Panel (1-5 MultiPV lines, hover for ghost pieces, click to insert variation) -->
           <div data-testid="engine-lines-mount"></div>
+
+          <!-- Game Review (Phase 5): mounted by the app -->
+          <div data-testid="review-panel-mount"></div>
 
           <!-- Move Tree & Variations Panel -->
           <div class="wc-moves-panel">
@@ -931,6 +940,8 @@ export class AnalysisController {
   }
 
   private handleBoardMove(moveInput: MoveInput, wasDragged: boolean): void {
+    const parent = this.gameTree.currentNode;
+    const childIdsBefore = new Set(parent.children.map((c) => c.id));
     let executed: ExecutedMove;
     try {
       const probe = this.adapter.clone();
@@ -944,12 +955,13 @@ export class AnalysisController {
       return;
     }
 
-    this.gameTree.addMove(executed.uci);
+    const added = this.gameTree.addMove(executed.uci);
     this.syncAllFromCurrentNode({
       wasDragged,
       animationMs: this.stepAnimationMs(false),
       treeChanged: true,
     });
+    this.moveInterceptor?.(added, !childIdsBefore.has(added.id));
   }
 
   private handleBoardAnnotationsChange(
@@ -1134,6 +1146,7 @@ export class AnalysisController {
     this.gameTree = new GameTree(fen.trim(), {
       chess960: validation.isChess960,
     });
+    this.notifyTreeReplaced();
     this.positionEditor.setTool('pointer');
     this.syncAllFromCurrentNode({ treeChanged: true });
     return true;
@@ -1141,6 +1154,7 @@ export class AnalysisController {
 
   public loadGameTree(tree: GameTree): void {
     this.gameTree = GameTree.fromJSON(tree.toJSON());
+    this.notifyTreeReplaced();
     this.syncAllFromCurrentNode({ treeChanged: true });
   }
 
@@ -1148,6 +1162,7 @@ export class AnalysisController {
     try {
       const parsed = parsePgn(pgnText);
       this.gameTree = parsed;
+      this.notifyTreeReplaced();
       this.pgnStatusEl.textContent = 'PGN Loaded';
       this.pgnStatusEl.setAttribute('data-status', 'ok');
       this.syncAllFromCurrentNode({ treeChanged: true });
@@ -1289,6 +1304,8 @@ export class AnalysisController {
     } else {
       this.startPositionAnalysis();
     }
+
+    for (const listener of this.navigateListeners) listener(node);
   }
 
   /**
@@ -1433,7 +1450,9 @@ export class AnalysisController {
 
       return `${preCommentHtml}<button type="button" class="wc-tree-node ${activeClass}" data-node-id="${node.id}" data-node-san="${this.escapeHtml(node.san)}" data-testid="tree-node-${node.id}">${
         prefix ? `<span class="wc-tree-num">${prefix}</span>` : ''
-      }<span class="wc-tree-san">${this.escapeHtml(node.san)}${this.escapeHtml(nagsText)}</span>${evalTag}</button>${postCommentHtml}`;
+      }<span class="wc-tree-san">${this.escapeHtml(node.san)}${this.escapeHtml(nagsText)}</span>${
+        node.classification ? classBadgeHtml(node.classification, 'wc-tree-class') : ''
+      }${evalTag}</button>${postCommentHtml}`;
     };
 
     const renderBranch = (
@@ -1718,6 +1737,108 @@ export class AnalysisController {
     } else {
       this.board.setThreatMoveArrow(null);
     }
+  }
+
+  // ---------------------------------------------------------------- review hooks
+
+  public getReviewMount(): HTMLElement {
+    return this.container.querySelector('[data-testid="review-panel-mount"]') as HTMLElement;
+  }
+
+  /** Called after every position change (navigation, moves, loads). */
+  public onNavigate(listener: (node: GameNode) => void): void {
+    this.navigateListeners.push(listener);
+  }
+
+  /** Called when a different game is loaded (PGN, FEN, a game from Play mode). */
+  public onTreeReplaced(listener: () => void): void {
+    this.treeReplacedListeners.push(listener);
+  }
+
+  private notifyTreeReplaced(): void {
+    for (const listener of this.treeReplacedListeners) listener();
+  }
+
+  /** Called after each move made on the board, with the node and whether it is new. */
+  public setMoveInterceptor(fn: ((node: GameNode, created: boolean) => void) | null): void {
+    this.moveInterceptor = fn;
+  }
+
+  /**
+   * Adds `ucis` as a line from `fromNodeId` (as a variation where needed), without
+   * navigating. `forceNewVariation` branches off even if the first move already exists.
+   */
+  public addLine(
+    fromNodeId: string,
+    ucis: readonly string[],
+    options?: { forceNewVariation?: boolean },
+  ): GameNode[] {
+    const currentId = this.gameTree.currentNodeId;
+    const added: GameNode[] = [];
+    let from = fromNodeId;
+    for (const uci of ucis) {
+      try {
+        const node = this.gameTree.addMove(uci, {
+          fromNodeId: from,
+          forceNewVariation: added.length === 0 && Boolean(options?.forceNewVariation),
+        });
+        added.push(node);
+        from = node.id;
+      } catch {
+        break;
+      }
+    }
+    this.gameTree.goToNode(currentId);
+    this.renderMoveTree();
+    this.syncPgnTextarea();
+    return added;
+  }
+
+  /** Deletes a node (and what follows it); the current position must not be inside it. */
+  public deleteNode(nodeId: string): void {
+    if (this.gameTree.deleteNode(nodeId)) {
+      this.renderMoveTree();
+      this.syncVariationButtonsState();
+      this.syncPgnTextarea();
+    }
+  }
+
+  /**
+   * Writes review classifications onto the tree, and evals where a node has none (or a
+   * shallower one). `rerender` rebuilds the move list once (end of a review); otherwise
+   * only the affected badges are patched in.
+   */
+  public applyReview(entries: readonly ReviewTreeEntry[], rerender: boolean): void {
+    for (const entry of entries) {
+      const node = this.gameTree.getNode(entry.nodeId);
+      if (!node) continue;
+      this.gameTree.setClassification(node.id, entry.classification);
+      if (entry.eval && (!node.eval || (node.eval.depth ?? 0) < (entry.eval.depth ?? 0))) {
+        this.gameTree.setEval(node.id, entry.eval);
+      }
+      if (!rerender) {
+        const el = this.treeNodeEls.get(node.id);
+        if (el) {
+          el.querySelector('.wc-tree-class')?.remove();
+          el.querySelector('.wc-tree-san')?.insertAdjacentHTML(
+            'afterend',
+            classBadgeHtml(entry.classification, 'wc-tree-class'),
+          );
+          this.treeNodeOffsets = null;
+        }
+      }
+    }
+    if (rerender) {
+      this.renderMoveTree();
+      this.schedulePgnTextareaSync();
+    }
+  }
+
+  /** Shows PGN text in the PGN box with a status note. */
+  public showPgnText(pgn: string, status: string): void {
+    this.pgnTextareaEl.value = pgn;
+    this.pgnStatusEl.textContent = status;
+    this.pgnStatusEl.setAttribute('data-status', 'ok');
   }
 
   public getBoard(): BoardRenderer {

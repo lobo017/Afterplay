@@ -1,0 +1,440 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { expect, test, type Page } from '@playwright/test';
+import {
+  FORTY_MOVE_PGN,
+  startLayoutShiftRecorder,
+  stopLayoutShiftRecorder,
+  summarizeShiftSources,
+} from './helpers/layout-shift';
+
+// Screenshots go outside Playwright's output folder, which is wiped on every run
+const SCREENSHOT_DIR = path.join('test-results', 'phase5-screens');
+
+/** White hangs the queen: 3.Qxe5+?? Nxe5. After 3.Qxe5+ Black is to move and winning. */
+const QUEEN_BLUNDER_PGN = `[Event "Review sign check"]
+[White "White"]
+[Black "Black"]
+[Result "0-1"]
+
+1. e4 e5 2. Qh5 Nc6 3. Qxe5+ Nxe5 0-1`;
+
+interface ReviewSnapshot {
+  state: string;
+  complete: boolean;
+  analyzed: number;
+  total: number;
+  moves: Array<{
+    ply: number;
+    nodeId: string;
+    san: string;
+    uci: string;
+    color: string;
+    classification: string;
+    explanation: string | null;
+    bestMoveUci: string | null;
+    refutationUci: string[];
+    whiteWinAfter: number;
+  }>;
+  series: Array<number | null>;
+  white: { accuracy: number | null; performance: unknown };
+  black: { accuracy: number | null; performance: unknown };
+  keyMoments: Array<{ ply: number; nodeId: string }>;
+}
+
+async function openAnalysis(page: Page): Promise<void> {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto('/');
+  await page.getByTestId('mode-tab-analysis').click();
+  await expect(page.getByTestId('analysis-layout')).toBeVisible();
+  await expect(page.getByTestId('review-panel')).toBeVisible();
+}
+
+async function readReview(page: Page): Promise<ReviewSnapshot> {
+  return page.evaluate(() => {
+    const panel = window.__wizardChessReview!.panel;
+    const r = panel.getReview();
+    return {
+      state: panel.getState(),
+      complete: r?.complete ?? false,
+      analyzed: r?.analyzedPositions ?? 0,
+      total: r?.totalPositions ?? 0,
+      moves: (r?.moves ?? []).map((m) => ({
+        ply: m.ply,
+        nodeId: m.nodeId,
+        san: m.san,
+        uci: m.uci,
+        color: m.color,
+        classification: m.classification,
+        explanation: m.explanation,
+        bestMoveUci: m.bestMoveUci,
+        refutationUci: m.refutationUci,
+        whiteWinAfter: m.whiteWinAfter,
+      })),
+      series: r?.whiteWinSeries ?? [],
+      white: { accuracy: r?.white.accuracy ?? null, performance: r?.white.performance ?? null },
+      black: { accuracy: r?.black.accuracy ?? null, performance: r?.black.performance ?? null },
+      keyMoments: (r?.keyMoments ?? []).map((k) => ({ ply: k.ply, nodeId: k.nodeId })),
+    };
+  });
+}
+
+async function currentNode(page: Page) {
+  return page.evaluate(() => {
+    const tree = window.__wizardChessAnalysis!.controller.getGameTree();
+    const node = tree.currentNode;
+    return {
+      id: node.id,
+      ply: node.ply,
+      uci: node.uci,
+      fen: node.fen,
+      parentId: node.parentId,
+      mainLineLength: tree.getMainLine().length,
+    };
+  });
+}
+
+async function goToNode(page: Page, nodeId: string): Promise<void> {
+  await page.evaluate((id) => window.__wizardChessAnalysis!.controller.goToNode(id), nodeId);
+}
+
+async function startLongTaskObserver(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const w = window as unknown as { __longTasks: number[]; __longTaskObserver?: PerformanceObserver };
+    w.__longTasks = [];
+    w.__longTaskObserver = new PerformanceObserver((list) => {
+      for (const entry of list.getEntries()) w.__longTasks.push(Math.round(entry.duration));
+    });
+    w.__longTaskObserver.observe({ entryTypes: ['longtask'] });
+  });
+}
+
+async function stopLongTaskObserver(page: Page): Promise<number[]> {
+  return page.evaluate(() => {
+    const w = window as unknown as { __longTasks: number[]; __longTaskObserver?: PerformanceObserver };
+    w.__longTaskObserver?.disconnect();
+    return w.__longTasks;
+  });
+}
+
+test.describe('Phase 5 — Game review', () => {
+  test('reviews the built-in sample game: live chart, classes, accuracy, key moments, zero layout shift', async ({
+    page,
+  }) => {
+    test.setTimeout(180_000);
+    const externalRequests: string[] = [];
+    page.on('request', (req) => {
+      const url = new URL(req.url());
+      if (url.hostname !== '127.0.0.1' && url.protocol !== 'data:' && url.protocol !== 'blob:') {
+        externalRequests.push(req.url());
+      }
+    });
+    await openAnalysis(page);
+    await expect(page.getByTestId('review-body')).toBeHidden();
+    await expect(page.getByTestId('review-progress-text')).toContainText('Not reviewed');
+
+    await startLongTaskObserver(page);
+    await page.getByTestId('btn-review-sample').click();
+    await expect(page.getByTestId('review-panel')).toHaveAttribute('data-state', 'running');
+    await expect(page.getByTestId('btn-review-cancel')).toBeEnabled();
+    await expect(page.getByTestId('review-body')).toBeVisible();
+
+    // The chart fills in live: it shows a partial series before the review completes
+    const chart = page.getByTestId('review-chart');
+    await expect
+      .poll(async () => Number(await chart.getAttribute('data-analyzed')), { timeout: 60_000 })
+      .toBeGreaterThanOrEqual(5);
+    const partial = await readReview(page);
+    expect(partial.state).toBe('running');
+    expect(partial.analyzed).toBeLessThan(partial.total);
+    await expect(page.getByTestId('review-progress-text')).toContainText('Reviewing');
+
+    await expect(page.getByTestId('review-panel')).toHaveAttribute('data-state', 'done', {
+      timeout: 120_000,
+    });
+    const longTasks = await stopLongTaskObserver(page);
+    const review = await readReview(page);
+    console.log(
+      `[review] sample game: ${review.moves.length} moves, accuracy W ${review.white.accuracy?.toFixed(1)} / B ${review.black.accuracy?.toFixed(1)}, long tasks: ${JSON.stringify(longTasks)}`,
+    );
+    console.log(
+      `[review] classes: ${review.moves.map((m) => `${m.san}:${m.classification}`).join(' ')}`,
+    );
+
+    // Every move of the 33-ply game is classified
+    expect(review.complete).toBe(true);
+    expect(review.total).toBe(34);
+    expect(review.moves).toHaveLength(33);
+    expect(review.series.every((v) => typeof v === 'number')).toBe(true);
+    expect(review.moves[0]).toMatchObject({ san: 'e4', classification: 'Book' });
+    // Rd8# is the top move; after 16...Nxb8 every other move loses, so it can be Great
+    expect(review.moves[32]!.san).toBe('Rd8#');
+    expect(['Best', 'Great']).toContain(review.moves[32]!.classification);
+    expect(review.series[33]).toBe(100);
+    // Black lost to a mating attack: Black made errors, and Morphy played more accurately
+    const blackErrors = review.moves.filter(
+      (m) => m.color === 'b' && ['Inaccuracy', 'Mistake', 'Blunder', 'Miss'].includes(m.classification),
+    );
+    expect(blackErrors.length).toBeGreaterThanOrEqual(1);
+    for (const m of review.moves.filter((x) => ['Inaccuracy', 'Mistake', 'Blunder', 'Miss'].includes(x.classification))) {
+      expect(m.explanation, `${m.san} explanation`).toBeTruthy();
+    }
+    expect(review.white.accuracy).not.toBeNull();
+    expect(review.black.accuracy).not.toBeNull();
+    expect(review.white.accuracy!).toBeGreaterThan(review.black.accuracy!);
+    expect(review.keyMoments.length).toBeGreaterThanOrEqual(3);
+    expect(review.keyMoments.length).toBeLessThanOrEqual(5);
+
+    // The UI stayed responsive: no main-thread task over 50 ms during the whole review.
+    // Classification and explanations ran in the review worker, not on the main thread.
+    expect(longTasks).toEqual([]);
+    const analysisStats = await page.evaluate(() => window.__wizardChessReview!.panel.getAnalysisStats());
+    expect(analysisStats.inline).toBe(0);
+    expect(analysisStats.worker).toBeGreaterThanOrEqual(33);
+    // Zero runtime network requests
+    expect(externalRequests).toEqual([]);
+
+    // Summary, counts, progress text
+    await expect(page.getByTestId('review-progress-text')).toContainText('Reviewed · Quick · 34 positions');
+    await expect(page.getByTestId('review-accuracy-w')).toHaveText(review.white.accuracy!.toFixed(1));
+    await expect(page.getByTestId('review-count-book')).toBeVisible();
+    // Class badges in the move tree, each with a label
+    const lastBadge = page.locator(`[data-testid="tree-node-${review.moves[32]!.nodeId}"] .wc-tree-class`);
+    await expect(lastBadge).toHaveAttribute('aria-label', review.moves[32]!.classification);
+    await expect(page.locator('[data-testid="analysis-move-tree"] .wc-tree-class')).toHaveCount(33);
+
+    // The formulas tooltip explains every number
+    await page.getByTestId('btn-review-formulas').hover();
+    await expect(page.getByTestId('review-formulas-tooltip')).toBeVisible();
+    await expect(page.getByTestId('review-formulas-tooltip')).toContainText('0.00368208');
+    await expect(page.getByTestId('review-formulas-tooltip')).toContainText('103.1668');
+    await expect(page.getByTestId('review-formulas-tooltip')).toContainText('harmonic mean');
+    await page.mouse.move(5, 450);
+
+    // Key moments jump to their move
+    const moment = review.keyMoments[review.keyMoments.length - 1]!;
+    await page.getByTestId(`review-moment-${moment.ply}`).click();
+    expect((await currentNode(page)).id).toBe(moment.nodeId);
+    await expect(page.getByTestId('review-chart-cursor')).toHaveAttribute('data-ply', String(moment.ply));
+
+    // Clicking the chart jumps to that move
+    const box = (await chart.boundingBox())!;
+    await page.mouse.click(box.x + (10 / 33) * box.width, box.y + box.height / 2);
+    expect((await currentNode(page)).ply).toBe(10);
+    await expect(page.getByTestId('review-card-title')).toContainText('5... dxe5');
+
+    // The card for Morphy's queen sacrifice
+    const qb8 = review.moves.find((m) => m.san === 'Qb8+')!;
+    await goToNode(page, qb8.nodeId);
+    await expect(page.getByTestId('review-card-title')).toHaveText(`16. Qb8+ — ${qb8.classification}`);
+    fs.mkdirSync(SCREENSHOT_DIR, { recursive: true });
+    await page.screenshot({ path: path.join(SCREENSHOT_DIR, 'review-sample-qb8.png'), fullPage: true });
+
+    // A Black error's card: explanation and the tools for mistakes
+    const error = blackErrors[0]!;
+    await goToNode(page, error.nodeId);
+    await expect(page.getByTestId('review-card-text')).toHaveText(error.explanation!);
+    await expect(page.getByTestId('btn-review-retry')).toBeEnabled();
+    await expect(page.getByTestId('btn-review-refutation')).toBeEnabled();
+    await page.getByTestId('review-panel').screenshot({ path: path.join(SCREENSHOT_DIR, 'review-panel-error.png') });
+
+    // Stepping through the reviewed game shifts nothing
+    await page.evaluate(() => window.__wizardChessAnalysis!.controller.goToStart());
+    await page.mouse.click(5, 450);
+    const scrollBefore = await page.evaluate(() => window.scrollY);
+    await startLayoutShiftRecorder(page);
+    for (let i = 0; i < 33; i++) {
+      await page.keyboard.press('ArrowRight');
+      await page.waitForTimeout(90);
+    }
+    for (let i = 0; i < 33; i++) {
+      await page.keyboard.press('ArrowLeft');
+      await page.waitForTimeout(60);
+    }
+    const shifts = await stopLayoutShiftRecorder(page);
+    const summary = summarizeShiftSources(shifts);
+    for (const s of summary) {
+      console.log(`[layout-shift] ${s.count}× ${s.node} prev=${JSON.stringify(s.example.previousRect)} curr=${JSON.stringify(s.example.currentRect)}`);
+    }
+    expect((await currentNode(page)).ply).toBe(0);
+    expect(await page.evaluate(() => window.scrollY)).toBe(scrollBefore);
+    expect(summary).toEqual([]);
+    expect(shifts.length).toBe(0);
+  });
+
+  test('Black-to-move positions reached through move history keep the right sign everywhere', async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    await openAnalysis(page);
+    await page.evaluate((pgn) => window.__wizardChessAnalysis!.controller.importPgn(pgn), QUEEN_BLUNDER_PGN);
+    await page.getByTestId('btn-review-start').click();
+    await expect(page.getByTestId('review-panel')).toHaveAttribute('data-state', 'done', {
+      timeout: 60_000,
+    });
+    const review = await readReview(page);
+    const blunder = review.moves[4]!;
+    expect(blunder).toMatchObject({ san: 'Qxe5+', color: 'w', classification: 'Blunder' });
+    // After 3.Qxe5+ Black is to move and a queen up for a pawn: White's win% is low (a
+    // flipped sign would put it near 90%; Quick on one thread reads about −5 to −8 pawns)
+    expect(review.series[5]!).toBeLessThan(25);
+    expect(blunder.whiteWinAfter).toBeLessThan(25);
+    expect(review.series[6]!).toBeLessThan(25);
+
+    // The card's eval, the eval bar (seeded from the review's [%eval]) and the engine
+    // lines all show Black ahead at the Black-to-move node
+    await goToNode(page, blunder.nodeId);
+    expect((await currentNode(page)).fen.split(' ')[1]).toBe('b');
+    await expect(page.getByTestId('review-card-eval')).toContainText('→ -');
+    const evalBar = page.getByTestId('eval-bar');
+    await expect.poll(async () => Number(await evalBar.getAttribute('data-white-pct'))).toBeLessThan(25);
+    await expect(page.getByTestId('eval-bar-score')).toHaveText(/^-/);
+    await expect(page.getByTestId('analysis-eval-pill')).toHaveText(/^-/);
+    await expect(page.getByTestId('engine-line-eval-1')).toHaveText(/^-/, { timeout: 20_000 });
+    await expect(page.getByTestId('engine-line-eval-2')).toHaveText(/^-/, { timeout: 20_000 });
+    // Still negative once live analysis has gone deeper
+    await page.waitForTimeout(1500);
+    await expect(page.getByTestId('eval-bar-score')).toHaveText(/^-/);
+    expect(Number(await evalBar.getAttribute('data-white-pct'))).toBeLessThan(25);
+    // And the annotated PGN writes it from White's point of view
+    await page.getByTestId('btn-review-export').click();
+    const pgn = await page.getByTestId('textarea-pgn').inputValue();
+    expect(pgn).toMatch(/Qxe5\+ \$4 \{ \[%eval -\d+\.\d\d,\d+\]/);
+  });
+
+  test('review tools: retry the mistake, show the refutation, export, play vs bot here', async ({
+    page,
+  }) => {
+    test.setTimeout(150_000);
+    await openAnalysis(page);
+    await page.evaluate((pgn) => window.__wizardChessAnalysis!.controller.importPgn(pgn), QUEEN_BLUNDER_PGN);
+    await page.getByTestId('btn-review-start').click();
+    await expect(page.getByTestId('review-panel')).toHaveAttribute('data-state', 'done', {
+      timeout: 60_000,
+    });
+    const review = await readReview(page);
+    const blunder = review.moves[4]!;
+
+    // --- Retry This Mistake
+    await goToNode(page, blunder.nodeId);
+    await page.getByTestId('btn-review-retry').click();
+    const parent = await currentNode(page);
+    expect(parent.id).not.toBe(blunder.nodeId);
+    expect(parent.ply).toBe(4);
+    await expect(page.getByTestId('review-card-title')).toHaveText('Retry: 3. Qxe5+');
+    await expect(page.getByTestId('btn-review-retry')).toHaveText('Stop Retrying');
+
+    // The game move again: refused, and the game itself is untouched
+    await page.getByTestId('square-h5').click();
+    await page.getByTestId('square-e5').click();
+    await expect(page.getByTestId('review-card-text')).toHaveText(
+      'Qxe5+ is the move from the game. Try another one.',
+    );
+    expect((await currentNode(page)).id).toBe(parent.id);
+    expect((await currentNode(page)).mainLineLength).toBe(6);
+
+    // Another losing move: checked by the engine, refused, and removed again
+    await page.getByTestId('square-h5').click();
+    await page.getByTestId('square-f7').click();
+    await expect(page.getByTestId('review-card-text')).toHaveText('Qxf7+ is also a blunder. Try again.', {
+      timeout: 15_000,
+    });
+    expect((await currentNode(page)).id).toBe(parent.id);
+    const childCount = await page.evaluate(
+      (id) => window.__wizardChessAnalysis!.controller.getGameTree().getNode(id)!.children.length,
+      parent.id,
+    );
+    expect(childCount).toBe(1);
+
+    // The engine's best move solves it
+    const best = blunder.bestMoveUci!;
+    await page.getByTestId(`square-${best.slice(0, 2)}`).click();
+    await page.getByTestId(`square-${best.slice(2, 4)}`).click();
+    await expect(page.getByTestId('review-card-text')).toHaveText(/^✓ .+ is the best move\.$/);
+    await expect(page.getByTestId('review-card-title')).toHaveText('Retry solved');
+    expect((await currentNode(page)).uci).toBe(best);
+    await page.getByTestId('review-panel').screenshot({ path: path.join(SCREENSHOT_DIR, 'review-retry-solved.png') });
+
+    // --- Show Refutation
+    await goToNode(page, blunder.nodeId);
+    await page.getByTestId('btn-review-refutation').click();
+    const afterRefutation = await currentNode(page);
+    expect(afterRefutation.parentId).toBe(blunder.nodeId);
+    expect(afterRefutation.uci).toBe(blunder.refutationUci[0]);
+    // The refutation starts with the move Black played; it goes into its own variation
+    // and never extends the game's main line
+    expect(afterRefutation.mainLineLength).toBe(6);
+    const refutationLength = await page.evaluate((id) => {
+      const tree = window.__wizardChessAnalysis!.controller.getGameTree();
+      let n = tree.getNode(id);
+      let count = 0;
+      while (n) {
+        count++;
+        n = n.children[0];
+      }
+      return count;
+    }, afterRefutation.id);
+    expect(refutationLength).toBe(Math.min(8, blunder.refutationUci.length));
+
+    // --- Export Annotated PGN (into the PGN box and as a download)
+    const downloadPromise = page.waitForEvent('download');
+    await page.getByTestId('btn-review-export').click();
+    const download = await downloadPromise;
+    expect(download.suggestedFilename()).toBe('wizards-chess-review.pgn');
+    const pgn = await page.getByTestId('textarea-pgn').inputValue();
+    expect(pgn).toContain('[Annotator "Wizard\'s Chess review (Stockfish');
+    expect(pgn).toContain('Quick, 0.2 s per move');
+    expect(pgn).toContain('$4');
+    expect(pgn).toContain('Blunder.');
+    expect(pgn).toMatch(/White accuracy \d+\.\d%/);
+    await expect(page.getByTestId('pgn-status')).toHaveText('Annotated PGN Exported');
+    // The exported PGN loads back
+    const parsed = await page.evaluate((text) => {
+      const tree = window.__wizardChessCore!.parsePgn(text);
+      return tree.getMainLine().length;
+    }, pgn);
+    expect(parsed).toBe(6);
+
+    // --- Play vs Bot Here (from the position after 2...Nc6, White to move)
+    await goToNode(page, parent.id);
+    await page.getByTestId('btn-review-play-bot').click();
+    await expect.poll(() => page.evaluate(() => window.__wizardChessAnalysis!.getMode())).toBe('play');
+    const play = await page.evaluate(() => {
+      const controller = window.__wizardChessPlay!.controller;
+      return { fen: controller.getAdapter().fen(), flipped: controller.getBoard().isFlipped() };
+    });
+    expect(play.fen).toBe(parent.fen);
+    expect(play.flipped).toBe(false);
+  });
+
+  test('cancelling keeps a partial review; a new game resets the panel', async ({ page }) => {
+    test.setTimeout(120_000);
+    await openAnalysis(page);
+    await page.evaluate((pgn) => window.__wizardChessAnalysis!.controller.importPgn(pgn), FORTY_MOVE_PGN);
+    await page.getByTestId('select-review-preset').selectOption('deep');
+    await page.getByTestId('btn-review-start').click();
+    const chart = page.getByTestId('review-chart');
+    await expect
+      .poll(async () => Number(await chart.getAttribute('data-analyzed')), { timeout: 60_000 })
+      .toBeGreaterThanOrEqual(4);
+    await page.getByTestId('btn-review-cancel').click();
+    await expect(page.getByTestId('review-panel')).toHaveAttribute('data-state', 'cancelled');
+    await expect(page.getByTestId('review-progress-text')).toContainText('Cancelled at');
+    const review = await readReview(page);
+    expect(review.complete).toBe(false);
+    expect(review.total).toBe(82);
+    expect(review.analyzed).toBeGreaterThanOrEqual(4);
+    expect(review.analyzed).toBeLessThan(82);
+    expect(review.moves.length).toBe(review.analyzed - 1);
+    await expect(page.locator('[data-testid="analysis-move-tree"] .wc-tree-class')).toHaveCount(
+      review.moves.length,
+    );
+    await expect(page.getByTestId('btn-review-export')).toBeEnabled();
+    await expect(page.getByTestId('btn-review-start')).toBeEnabled();
+
+    // Loading another game clears the review
+    await page.evaluate(() => window.__wizardChessAnalysis!.controller.loadFen('8/8/8/4k3/8/8/4P3/4K3 w - - 0 1'));
+    await expect(page.getByTestId('review-panel')).toHaveAttribute('data-state', 'idle');
+    await expect(page.getByTestId('review-body')).toBeHidden();
+  });
+});

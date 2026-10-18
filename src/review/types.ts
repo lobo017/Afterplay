@@ -1,6 +1,7 @@
 import type { Color, PieceSymbol, Square } from '../core/rules';
 import type { MoveClassification } from '../core/game-tree';
 import type { UciScore } from '../engine/uci-parser';
+import type { PerformanceEstimate } from './formulas';
 
 export type { MoveClassification };
 
@@ -11,6 +12,17 @@ export const REVIEW_PRESET_MOVETIME_MS: Record<ReviewPreset, number> = {
   quick: 200,
   standard: 600,
   deep: 1500,
+};
+
+/**
+ * Engine time per position when a move looks like an error (or a forced mate appears or
+ * disappears across it): both positions are searched again for this long before the
+ * move is classified. See docs/classification.md, "Verification searches".
+ */
+export const REVIEW_VERIFY_MOVETIME_MS: Record<ReviewPreset, number> = {
+  quick: 1000,
+  standard: 2000,
+  deep: 3000,
 };
 
 /** MultiPV used for every reviewed position (spec, Phase 5). */
@@ -60,6 +72,11 @@ export interface Motif {
   san?: string;
   /** hanging-piece: the piece was already en prise before the move (the move ignored it). */
   preexisting?: boolean;
+  /**
+   * Whose move it belongs to, when the review attaches it to a reviewed move: the move
+   * played, the opponent's refutation of it, or the best move the player missed.
+   */
+  role?: 'played' | 'refutation' | 'missed';
 }
 
 export interface ReviewedMove {
@@ -99,8 +116,16 @@ export interface ReviewedMove {
 export interface SideReviewSummary {
   accuracy: number | null;
   acpl: number | null;
-  performanceRating: number | null;
+  /** Moves that counted toward the ACPL (see `centipawnLoss`). */
+  countedMoves: number;
+  performance: PerformanceEstimate | null;
   counts: Record<MoveClassification, number>;
+}
+
+/** Engine budget per position: a preset's movetime, or a fixed depth (fixture settings). */
+export interface ReviewBudget {
+  movetimeMs?: number;
+  depth?: number;
 }
 
 export interface KeyMoment {
@@ -112,7 +137,9 @@ export interface KeyMoment {
 }
 
 export interface GameReview {
-  preset: ReviewPreset;
+  /** Null when the review ran on a custom budget (e.g. the depth-18 fixture settings). */
+  preset: ReviewPreset | null;
+  budget: ReviewBudget;
   startFen: string;
   moves: ReviewedMove[];
   white: SideReviewSummary;
@@ -120,5 +147,8 @@ export interface GameReview {
   keyMoments: KeyMoment[];
   /** White's win% for every position (index 0 = start), null where not yet analyzed. */
   whiteWinSeries: Array<number | null>;
+  /** Positions analyzed so far, out of `moves.length + 1`. */
+  analyzedPositions: number;
+  totalPositions: number;
   complete: boolean;
 }
