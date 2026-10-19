@@ -110,8 +110,11 @@ import { ExtensionBridgeClient } from './library/bridge-client';
 import { toSavedReview } from './library/saved-review';
 import type { StoredGameRecord } from './storage/db';
 import type { MessageWindow } from './capture/protocol';
+import { PuzzleStore } from './trainers/puzzle-store';
+import { TodayScreen, type PuzzleMode } from './trainers/today-screen';
+import type { PuzzleTrainer } from './trainers/puzzle-trainer';
 
-export type AppWorkspaceMode = 'play' | 'analysis' | 'games';
+export type AppWorkspaceMode = 'play' | 'analysis' | 'games' | 'today' | 'puzzles';
 
 export interface AppShellEnvironment {
   crossOriginIsolated: boolean;
@@ -240,8 +243,22 @@ export interface WizardChessLibraryApi {
   getOpenGameId: () => string | null;
 }
 
+export interface WizardChessPuzzlesApi {
+  store: PuzzleStore;
+  today: TodayScreen;
+  /** Opens the Puzzles tab on a session (loads the trainer and its dataset worker on first use). */
+  open: (mode: PuzzleMode) => Promise<PuzzleTrainer>;
+  /** The trainer once loaded (null before Puzzles was first opened). */
+  getTrainer: () => PuzzleTrainer | null;
+  /** Brings personal puzzles up to date with the reviewed games. */
+  syncPersonal: () => Promise<void>;
+}
+
 declare global {
   interface Window {
+    __wizardChessPuzzles?: WizardChessPuzzlesApi;
+    /** Resolves once puzzle storage is open (it shares the game library's database). */
+    __wizardChessPuzzlesReady?: Promise<WizardChessPuzzlesApi>;
     __wizardChessLibrary?: WizardChessLibraryApi;
     /** Resolves once the Games list's storage is open (rejects if IndexedDB is unavailable). */
     __wizardChessLibraryReady?: Promise<WizardChessLibraryApi>;
@@ -315,6 +332,22 @@ export function mountAppShell(container: HTMLElement): {
             aria-selected="false"
           >
             📚 Games
+          </button>
+          <button
+            type="button"
+            class="wc-mode-tab"
+            data-testid="mode-tab-today"
+            aria-selected="false"
+          >
+            ☀ Today
+          </button>
+          <button
+            type="button"
+            class="wc-mode-tab"
+            data-testid="mode-tab-puzzles"
+            aria-selected="false"
+          >
+            🧩 Puzzles
           </button>
           <button
             type="button"
@@ -427,6 +460,14 @@ export function mountAppShell(container: HTMLElement): {
   gamesRootEl.id = 'wc-games-root';
   gamesRootEl.className = 'wc-games-root';
   gamesRootEl.innerHTML = '<p class="wc-games-loading" data-testid="games-loading">Opening the game library…</p>';
+  const todayRootEl = document.createElement('div');
+  todayRootEl.id = 'wc-today-root';
+  todayRootEl.className = 'wc-today-root';
+  todayRootEl.innerHTML = '<p class="wc-games-loading" data-testid="today-loading">Opening your progress…</p>';
+  const puzzlesRootEl = document.createElement('div');
+  puzzlesRootEl.id = 'wc-puzzles-root';
+  puzzlesRootEl.className = 'wc-puzzles-root';
+  puzzlesRootEl.innerHTML = '<p class="wc-games-loading" data-testid="puzzles-loading">Loading puzzles…</p>';
 
   // The Games list's library opens in the background; the board doesn't wait for it
   let library: GameLibrary | null = null;
@@ -537,6 +578,26 @@ export function mountAppShell(container: HTMLElement): {
     '[data-testid="mode-tab-games"]',
   ) as HTMLButtonElement;
   let gamesList: GamesList | null = null;
+  const modeTabTodayBtn = container.querySelector(
+    '[data-testid="mode-tab-today"]',
+  ) as HTMLButtonElement;
+  const modeTabPuzzlesBtn = container.querySelector(
+    '[data-testid="mode-tab-puzzles"]',
+  ) as HTMLButtonElement;
+  let todayScreen: TodayScreen | null = null;
+  let puzzleTrainer: PuzzleTrainer | null = null;
+  /** Puzzle storage opens with the game library; Today and Puzzles wait for it. */
+  let resolvePuzzles!: (api: WizardChessPuzzlesApi) => void;
+  let rejectPuzzles!: (err: unknown) => void;
+  const puzzlesReady = new Promise<WizardChessPuzzlesApi>((resolve, reject) => {
+    resolvePuzzles = resolve;
+    rejectPuzzles = reject;
+  });
+  puzzlesReady.catch(() => undefined);
+  /** The trainer chunk, imported the first time Puzzles opens. */
+  let trainerLoading: Promise<PuzzleTrainer> | null = null;
+  /** Serializes session starts, so the latest request wins and none interleave. */
+  let puzzleStart: Promise<unknown> = Promise.resolve();
   const analyzeGameBtn = container.querySelector(
     '[data-testid="btn-analyze-game"]',
   ) as HTMLButtonElement;
@@ -557,6 +618,8 @@ export function mountAppShell(container: HTMLElement): {
       [modeTabPlayBtn, 'play'],
       [modeTabAnalysisBtn, 'analysis'],
       [modeTabGamesBtn, 'games'],
+      [modeTabTodayBtn, 'today'],
+      [modeTabPuzzlesBtn, 'puzzles'],
     ];
     for (const [btn, m] of tabs) {
       btn.classList.toggle('wc-mode-tab-active', m === mode);
@@ -568,9 +631,72 @@ export function mountAppShell(container: HTMLElement): {
       analysisController.setActive(true);
     } else {
       analysisController.setActive(false);
-      workspaceHostEl.replaceChildren(mode === 'play' ? playRootEl : gamesRootEl);
+      const roots: Record<Exclude<AppWorkspaceMode, 'analysis'>, HTMLElement> = {
+        play: playRootEl,
+        games: gamesRootEl,
+        today: todayRootEl,
+        puzzles: puzzlesRootEl,
+      };
+      workspaceHostEl.replaceChildren(roots[mode]);
       if (mode === 'games') void gamesList?.refresh();
+      if (mode === 'today') void todayScreen?.refresh();
     }
+  };
+
+  /**
+   * The puzzle trainer is its own chunk, imported the first time Puzzles opens; its dataset
+   * worker (the 20,000 bundled puzzles) starts then too. Neither is in the main bundle.
+   */
+  const loadTrainer = (): Promise<PuzzleTrainer> => {
+    trainerLoading ??= Promise.all([puzzlesReady, import('./trainers/puzzle-trainer')]).then(([api, mod]) => {
+      puzzlesRootEl.replaceChildren();
+      puzzleTrainer = new mod.PuzzleTrainer({
+        container: puzzlesRootEl,
+        store: api.store,
+        engine: sharedEngine,
+        audio,
+        syncPersonal: api.syncPersonal,
+        onAnalyze: (pgn, ply) => {
+          setMode('analysis', false);
+          if (!analysisController.importPgn(pgn)) return;
+          const node = analysisController.getGameTree().getMainLine()[ply - 1];
+          if (node) analysisController.goToNode(node.id);
+        },
+        onOpenGames: () => setMode('games', false),
+      });
+      return puzzleTrainer;
+    });
+    trainerLoading.catch((err: unknown) => {
+      trainerLoading = null;
+      const msg = document.createElement('p');
+      msg.className = 'wc-games-loading';
+      msg.setAttribute('data-testid', 'puzzles-loading');
+      msg.textContent = `Puzzles could not be opened: ${err instanceof Error ? err.message : String(err)}`;
+      puzzlesRootEl.replaceChildren(msg);
+    });
+    return trainerLoading;
+  };
+
+  /**
+   * Shows Puzzles on a session; with no session given, the first open picks the one with
+   * the most to do (due reviews, then my mistakes, then rated puzzles).
+   */
+  const openPuzzles = (mode: PuzzleMode | null): Promise<PuzzleTrainer> => {
+    setMode('puzzles', false);
+    const run = puzzleStart.then(async () => {
+      const firstOpen = puzzleTrainer === null;
+      const trainer = await loadTrainer();
+      if (mode) {
+        await trainer.start(mode);
+      } else if (firstOpen) {
+        const today = await (await puzzlesReady).store.todaySummary();
+        const due = today.dueReviews.personal + today.dueReviews.lichess;
+        await trainer.start(due > 0 ? 'review' : today.newPersonal > 0 ? 'mistakes' : 'rated');
+      }
+      return trainer;
+    });
+    puzzleStart = run.catch(() => undefined);
+    return run;
   };
 
   modeTabPlayBtn.addEventListener('click', () => {
@@ -583,6 +709,14 @@ export function mountAppShell(container: HTMLElement): {
 
   modeTabGamesBtn.addEventListener('click', () => {
     setMode('games', false);
+  });
+
+  modeTabTodayBtn.addEventListener('click', () => {
+    setMode('today', false);
+  });
+
+  modeTabPuzzlesBtn.addEventListener('click', () => {
+    void openPuzzles(null);
   });
 
   analysisController.onTreeReplaced(() => {
@@ -647,9 +781,54 @@ export function mountAppShell(container: HTMLElement): {
       getOpenGameId: () => openGameId,
     };
     window.__wizardChessLibrary = api;
+
+    // Puzzles and the Today screen share the library's storage
+    const puzzleStore = new PuzzleStore(storage);
+    const syncPersonal = async (): Promise<void> => {
+      await puzzleStore.syncAll(await lib.list(), (id) => lib.getReview(id), lib.getUserAccounts());
+    };
+    // A review saved for a game (from the list or the board) turns my errors into puzzles
+    lib.onChange((change) => {
+      for (const id of change.updated) {
+        void (async () => {
+          const record = await lib.get(id);
+          if (!record?.analysis) return;
+          await puzzleStore.syncReviewedGame(record, await lib.getReview(id), lib.getUserAccounts());
+          if (currentMode === 'today') await todayScreen?.refresh();
+        })();
+      }
+    });
+    todayRootEl.replaceChildren();
+    const today = new TodayScreen({
+      container: todayRootEl,
+      store: puzzleStore,
+      syncPersonal,
+      countUnanalyzed: async () => (await lib.list()).filter((g) => !g.analysis).length,
+      onStartPuzzles: (mode) => void openPuzzles(mode),
+      onOpenGames: () => setMode('games', false),
+    });
+    todayScreen = today;
+    const puzzlesApi: WizardChessPuzzlesApi = {
+      store: puzzleStore,
+      today,
+      open: (mode) => openPuzzles(mode),
+      getTrainer: () => puzzleTrainer,
+      syncPersonal,
+    };
+    window.__wizardChessPuzzles = puzzlesApi;
+    resolvePuzzles(puzzlesApi);
+    if (currentMode === 'today') void today.refresh();
     return api;
   });
+  window.__wizardChessPuzzlesReady = puzzlesReady;
   libraryReady.catch((err: unknown) => {
+    rejectPuzzles(err);
+    todayRootEl.replaceChildren();
+    const todayMsg = document.createElement('p');
+    todayMsg.className = 'wc-games-loading';
+    todayMsg.setAttribute('data-testid', 'today-loading');
+    todayMsg.textContent = `Your progress could not be opened: ${err instanceof Error ? err.message : String(err)}`;
+    todayRootEl.appendChild(todayMsg);
     gamesRootEl.replaceChildren();
     const msg = document.createElement('p');
     msg.className = 'wc-games-loading';
@@ -672,6 +851,10 @@ export function mountAppShell(container: HTMLElement): {
       setMode('analysis', false);
     } else if (params.get('mode') === 'games' || window.location.hash === '#games') {
       setMode('games', false);
+    } else if (params.get('mode') === 'today' || window.location.hash === '#today') {
+      setMode('today', false);
+    } else if (params.get('mode') === 'puzzles' || window.location.hash === '#puzzles') {
+      void openPuzzles(null);
     }
   }
 

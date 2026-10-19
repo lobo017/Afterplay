@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { exitWithParent } from './lib/process-guard.mjs';
+import { CANONICAL_HOST, canonicalRedirect } from './lib/canonical-origin.mjs';
 
 // Harnesses that start this server set WC_EXIT_WITH_PARENT_PID, so the server goes away
 // even if the harness is force-killed and can't clean up after itself.
@@ -34,7 +35,15 @@ const MIME_TYPES = {
   '.txt': 'text/plain; charset=utf-8',
 };
 
-const server = http.createServer((req, res) => {
+const handleRequest = (req, res) => {
+  // One origin, one game library: localhost / [::1] go to 127.0.0.1 (lib/canonical-origin.mjs)
+  const redirect = canonicalRedirect(req.headers.host, req.url, port);
+  if (redirect) {
+    res.writeHead(307, { Location: redirect, 'Cache-Control': 'no-store' });
+    res.end();
+    return;
+  }
+
   // Always set COOP/COEP headers required by multi-threaded Stockfish SharedArrayBuffer
   res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
   res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
@@ -78,9 +87,20 @@ const server = http.createServer((req, res) => {
     res.end('Internal Server Error');
   });
   stream.pipe(res);
+};
+
+const server = http.createServer(handleRequest);
+
+server.listen(port, CANONICAL_HOST, () => {
+  console.log(`Wizard's Chess offline server running at http://${CANONICAL_HOST}:${port}`);
+  console.log('COOP/COEP headers enabled (Cross-Origin Isolated).');
+  console.log(`http://localhost:${port} redirects here (one origin, one game library).`);
 });
 
-server.listen(port, '127.0.0.1', () => {
-  console.log(`Wizard's Chess offline server running at http://127.0.0.1:${port}`);
-  console.log('COOP/COEP headers enabled (Cross-Origin Isolated).');
+// Browsers may resolve `localhost` to ::1 first. Listening there too means that name always
+// reaches the redirect; where IPv6 loopback isn't available, the IPv4 fallback still does.
+const ipv6Server = http.createServer(handleRequest);
+ipv6Server.on('error', () => {
+  ipv6Server.close();
 });
+ipv6Server.listen(port, '::1');

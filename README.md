@@ -15,6 +15,12 @@ npm run build
 npm run serve
 ```
 
+`npm run serve` serves the site at **http://127.0.0.1:4173**. Opening
+`http://localhost:4173` redirects there (a `307` that keeps the path, query and `#…`). The
+browser treats `localhost` and `127.0.0.1` as two different sites, each with its own storage,
+so without the redirect the same app could hold two separate game libraries (and puzzle
+progress) depending on which name you typed. Bookmark or install the `127.0.0.1` address.
+
 ### Why Opening `index.html` Directly from Disk (`file://`) Is Not Supported
 
 Opening `dist/index.html` directly via the `file://` protocol is **not supported** because modern browser security policies treat `file://` URLs as opaque origins:
@@ -87,8 +93,8 @@ npm run build:ext     # builds the unpacked extension into dist-ext/
 
 The extension delivers games to the analysis site through a small content script that it
 registers on **one** URL: the **Analysis site URL** in Settings, `http://127.0.0.1:4173` by
-default (`npm run serve`). If you serve the site elsewhere (another port, or `localhost`),
-change it there; only `http://localhost:<port>` and `http://127.0.0.1:<port>` are accepted.
+default (`npm run serve`, which also redirects `localhost` there). If you serve the site
+elsewhere (another port, or `npm run dev` on `localhost`), change it there; only `http://localhost:<port>` and `http://127.0.0.1:<port>` are accepted.
 Games are handed over as soon as they are captured while the site is open in a tab (focused
 or not), and whenever its tab opens or regains focus. The popup's "N games waiting" counts
 games captured but not yet copied into the site's Games list. Without the extension the site
@@ -137,6 +143,31 @@ works as usual.
 | Lichess games of a user since a time (`/api/games/user/{name}?since=…`) | background check of recent games | Official API |
 | Chess.com game ID from the page's own requests (Resource Timing), on /play pages | auto-capture | **Unofficial** — depends on which URLs Chess.com's play page loads |
 | Game-over markers on the page (Lichess `.result-wrap`, Chess.com game-over dialog) | auto-capture (fast hint) | **Unofficial** — the game data / stream above don't depend on them |
+
+## Puzzles and the Today screen
+
+**🧩 Puzzles** has three sessions:
+
+- **Due reviews**: puzzles you missed (and every puzzle from your games) come back on a
+  spaced-repetition schedule (FSRS-5). A wrong move brings a puzzle back in 10 minutes; a
+  solve schedules it days ahead (sooner after a hint, later when solved quickly).
+- **My mistakes**: every Mistake, Blunder and Miss **of yours** in a reviewed game becomes a
+  puzzle: the position before your move, set up by your opponent's previous move, with the
+  engine's best move as the answer. "Yours" means a player name equals one of your usernames
+  for that game's site (the capture extension's settings; `Lobo017` on Lichess until it has
+  sent them), so captured, pasted and imported games all count once analyzed. A position is
+  skipped when the second-best move is nearly as good as the best (within 10 win% points).
+  They are made when a review is saved, and checked again when your usernames change.
+- **Rated**: the bundled 20,000 Lichess puzzles near your rating, mixed or by theme, with a
+  Glicko-2 puzzle rating (a puzzle's first try counts; a hint makes it unrated). The puzzle
+  set is loaded in a worker the first time Puzzles opens, so it never slows the app's start.
+
+The opponent's move is played first, as on Lichess. A move other than the expected one is
+checked by the engine and accepted when it mates, keeps a forced mate, or (in puzzles that
+aren't about mate) keeps a decisive advantage or is as good as the solution.
+
+**☀ Today** shows what's due: puzzle reviews, new puzzles from your games, rated puzzles
+played today, and games not analyzed yet, each with a button to start.
 
 ## Dataset Generation (`scripts/` -> `data/`)
 

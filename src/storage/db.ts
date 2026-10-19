@@ -69,11 +69,17 @@ export interface StoredSettingRecord<T = unknown> {
   updatedAt: number;
 }
 
+/**
+ * A puzzle (Lichess layout: `fen` is the position before the opponent's move `moves[0]`; the
+ * solution starts at `moves[1]`). Bundled puzzles are stored once tried; personal ones when
+ * a review of my game yields them.
+ */
 export interface StoredPuzzleRecord {
   id: string;
   source: 'personal' | 'lichess';
   fen: string;
   moves: string[];
+  /** The Lichess rating; 0 for personal puzzles (unrated). */
   rating: number;
   themes: string[];
   sourceGameId?: string;
@@ -81,6 +87,20 @@ export interface StoredPuzzleRecord {
   attempts: number;
   solvedCount: number;
   updatedAt: number;
+  // Phase 6 (optional, so v2 records stay valid)
+  /** Personal: the ply of my move in the game, the move I played and how the review classed it. */
+  ply?: number;
+  playedSan?: string;
+  classification?: 'Mistake' | 'Blunder' | 'Miss';
+  explanation?: string | null;
+  /** Personal: the engine's best line from the puzzle position (SAN), shown after solving. */
+  bestLineSan?: string[];
+  /** Personal: "Lobo017 vs hikaru · 2026-10-04", for the source line. */
+  gameLabel?: string;
+  /** When the review that produced it was saved (re-synced when the review changes). */
+  reviewSavedAt?: number;
+  lastAttemptAt?: number;
+  lastSolved?: boolean;
 }
 
 export interface StoredSrsCardRecord {
@@ -538,8 +558,20 @@ export class WizardChessStorage {
     return this.db.getAll('puzzles');
   }
 
+  public async deletePuzzle(id: string): Promise<void> {
+    await this.db.delete('puzzles', id);
+  }
+
   public async saveSrsCard(card: StoredSrsCardRecord): Promise<void> {
     await this.db.put('srs_cards', card);
+  }
+
+  public async deleteSrsCard(id: string): Promise<void> {
+    await this.db.delete('srs_cards', id);
+  }
+
+  public async listSrsCards(deck?: StoredSrsCardRecord['deck']): Promise<StoredSrsCardRecord[]> {
+    return deck ? this.db.getAllFromIndex('srs_cards', 'by-deck', deck) : this.db.getAll('srs_cards');
   }
 
   public async getSrsCard(id: string): Promise<StoredSrsCardRecord | undefined> {

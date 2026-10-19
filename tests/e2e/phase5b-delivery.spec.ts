@@ -120,13 +120,15 @@ test.describe('Phase 5b — delivery outcomes', () => {
     await expect(reopened.getByTestId('games-row')).toHaveCount(2);
   });
 
-  test('the site opened as localhost while 127.0.0.1 is configured still gets its games', async () => {
+  test('the site opened as localhost lands on 127.0.0.1 and gets its games there', async () => {
     const s = (session = await launchWithExtension());
     const popup = await openPopup(s);
     await popup.getByTestId('popup-settings').locator('summary').click();
     await expect(popup.getByTestId('popup-site-url')).toHaveValue(SITE_URL);
     const site = await s.context.newPage();
     await site.goto(`${SITE_URL_LOCALHOST}/#games`);
+    // npm run serve redirects localhost to the one origin (one IndexedDB library)
+    expect(site.url()).toBe(`${SITE_URL}/#games`);
     await site.evaluate(() => window.__wizardChessLibraryReady);
     await expect(site.getByTestId('games-extension-status')).toContainText('up to date');
     await popup.reload();
