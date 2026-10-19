@@ -1,4 +1,6 @@
 import { DevOverlayController } from './ui/dev-overlay';
+import { initBoardSize } from './render/board-size';
+import { boardFeel, type BoardFeelStore } from './render/board-feel';
 import {
   DEFAULT_POSITION,
   RulesAdapter,
@@ -168,6 +170,8 @@ export interface WizardChessPlayApi {
   engine: EngineClient;
   botEngine: EngineClient;
   devOverlay: DevOverlayController;
+  /** The shared board feel (tuned from the dev overlay). */
+  boardFeel: BoardFeelStore;
   BoardRenderer: typeof BoardRenderer;
   BoardOverlay: typeof BoardOverlay;
   CaptureParticleSystem: typeof CaptureParticleSystem;
@@ -293,6 +297,7 @@ export function mountAppShell(container: HTMLElement): {
   setMode: (mode: AppWorkspaceMode, copyPlayGame?: boolean) => void;
 } {
   const env = detectEnvironment();
+  initBoardSize();
   const threadModeLabel = env.crossOriginIsolated
     ? `Multi-threaded Capable (${env.hardwareConcurrency} cores)`
     : 'Single-threaded Fallback';
@@ -905,6 +910,7 @@ export function mountAppShell(container: HTMLElement): {
       engine: sharedEngine,
       botEngine,
       devOverlay,
+      boardFeel,
       BoardRenderer,
       BoardOverlay,
       CaptureParticleSystem,

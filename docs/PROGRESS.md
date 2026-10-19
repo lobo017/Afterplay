@@ -12,6 +12,7 @@
 | **Phase 5** | Game review | **Done** | MultiPV 2 review pipeline on its own 1-thread engine with verification searches, win%/accuracy/ACPL/performance formulas, 10 move classes (docs/classification.md), 8 motif detectors, one-sentence explanations computed in a worker, review panel (live win% chart, key moments, Retry / Refutation / Play vs Bot / annotated PGN, sample game). **2026-10-18:** Lichess-matched formulas and thresholds; "Review as" White / Black / Both perspective and redesigned summary |
 | **Phase 5b** | Capture extension + Games list | **Done** | Chrome MV3 capture extension (Lichess, Chess.com, queue, popup, backfill), localhost bridge, Games list with background review queue, IndexedDB v4. **2026-10-19 live capture fixes:** end of game from the sites' own data (Lichess game stream, Chess.com game data), finished games captured on open and on leaving the page, Chess.com play pages, background sync of recent games, delivery without focus, Debug this tab, local dates |
 | **Phase 6** | Puzzles & spaced repetition | **Done** | Personal mistake puzzles, bundled 20k Lichess puzzles, Glicko-2, FSRS scheduler, Today screen |
+| **Phase 6b** | UX redesign | **In progress** | Audit done; board feel (lift on press, drop tolerance and glide, touch offset, cursors, larger hints, resizable board) with a live tuning panel in the dev overlay; board badges. Waiting for tuning approval before the layout proposal |
 | **Phase 7** | Repertoire, endgame & visualization | Pending | White/Black repertoire trees, 6 curated endgame drills, coordinate/blindfold/guess-the-move |
 | **Phase 8** | Library, insights, settings, offline | Pending | Auto-save library, worker bulk PGN import, insights charts, a11y, full offline PWA |
 | **Phase 9** | Performance pass & final audit | Pending | Frame-time/memory/startup profiling against budgets and full spec verification |
@@ -2817,3 +2818,204 @@ the new one and all three passed, then the full run above.
 
 **Serve fix result:** as planned (`scripts/lib/canonical-origin.mjs`, used by `scripts/serve.mjs`;
 also listens on `::1`). Unit `serve-origin` (4) and the e2e tests above.
+
+## Phase 6b — UX redesign (2026-10-19)
+
+### Audit (screenshots before any change)
+
+`tests/e2e/phase6b-screens.spec.ts` captures every screen at desktop (1440×900) and phone
+(390×844) width into `test-results/phase6b-screens/`: Play (start, a piece selected, mid-drag),
+Analysis (empty), Review (sample game reviewed on Quick, first key moment), Games (empty, two
+games), Today, Puzzles. It also checks the page never scrolls sideways. Looked at all 16.
+
+**Usability problems found**
+
+Whole app
+1. The header spends a full row on five technical badges (COOP/COEP, "Zero-Network Offline
+   Shell", "Core Rules · PGN · IDB v4", Stockfish, Dev Overlay). On a phone they stack into five
+   rows: the board starts ~330 px down the page.
+2. An eight-card diagnostics strip (threading, network, datasets, rules, PGN, storage, engine,
+   bot) sits under every screen. It means nothing to a player and doubles the page length on a
+   phone.
+3. Navigation is five tabs plus "Analyze Game →", which looks like a tab but is an action.
+   There is no "Review" destination: review lives inside the Analysis Board panel. Today and
+   Puzzles are separate tabs. On a phone the tabs wrap onto two rows.
+4. The tab icons are emoji (⚔ 🔍 📚 ☀ 🧩); they render differently per OS and don't match the
+   marble and obsidian theme.
+
+Board feel (Play, Analysis, Puzzles share one renderer)
+5. A dropped piece appears on its square instantly (no glide), and a piece doesn't lift until
+   the pointer has moved: pressing a piece shows nothing but the selection ring. That's the
+   "sticky" feel.
+6. The lift is a 1.08 scale with a faint shadow; mid-drag the piece barely stands out
+   (`desktop-play-dragging.png`).
+7. A drop counts only on the exact square under the pointer: a drop a few pixels past the edge
+   of the intended square lands on the neighbour (illegal → snaps back).
+8. On touch screens the dragged piece sits under the finger, hidden.
+9. No grab / grabbing cursors.
+10. Legal-move dots are small (31% of a square) and capture rings thin; on the light marble
+    squares the blue dots are low contrast.
+11. The board size is fixed by the layout (600 px on desktop); it can't be resized.
+
+Play
+12. Eleven settings (bot tier, style, rating, min/max think, time control, color, board theme,
+    piece set, max premoves, six toggles, volume) are always open under the move list.
+    Changing color or time control silently restarts the game.
+13. Six equal buttons (New Game, Flip, Hint, Takeback, Draw, Resign): no primary action.
+14. Phone: the Piece Set select overflows the viewport, so the page scrolls sideways by 58 px.
+15. Phone: the board is 290 px wide in a 390 px viewport (frame + panel padding).
+
+Analysis and review
+16. The right panel is one ~1,400 px column: engine lines, the whole review, the move tree,
+    annotation buttons, comment box, editor buttons, PGN import/export, and two unlabeled theme
+    selects. While reviewing, the move list is below the fold.
+17. The review summary is dense (chart, two accuracy cards, a 10-row table, five truncated key
+    moments, a card, four buttons). Nothing walks you through the key moments one at a time.
+18. The board doesn't show the move's classification; you have to look at the move list.
+19. Phone: engine lines are cut off; tree buttons wrap ("Main / Line", "Position / Editor").
+
+Games, Today, Puzzles
+20. Games: the extension status is a small grey line; capture features aren't visible.
+21. Today: four equal cards and buttons, no single next step; "–" while loading.
+22. Puzzles: a large empty gap between the status and the buttons; six equal buttons.
+
+Not a bug: `desktop-today.png` shows the Games tab highlighted. The tabs have a 120 ms colour
+transition and the screenshot was taken mid-fade; the spec now waits for transitions to end.
+
+### Plan — step 2: board feel (written before code)
+
+**Files**
+- `src/render/board-feel.ts` (new): the tunable values, their ranges, defaults, and one shared
+  store (subscribe, set, reset), persisted in `localStorage` (key `wc.boardFeel.v1`, every value
+  clamped on load, all access in try/catch) so tuning survives a reload. `resolveDropSquare()`
+  (pure): the drop square for a point, given the legal targets and the drop tolerance.
+- `src/render/board-size.ts` (new): the remembered board size (`localStorage`
+  `wc.boardSize.v1`), a CSS variable `--wc-board-size` on `<html>`, and the corner resize handle.
+- `src/render/board-renderer.ts`:
+  - Lift on press: pressing a movable piece lifts it at once (scale + shadow) and centres it
+    under the pointer; the drag threshold decides only click vs drag. A click lets the piece
+    glide back to its square.
+  - Touch: once a touch drag starts, the piece is drawn `touchOffset` squares above the finger
+    and the drop square is the one under the piece. On touch the threshold is doubled, so a
+    tap never turns into an offset drag.
+  - While dragging: the drop square (after tolerance) is highlighted, strongly when it's a
+    legal target.
+  - Drop: tolerance picks the nearest legal target within `dropTolerance` squares of the
+    pointer when the square under it isn't one (also just off the board edge). A legal drop
+    glides from where it was released to its square (`snapMs`), for moves, premoves and
+    confirm-move; an illegal one slides back (`snapMs`, was a fixed 120 ms).
+  - Cursors: `grab` over a movable piece (mouse only, from the cached board rect), `grabbing`
+    during a drag anywhere on the page.
+  - Move animations use `animationMs` unless a caller passes its own duration (the analysis
+    board's step animation keeps its off / fast / normal setting, as Phase 4 specifies).
+  - Live updates from the store; unsubscribed in `destroy()`.
+- `src/render/overlay.ts`: larger legal-move dots with a dark rim (contrast on light marble),
+  thicker capture rings, the new drag-target highlight.
+- `src/ui/dev-overlay.ts`: a "Board feel" section: six sliders (drag threshold, lift scale,
+  snap duration, drop tolerance, touch offset, animation speed) with live values, "Copy values"
+  (JSON to the clipboard, so you can send them to me) and "Reset".
+- `src/styles/main.css`: lift shadow, cursors, resize handle, layouts sized from
+  `--wc-board-size`, the phone Piece Set overflow (problem 14).
+- Board badges (spec, Phase 5): `BoardRenderer.setSquareBadge()` (one badge layer above the
+  pieces); the analysis controller shows the current move's class icon (the review's existing
+  icons) on the top-right corner of its destination square, inside the square so the board
+  edge never clips it.
+
+**Tests**
+- Unit: `resolveDropSquare` (exact square, tolerance near an edge and just off the board, none
+  outside tolerance, nearest of two), the feel store (clamping, persistence, reset, bad JSON),
+  board-size clamping.
+- E2E `phase6b-board-feel.spec.ts`: the panel's sliders change the board live; press lifts
+  the piece (scaled) before any movement; a click still selects and a second click deselects;
+  a drop 20% of a square past the intended square plays the move, with tolerance 0 it doesn't;
+  a legal drop glides (a running animation ending on the square); touch drag (synthetic touch
+  pointer events) draws the piece above the finger and drops on the square under the piece; a
+  tap doesn't move; grab cursor over a movable piece; the board resize handle changes the size
+  and it's remembered after a reload; board badges for every class in both orientations.
+- Every earlier e2e test (premove queue, drag cancel, drag through opponent moves) unchanged.
+
+**Risks**
+- Lift on press writes a transform on pointerdown; must stay within the one-frame input budget
+  (it's one style write). `npm run perf:drag` re-run.
+- The glide on drop means the piece is mid-animation for `snapMs` after a drop; earlier tests
+  that read piece positions right after a drop read `style.transform`, which is final at once.
+- `localStorage` is used for these two per-device preferences only (the spec doesn't name a
+  store for UI settings; Phase 8's settings panel can move them).
+
+### Result — step 2: board feel and board badges (2026-10-19)
+
+Built as planned. **Waiting for you to tune and approve** before the layout proposal (step 3).
+
+**How to tune:** `npm run build && npm run serve`, open the app, press the backtick key (or the
+"Dev Overlay" button). The "Board feel" panel at the bottom of the overlay has six sliders that
+apply live to every board (Play, Analysis, Puzzles); changed values turn gold. Values are kept on
+this device across reloads. "Copy values" puts them on the clipboard as JSON (the same line is
+shown under the sliders); send them to me and they become the defaults. "Reset to defaults"
+forgets them.
+
+| Value | Default | Range | What it does |
+|---|---|---|---|
+| Drag threshold | 3 px | 0–12 | Travel before a press counts as a drag (doubled on touch) |
+| Lift scale | 1.12× | 1–1.35 | Size of a held piece (was a fixed 1.08) |
+| Snap duration | 110 ms | 0–300 | Glide into the square after a drop, and back home after an illegal one (was a fixed 120 ms back, no glide in) |
+| Drop tolerance | 0.20 sq | 0–0.5 | How far past a legal square's edge a drop still lands on it |
+| Touch offset | 0.80 sq | 0–1.5 | How far above the finger a touch-dragged piece is drawn |
+| Animation speed | 170 ms | 0–400 | Played moves (bot, opponent, premoves); unchanged default |
+
+**What changed in piece handling** (`board-renderer.ts`, `overlay.ts`, `board-feel.ts`)
+- Press lifts at once: the piece scales up, gets a deep shadow with a faint gold glow and centres
+  under the pointer before any movement. The threshold now only decides click vs drag; a click
+  lets the piece glide back and selects it as before.
+- Drop: the square under the piece is framed (faint on any square, bright blue on a legal one).
+  The drop square comes from `resolveDropSquare()`: the square under the point if legal, else the
+  nearest legal square within the tolerance (also just off the board's edge). A legal drop glides
+  in from the release point (moves, premoves, confirm-move); an illegal one slides back.
+- Touch: once a touch drag starts, the piece is drawn above the finger and drops where it is
+  drawn. A tap selects without moving.
+- Cursors: `grab` over a piece you can pick up (your pieces; on the opponent's turn too, for
+  premoves), `grabbing` everywhere while holding one.
+- Click-to-move hints: dots 38% of a square (was 31%) with a dark rim, capture rings thicker
+  with a dark underlay.
+- Board size: a grip in the board frame's bottom-right corner resizes every board (280–1100 px);
+  remembered on this device; arrow keys on the grip resize by 16 px; double-click returns to the
+  default (600 px). Hidden on stacked (phone/tablet) layouts. The layouts size their board column
+  from `--wc-board-size`, and the page widens for big boards so the side panel keeps its room.
+- Bug fixed on the way: pointer positions were mapped against the board's border box, but the
+  squares fill the box inside its 2 px border, so hit-testing was off by up to 4 px toward the
+  far edge. The renderer now measures the inner box.
+
+**Board badges (Phase 5 spec addition):** the analysis board shows the current move's class icon
+(the review's own icons and colours) on the top-right corner of its destination square, inside
+the square so the board edge never clips it, with a short pop-in. None at the start position, on
+unreviewed moves, or while the position editor is open. It follows navigation, a review finishing
+and annotations being stripped.
+
+**Deviations**
+1. Lift on press (before the threshold) goes beyond "drags start immediately"; it's what makes a
+   press feel like picking the piece up. The threshold still decides click vs drag.
+2. The analysis board's step animation keeps its own off / fast / normal setting (Phase 4 spec,
+   ~100 ms); "Animation speed" sets played moves elsewhere.
+3. Board feel and board size are stored in `localStorage` (per-device preferences, read
+   synchronously at start-up so the board never jumps size).
+4. `phase3-premoves.spec.ts` asserted the old fixed lift scale (`scale(1.08)`); it now asserts
+   the live lift scale from the feel store (same strictness, plus a check that it is > 1).
+5. Phone fix (audit problem 14): the Play settings grid uses `minmax(0, 1fr)` columns and its
+   selects truncate, so the Piece Set select no longer pushes the page 58 px sideways.
+
+**Tests:** unit `board-feel.test.ts` (13): store clamping/persistence/reset/corrupt and blocked
+storage, `resolveDropSquare` (exact, past an edge, diagonal corner, off the board, nearest of two,
+flipped), board size. E2E `phase6b-board-feel.spec.ts` (10): live tuning, persistence and reset;
+press lifts and a click selects/deselects; drag-target frame and a drop 0.15 squares past f3
+landing and gliding; the same drop with tolerance 0 sliding back; touch drag above the finger and
+a tap; grab cursor; corner resize, remembered, shared by Analysis, keyboard, double-click reset;
+phone width; badges for all ten classes in both orientations (inside the top-right of the
+destination square, not clipped); badges during a real review. `phase6b-screens.spec.ts` (4):
+every screen at desktop and phone width, no sideways scroll.
+
+**Checks:** typecheck, lint, **451 unit tests** (40 files; +13), `npm run build`, `npm run
+build:ext`, **82/82 e2e** (one worker, 8.6 min): all pass. Main bundle 1,387.19 kB (247.94 kB
+gzip), +11.8 kB.
+
+**Not measured:** `npm run perf:drag` aborted twice on its own memory guard (2.80 GB free, it
+needs 3.00 GB; other applications were using the memory). It has to be re-run before the phase
+is done.

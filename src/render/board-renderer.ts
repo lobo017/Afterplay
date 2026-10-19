@@ -22,6 +22,8 @@ import {
   type OverlayLegalTarget,
 } from './overlay';
 import { CaptureParticleSystem } from './particles';
+import { boardFeel, resolveDropSquare, type BoardFeel } from './board-feel';
+import { attachBoardResizeHandle } from './board-size';
 import { getPieceSvgMarkup } from './piece-sets';
 import {
   BOARD_THEMES,
@@ -56,7 +58,10 @@ export interface BoardRendererOptions {
   captureEffects?: boolean;
   boardTheme?: BoardThemeId;
   pieceSet?: PieceSetId;
+  /** Move animation duration; by default the shared board feel's `animationMs`. */
   animationDurationMs?: number;
+  /** Show the corner grip that resizes every board (default true). */
+  resizable?: boolean;
   /** Longest premove queue; 1 gives Lichess-style single premoves. */
   maxPremoves?: number;
   onMove?: (move: MoveInput, wasDragged: boolean) => void;
@@ -71,6 +76,8 @@ export interface BoardRendererOptions {
 
 interface ActiveDragState {
   pointerId: number;
+  /** Touch drags draw the piece above the finger and need a longer threshold. */
+  isTouch: boolean;
   from: Square;
   piece: Piece;
   element: HTMLElement;
@@ -79,6 +86,23 @@ interface ActiveDragState {
   isDragging: boolean;
   /** The piece was already selected before this press, so a plain click deselects it. */
   wasSelected: boolean;
+  /** Squares the held piece may be dropped on; null until needed or after a board update. */
+  targets: Square[] | null;
+}
+
+/** A piece dropped on a legal square glides from where it was released into the square. */
+interface DropGlide {
+  element: HTMLElement;
+  to: Square;
+  fromTransform: string;
+}
+
+export interface SquareBadge {
+  square: Square;
+  /** Markup of the icon (e.g. a move classification badge). */
+  html: string;
+  /** What the icon means, for tests and screen readers. */
+  label: string;
 }
 
 interface PendingPromotionState {
@@ -97,7 +121,6 @@ interface PendingConfirmState {
 }
 
 const FILES = 'abcdefgh';
-const SNAP_BACK_MS = 120;
 const PREMOVE_FLASH_MS = 450;
 
 function parseFenBoardSquares(fen: string): Map<Square, Piece> {
@@ -417,6 +440,10 @@ export class BoardRenderer {
   private readonly particles: CaptureParticleSystem;
   private readonly promotionBackdropEl: HTMLElement;
   private readonly confirmBarEl: HTMLElement;
+  private readonly badgeLayerEl: HTMLElement;
+  private readonly detachResizeHandle: (() => void) | null;
+  private readonly unsubscribeFeel: () => void;
+  private feel: BoardFeel;
 
   private adapter: RulesAdapter;
   private flipped: boolean;
@@ -426,7 +453,8 @@ export class BoardRenderer {
   private confirmMove: boolean;
   private boardTheme: BoardThemeId;
   private pieceSet: PieceSetId;
-  private animationDurationMs: number;
+  /** Set when the caller fixed the move animation duration; otherwise the feel's applies. */
+  private readonly animationDurationOverride: number | null;
 
   private readonly pieceElements = new Map<Square, HTMLElement>();
   private readonly freePiecePool: HTMLElement[] = [];
@@ -436,6 +464,12 @@ export class BoardRenderer {
 
   private selectedSquare: Square | null = null;
   private hoveredSquare: Square | null = null;
+  /** The hovered drop square is one the held piece may go to. */
+  private hoveredIsTarget = false;
+  private dropGlide: DropGlide | null = null;
+  private squareBadge: SquareBadge | null = null;
+  /** The pointer is over a piece it could pick up (shows the grab cursor). */
+  private grabHover = false;
   private lastMove: { from: Square; to: Square } | null = null;
   private premoves: PremoveInput[] = [];
   private maxPremoves: number;
@@ -486,7 +520,11 @@ export class BoardRenderer {
     this.confirmMove = options?.confirmMove ?? false;
     this.boardTheme = options?.boardTheme ?? DEFAULT_BOARD_THEME;
     this.pieceSet = options?.pieceSet ?? DEFAULT_PIECE_SET;
-    this.animationDurationMs = options?.animationDurationMs ?? 170;
+    this.animationDurationOverride = options?.animationDurationMs ?? null;
+    this.feel = boardFeel.get();
+    this.unsubscribeFeel = boardFeel.subscribe((feel) => {
+      this.feel = feel;
+    });
     this.maxPremoves = Math.max(1, Math.floor(options?.maxPremoves ?? 10));
 
     this.onMoveCallback = options?.onMove;
@@ -538,6 +576,13 @@ export class BoardRenderer {
 
     // Single <canvas> capture shatter particle overlay
     this.particles = new CaptureParticleSystem(this.boardEl);
+
+    // Move classification badge (one at a time): inside the pieces layer, above resting
+    // pieces and below a held one
+    this.badgeLayerEl = document.createElement('div');
+    this.badgeLayerEl.className = 'wc-board-badge-layer';
+    this.badgeLayerEl.setAttribute('aria-hidden', 'true');
+    this.piecesLayerEl.appendChild(this.badgeLayerEl);
     if (options?.captureEffects === false) {
       this.particles.setEnabled(false);
     }
@@ -564,6 +609,8 @@ export class BoardRenderer {
     this.frameEl.appendChild(this.boardEl);
     this.frameEl.appendChild(this.confirmBarEl);
     this.container.appendChild(this.frameEl);
+    this.detachResizeHandle =
+      options?.resizable === false ? null : attachBoardResizeHandle(this.frameEl);
 
     this.applyThemeVariables();
     this.renderSquaresGrid();
@@ -638,6 +685,10 @@ export class BoardRenderer {
 
   private bindEvents(): void {
     this.boardEl.addEventListener('pointerdown', this.handlePointerDown);
+    this.boardEl.addEventListener('pointermove', this.handleHoverMove, { passive: true });
+    this.boardEl.addEventListener('pointerleave', this.handleHoverLeave, { passive: true });
+    // Scrolling moves the board on screen: the cached rect is stale after it
+    window.addEventListener('scroll', this.invalidateBoardRect, { passive: true, capture: true });
     window.addEventListener('pointermove', this.handlePointerMove, {
       passive: true,
     });
@@ -686,9 +737,55 @@ export class BoardRenderer {
     }
   }
 
+  private readonly invalidateBoardRect = (): void => {
+    this.cachedBoardRect = null;
+  };
+
+  /** Whether a press on `square` would pick up a piece (for the grab cursor). */
+  private canPickUp(square: Square): boolean {
+    if (this.pendingPromotion || this.pendingConfirm) return false;
+    const piece = this.pieceAt(square);
+    if (!piece || !this.canInteractWithColor(piece.color)) return false;
+    return piece.color === this.adapter.turn() || this.enablePremoves;
+  }
+
+  private setGrabHover(grab: boolean): void {
+    if (grab === this.grabHover) return;
+    this.grabHover = grab;
+    if (grab) this.boardEl.setAttribute('data-cursor', 'grab');
+    else this.boardEl.removeAttribute('data-cursor');
+  }
+
+  /** Mouse hover (no button held): the grab cursor over a piece that can be picked up. */
+  private readonly handleHoverMove = (event: PointerEvent): void => {
+    if (event.pointerType === 'touch' || this.dragState || event.buttons !== 0) return;
+    const sq = this.squareFromClientPoint(event.clientX, event.clientY);
+    this.setGrabHover(sq !== null && this.canPickUp(sq));
+  };
+
+  private readonly handleHoverLeave = (): void => {
+    this.setGrabHover(false);
+  };
+
+  /**
+   * The squares' area on screen: the board's box without its border (the 8×8 grid fills the
+   * padding box, so measuring the border box would put every square a few pixels off).
+   */
+  private measureBoardRect(): DOMRect {
+    const outer = this.boardEl.getBoundingClientRect();
+    const el = this.boardEl;
+    if (el.clientWidth <= 0 || el.clientHeight <= 0) return outer;
+    return new DOMRect(
+      outer.left + el.clientLeft,
+      outer.top + el.clientTop,
+      el.clientWidth,
+      el.clientHeight,
+    );
+  }
+
   private getBoardRect(): DOMRect {
     if (!this.cachedBoardRect) {
-      this.cachedBoardRect = this.boardEl.getBoundingClientRect();
+      this.cachedBoardRect = this.measureBoardRect();
     }
     return this.cachedBoardRect;
   }
@@ -822,7 +919,7 @@ export class BoardRenderer {
     },
   ): void {
     const durationMs = opts.animate
-      ? (opts.durationMs ?? this.animationDurationMs)
+      ? (opts.durationMs ?? this.animationDurationOverride ?? this.feel.animationMs)
       : 0;
 
     const prev = new Map<Square, Piece>();
@@ -883,6 +980,10 @@ export class BoardRenderer {
             toTransform,
             durationMs,
           );
+        } else {
+          // A dragged piece glides in from where it was released
+          const glide = this.takeDropGlide(el, sq);
+          if (glide) this.glidePiece(el, glide.fromTransform, toTransform);
         }
         continue;
       }
@@ -1060,6 +1161,7 @@ export class BoardRenderer {
       flipped: this.flipped,
       selectedSquare: this.selectedSquare,
       hoveredSquare: this.hoveredSquare,
+      hoveredIsTarget: this.hoveredIsTarget,
       lastMove: this.lastMove,
       checkSquare,
       legalMoves,
@@ -1146,7 +1248,7 @@ export class BoardRenderer {
 
   private readonly handlePointerDown = (event: PointerEvent): void => {
     // Refresh cached board rect once on pointerdown (never inside pointermove!)
-    this.cachedBoardRect = this.boardEl.getBoundingClientRect();
+    this.cachedBoardRect = this.measureBoardRect();
 
     const sq = this.squareFromClientPoint(event.clientX, event.clientY);
 
@@ -1171,6 +1273,7 @@ export class BoardRenderer {
     if (!sq) return;
     if (event.button !== 0) return;
     if (this.pendingPromotion || this.pendingConfirm) return;
+    this.dropGlide = null;
 
     // Check if an interactive Position Editor tool is consuming left clicks
     if (this.onSquareEditCallback && this.onSquareEditCallback(sq)) {
@@ -1227,8 +1330,9 @@ export class BoardRenderer {
 
       const pieceEl = this.pieceElements.get(sq);
       if (pieceEl) {
-        this.dragState = {
+        const drag: ActiveDragState = {
           pointerId: event.pointerId,
+          isTouch: event.pointerType === 'touch',
           from: sq,
           piece: clickedPiece,
           element: pieceEl,
@@ -1236,7 +1340,10 @@ export class BoardRenderer {
           startY: event.clientY,
           isDragging: false,
           wasSelected,
+          targets: null,
         };
+        this.dragState = drag;
+        this.liftPiece(drag, event.clientX, event.clientY);
       }
 
       this.syncOverlay();
@@ -1249,6 +1356,76 @@ export class BoardRenderer {
     this.premoveTargets = [];
     this.syncOverlay();
   };
+
+  /**
+   * Picks the held piece up: it scales up with a shadow and is centred under the pointer at
+   * once, before any movement, so pressing a piece already feels like holding it.
+   */
+  private liftPiece(drag: ActiveDragState, clientX: number, clientY: number): void {
+    this.cancelPieceAnimations(drag.element);
+    drag.element.classList.remove('wc-piece-snapback');
+    drag.element.classList.add('wc-piece-dragging');
+    if (!drag.isTouch) {
+      document.documentElement.classList.add('wc-grabbing');
+    }
+    this.setGrabHover(false);
+    this.placeHeldPiece(drag, clientX, clientY);
+  }
+
+  /**
+   * Where the held piece's centre is, in squares from the board's top-left corner. A touch
+   * drag draws the piece `touchOffset` squares above the finger so it stays visible; the
+   * drop square is the one under the piece.
+   */
+  private heldPiecePoint(
+    drag: ActiveDragState,
+    clientX: number,
+    clientY: number,
+    rect: DOMRect,
+  ): { x: number; y: number } {
+    const x = ((clientX - rect.left) / rect.width) * 8;
+    let y = ((clientY - rect.top) / rect.height) * 8;
+    if (drag.isTouch && drag.isDragging) {
+      y -= this.feel.touchOffset;
+    }
+    return { x, y };
+  }
+
+  /** Moves the held piece (compositor-only transform, no layout reads). */
+  private placeHeldPiece(drag: ActiveDragState, clientX: number, clientY: number): void {
+    const rect = this.cachedBoardRect;
+    if (!rect || rect.width <= 0 || rect.height <= 0) return;
+    const { x, y } = this.heldPiecePoint(drag, clientX, clientY, rect);
+    const pctX = (x - 0.5) * 100;
+    const pctY = (y - 0.5) * 100;
+    drag.element.style.transform = `translate3d(${pctX.toFixed(2)}%, ${pctY.toFixed(2)}%, 0) scale(${this.feel.liftScale})`;
+  }
+
+  /** The squares the held piece may be dropped on: legal moves, or premove targets. */
+  private dragTargets(drag: ActiveDragState): Square[] {
+    if (drag.targets) return drag.targets;
+    if (drag.piece.color === this.adapter.turn()) {
+      drag.targets =
+        this.selectedSquare === drag.from
+          ? this.getLegalMovesForSelectedSquare().map((t) => t.to)
+          : [];
+    } else {
+      drag.targets = [...this.premoveTargets];
+    }
+    return drag.targets;
+  }
+
+  /** The drop square for the held piece at this pointer position (drop tolerance applied). */
+  private dropSquareFor(
+    drag: ActiveDragState,
+    clientX: number,
+    clientY: number,
+  ): Square | null {
+    const rect = this.cachedBoardRect ?? this.getBoardRect();
+    if (rect.width <= 0 || rect.height <= 0) return null;
+    const { x, y } = this.heldPiecePoint(drag, clientX, clientY, rect);
+    return resolveDropSquare(x, y, this.dragTargets(drag), this.feel.dropTolerance, this.flipped);
+  }
 
   private readonly handlePointerMove = (event: PointerEvent): void => {
     if (!this.boardEl.isConnected) return;
@@ -1269,46 +1446,58 @@ export class BoardRenderer {
         event.clientX - drag.startX,
         event.clientY - drag.startY,
       );
-      if (dist < 2.5) return;
+      const threshold = this.feel.dragThresholdPx * (drag.isTouch ? 2 : 1);
+      if (dist < threshold) {
+        // Not a drag yet, but the lifted piece still follows the pointer
+        this.placeHeldPiece(drag, event.clientX, event.clientY);
+        return;
+      }
       drag.isDragging = true;
-      this.cancelPieceAnimations(drag.element);
-      drag.element.classList.add('wc-piece-dragging');
     }
 
-    // Compositor-only CSS transform update in percentage coordinates (zero layout reads!)
-    const squareW = rect.width / 8;
-    const squareH = rect.height / 8;
-    const pctX = ((event.clientX - rect.left) / squareW - 0.5) * 100;
-    const pctY = ((event.clientY - rect.top) / squareH - 0.5) * 100;
-    drag.element.style.transform = `translate3d(${pctX.toFixed(2)}%, ${pctY.toFixed(2)}%, 0) scale(1.08)`;
+    this.placeHeldPiece(drag, event.clientX, event.clientY);
 
-    // O(1) square math from cached rect
-    const col = Math.floor(((event.clientX - rect.left) / rect.width) * 8);
-    const row = Math.floor(((event.clientY - rect.top) / rect.height) * 8);
-    let nextHover: Square | null = null;
-    if (col >= 0 && col < 8 && row >= 0 && row < 8) {
-      const fileIdx = this.flipped ? 7 - col : col;
-      const rankIdx = this.flipped ? row : 7 - row;
-      nextHover = `${FILES[fileIdx]}${rankIdx + 1}` as Square;
-    }
-
-    if (nextHover !== this.hoveredSquare) {
+    const nextHover = this.dropSquareFor(drag, event.clientX, event.clientY);
+    const isTarget = nextHover !== null && this.dragTargets(drag).includes(nextHover);
+    if (nextHover !== this.hoveredSquare || isTarget !== this.hoveredIsTarget) {
       this.hoveredSquare = nextHover;
+      this.hoveredIsTarget = isTarget;
       this.syncOverlay();
     }
   };
 
-  /** Animates a released piece from where it was dropped back to its square. */
-  private snapBack(el: HTMLElement, fromTransform: string, homeTransform: string): void {
+  /**
+   * Glides a piece from `fromTransform` (where it was released, lifted) to `toTransform`
+   * over the feel's snap duration, above the other pieces while it moves.
+   */
+  private glidePiece(el: HTMLElement, fromTransform: string, toTransform: string): void {
     this.cancelPieceAnimations(el);
-    el.style.transform = homeTransform;
-    if (fromTransform === homeTransform) return;
-    const anim = this.startPieceAnimation(el, fromTransform, homeTransform, SNAP_BACK_MS);
+    el.style.transform = toTransform;
+    if (fromTransform === toTransform) return;
+    const anim = this.startPieceAnimation(
+      el,
+      fromTransform,
+      `${toTransform} scale(1)`,
+      this.feel.snapMs,
+    );
     if (!anim) return;
     el.classList.add('wc-piece-snapback');
     const done = () => el.classList.remove('wc-piece-snapback');
     anim.addEventListener('finish', done);
     anim.addEventListener('cancel', done);
+  }
+
+  /** Animates a released piece from where it was dropped back to its square. */
+  private snapBack(el: HTMLElement, fromTransform: string, homeTransform: string): void {
+    this.glidePiece(el, fromTransform, homeTransform);
+  }
+
+  /** The held piece is down (dropped, cancelled or gone): no lift, no grabbing cursor. */
+  private releaseHeldPiece(drag: ActiveDragState): void {
+    drag.element.classList.remove('wc-piece-dragging');
+    document.documentElement.classList.remove('wc-grabbing');
+    this.hoveredSquare = null;
+    this.hoveredIsTarget = false;
   }
 
   /**
@@ -1319,14 +1508,14 @@ export class BoardRenderer {
     const drag = this.dragState;
     if (!drag) return false;
     this.dragState = null;
-    this.hoveredSquare = null;
+    this.releaseHeldPiece(drag);
 
     const dropTransform = drag.element.style.transform;
     const homeTransform = this.getSquareTranslateTransform(drag.from);
-    drag.element.classList.remove('wc-piece-dragging');
-    if (animate && drag.isDragging) {
+    if (animate) {
       this.snapBack(drag.element, dropTransform, homeTransform);
     } else {
+      this.cancelPieceAnimations(drag.element);
       drag.element.style.transform = homeTransform;
     }
 
@@ -1385,15 +1574,16 @@ export class BoardRenderer {
     const drag = this.dragState;
     if (!drag || event.pointerId !== drag.pointerId) return;
 
+    const dropSq = drag.isDragging
+      ? this.dropSquareFor(drag, event.clientX, event.clientY)
+      : null;
     this.dragState = null;
-    this.hoveredSquare = null;
+    this.releaseHeldPiece(drag);
 
-    // Always put the element back on its resting square first, so a dragged piece
-    // NEVER remains floating in mid-air (fixes Legacy Bug #2)
+    // The piece always comes down on a square, never left floating (Legacy Bug #2). It
+    // glides there from where it was released.
     const dropTransform = drag.element.style.transform;
     const homeTransform = this.getSquareTranslateTransform(drag.from);
-    drag.element.classList.remove('wc-piece-dragging');
-    drag.element.style.transform = homeTransform;
 
     if (!drag.isDragging) {
       // A plain click on the piece that was already selected deselects it
@@ -1401,36 +1591,33 @@ export class BoardRenderer {
         this.selectedSquare = null;
         this.premoveTargets = [];
       }
+      this.snapBack(drag.element, dropTransform, homeTransform);
       this.syncOverlay();
       return;
     }
 
-    const dropSq = this.squareFromClientPoint(event.clientX, event.clientY);
     if (dropSq === drag.from) {
+      this.snapBack(drag.element, dropTransform, homeTransform);
       this.syncOverlay();
       return;
     }
 
     if (dropSq) {
-      if (drag.piece.color === this.adapter.turn()) {
-        const legalTargets = this.getLegalMovesForSelectedSquare();
-        if (legalTargets.some((t) => t.to === dropSq)) {
-          this.initiateMoveOrPromotion(
-            drag.from,
-            dropSq,
-            drag.piece,
-            false,
-            true,
-          );
-          return;
-        }
-      } else if (this.premoveTargets.includes(dropSq)) {
-        this.initiateMoveOrPromotion(drag.from, dropSq, drag.piece, true, true);
+      const isMove = drag.piece.color === this.adapter.turn();
+      const legal = isMove
+        ? this.getLegalMovesForSelectedSquare().some((t) => t.to === dropSq)
+        : this.premoveTargets.includes(dropSq);
+      if (legal) {
+        // Rest at home until the move lands; the board update then glides it in
+        this.cancelPieceAnimations(drag.element);
+        drag.element.style.transform = homeTransform;
+        this.dropGlide = { element: drag.element, to: dropSq, fromTransform: dropTransform };
+        this.initiateMoveOrPromotion(drag.from, dropSq, drag.piece, !isMove, true);
         return;
       }
     }
 
-    // Dropped off the board or on a square it can't go to: snap back and deselect
+    // Dropped off the board or on a square it can't go to: slide back and deselect
     this.snapBack(drag.element, dropTransform, homeTransform);
     this.selectedSquare = null;
     this.premoveTargets = [];
@@ -1443,6 +1630,14 @@ export class BoardRenderer {
     if (!drag || event.pointerId !== drag.pointerId) return;
     this.cancelDrag(false);
   };
+
+  /** Takes the pending drop glide when it is for `element` landing on `square`. */
+  private takeDropGlide(element: HTMLElement, square: Square): DropGlide | null {
+    const glide = this.dropGlide;
+    if (!glide || glide.element !== element || glide.to !== square) return null;
+    this.dropGlide = null;
+    return glide;
+  }
 
   private emitAnnotationsChange(): void {
     this.onAnnotationsChangeCallback?.(
@@ -1608,6 +1803,7 @@ export class BoardRenderer {
 
   public cancelPromotionPicker(): void {
     if (!this.pendingPromotion) return;
+    this.dropGlide = null;
     const fromSq = this.pendingPromotion.from;
     this.pendingPromotion = null;
     this.promotionBackdropEl.hidden = true;
@@ -1656,7 +1852,10 @@ export class BoardRenderer {
 
     const fromEl = this.pieceElements.get(move.from);
     if (fromEl) {
-      fromEl.style.transform = this.getSquareTranslateTransform(move.to);
+      const toTransform = this.getSquareTranslateTransform(move.to);
+      const glide = wasDragged ? this.takeDropGlide(fromEl, move.to) : null;
+      if (glide) this.glidePiece(fromEl, glide.fromTransform, toTransform);
+      else fromEl.style.transform = toTransform;
     }
     const targetEl = this.pieceElements.get(move.to);
     if (targetEl && targetEl !== fromEl) {
@@ -1699,11 +1898,13 @@ export class BoardRenderer {
   public cancelPendingConfirmMove(): void {
     const pending = this.pendingConfirm;
     if (!pending) return;
+    this.dropGlide = null;
     this.pendingConfirm = null;
     this.confirmBarEl.hidden = true;
 
     const fromEl = this.pieceElements.get(pending.from);
     if (fromEl) {
+      this.cancelPieceAnimations(fromEl);
       fromEl.style.transform = this.getSquareTranslateTransform(pending.from);
     }
     const targetEl = this.pieceElements.get(pending.to);
@@ -1717,6 +1918,7 @@ export class BoardRenderer {
   private refreshPremoveDisplay(animate: boolean, noAnimateTo?: Square): void {
     this.displaySquares = this.computeDisplaySquares();
     const drag = this.dragState;
+    if (drag) drag.targets = null;
     const held = drag ? this.displaySquares.get(drag.from) : undefined;
     const keepDrag =
       drag !== null &&
@@ -1835,8 +2037,7 @@ export class BoardRenderer {
     const drag = this.dragState;
     if (!drag) return;
     this.dragState = null;
-    this.hoveredSquare = null;
-    drag.element.classList.remove('wc-piece-dragging');
+    this.releaseHeldPiece(drag);
     this.selectedSquare = null;
     this.premoveTargets = [];
   }
@@ -1890,6 +2091,9 @@ export class BoardRenderer {
     if (options?.consumedPremove) {
       this.premoves.shift();
     }
+    if (!options?.wasDragged) {
+      this.dropGlide = null;
+    }
 
     this.hintMove = null;
     if (!options?.preserveAnalysisArrows) {
@@ -1925,6 +2129,7 @@ export class BoardRenderer {
       this.canInteractWithColor(held.color);
 
     if (drag && dragContinues) {
+      drag.targets = null;
       this.selectedSquare = drag.from;
       this.premoveTargets = this.selectionPremoveTargets(drag.from, drag.piece);
     } else {
@@ -1952,13 +2157,14 @@ export class BoardRenderer {
     this.renderSquaresGrid();
     this.renderCoordinates();
     for (const [sq, el] of this.pieceElements.entries()) {
-      if (this.dragState?.isDragging && el === this.dragState.element) continue;
+      if (this.dragState && el === this.dragState.element) continue;
       this.cancelPieceAnimations(el);
       el.style.transform = this.getSquareTranslateTransform(sq);
     }
     for (const [sq, el] of this.ghostPieceElements.entries()) {
       el.style.transform = this.getSquareTranslateTransform(sq);
     }
+    this.renderSquareBadge();
     if (this.pendingPromotion) {
       this.openPromotionPicker(this.pendingPromotion);
     } else {
@@ -1978,6 +2184,7 @@ export class BoardRenderer {
       this.cancelDrag(false);
     }
     if (this.dragState) {
+      this.dragState.targets = null;
       this.selectedSquare = this.dragState.from;
       this.premoveTargets = this.selectionPremoveTargets(
         this.dragState.from,
@@ -2087,6 +2294,45 @@ export class BoardRenderer {
     return this.particles;
   }
 
+  /**
+   * Shows one icon on the top-right corner of `badge.square` (e.g. the current move's review
+   * classification), or removes it with null.
+   */
+  public setSquareBadge(badge: SquareBadge | null): void {
+    const prev = this.squareBadge;
+    if (
+      prev === badge ||
+      (prev && badge && prev.square === badge.square && prev.html === badge.html && prev.label === badge.label)
+    ) {
+      return;
+    }
+    this.squareBadge = badge ? { ...badge } : null;
+    this.renderSquareBadge();
+  }
+
+  public getSquareBadge(): SquareBadge | null {
+    return this.squareBadge ? { ...this.squareBadge } : null;
+  }
+
+  private renderSquareBadge(): void {
+    const badge = this.squareBadge;
+    if (!badge) {
+      this.badgeLayerEl.replaceChildren();
+      return;
+    }
+    let el = this.badgeLayerEl.firstElementChild as HTMLElement | null;
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'wc-board-badge';
+      el.setAttribute('data-testid', 'board-badge');
+      this.badgeLayerEl.appendChild(el);
+    }
+    el.setAttribute('data-square', badge.square);
+    el.setAttribute('data-label', badge.label);
+    el.style.transform = this.getSquareTranslateTransform(badge.square);
+    el.innerHTML = badge.html;
+  }
+
   public getPieceElement(square: Square): HTMLElement | undefined {
     return this.pieceElements.get(square);
   }
@@ -2097,6 +2343,9 @@ export class BoardRenderer {
 
   public destroy(): void {
     this.boardEl.removeEventListener('pointerdown', this.handlePointerDown);
+    this.boardEl.removeEventListener('pointermove', this.handleHoverMove);
+    this.boardEl.removeEventListener('pointerleave', this.handleHoverLeave);
+    window.removeEventListener('scroll', this.invalidateBoardRect, true);
     window.removeEventListener('pointermove', this.handlePointerMove);
     window.removeEventListener('pointerup', this.handlePointerUp);
     window.removeEventListener('pointercancel', this.handlePointerCancel);
@@ -2105,6 +2354,9 @@ export class BoardRenderer {
     this.boardEl.removeEventListener('contextmenu', this.handleContextMenu);
     window.removeEventListener('keydown', this.handleKeyDown);
     this.clearPremoveFlash();
+    if (this.dragState) this.releaseHeldPiece(this.dragState);
+    this.unsubscribeFeel();
+    this.detachResizeHandle?.();
     this.resizeObserver?.disconnect();
     this.particles.destroy();
     this.frameEl.remove();

@@ -844,6 +844,7 @@ export class AnalysisController {
 
   public setEditorVisible(visible: boolean): void {
     this.editorVisible = visible;
+    this.syncMoveBadge();
     this.editorMountEl.hidden = !visible;
     this.toggleEditorBtnEl.setAttribute('aria-expanded', String(visible));
     this.toggleEditorBtnEl.classList.toggle('wc-btn-primary', visible);
@@ -937,6 +938,20 @@ export class AnalysisController {
     } else {
       this.syncAnalysisArrows();
     }
+  }
+
+  /**
+   * The current move's review classification as an icon on the corner of its destination
+   * square (none before a review, on unreviewed moves, and while the editor is open).
+   */
+  private syncMoveBadge(): void {
+    const node = this.gameTree.currentNode;
+    const cls = node.classification;
+    this.board.setSquareBadge(
+      cls && node.to && !this.editorVisible
+        ? { square: node.to, html: classBadgeHtml(cls, 'wc-board-badge-icon'), label: cls }
+        : null,
+    );
   }
 
   private getLastMoveCoords(
@@ -1270,6 +1285,7 @@ export class AnalysisController {
 
     // Restore node's [%cal] and [%csl] user annotations onto the board
     this.board.setUserAnnotations(node.arrows, node.highlights);
+    this.syncMoveBadge();
 
     // The (hidden) editor is re-synced when it opens; skip the work while navigating
     if (this.editorVisible) {
@@ -1865,6 +1881,7 @@ export class AnalysisController {
       this.renderMoveTree();
       this.schedulePgnTextareaSync();
     }
+    this.syncMoveBadge();
   }
 
   /**
@@ -1884,6 +1901,7 @@ export class AnalysisController {
         this.syncPgnTextarea();
       }
     }
+    this.syncMoveBadge();
     return total;
   }
 

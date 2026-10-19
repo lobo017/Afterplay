@@ -64,6 +64,8 @@ export interface BoardOverlayState {
   flipped: boolean;
   selectedSquare: Square | null;
   hoveredSquare: Square | null;
+  /** The hovered square is one the held piece may be dropped on (stronger highlight). */
+  hoveredIsTarget?: boolean;
   lastMove: { from: Square; to: Square } | null;
   checkSquare: Square | null;
   legalMoves: OverlayLegalTarget[];
@@ -276,14 +278,12 @@ export class BoardOverlay {
     `;
     this.svgEl.appendChild(defs);
 
+    // The square under a dragged piece: an inset frame, bright on a legal drop square
     this.hoverRectEl = document.createElementNS(ns, 'rect');
-    this.hoverRectEl.setAttribute('width', '100');
-    this.hoverRectEl.setAttribute('height', '100');
-    this.hoverRectEl.setAttribute('fill', '#38bdf8');
-    this.hoverRectEl.setAttribute('fill-opacity', '0.22');
-    this.hoverRectEl.setAttribute('stroke', '#38bdf8');
-    this.hoverRectEl.setAttribute('stroke-width', '3');
-    this.hoverRectEl.setAttribute('stroke-opacity', '0.65');
+    this.hoverRectEl.setAttribute('width', '92');
+    this.hoverRectEl.setAttribute('height', '92');
+    this.hoverRectEl.setAttribute('rx', '6');
+    this.hoverRectEl.setAttribute('class', 'wc-drag-hover');
     this.hoverRectEl.setAttribute('visibility', 'hidden');
     this.hoverRectEl.setAttribute('data-testid', 'overlay-hover-square');
     this.svgEl.appendChild(this.hoverRectEl);
@@ -308,15 +308,17 @@ export class BoardOverlay {
 
     // 1. Check hover square fast path (only updates attributes on the single hover <rect>)
     const hoverKey = state.hoveredSquare
-      ? `${state.flipped ? '1' : '0'}:${state.hoveredSquare}`
+      ? `${state.flipped ? '1' : '0'}:${state.hoveredSquare}:${state.hoveredIsTarget ? 'T' : ''}`
       : '';
     if (hoverKey !== this.lastHoverKey) {
       this.lastHoverKey = hoverKey;
       changed = true;
       if (state.hoveredSquare) {
         const coords = squareToBoardCoords(state.hoveredSquare, state.flipped);
-        this.hoverRectEl.setAttribute('x', String(coords.x));
-        this.hoverRectEl.setAttribute('y', String(coords.y));
+        this.hoverRectEl.setAttribute('x', String(coords.x + 4));
+        this.hoverRectEl.setAttribute('y', String(coords.y + 4));
+        this.hoverRectEl.setAttribute('data-square', state.hoveredSquare);
+        this.hoverRectEl.setAttribute('data-target', String(Boolean(state.hoveredIsTarget)));
         this.hoverRectEl.setAttribute('visibility', 'visible');
       } else {
         this.hoverRectEl.setAttribute('visibility', 'hidden');
@@ -434,16 +436,20 @@ export class BoardOverlay {
       );
     }
 
-    // Legal move dots (#38bdf8, opacity 0.82) and capture rings (#ef4444, opacity 0.88)
+    // Legal move dots (#38bdf8) with a dark rim so they read on light marble too, and
+    // capture rings (#ef4444)
     for (const move of state.legalMoves) {
       const c = squareToBoardCoords(move.to, state.flipped);
       if (move.isCapture) {
         parts.push(
-          `<circle cx="${c.cx}" cy="${c.cy}" r="41" fill="none" stroke="#ef4444" stroke-width="7" stroke-opacity="0.88" data-testid="overlay-legal-capture" data-square="${move.to}" />`,
+          `<circle cx="${c.cx}" cy="${c.cy}" r="42" fill="none" stroke="#0b0e16" stroke-width="13" stroke-opacity="0.35" />`,
+        );
+        parts.push(
+          `<circle cx="${c.cx}" cy="${c.cy}" r="42" fill="none" stroke="#ef4444" stroke-width="9" stroke-opacity="0.92" data-testid="overlay-legal-capture" data-square="${move.to}" />`,
         );
       } else {
         parts.push(
-          `<circle cx="${c.cx}" cy="${c.cy}" r="15.5" fill="#38bdf8" fill-opacity="0.82" data-testid="overlay-legal-dot" data-square="${move.to}" />`,
+          `<circle cx="${c.cx}" cy="${c.cy}" r="19" fill="#38bdf8" fill-opacity="0.9" stroke="#0b0e16" stroke-width="3" stroke-opacity="0.45" data-testid="overlay-legal-dot" data-square="${move.to}" />`,
         );
       }
     }

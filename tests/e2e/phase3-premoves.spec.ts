@@ -135,7 +135,10 @@ test.describe('Phase 3 — Drag survival, drag cancel & premove queue', () => {
     const followTransform = await page
       .getByTestId('piece-d2')
       .evaluate((el) => (el as HTMLElement).style.transform);
-    expect(followTransform).toContain('scale(1.08)');
+    // Lifted at the board feel's lift scale (tunable since Phase 6b)
+    const liftScale = await page.evaluate(() => window.__wizardChessPlay!.boardFeel.get().liftScale);
+    expect(liftScale).toBeGreaterThan(1);
+    expect(followTransform).toContain(`scale(${liftScale})`);
 
     // Dropping it now (our turn) plays a normal move
     await page.mouse.up();

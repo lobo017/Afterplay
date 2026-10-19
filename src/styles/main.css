@@ -156,7 +156,7 @@ body {
   justify-content: flex-start;
   padding: 1.1rem 1.25rem 1.5rem;
   gap: 1.15rem;
-  max-width: 82rem;
+  max-width: max(82rem, calc(var(--wc-board-size, 37.5rem) + 32rem));
   width: 100%;
   margin: 0 auto;
 }
@@ -168,7 +168,7 @@ body {
 /* Responsive Play Mode Layout: Desktop side-by-side, Mobile (<960px) stacked */
 .wc-play-layout {
   display: grid;
-  grid-template-columns: minmax(20rem, 37.5rem) minmax(20rem, 1fr);
+  grid-template-columns: minmax(18rem, var(--wc-board-size, 37.5rem)) minmax(20rem, 1fr);
   gap: 1.35rem;
   align-items: start;
   width: 100%;
@@ -319,6 +319,7 @@ body {
 
 .wc-board-surface {
   position: relative;
+  container-type: inline-size;
   width: 100%;
   aspect-ratio: 1 / 1;
   border-radius: 0.35rem;
@@ -449,9 +450,117 @@ body {
   display: block;
 }
 
+/* A lifted piece: above everything on the board, with a deep shadow and a faint gold glow */
 .wc-piece-dragging {
   z-index: 40;
-  filter: drop-shadow(0 10px 14px rgba(0, 0, 0, 0.65));
+  filter: drop-shadow(0 12px 12px rgba(0, 0, 0, 0.55))
+    drop-shadow(0 0 6px rgba(212, 175, 55, 0.35));
+}
+
+/* Grab cursor over a piece that can be picked up; grabbing anywhere while holding one */
+.wc-board-surface[data-cursor='grab'] {
+  cursor: grab;
+}
+
+html.wc-grabbing,
+html.wc-grabbing * {
+  cursor: grabbing !important;
+}
+
+/* The square under a dragged piece: a faint frame, bright where the piece may land */
+.wc-drag-hover {
+  fill: rgba(241, 245, 249, 0.1);
+  stroke: rgba(241, 245, 249, 0.55);
+  stroke-width: 4;
+}
+
+.wc-drag-hover[data-target='true'] {
+  fill: rgba(56, 189, 248, 0.24);
+  stroke: #7dd3fc;
+  stroke-width: 7;
+}
+
+/* Review classification icon on the corner of the current move's square */
+.wc-board-badge-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  pointer-events: none;
+}
+
+.wc-board-badge {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 12.5%;
+  height: 12.5%;
+}
+
+.wc-board-badge .wc-class-badge {
+  position: absolute;
+  top: 3%;
+  right: 3%;
+  min-width: 0;
+  width: 40%;
+  height: 40%;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 2.3cqi;
+  box-shadow:
+    0 2px 5px rgba(0, 0, 0, 0.6),
+    0 0 0 2px rgba(11, 13, 18, 0.85);
+  animation: wc-board-badge-in 160ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes wc-board-badge-in {
+  from {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+}
+
+/* Corner grip that resizes every board (desktop layouts only) */
+.wc-board-resize-handle {
+  position: absolute;
+  right: 0.12rem;
+  bottom: 0.12rem;
+  width: 1.1rem;
+  height: 1.1rem;
+  cursor: nwse-resize;
+  touch-action: none;
+  border-radius: 0 0 0.6rem 0;
+  background: linear-gradient(
+    135deg,
+    transparent 45%,
+    var(--board-inlay, #c59b27) 45%,
+    var(--board-inlay, #c59b27) 53%,
+    transparent 53%,
+    transparent 66%,
+    var(--board-inlay, #c59b27) 66%,
+    var(--board-inlay, #c59b27) 74%,
+    transparent 74%
+  );
+  opacity: 0.5;
+  transition: opacity 120ms ease;
+}
+
+.wc-board-resize-handle:hover,
+.wc-board-resize-handle:focus-visible,
+html.wc-resizing-board .wc-board-resize-handle {
+  opacity: 1;
+  outline: none;
+}
+
+html.wc-resizing-board,
+html.wc-resizing-board * {
+  cursor: nwse-resize !important;
+  user-select: none;
+}
+
+@media (max-width: 960px) {
+  .wc-board-resize-handle {
+    display: none;
+  }
 }
 
 .wc-piece-snapback {
@@ -787,8 +896,14 @@ body {
 
 .wc-controls-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.5rem;
+}
+
+.wc-controls-grid .wc-select {
+  min-width: 0;
+  width: 100%;
+  text-overflow: ellipsis;
 }
 
 .wc-field {
@@ -891,7 +1006,7 @@ body {
   right: 1rem;
   z-index: 1000;
   min-width: 19.5rem;
-  background: rgba(11, 13, 18, 0.94);
+  background: rgba(11, 13, 18, 0.98);
   border: 1px solid var(--accent-gold);
   border-radius: 0.625rem;
   padding: 0.85rem 1rem;
@@ -903,6 +1018,73 @@ body {
 
 .wc-dev-overlay[hidden] {
   display: none !important;
+}
+
+.wc-dev-overlay {
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+}
+
+.wc-dev-feel {
+  margin-top: 0.7rem;
+  padding-top: 0.6rem;
+  border-top: 1px solid rgba(212, 175, 55, 0.35);
+}
+
+.wc-dev-feel-title {
+  margin-bottom: 0.35rem;
+}
+
+.wc-dev-feel-hint {
+  font-weight: 400;
+  font-size: 0.66rem;
+  color: var(--text-muted);
+}
+
+.wc-dev-feel-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 0.75rem;
+  padding: 0.2rem 0;
+}
+
+.wc-dev-feel-range {
+  grid-column: 1 / -1;
+  width: 100%;
+}
+
+.wc-dev-feel-value {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+.wc-dev-feel-value.wc-dev-feel-changed {
+  color: var(--accent-gold);
+}
+
+.wc-dev-feel-json {
+  display: block;
+  margin: 0.45rem 0;
+  padding: 0.35rem 0.45rem;
+  border-radius: 0.3rem;
+  background: var(--bg-obsidian);
+  font-size: 0.66rem;
+  color: var(--text-muted);
+  word-break: break-all;
+  user-select: all;
+}
+
+.wc-dev-feel-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex-wrap: wrap;
+}
+
+.wc-dev-feel-copy-status {
+  font-size: 0.68rem;
+  color: var(--status-ok);
 }
 
 .wc-dev-overlay-title {
@@ -1026,7 +1208,8 @@ body {
 /* Analysis Layout */
 .wc-analysis-layout {
   display: grid;
-  grid-template-columns: minmax(22rem, 39.5rem) minmax(22rem, 1fr);
+  /* The board frame plus the eval bar (2.3rem) and its gap (0.55rem) */
+  grid-template-columns: minmax(20rem, calc(var(--wc-board-size, 37.5rem) + 2.85rem)) minmax(22rem, 1fr);
   gap: 1.35rem;
   align-items: start;
   width: 100%;
