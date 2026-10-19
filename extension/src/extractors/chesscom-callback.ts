@@ -1,7 +1,7 @@
 import { chessComParts, type SiteGameRef } from '../../../src/capture/game-id';
 import { DEFAULT_POSITION } from '../../../src/core/rules';
 import { tcnToSan } from './chesscom-tcn';
-import { buildPgn, type BuiltMove } from './pgn-builder';
+import { buildPgn, utcDateTime, type BuiltMove } from './pgn-builder';
 import type { ExtractContext, ExtractResult, Extractor } from './types';
 
 /**
@@ -66,6 +66,8 @@ export function chessComCallbackToPgn(data: ChessComCallback, ref: SiteGameRef):
   }));
   const result = g.isFinished ? (header(h, 'Result') ?? '*') : '*';
   const nonStandard = startFen !== DEFAULT_POSITION;
+  // The game data has no start time; its end (UTC, as the archive's EndDate / EndTime) dates the game
+  const end = g.isFinished && g.endTime ? utcDateTime(g.endTime * 1000) : null;
   const headers: Array<readonly [string, string | number | null]> = [
     ['Event', header(h, 'Event')],
     ['Site', header(h, 'Site') ?? 'Chess.com'],
@@ -81,8 +83,8 @@ export function chessComCallbackToPgn(data: ChessComCallback, ref: SiteGameRef):
     ['WhiteElo', header(h, 'WhiteElo')],
     ['BlackElo', header(h, 'BlackElo')],
     ['TimeControl', header(h, 'TimeControl')],
-    ['EndDate', header(h, 'EndDate')],
-    ['EndTime', header(h, 'EndTime')],
+    ['EndDate', end?.date ?? header(h, 'EndDate')],
+    ['EndTime', end?.time ?? header(h, 'EndTime')],
     ['Termination', header(h, 'Termination')],
     ['Link', `https://www.chess.com/game/${type}/${g.id}`],
   ];

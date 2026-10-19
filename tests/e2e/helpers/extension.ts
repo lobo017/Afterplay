@@ -76,7 +76,14 @@ export interface MockResponse {
  * Nothing reaches the network: requests to the analysis site go to the local server,
  * requests matching `mocks` get the recorded fixture, everything else is aborted.
  */
-export async function launchWithExtension(): Promise<ExtensionSession> {
+export interface LaunchOptions {
+  /** Emulated time zone of every page (e.g. 'Asia/Tokyo'); the machine's by default. */
+  timezoneId?: string;
+  /** Runs after the mocks are routed, before the extension is loaded (e.g. tabs that were open before it). */
+  beforeLoad?: (context: BrowserContext, mocks: MockRule[]) => Promise<void>;
+}
+
+export async function launchWithExtension(options: LaunchOptions = {}): Promise<ExtensionSession> {
   buildExtension();
   const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wc-ext-e2e-'));
   const context = await chromium.launchPersistentContext(userDataDir, {
@@ -85,6 +92,7 @@ export async function launchWithExtension(): Promise<ExtensionSession> {
     viewport: { width: 1440, height: 900 },
     args: ['--enable-unsafe-extension-debugging'],
     ignoreDefaultArgs: ['--disable-extensions'],
+    ...(options.timezoneId ? { timezoneId: options.timezoneId } : {}),
   });
   const mocks: MockRule[] = [];
   const externalRequests: string[] = [];
@@ -113,6 +121,7 @@ export async function launchWithExtension(): Promise<ExtensionSession> {
     });
   });
 
+  await options.beforeLoad?.(context, mocks);
   const browser = context.browser();
   if (!browser) throw new Error('No browser handle for CDP');
   const cdp = await browser.newBrowserCDPSession();
@@ -154,11 +163,50 @@ export async function badgeText(worker: Worker): Promise<string> {
   return worker.evaluate(() => chrome.action.getBadgeText({}));
 }
 
-export async function openPopup(session: ExtensionSession): Promise<Page> {
+/**
+ * Opens the popup as a page. `debugTab`: the tab its "Debug this tab" looks at (as a page of
+ * its own, the popup's own tab is the active one).
+ */
+export async function openPopup(session: ExtensionSession, debugTab?: number): Promise<Page> {
   const page = await session.context.newPage();
-  await page.goto(`chrome-extension://${session.extensionId}/popup.html`);
-  await expect(page.getByTestId('popup-counts')).toContainText('waiting');
+  await page.goto(`chrome-extension://${session.extensionId}/popup.html${debugTab !== undefined ? `?tab=${debugTab}` : ''}`);
+  await expect(page.locator('body')).toHaveAttribute('data-loaded', 'true');
   return page;
+}
+
+/** Sets my usernames through the popup's settings form. */
+export async function setUsernames(
+  session: ExtensionSession,
+  lichess: string,
+  chesscom: string,
+  options: { autoCapture?: boolean } = {},
+): Promise<void> {
+  const popup = await openPopup(session);
+  await popup.getByTestId('popup-settings').locator('summary').click();
+  await popup.getByTestId('popup-lichess-user').fill(lichess);
+  await popup.getByTestId('popup-chesscom-user').fill(chesscom);
+  await popup.getByTestId('popup-auto-capture').setChecked(options.autoCapture ?? true);
+  await popup.getByTestId('popup-settings-save').click();
+  await expect(popup.getByTestId('popup-settings-result')).toHaveText('Saved.');
+  await popup.close();
+}
+
+export async function queueEntry(session: ExtensionSession, key: string): Promise<Record<string, unknown> | null> {
+  return session.worker.evaluate(async (k) => {
+    const api = (self as unknown as { __wizardChessCapture: { queue: { get(key: string): Promise<unknown> } } })
+      .__wizardChessCapture;
+    return (await api.queue.get(k)) as Record<string, unknown> | null;
+  }, key);
+}
+
+/** The browser's tab ID of the tab showing `url` (for the popup's Debug view). */
+export async function tabIdOf(session: ExtensionSession, url: string): Promise<number> {
+  const id = await session.worker.evaluate(async (u) => {
+    const tabs = await chrome.tabs.query({});
+    return tabs.find((t) => t.url === u)?.id ?? null;
+  }, url);
+  if (id === null) throw new Error(`No tab shows ${url}`);
+  return id;
 }
 
 /** Opens the analysis site on the Games list and waits for its library. */

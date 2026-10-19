@@ -1,5 +1,6 @@
 import type { Color } from '../core/rules';
 import type { GameSource } from '../capture/game-id';
+import { formatPlayedAt, localDateTime, playedAtDetail, readPgnHeaders, type PlayedAt } from '../capture/pgn-time';
 import { REVIEW_PRESET_MOVETIME_MS, type ReviewPreset } from '../review/types';
 import type { StoredGameRecord } from '../storage/db';
 import type { ExtensionStatus } from './bridge-client';
@@ -50,13 +51,22 @@ function escapeHtml(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function formatDate(record: StoredGameRecord): string {
-  if (record.playedAt) {
-    // playedAt comes from the PGN's UTC date and time: show that date, not the local one
-    const d = new Date(record.playedAt);
-    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
-  }
-  return record.date ? record.date.replace(/\./g, '-') : '—';
+/** When each stored game was played, from its PGN's UTC headers (parsed once per record). */
+const playedCache = new WeakMap<StoredGameRecord, PlayedAt | null>();
+
+function playedOf(record: StoredGameRecord): PlayedAt | null {
+  if (!playedCache.has(record)) playedCache.set(record, playedAtDetail(readPgnHeaders(record.pgn)));
+  return playedCache.get(record) ?? null;
+}
+
+/** The date cell: date and time in my time zone (converted from the PGN's UTC date and time). */
+function dateCell(record: StoredGameRecord): string {
+  const played = playedOf(record);
+  if (!played) return record.date ? escapeHtml(record.date.replace(/\./g, '-')) : '—';
+  if (!played.hasTime) return escapeHtml(formatPlayedAt(played));
+  const local = localDateTime(played.ms);
+  const title = `${played.isEnd ? 'Ended' : 'Started'} ${local.date} ${local.time} (${local.timeZone})`;
+  return `<span class="wc-games-date" title="${escapeHtml(title)}">${local.date}</span> <span class="wc-games-time">${local.time}</span>`;
 }
 
 function sortTime(record: StoredGameRecord): number {
@@ -498,7 +508,7 @@ export class GamesList {
       <div class="wc-games-row" role="row" tabindex="0" data-testid="games-row" data-game-id="${escapeHtml(r.id)}" data-source="${source}" data-result="${row.result}" aria-selected="${this.selected.has(r.id)}">
         <span role="cell" class="wc-games-c-check"><input type="checkbox" data-select="${escapeHtml(r.id)}" aria-label="Select game" ${this.selected.has(r.id) ? 'checked' : ''} /></span>
         <span role="cell" class="wc-games-c-source"><span class="wc-games-source wc-games-source-${source}" title="${meta.label}" aria-label="${meta.label}">${meta.glyph}</span></span>
-        <span role="cell" class="wc-games-c-date" data-testid="games-row-date">${formatDate(r)}</span>
+        <span role="cell" class="wc-games-c-date" data-testid="games-row-date">${dateCell(r)}</span>
         <span role="cell" class="wc-games-c-color" data-testid="games-row-color" data-color="${row.color ?? 'none'}">${colorCell}</span>
         <span role="cell" class="wc-games-c-opp" data-testid="games-row-opponent" title="${escapeHtml(`${r.white} vs ${r.black}`)}"><span class="wc-games-opp-name">${escapeHtml(row.opponent)}</span><span class="wc-games-opp-elo">${ratings}</span></span>
         <span role="cell" class="wc-games-c-result"><span class="wc-games-result wc-games-result-${resultClass}" title="${resultTitle}" data-testid="games-row-result">${resultText}</span></span>
@@ -573,6 +583,6 @@ export class GamesList {
           ? 'up to date'
           : `${status.lastDelivered} game${status.lastDelivered === 1 ? '' : 's'} received`;
     el.textContent = `Capture extension v${status.extensionVersion} · ${last}`;
-    el.title = 'Games captured by the extension arrive here when this page opens and when its tab regains focus.';
+    el.title = 'Games captured by the extension arrive here as soon as they are captured while this page is open, and when it opens.';
   }
 }

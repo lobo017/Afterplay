@@ -14,6 +14,15 @@
       </div>
     </header>
 
+    <section class="delivery" data-testid="popup-delivery">
+      <p class="explain" data-testid="popup-delivery-text"></p>
+      <p class="explain" data-testid="popup-pending-text" hidden></p>
+      <div class="row">
+        <span class="site-state" data-testid="popup-site-state"></span>
+        <button type="button" class="ghost" data-testid="popup-open-site">Open the analysis site</button>
+      </div>
+    </section>
+
     <section class="failure" data-testid="popup-failure" hidden>
       <p><b>Couldn't capture a game.</b> <span data-testid="popup-failure-text"></span></p>
       <div class="row">
@@ -43,6 +52,21 @@
     </section>
 
     <section>
+      <h2>Automatic capture</h2>
+      <p class="explain" data-testid="popup-auto-summary"></p>
+      <div class="sync" data-testid="popup-sync-lichess">
+        <b>Lichess</b> <span class="sync-status" data-testid="popup-sync-lichess-status"></span>
+      </div>
+      <div class="sync" data-testid="popup-sync-chesscom">
+        <b>Chess.com</b> <span class="sync-status" data-testid="popup-sync-chesscom-status"></span>
+      </div>
+      <div class="row">
+        <button type="button" data-testid="popup-sync-now">Check for new games now</button>
+        <span class="result" data-testid="popup-sync-result" role="status"></span>
+      </div>
+    </section>
+
+    <section>
       <h2>Import my history</h2>
       <div class="backfill" data-testid="popup-backfill-lichess">
         <button type="button" data-testid="popup-backfill-lichess-btn" data-site="lichess">Lichess</button>
@@ -55,6 +79,20 @@
     </section>
 
     <section>
+      <div class="row">
+        <button type="button" data-testid="popup-debug-btn">Debug this tab</button>
+        <button type="button" class="ghost" data-testid="popup-debug-copy" hidden>Copy report</button>
+        <button type="button" class="ghost" data-testid="popup-debug-inject" hidden>Start capture on this tab</button>
+        <span class="result" data-testid="popup-debug-result" role="status"></span>
+      </div>
+      <div class="debug" data-testid="popup-debug-output" hidden>
+        <dl data-testid="popup-debug-rows"></dl>
+        <h3>Detection events (newest last)</h3>
+        <ol class="events" data-testid="popup-debug-events"></ol>
+      </div>
+    </section>
+
+    <section>
       <details data-testid="popup-settings">
         <summary>Settings</summary>
         <form data-testid="popup-settings-form" novalidate>
@@ -62,8 +100,8 @@
           <label>Chess.com username <input name="chesscomUsername" data-testid="popup-chesscom-user" autocomplete="off" /></label>
           <label>Analysis site URL <input name="siteUrl" data-testid="popup-site-url" autocomplete="off" /></label>
           <label class="check"
-            ><input type="checkbox" name="autoCapture" data-testid="popup-auto-capture" /> Capture my games automatically when
-            they end</label
+            ><input type="checkbox" name="autoCapture" data-testid="popup-auto-capture" /> Capture my games automatically: when
+            they end on the page, when I leave a game page, and from my recent games every few minutes</label
           >
           <div class="row">
             <button type="submit" class="primary" data-testid="popup-settings-save">Save settings</button>

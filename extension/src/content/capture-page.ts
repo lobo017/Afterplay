@@ -1,48 +1,86 @@
 import { gameKey, type SiteGameRef } from '../../../src/capture/game-id';
+import { readPgnHeaders } from '../../../src/capture/pgn-time';
+import { isMyGame, isRecentGame, RECENT_GAME_MS } from '../capture-rules';
 import { sendToBackground } from '../chrome-store';
-import { describeAttempts, runExtractors, type Extractor } from '../extractors/types';
-import type { CaptureReply } from '../messages';
-import type { QueueEntry } from '../queue';
+import { describeAttempts, runExtractors, type ExtractResult, type Extractor } from '../extractors/types';
+import type { CaptureReply, PageStatus } from '../messages';
+import type { CaptureTrigger, QueueEntry } from '../queue';
 import type { ExtensionSettings } from '../settings';
-import { SaveButton } from './save-button';
+import { SaveButton, type SaveButtonState } from './save-button';
 
 /** The game on the current page, as a site adapter sees it. */
 export interface PageGame {
   ref: SiteGameRef;
   state: 'in-progress' | 'finished' | 'aborted';
-  /** Usernames, lowercased. */
+  /** Usernames as the site writes them. */
   white: string;
   black: string;
-  /** The site itself says the viewer is a player (e.g. Lichess's non-spectator view). */
-  viewerIsPlayer: boolean;
+  /** The site itself says the viewer is a player (Lichess's non-spectator view); null: it doesn't say. */
+  viewerIsPlayer: boolean | null;
+  /** When the game started / ended (ms), when the site's data tells. */
+  startedAt: number | null;
+  endedAt: number | null;
+  /** Where this came from, for the Debug view: "page data", "game data (callback)". */
+  source: string;
+}
+
+export type DetectResult = { game: PageGame } | { notFound: string };
+
+/** "The game may have ended", from one of the things an adapter watches. */
+export interface EndSignal {
+  /** What noticed it, for the Debug view. */
+  source: string;
+  /** The site's own game data says so (check now); otherwise the page showed it (give the site a moment). */
+  fromData: boolean;
+  /** The ended game, when the signal carries it (no need to fetch it again). */
+  game?: PageGame;
+}
+
+export interface EndWatch {
+  stop(): void;
+  /** What is being watched, for the Debug view. */
+  describe(): string[];
 }
 
 /** One site's part of the content script: finding the game, watching for its end, extracting it. */
 export interface SiteAdapter {
   readonly site: SiteGameRef['site'];
-  /** The game on this page (`fresh`: reload the site's data, e.g. after the game ended). */
-  detect(fresh: boolean): Promise<PageGame | null>;
-  /**
-   * Calls back when the game may have ended; returns a stop function. `shown`: the page
-   * showed the end (worth a few checks while the site catches up); otherwise a periodic check.
-   */
-  watchForEnd(onEnd: (shown: boolean) => void): () => void;
+  /** The game (`fresh`: reload the site's data, e.g. after the game ended). */
+  detect(ref: SiteGameRef, fresh: boolean): Promise<DetectResult>;
+  /** Calls `onEnd` when the game may have ended. */
+  watchForEnd(ref: SiteGameRef, game: PageGame, onEnd: (signal: EndSignal) => void, log: (text: string) => void): EndWatch;
   readonly extractors: readonly Extractor[];
 }
 
-/** Waiting this long after the end shows on the page lets the site finish writing the game. */
+/** How the runner tells the page runner what it found. */
+export interface PageHooks {
+  log(text: string): void;
+  update(patch: Partial<PageStatus>): void;
+  /** False once a newer content script took over the page (or the extension was reloaded). */
+  isActive(): boolean;
+}
+
+export interface CapturePageHandle {
+  stop(): void;
+  watching(): string[];
+}
+
+/** A page showed the end: the site gets this long to finish writing the game. */
 const END_SETTLE_MS = 1500;
 /** When the page shows the end but the site's data doesn't yet: checks, this far apart. */
 const END_CHECKS = 3;
 const END_CHECK_GAP_MS = 2000;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
+const STOPPED: CapturePageHandle = { stop: () => undefined, watching: () => [] };
 
-function isMine(game: PageGame, settings: ExtensionSettings, site: SiteGameRef['site']): boolean {
-  const me = (site === 'lichess' ? settings.lichessUsername : settings.chesscomUsername).trim().toLowerCase();
-  if (me !== '') return game.white === me || game.black === me;
-  return game.viewerIsPlayer;
-}
+const STATE_LABEL: Record<PageGame['state'], string> = { 'in-progress': 'in progress', finished: 'finished', aborted: 'aborted' };
+const TRIGGER_LABEL: Partial<Record<CaptureTrigger, string>> = {
+  'game-end': 'the game ended on this page',
+  'page-open': 'a recent game of mine was opened',
+  'save-button': 'the Save button',
+};
 
 function stateForEntry(entry: QueueEntry | null): 'already-queued' | 'already-delivered' | null {
   if (entry?.status === 'delivered') return 'already-delivered';
@@ -50,104 +88,231 @@ function stateForEntry(entry: QueueEntry | null): 'already-queued' | 'already-de
   return null;
 }
 
-/**
- * Runs the capture UI for one game page: the Save button, and auto-capture when a game I
- * played ends while the page is open (if that setting is on). Returns a stop function.
- */
-export async function runCapturePage(adapter: SiteAdapter): Promise<() => void> {
-  const game = await adapter.detect(false);
-  if (!game || game.state === 'aborted') return () => undefined;
+function mineReason(game: PageGame, settings: ExtensionSettings, site: SiteGameRef['site'], mine: boolean | null): string {
+  const named = site === 'lichess' ? settings.lichessUsername : settings.chesscomUsername;
+  const siteName = site === 'lichess' ? 'Lichess' : 'Chess.com';
+  if (named.trim() !== '') {
+    return mine
+      ? `yes: ${named} plays ${game.white.toLowerCase() === named.trim().toLowerCase() ? 'White' : 'Black'}`
+      : `no: ${named} is neither ${game.white} nor ${game.black}`;
+  }
+  if (mine) return `yes: the page shows the player's view (no ${siteName} username set)`;
+  return `unknown: no ${siteName} username set in Settings`;
+}
 
-  let stopWatching: (() => void) | null = null;
+/**
+ * Runs capture for one game on the page: the Save button, and automatic capture of a game of
+ * mine when it ends while the page is open, or when it is opened already finished within
+ * the last few hours.
+ */
+export async function runCapturePage(adapter: SiteAdapter, ref: SiteGameRef, hooks: PageHooks): Promise<CapturePageHandle> {
+  const { log, update } = hooks;
+  const url = location.href;
   let stopped = false;
+  let watch: EndWatch | null = null;
   let busy = false;
   let checking = false;
-  const ref = game.ref;
-  const url = location.href;
+  let button: SaveButton | null = null;
 
-  const capture = async (auto: boolean): Promise<void> => {
+  update({ state: 'checking', stateSource: null });
+  let detected: DetectResult;
+  try {
+    detected = await adapter.detect(ref, false);
+  } catch (err) {
+    log(`Couldn't read the game's data: ${errorText(err)}`);
+    update({ state: null, stateSource: null });
+    return STOPPED;
+  }
+  if ('notFound' in detected) {
+    log(detected.notFound);
+    update({ state: 'not-found' });
+    return STOPPED;
+  }
+  let game = detected.game;
+  update({
+    state: game.state,
+    stateSource: game.source,
+    white: game.white,
+    black: game.black,
+    startedAt: game.startedAt,
+    endedAt: game.endedAt,
+    sawInProgress: game.state === 'in-progress',
+  });
+  log(`Game ${ref.gameId}: ${STATE_LABEL[game.state]} (${game.source}).`);
+  if (game.state === 'aborted' || !hooks.isActive()) return STOPPED;
+
+  let settings: ExtensionSettings;
+  let known: ReturnType<typeof stateForEntry>;
+  try {
+    settings = await sendToBackground<ExtensionSettings>({ kind: 'get-settings' });
+    known = stateForEntry(await sendToBackground<QueueEntry | null>({ kind: 'lookup', key: gameKey(ref) }));
+  } catch (err) {
+    log(`The extension doesn't answer (${errorText(err)}); reload the tab.`);
+    return STOPPED;
+  }
+  const decideMine = (g: PageGame): boolean | null => {
+    const mine = isMyGame(g, settings, adapter.site, g.viewerIsPlayer);
+    update({ mine, mineReason: mineReason(g, settings, adapter.site, mine) });
+    return mine;
+  };
+  let mine = decideMine(game);
+  update({ captured: known !== null });
+  if (stopped || !hooks.isActive()) return STOPPED;
+
+  const setButton = (state: SaveButtonState, note = '') => {
+    button?.set(state, note);
+    update({ button: state });
+  };
+
+  const capture = async (trigger: CaptureTrigger): Promise<void> => {
     if (busy) return;
     busy = true;
-    button.set('saving');
+    const auto = trigger !== 'save-button';
+    setButton('saving');
     try {
       const outcome = await runExtractors(adapter.extractors, { ref, fetch: (i, init) => fetch(i, init), document });
-      if (!outcome.result.ok) {
-        if (outcome.result.inProgress) {
-          button.set('in-progress', 'Save it when the game has ended.');
+      let result: ExtractResult = outcome.result;
+      // The Lichess export answers for running games too, with the result "*"
+      if (result.ok && (readPgnHeaders(result.pgn).Result ?? '*') === '*') {
+        result = { ok: false, method: result.method, reason: 'The game is still in progress.', inProgress: true };
+      }
+      if (!result.ok) {
+        if (result.inProgress) {
+          setButton('in-progress', 'Save it when the game has ended.');
+          log(`Capture: the game is still in progress (${result.method}).`);
           return;
         }
-        const error = describeAttempts(outcome.attempts) || outcome.result.reason;
+        const error = describeAttempts(outcome.attempts) || result.reason;
+        log(`Capture failed: ${error}`);
         // Report first, so the notification is up when the button says so
         await sendToBackground({ kind: 'capture-failed', url, error, auto });
-        button.set('failed', 'Open the extension to paste the link or PGN.');
+        setButton('failed', 'Open the extension to paste the link or PGN.');
         return;
       }
       const reply = await sendToBackground<CaptureReply>({
         kind: 'capture',
         site: ref.site,
         gameId: ref.gameId,
-        pgn: outcome.result.pgn,
-        method: outcome.result.method,
+        pgn: result.pgn,
+        method: result.method,
         url,
         auto,
+        trigger,
       });
       if (!reply.ok) {
-        button.set('failed', reply.error);
+        log(`Capture refused: ${reply.error}`);
+        setButton('failed', reply.error);
         return;
       }
-      if (reply.outcome === 'already-delivered') button.set('already-delivered');
-      else if (reply.outcome === 'already-queued') button.set('already-queued');
-      else button.set('saved', auto ? 'Captured automatically; it goes to the analysis site next time it opens.' : '');
+      update({ captured: true });
+      log(`Captured with ${result.method} (${TRIGGER_LABEL[trigger] ?? trigger}): ${reply.outcome}.`);
+      if (reply.outcome === 'already-delivered') setButton('already-delivered');
+      else if (reply.outcome === 'already-queued') setButton('already-queued');
+      else setButton('saved', auto ? 'Captured automatically. It goes to the analysis site as soon as that is open.' : '');
+    } catch (err) {
+      log(`Capture error: ${errorText(err)}`);
+      setButton('failed', 'Open the extension to paste the link or PGN.');
     } finally {
       busy = false;
     }
   };
 
-  const button = new SaveButton(() => {
-    void capture(false);
-  });
-  const entry = await sendToBackground<QueueEntry | null>({ kind: 'lookup', key: gameKey(ref) });
-  const known = stateForEntry(entry);
+  button = new SaveButton(() => void capture('save-button'));
 
   if (game.state === 'finished') {
-    button.set(known ?? 'ready');
+    if (known) {
+      setButton(known);
+      log(known === 'already-delivered' ? 'Already on the analysis site.' : 'Already captured; waiting for the analysis site.');
+    } else if (!settings.autoCapture) {
+      setButton('ready');
+      log('Finished game; automatic capture is off in Settings.');
+    } else if (!mine) {
+      setButton('ready');
+      log(`Finished game, not captured automatically: ${mine === false ? 'not my game' : "can't tell whether it's my game"}.`);
+    } else if (!isRecentGame(game, Date.now())) {
+      setButton('ready');
+      log(`Finished game of mine, older than ${RECENT_GAME_MS / 3600_000} h: not captured automatically.`);
+    } else {
+      log('Finished game of mine from the last few hours: capturing automatically.');
+      await capture('page-open');
+    }
   } else {
-    button.set(known ?? 'in-progress', known ? '' : 'Save it when the game has ended.');
-    const onEndSignal = async (shown: boolean) => {
-      if (checking || stopped || !stopWatching) return;
+    setButton(known ?? 'in-progress', known ? '' : 'Save it when the game has ended.');
+    const onEndSignal = async (signal: EndSignal) => {
+      if (checking || stopped || !watch) return;
       checking = true;
       try {
-        if (shown) await sleep(END_SETTLE_MS);
-        let ended: PageGame | null = null;
-        for (let i = 0; i < (shown ? END_CHECKS : 1) && !stopped; i++) {
-          if (i > 0) await sleep(END_CHECK_GAP_MS);
-          ended = await adapter.detect(true);
-          if (ended?.state === 'finished') break;
+        log(`End signal: ${signal.source}.`);
+        let ended: PageGame | null = signal.game && signal.game.state !== 'in-progress' ? signal.game : null;
+        if (!ended) {
+          if (!signal.fromData) await sleep(END_SETTLE_MS);
+          const checks = signal.fromData ? 2 : END_CHECKS;
+          for (let i = 0; i < checks && !stopped; i++) {
+            if (i > 0) await sleep(END_CHECK_GAP_MS);
+            const r = await adapter.detect(ref, true).catch(() => null);
+            if (r && 'game' in r) {
+              ended = r.game;
+              if (ended.state !== 'in-progress') break;
+            }
+          }
         }
-        // Not over after all (or not yet in the site's data): keep watching
-        if (stopped || !ended || ended.state !== 'finished') return;
-        stopWatching?.();
-        stopWatching = null;
+        if (stopped) return;
+        if (!ended || ended.state === 'in-progress') {
+          log("The site's data still says in progress; watching on.");
+          return;
+        }
+        watch?.stop();
+        watch = null;
+        game = { ...ended, viewerIsPlayer: ended.viewerIsPlayer ?? game.viewerIsPlayer };
+        update({
+          state: game.state,
+          stateSource: game.source,
+          white: game.white,
+          black: game.black,
+          endedAt: game.endedAt ?? Date.now(),
+        });
+        log(`Game ${ref.gameId}: ${STATE_LABEL[game.state]} (${game.source}).`);
+        if (game.state === 'aborted') {
+          button?.remove();
+          button = null;
+          update({ button: '' });
+          return;
+        }
         if (known) return;
-        const settings = await sendToBackground<ExtensionSettings>({ kind: 'get-settings' });
-        if (settings.autoCapture && isMine(ended, settings, adapter.site)) await capture(true);
-        else button.set('ready');
+        settings = await sendToBackground<ExtensionSettings>({ kind: 'get-settings' });
+        mine = decideMine(game);
+        if (settings.autoCapture && mine) {
+          log('Game over: capturing automatically.');
+          await capture('game-end');
+        } else {
+          setButton('ready');
+          log(
+            `Game over, not captured automatically: ${!settings.autoCapture ? 'automatic capture is off' : mine === false ? 'not my game' : "can't tell whether it's my game"}.`,
+          );
+        }
+      } catch (err) {
+        log(`Checking the end failed: ${errorText(err)}`);
       } finally {
         checking = false;
       }
     };
-    stopWatching = adapter.watchForEnd((shown) => void onEndSignal(shown));
+    watch = adapter.watchForEnd(ref, game, (signal) => void onEndSignal(signal), log);
   }
 
-  return () => {
-    stopped = true;
-    stopWatching?.();
-    button.remove();
+  return {
+    stop() {
+      stopped = true;
+      watch?.stop();
+      watch = null;
+      button?.remove();
+      button = null;
+    },
+    watching: () => watch?.describe() ?? [],
   };
 }
 
 /** Calls `onMatch` (at most once) when an element matching `selector` is in the page. */
-export function watchForSelector(selector: string, onMatch: (shown: boolean) => void): () => void {
+export function watchForSelector(selector: string, onMatch: () => void): () => void {
   let done = false;
   let scheduled = false;
   const check = () => {
@@ -155,7 +320,7 @@ export function watchForSelector(selector: string, onMatch: (shown: boolean) => 
     if (done || !document.querySelector(selector)) return;
     done = true;
     observer.disconnect();
-    onMatch(true);
+    onMatch();
   };
   const observer = new MutationObserver(() => {
     if (!scheduled) {

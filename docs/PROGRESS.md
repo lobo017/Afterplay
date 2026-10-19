@@ -10,7 +10,7 @@
 | **Phase 3** | 2D board and play mode | **Done** | Imperative SVG board (`translate3d` + Web Animations API), dirty-checked SVG overlay, 180-shard fixed `<canvas>` pool, Web Audio synth, clocks, vs-bot Play Mode, legacy bug regression suite. **2026-10-17 fixes:** drags survive board updates, drag cancel (right-click / Esc / off-board), premove queue (max 10) on a hypothetical board, same-frame premove execution |
 | **Phase 4** | Analysis board | **Done** | Animated mate-aware eval bar, live MultiPV 1–5 lines + ghost preview, best/threat/user arrows, variation tree & keyboard navigation, FEN position editor, ECO opening lookup. **2026-10-17 fixes:** zero layout shift while navigating (was 694 shifts), ~100 ms step animation with reverse and snap-on-repeat, engine lines batched to ≤ 1 DOM update per frame |
 | **Phase 5** | Game review | **Done** | MultiPV 2 review pipeline on its own 1-thread engine with verification searches, win%/accuracy/ACPL/performance formulas, 10 move classes (docs/classification.md), 8 motif detectors, one-sentence explanations computed in a worker, review panel (live win% chart, key moments, Retry / Refutation / Play vs Bot / annotated PGN, sample game). **2026-10-18:** Lichess-matched formulas and thresholds; "Review as" White / Black / Both perspective and redesigned summary |
-| **Phase 5b** | Capture extension + Games list | **Done** | Chrome MV3 capture extension (Lichess, Chess.com, queue, popup, backfill), localhost bridge, Games list with background review queue, IndexedDB v4 |
+| **Phase 5b** | Capture extension + Games list | **Done** | Chrome MV3 capture extension (Lichess, Chess.com, queue, popup, backfill), localhost bridge, Games list with background review queue, IndexedDB v4. **2026-10-19 live capture fixes:** end of game from the sites' own data (Lichess game stream, Chess.com game data), finished games captured on open and on leaving the page, Chess.com play pages, background sync of recent games, delivery without focus, Debug this tab, local dates |
 | **Phase 6** | Puzzles & spaced repetition | Pending | Personal mistake puzzles, bundled 20k Lichess puzzles, Glicko-2, FSRS scheduler, Today screen |
 | **Phase 7** | Repertoire, endgame & visualization | Pending | White/Black repertoire trees, 6 curated endgame drills, coordinate/blindfold/guess-the-move |
 | **Phase 8** | Library, insights, settings, offline | Pending | Auto-save library, worker bulk PGN import, insights charts, a11y, full offline PWA |
@@ -2199,3 +2199,243 @@ link showed only its URL (now the players from the game data).
   telling the background, which creates the notification. The content script now reports
   the failure first, and the test polls; the failure-path tests passed 3 times in a row, then
   the full run above.
+
+## Phase 5b — Live capture fixes (2026-10-19)
+
+Report from live testing: every capture in the popup came from "Lichess history" or
+"Chess.com archive", none from a game page; finished games only arrived after pressing the
+import buttons.
+
+### Diagnosis (before the plan)
+
+Where the content scripts run: the manifest injects `lichess.js` on `https://lichess.org/*`
+and `chesscom.js` on `https://www.chess.com/*`, so every page of both sites gets the script
+(including chess.com/play/online, /game/live/…, lichess.org/{id}, /{id}{player},
+/{id}/white|black). URL coverage at the manifest level is not the problem. What goes wrong is
+what the scripts do once they run:
+
+1. **Auto-capture only fires for a game the script saw in progress and then saw end, on the
+   same URL, with the page still open.** A game first seen already finished only gets the Save
+   button. That misses: a page that reaches the game URL only after the end (Chess.com moves
+   between /play/online and /game/live/{id} in the page, without a reload), a reload after the
+   end, and opening the game from a notification or the home page.
+2. **Chess.com /play/online and other /play pages have no game ID in the URL**, so the
+   script does nothing there (`parseGameUrl` → null).
+3. **Leaving soon after the end loses the capture.** After the end signal the script waits
+   1.5 s, then checks up to 3 times 2 s apart. "New opponent" / "New game" / "Rematch" or
+   closing the tab in that window kills the script before it captures, and nothing else
+   picks the game up.
+4. **End detection rests on CSS selectors.** Lichess: `.result-wrap`. Chess.com: four
+   game-over dialog class names (never seen on a live page), backed by a 30 s re-check that
+   runs only while the tab is visible.
+5. **Tabs open while the extension is loaded or reloaded never get a working script.**
+   Chrome injects manifest content scripts only into pages loaded afterwards; after a reload
+   of the unpacked extension, the scripts in open tabs are orphaned (every
+   `chrome.runtime.sendMessage` throws "Extension context invalidated") but keep their Save
+   button on screen.
+6. **Delivery waits for focus**: the site syncs on load, `focus` and `visibilitychange`; a
+   game captured while the site's tab is in the background waits until it is clicked.
+
+Probed from this machine (no login, no personal data sent):
+- A live Lichess game page (TV game, spectator view) has `page-init-data` with
+  `game.status = {id: 20, name: "started"}`: the page data is there while the game runs.
+- `GET https://lichess.org/api/stream/game/{id}` (official, anonymous, NDJSON): the first
+  line describes the game (no `status` field while it runs), then one line per move
+  (`fen`, `lm`, `wc`, `bc`), and when the game ends one more description line with
+  `status` (e.g. `{"id":35,"name":"outoftime"}`) and `winner`, then the stream closes. For a
+  finished game it sends the description, the moves and the final line at once. Recorded:
+  `tests/fixtures/capture/lichess/stream-7hMjEFmU-live.ndjson` (a TV UltraBullet game,
+  recorded until it ended) and `stream-Bjl39T9x-finished.ndjson`.
+- Chess.com live and daily IDs are separate number ranges that overlap:
+  `/callback/live/game/1033338800` answers with a different (live) game than the daily game
+  1033338800. `/game/{n}` without a type therefore stays "live", as before.
+- Not verifiable from here: what chess.com/play/online does to the URL during a game, and
+  which requests it makes. The Debug button (below) shows it on the live site.
+
+### Plan (written before code)
+
+**Content scripts** (`extension/src/content/`)
+- `page-runner.ts` (new, both sites): watches the URL (every second and on `popstate`) and
+  restarts the capture for a new game; one live instance per tab (a token on `<html>`; an
+  older or orphaned instance stops itself and its button goes); reports the page's state
+  to the background (`page-state`: URL, game ID, state, players, mine, seen in progress,
+  end time); answers the popup's `debug-tab` request.
+- `debug-log.ts` (new): the last 30 detection events with times, and the snapshot the
+  Debug button shows.
+- `capture-page.ts`: end signals carry their source; one from the site's data (stream line,
+  game data) is checked at once without the 1.5 s settle. A game first seen **finished**
+  is captured automatically when it is mine and ended (or started) in the last 6 hours.
+  A PGN with result `*` is treated as "in progress" (the session export answers for running
+  games too).
+- `lichess.ts`: end detection from the official game stream (reconnects with a back-off when
+  it closes early or fails), `.result-wrap` kept as a second, faster signal.
+- `lichess-stream.ts` (new): the NDJSON reader and line classifier.
+- `chesscom.ts`: end detection by polling the game's own data (the callback) every 10 s while
+  the game runs (30 s while the tab is hidden) and on visibility changes; the game-over
+  dialog selectors kept as a second signal. On /play pages (no ID in the URL): game IDs from
+  the page's own requests (Resource Timing entries for `/callback/live/game/{id}`-style
+  URLs), the newest one taken as the current game.
+
+**Background**
+- `tab-tracker.ts` (new, pure): what a tab was showing (from `page-state` and
+  `tabs.onUpdated`, kept in `chrome.storage.session`), and what to do when it leaves a
+  game page (tab closed, other URL): capture the game directly and/or sync the site.
+- Leaving a game page: the game is resolved from the service worker (Lichess `_ids` export,
+  then page data; Chess.com game data, then the archive) and queued if it is finished and
+  mine (and recent, unless the page saw it in progress). Then a sync of that site.
+- `auto-sync.ts` (new): the safety net. Lichess: `GET /api/games/user/{me}` since the
+  newest game seen (`ongoing=true`, so a game still running holds the cursor back until it
+  ends), pages of 100. Chess.com: the current month's archive (and the previous one at a
+  month change) with ETag (304 = nothing new), games that ended since the cursor minus 12 h
+  (archive lag). First run for an account starts 24 h back (the history import is still the
+  way to get older games). Skips a site while its history import runs, while rate-limited
+  (429 → back off, at least 60 s), and while 1000 games wait. Same queue, same dedupe.
+- Alarm every 3 min: syncs each site that has a tab open, or had a game page left in the
+  last 30 min (Chess.com's archive lags). Also on browser start-up. Needs auto-capture on
+  and the username for that site.
+- Install / update: the content scripts are injected into the Lichess and Chess.com tabs
+  already open (`chrome.scripting.executeScript`).
+- Delivery: when games become ready, the background messages the bridge in every tab of the
+  configured site URL; the bridge says `bridge-ready` and the page syncs (protocol
+  unchanged). A nudge during a sync starts another sync after it.
+- Queue entries get `trigger` (game ended on the page, left the page, background sync, Save
+  button, history import, link, pasted) and `playedAt` (ms, from the PGN's UTC headers).
+
+**Popup**: "Debug this tab" (URL, page kind, game ID and where it came from, game state and
+source, players and whether it's mine, what is being watched, the button state, the last
+detection event and the event log, plus the background's view: settings, the site's sync
+state, the queue entry; Copy report; "Start capture on this tab" when no script runs there).
+Counts reworded: "N games ready to send to the analysis site", what that means, whether
+the site is open in a tab, an "Open the analysis site" button; pending and delivered counts
+separate. Entry lines say how each game was captured.
+
+**Dates**: `src/capture/pgn-time.ts` (shared): UTCDate + UTCTime → ms (then Date +
+StartTime, then EndDate + EndTime; Chess.com's "16:37:15 GMT+0000" accepted), shown in local
+time: the Games list ("2026-10-18 14:05"; tooltip with the time zone) and the popup. The
+Chess.com game-data PGN gets EndDate / EndTime from `endTime`.
+
+**Tests**: unit: stream reader (both fixtures), tab tracker decisions, auto-sync (cursor, seed,
+ongoing hold-back, pagination, ETag 304, month change, archive-lag window, 429, import
+running, dedupe), capture on leaving (mine / not mine / in progress / not recent), bridge
+nudge (idle, during a sync), PGN time + local formatting with a fixed time zone, queue
+`playedAt` / `trigger`. E2E (extension): Lichess end from the stream with no DOM marker;
+Chess.com game first seen finished and recent → auto; Chess.com /play page with the game ID
+from its requests; tab closed before the end is seen → captured on leaving; background sync
+on the alarm while a site tab is open and after leaving a page, and none with no tab open;
+delivery to an open site tab with no focus or visibility event; Debug button (game tab,
+non-site tab, tab without a script → start it); popup wording; dates in a fixed time zone
+(Asia/Tokyo) in the popup and the Games list.
+
+**Risks**
+- The Lichess stream sends ongoing games a few seconds late (3–60 s by time control); the
+  `.result-wrap` signal stays as the fast path, the stream as the reliable one.
+- Polling Chess.com's game data every 10 s during a game: ~6 requests a minute to the same
+  endpoint the page itself uses; only while a game is in progress on that tab.
+- Resource Timing on /play pages relies on the page fetching a URL with the game ID; if it
+  doesn't, the leave-page sync and the 3-minute sync still bring the game in.
+- Chrome's alarm minimum (30 s) and the service worker stopping are fine: everything is
+  driven by alarms, tab events and stored state.
+
+### Result (2026-10-19)
+
+Built as planned; no new dependency, no new permission (tab URLs, `tabs.query` with URL
+patterns and `scripting.executeScript` work through the existing host permissions;
+`chrome.storage.session` comes with `storage`).
+
+**Content scripts**
+- `page-runner.ts` follows the URL (1 s and `popstate`) on both sites, keeps one live instance
+  per tab (`data-wc-capture` token on `<html>`; an orphaned or replaced instance stops and
+  removes its button), reports `page-state` to the background (debounced 150 ms) and answers
+  `debug-tab` with its status and the last 30 events (`debug-log.ts`).
+- `capture-page.ts`: end signals say where they came from; one from the site's data is
+  checked at once (2 checks, no settle), one from the page markup keeps the 1.5 s settle and 3
+  checks. A finished game is auto-captured on open when mine and ended (or started) in the
+  last 6 h (`capture-rules.ts`); older ones get the Save button. A PGN with result `*` counts
+  as in progress, for the Save button too (the Lichess exports answer for running games).
+- Lichess: the official game stream (`lichess-stream.ts`: NDJSON reader, line classifier,
+  reconnects after 3 / 10 / 30 / 60 s, 60 s after a 429; a normal close without the end line
+  triggers one check of the page data), `.result-wrap` kept as the fast hint. The end time
+  of a game read from the page is estimated from `createdAt` + the sum of `moveCentis`.
+- Chess.com: the game data (callback) every 10 s while the game runs (30 s while hidden, and
+  at once on visibility changes; `poller.ts`), the four game-over selectors kept as the fast
+  hint. On `/play/…` pages the game ID comes from Resource Timing entries of the page's own
+  requests (`/callback/live/game/{n}`, `/game/live/{n}`, `/live/game/{n}`; the newest wins).
+
+**Background**
+- Tabs (`tab-tracker.ts`, `chrome.storage.session`): from `page-state` reports and
+  `tabs.onUpdated` (URL changes, including in-page ones; a page off the game sites has no URL
+  for the extension, which counts as leaving). A report whose URL isn't the tab's current page
+  is ignored (sent just before a navigation). Leaving (`onRemoved`, another page) a game page:
+  `captureFinished` with the leave resolvers (Lichess `_ids` export → page data; Chess.com game
+  data → archive) and `leaveCaptureCheck` (mine; seen in progress, or recent); then a sync of
+  that site 5 s later, and on every alarm for 30 min. The last leave and its result are kept
+  for the Debug view.
+- `auto-sync.ts` as planned (60 s minimum between alarm runs, 10 s after leaving a page,
+  none for "Check for new games now"; at most 5 Lichess pages and 3 Chess.com months per run).
+  Methods `lichess-sync` / `chesscom-archive-sync`, trigger `sync`. These count as new games
+  for the site's auto-analyze (unlike history imports).
+- `auto-sync` alarm every 3 min (created in `init()`, so also on update); on browser start
+  one sync per site. Install / update injects the content scripts into open tabs.
+- Delivery: `onQueueChanged` → `nudgeSite()` (200 ms debounce, only while games are ready) →
+  `bridge-nudge` to every tab of the site URL → `ExtensionBridge.nudge()` posts `bridge-ready`
+  (during a sync: once, after it). The page's code is unchanged; it already answers
+  `bridge-ready` with `hello`.
+- Queue entries: `trigger` (kept from the first capture when a pending game resolves) and
+  `playedAt` (only when the PGN has a time of day).
+
+**Popup**: header "N games waiting for the analysis site" / "No games waiting · N games on
+the analysis site", the sentence saying what waiting means and where they go, pending ones
+explained separately, whether the site is open in a tab, Open / Show the analysis site;
+entry status labels "ready to send" / "not available yet" / "on the site" (with tooltips);
+each entry's line has the played date and time (local), the method and the trigger
+("auto: game ended on the page", "auto: after leaving the game page", "auto: background
+check", "history import", …). "Automatic capture" section with each site's last check and
+"Check for new games now". "Debug this tab" with Copy report and Start capture on this tab.
+`popup.html?tab=<id>` debugs that tab (used when the popup is open as a page of its own, and
+by the tests).
+
+**Dates**: `src/capture/pgn-time.ts` (`playedAtDetail`, `localDateTime`, `formatPlayedAt`,
+`readPgnHeaders`, the last moved from the queue). Games list: date over time in the local
+zone (the column keeps its width), tooltip "Started 2026-10-18 05:30 (Asia/Tokyo)" (or
+"Ended" for PGNs that only have the end); a date-only PGN is shown as written. The Chess.com
+game-data PGN gets `EndDate` / `EndTime` (UTC) from `endTime`.
+
+**Changes to existing tests (behaviour changed as asked, nothing weakened)**
+- `phase5b-extension.spec.ts`, first test: a game captured while the site is open now
+  arrives without the focus event, so the step that waited for badge "1" before dispatching
+  `focus` would race; it now expects the row right away. The focus-triggered sync is still
+  exercised in the same test (the duplicate check after it).
+- `phase5b-games.spec.ts` runs with `timezoneId: 'UTC'` and expects "2026-10-04 05:33" (date
+  and time) instead of "2026-10-04".
+- The e2e helpers gained `setUsernames` / `queueEntry` (moved from the spec), `tabIdOf`,
+  `openPopup(session, debugTab?)` (waits for the popup's `data-loaded` instead of the old
+  "waiting" wording), and `launchWithExtension({ timezoneId, beforeLoad })`.
+- `scripts/record-capture-fixtures.mjs` also records the finished game's stream, and with
+  `--live-stream` a live TV game's stream until it ends.
+
+**Checked that the new e2e tests catch the bugs**: with the install-time injection and the
+bridge nudge switched off, "Tabs open before the extension was installed…" and "Delivery…"
+fail; with them on, they pass.
+
+**Known issues**
+- Still unverified on the live sites (no login from here): which URL Chess.com's play page
+  shows during a game and which requests it makes; whether the Lichess session export answers
+  for a logged-in user. The Debug view shows both (Game ID source, method of each capture).
+- Lichess correspondence games in progress don't hold the sync cursor back (they would for
+  days); one that ends later is captured when its page is left, by Save, or by the history
+  import.
+- The Chess.com sync reads at most 3 archive months per run: after more than ~2 months
+  without a sync, older months need Import my history.
+- Lichess sends a running game's stream a few seconds late (3–60 s by time control); the page's
+  result block is the faster signal while it lasts.
+- `npm run format:check` fails on most files, as before this change (the code uses longer
+  lines than `.prettierrc.json`'s 100); not one of the required checks, left alone.
+
+**Checks (final run, 2026-10-19):** typecheck, lint, **382 unit tests** (33 files; +31:
+`capture-live` 16, `capture-autosync` 8, `capture-dates` 5, bridge nudge 2), `npm run build`,
+`npm run build:ext`, **55/55 e2e** (46 earlier + 9 in `phase5b-live-capture.spec.ts`; 6.5 min,
+one worker): all pass.
+
+**Measured**: bundles: background 247 kB (was 216), Lichess content script 46 kB (was 27),
+Chess.com 160 kB (was 145), popup 26 kB (was 9), bridge 7 kB. New e2e tests take 1.3–8.2 s each
+(the leave test waits for the 5 s sync after leaving).

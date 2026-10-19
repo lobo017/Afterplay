@@ -18,7 +18,8 @@ declare namespace chrome {
     interface InstalledDetails {
       reason: 'install' | 'update' | 'chrome_update' | 'shared_module_update';
     }
-    const id: string;
+    /** Undefined in a content script whose extension was reloaded or removed. */
+    const id: string | undefined;
     const lastError: { message?: string } | undefined;
     function getManifest(): Manifest;
     function getURL(path: string): string;
@@ -44,6 +45,8 @@ declare namespace chrome {
       getBytesInUse?(keys?: string | string[] | null): Promise<number>;
     }
     const local: StorageArea;
+    /** Kept in memory until the browser closes (survives the service worker stopping). */
+    const session: StorageArea;
     const onChanged: {
       addListener(callback: (changes: Record<string, StorageChange>, areaName: string) => void): void;
     };
@@ -108,14 +111,31 @@ declare namespace chrome {
     function updateContentScripts(scripts: RegisteredContentScript[]): Promise<void>;
     function unregisterContentScripts(filter?: { ids?: string[] }): Promise<void>;
     function getRegisteredContentScripts(filter?: { ids?: string[] }): Promise<RegisteredContentScript[]>;
+    function executeScript(injection: { target: { tabId: number; allFrames?: boolean }; files: string[] }): Promise<unknown[]>;
   }
 
   namespace tabs {
     interface Tab {
       id?: number;
+      /** Only for pages the extension has host permissions for. */
       url?: string;
       windowId?: number;
+      active?: boolean;
+      status?: 'loading' | 'complete' | 'unloaded';
+    }
+    interface TabChangeInfo {
+      url?: string;
+      status?: 'loading' | 'complete' | 'unloaded';
     }
     function create(properties: { url: string; active?: boolean }): Promise<Tab>;
+    function query(query: { url?: string | string[]; active?: boolean; currentWindow?: boolean }): Promise<Tab[]>;
+    function update(tabId: number, properties: { active?: boolean }): Promise<Tab | undefined>;
+    function sendMessage<T = unknown>(tabId: number, message: unknown): Promise<T>;
+    const onUpdated: { addListener(callback: (tabId: number, changeInfo: TabChangeInfo, tab: Tab) => void): void };
+    const onRemoved: { addListener(callback: (tabId: number, removeInfo: { windowId: number; isWindowClosing: boolean }) => void): void };
+  }
+
+  namespace windows {
+    function update(windowId: number, properties: { focused?: boolean }): Promise<unknown>;
   }
 }

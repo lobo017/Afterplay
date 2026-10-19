@@ -8,7 +8,7 @@ import {
   retryAfterMs,
   type ArchiveGame,
 } from './extractors/chesscom-archive';
-import type { CaptureQueue, KeyValueStore, ReadyInput } from './queue';
+import type { CaptureQueue, CaptureTrigger, KeyValueStore, ReadyInput } from './queue';
 
 /**
  * "Import my history": every game of my account, fetched a page at a time into the
@@ -239,7 +239,14 @@ export class BackfillRunner {
       if (typeof game.createdAt === 'number') newest = Math.max(newest, game.createdAt);
       if (!game.id || !game.pgn || !looksLikePgn(game.pgn)) continue;
       const ref = { site, gameId: game.id };
-      inputs.push({ key: gameKey(ref), source: site, pgn: game.pgn.trim(), method: LICHESS_HISTORY_METHOD, url: `https://lichess.org/${game.id}` });
+      inputs.push({
+        key: gameKey(ref),
+        source: site,
+        pgn: game.pgn.trim(),
+        method: LICHESS_HISTORY_METHOD,
+        url: `https://lichess.org/${game.id}`,
+        trigger: 'history',
+      });
     }
     const added = await this.addGames(inputs);
     await this.set(key, { since: newest + 1 } satisfies LichessCursor);
@@ -318,13 +325,17 @@ export class BackfillRunner {
 }
 
 /** Standard and Chess960 games of an archive month as queue entries. */
-export function archiveInputs(games: readonly ArchiveGame[]): ReadyInput[] {
+export function archiveInputs(
+  games: readonly ArchiveGame[],
+  method: string = CHESSCOM_HISTORY_METHOD,
+  trigger: CaptureTrigger = 'history',
+): ReadyInput[] {
   const inputs: ReadyInput[] = [];
   for (const g of games) {
     if (g.rules && g.rules !== 'chess' && g.rules !== 'chess960') continue;
     const ref = parseGameUrl(g.url);
     if (!ref || ref.site !== 'chesscom' || !g.pgn || !looksLikePgn(g.pgn)) continue;
-    inputs.push({ key: gameKey(ref), source: 'chesscom', pgn: g.pgn.trim(), method: CHESSCOM_HISTORY_METHOD, url: g.url });
+    inputs.push({ key: gameKey(ref), source: 'chesscom', pgn: g.pgn.trim(), method, url: g.url, trigger });
   }
   return inputs;
 }

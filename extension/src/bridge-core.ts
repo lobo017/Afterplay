@@ -34,6 +34,8 @@ interface Sync {
  */
 export class ExtensionBridge {
   private sync: Sync | null = null;
+  /** New games arrived during a sync: ask the page for another one when it ends. */
+  private again = false;
   private readonly listener = (event: MessageEventLike) => {
     void this.onMessage(event);
   };
@@ -61,6 +63,18 @@ export class ExtensionBridge {
 
   public isSyncing(): boolean {
     return this.sync !== null;
+  }
+
+  /**
+   * The extension has new games: the page is asked to sync now (`bridge-ready`, to which it
+   * says hello), whether or not its tab has focus. During a sync, once that sync is over.
+   */
+  public nudge(): void {
+    if (this.sync) {
+      this.again = true;
+      return;
+    }
+    this.post(bridgeMessage('bridge-ready', {}));
   }
 
   private post(message: BridgeMessage): void {
@@ -137,6 +151,10 @@ export class ExtensionBridge {
     const delivered = this.sync?.delivered ?? 0;
     this.endSync();
     this.post(bridgeMessage('sync-done', { delivered }));
+    if (this.again) {
+      this.again = false;
+      this.post(bridgeMessage('bridge-ready', {}));
+    }
   }
 
   private endSync(): void {

@@ -1,4 +1,5 @@
 import type { GameSource } from '../../src/capture/game-id';
+import { playedAtDetail, readPgnHeaders } from '../../src/capture/pgn-time';
 import type { BridgeGame } from '../../src/capture/protocol';
 
 /**
@@ -15,6 +16,24 @@ import type { BridgeGame } from '../../src/capture/protocol';
  */
 export type QueueStatus = 'pending' | 'ready' | 'delivered';
 
+/** What made the extension capture a game (shown in the popup, so a capture says how it came in). */
+export type CaptureTrigger =
+  /** The game ended on the open game page (auto-capture). */
+  | 'game-end'
+  /** A finished game of mine opened on its page (auto-capture). */
+  | 'page-open'
+  /** I left or closed the game page; the background fetched the game. */
+  | 'left-page'
+  /** The automatic background sync of my recent games. */
+  | 'sync'
+  /** The Save button on the game page. */
+  | 'save-button'
+  /** Import my history. */
+  | 'history'
+  /** A link (popup, context menu, pending retry). */
+  | 'link'
+  | 'paste';
+
 export interface QueueEntry {
   key: string;
   source: GameSource;
@@ -30,6 +49,10 @@ export interface QueueEntry {
   result: string;
   /** PGN date, "YYYY.MM.DD" ('' when unknown). */
   date: string;
+  /** When the game was played (ms, from the PGN's UTC date and time; null when unknown). */
+  playedAt?: number | null;
+  /** How the game was captured (entries from before this field: unknown). */
+  trigger?: CaptureTrigger | null;
   /** Why the game is pending, or the last retry's error. */
   error: string | null;
   attempts: number;
@@ -51,6 +74,7 @@ export interface ReadyInput {
   pgn: string;
   method: string;
   url?: string | null;
+  trigger?: CaptureTrigger | null;
 }
 
 export interface PendingInput {
@@ -62,6 +86,7 @@ export interface PendingInput {
   white?: string;
   black?: string;
   date?: string;
+  trigger?: CaptureTrigger | null;
 }
 
 /**
@@ -82,14 +107,11 @@ const INDEX_KEY = 'queue:index';
 const pgnStorageKey = (key: string) => `queue:pgn:${key}`;
 
 /** Header values from a PGN, without parsing the moves. */
-export function pgnHeaderValues(pgn: string): Record<string, string> {
-  const out: Record<string, string> = {};
-  const re = /^\s*\[([A-Za-z0-9_]+)\s+"((?:[^"\\]|\\.)*)"\s*\]\s*$/gm;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(pgn)) !== null) {
-    if (!(m[1]! in out)) out[m[1]!] = m[2]!.replace(/\\(["\\])/g, '$1');
-  }
-  return out;
+export const pgnHeaderValues = readPgnHeaders;
+
+function playedAtOf(headers: Readonly<Record<string, string>>): number | null {
+  const played = playedAtDetail(headers);
+  return played?.hasTime ? played.ms : null;
 }
 
 export class CaptureQueue {
@@ -139,6 +161,10 @@ export class CaptureQueue {
           black: h.Black ?? existing?.black ?? '',
           result: h.Result ?? '',
           date: h.UTCDate ?? h.Date ?? existing?.date ?? '',
+          // Only a real time of day: a date alone is shown as written
+          playedAt: playedAtOf(h) ?? existing?.playedAt ?? null,
+          // A pending game keeps what first captured it
+          trigger: existing?.trigger ?? input.trigger ?? null,
           error: null,
           attempts: existing?.attempts ?? 0,
           nextRetryAt: null,
@@ -175,6 +201,9 @@ export class CaptureQueue {
         black: input.black ?? existing?.black ?? '',
         result: '',
         date: input.date ?? existing?.date ?? '',
+        playedAt: existing?.playedAt ?? null,
+        // A pending game keeps what first captured it
+        trigger: existing?.trigger ?? input.trigger ?? null,
         error: input.error,
         attempts: (existing?.attempts ?? 0) + (existing ? 1 : 0),
         nextRetryAt: input.nextRetryAt,

@@ -6,7 +6,9 @@ import {
   mock,
   openGamesList,
   openPopup,
+  queueEntry,
   readFixture,
+  setUsernames,
   stripPageAssets,
   type ExtensionSession,
 } from './helpers/extension';
@@ -59,31 +61,6 @@ function archivePgn(file: string, id: string): string {
   return games.find((g) => g.url.endsWith(`/${id}`))!.pgn;
 }
 
-/** Sets my usernames through the popup's settings form. */
-async function setUsernames(
-  session: ExtensionSession,
-  lichess: string,
-  chesscom: string,
-  options: { autoCapture?: boolean } = {},
-): Promise<void> {
-  const popup = await openPopup(session);
-  await popup.getByTestId('popup-settings').locator('summary').click();
-  await popup.getByTestId('popup-lichess-user').fill(lichess);
-  await popup.getByTestId('popup-chesscom-user').fill(chesscom);
-  await popup.getByTestId('popup-auto-capture').setChecked(options.autoCapture ?? true);
-  await popup.getByTestId('popup-settings-save').click();
-  await expect(popup.getByTestId('popup-settings-result')).toHaveText('Saved.');
-  await popup.close();
-}
-
-async function queueEntry(session: ExtensionSession, key: string) {
-  return session.worker.evaluate(async (k) => {
-    const api = (self as unknown as { __wizardChessCapture: { queue: { get(key: string): Promise<unknown> } } })
-      .__wizardChessCapture;
-    return api.queue.get(k);
-  }, key);
-}
-
 test.describe('Phase 5b — capture extension', () => {
   let session: ExtensionSession;
 
@@ -125,16 +102,14 @@ test.describe('Phase 5b — capture extension', () => {
     await expect.poll(() => badgeText(session.worker)).toBe('');
     await expect(popup.getByTestId('popup-entry')).toHaveAttribute('data-status', 'delivered');
 
-    // A game captured while the site is open arrives when its tab regains focus
+    // A game captured while the site is open arrives right away, without waiting for focus
     await popup.getByTestId('popup-paste').fill(PASTED_PGN.replace('"Alice"', '"Alicia"'));
     await popup.getByTestId('popup-save').click();
     await expect(popup.getByTestId('popup-result')).toHaveText('Saved Alicia vs Bob');
-    await expect.poll(() => badgeText(session.worker)).toBe('1');
-    await site.evaluate(() => window.dispatchEvent(new Event('focus')));
     await expect(site.getByTestId('games-row')).toHaveCount(2);
     await expect.poll(() => badgeText(session.worker)).toBe('');
 
-    // Another sync and a reload don't duplicate anything
+    // Another sync (focus) and a reload don't duplicate anything
     await site.evaluate(() => window.dispatchEvent(new Event('focus')));
     await site.reload();
     await site.evaluate(() => window.__wizardChessLibraryReady);

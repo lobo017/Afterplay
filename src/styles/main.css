@@ -2787,6 +2787,18 @@ body {
   white-space: nowrap;
 }
 
+/* Date over time (local time zone), so the column keeps its width */
+.wc-games-c-date {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.wc-games-time {
+  font-size: 0.72rem;
+  opacity: 0.8;
+}
+
 .wc-games-source {
   display: inline-flex;
   align-items: center;

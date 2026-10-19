@@ -1,7 +1,8 @@
 import { gameKey, isValidRef, parseGameUrl, type CaptureSite, type SiteGameRef } from '../../src/capture/game-id';
 import { checkPgnText } from '../../src/capture/pgn-games';
 import type { BridgeGame } from '../../src/capture/protocol';
-import type { CaptureQueue, KeyValueStore } from './queue';
+import { readPgnHeaders, playedAtFromHeaders } from '../../src/capture/pgn-time';
+import type { AddOutcome, CaptureQueue, CaptureTrigger, KeyValueStore } from './queue';
 import type { CaptureReply, LastFailure, SaveTextResult } from './messages';
 
 /** Resolves a game link to its PGN (or to "not available yet"); added per site. */
@@ -16,9 +17,30 @@ export type LinkResolution =
       black?: string;
       date?: string;
     }
+  /** The game hasn't ended yet. */
+  | { kind: 'in-progress'; reason: string }
   | { kind: 'error'; error: string };
 
 export type LinkResolver = (ref: SiteGameRef) => Promise<LinkResolution>;
+
+/** What is known about a game when deciding whether to capture it automatically. */
+export interface GameFacts {
+  white: string;
+  black: string;
+  /** PGN result ('' while pending). */
+  result: string;
+  /** When it was played (ms; null when unknown). */
+  playedAt: number | null;
+}
+
+/** Why a game should not be captured automatically, or null to capture it. */
+export type CaptureCheck = (facts: GameFacts) => string | null;
+
+export type FinishedCaptureResult =
+  | { outcome: AddOutcome | 'pending'; key: string }
+  /** Already ready or delivered: nothing fetched. */
+  | { outcome: 'known'; key: string }
+  | { outcome: 'skipped' | 'error'; key: string; reason: string };
 
 export interface CaptureServiceDeps {
   queue: CaptureQueue;
@@ -49,13 +71,20 @@ export class CaptureService {
   constructor(private readonly deps: CaptureServiceDeps) {}
 
   /** A PGN extracted by a content script. */
-  public async saveCapture(site: CaptureSite, gameId: string, pgn: string, method: string, url: string): Promise<CaptureReply> {
+  public async saveCapture(
+    site: CaptureSite,
+    gameId: string,
+    pgn: string,
+    method: string,
+    url: string,
+    trigger: CaptureTrigger = 'save-button',
+  ): Promise<CaptureReply> {
     const ref = { site, gameId };
     if (!isValidRef(ref)) return { ok: false, error: 'Not a game ID.' };
     const { games, errors } = checkPgnText(pgn);
     if (games.length !== 1) return { ok: false, error: errors[0] ?? 'Expected exactly one game.' };
     const key = gameKey(ref);
-    const [outcome] = await this.deps.queue.addReady([{ key, source: site, pgn: games[0]!.pgn, method, url }]);
+    const [outcome] = await this.deps.queue.addReady([{ key, source: site, pgn: games[0]!.pgn, method, url, trigger }]);
     this.deps.onQueueChanged();
     return { ok: true, key, outcome: outcome! };
   }
@@ -75,7 +104,7 @@ export class CaptureService {
     const results: SaveTextResult[] = errors.map((error) => ({ label: 'PGN', ok: false, error }));
     if (games.length > 0) {
       const outcomes = await this.deps.queue.addReady(
-        games.map((g) => ({ key: g.key, source: g.source, pgn: g.pgn, method: 'pasted-pgn', url: null })),
+        games.map((g) => ({ key: g.key, source: g.source, pgn: g.pgn, method: 'pasted-pgn', url: null, trigger: 'paste' as const })),
       );
       games.forEach((g, i) => results.push({ label: gameLabel(g.headers), ok: true, outcome: outcomes[i]! }));
       this.deps.onQueueChanged();
@@ -106,7 +135,7 @@ export class CaptureService {
       const { games, errors } = checkPgnText(resolution.pgn);
       if (games.length !== 1) return { label: link, ok: false, error: errors[0] ?? 'Expected exactly one game.' };
       const [outcome] = await this.deps.queue.addReady([
-        { key, source: ref.site, pgn: games[0]!.pgn, method: resolution.method, url: link },
+        { key, source: ref.site, pgn: games[0]!.pgn, method: resolution.method, url: link, trigger: 'link' },
       ]);
       return { label: gameLabel(games[0]!.headers), ok: true, outcome: outcome! };
     }
@@ -124,10 +153,62 @@ export class CaptureService {
         white: resolution.white,
         black: resolution.black,
         date: resolution.date,
+        trigger: 'link',
       });
       return { label: link, ok: true, outcome: 'pending' };
     }
+    if (resolution.kind === 'in-progress') {
+      return { label: link, ok: false, error: `${resolution.reason} Save it when the game has ended.` };
+    }
     return { label: link, ok: false, error: resolution.error };
+  }
+
+  /**
+   * A game captured without a click (e.g. after I left its page): resolved with `resolver`,
+   * and queued only if it has ended and `check` accepts it. Nothing is fetched for a game the
+   * queue already has.
+   */
+  public async captureFinished(
+    ref: SiteGameRef,
+    url: string,
+    resolver: LinkResolver,
+    check: CaptureCheck,
+    trigger: CaptureTrigger,
+  ): Promise<FinishedCaptureResult> {
+    const key = gameKey(ref);
+    const existing = await this.deps.queue.get(key);
+    if (existing && existing.status !== 'pending') return { outcome: 'known', key };
+    const resolution = await resolver(ref);
+    if (resolution.kind === 'in-progress') return { outcome: 'skipped', key, reason: resolution.reason };
+    if (resolution.kind === 'error') return { outcome: 'error', key, reason: resolution.error };
+    if (resolution.kind === 'pending') {
+      const skip = check({ white: resolution.white ?? '', black: resolution.black ?? '', result: '', playedAt: null });
+      if (skip) return { outcome: 'skipped', key, reason: skip };
+      await this.deps.queue.addPending({
+        key,
+        source: ref.site,
+        url,
+        error: resolution.reason,
+        nextRetryAt: resolution.retryAt,
+        white: resolution.white,
+        black: resolution.black,
+        date: resolution.date,
+        trigger,
+      });
+      this.deps.onQueueChanged();
+      return { outcome: 'pending', key };
+    }
+    const { games, errors } = checkPgnText(resolution.pgn);
+    if (games.length !== 1) return { outcome: 'error', key, reason: errors[0] ?? 'Expected exactly one game.' };
+    const h = readPgnHeaders(games[0]!.pgn);
+    if ((h.Result ?? '*') === '*') return { outcome: 'skipped', key, reason: 'The game is still in progress.' };
+    const skip = check({ white: h.White ?? '', black: h.Black ?? '', result: h.Result ?? '', playedAt: playedAtFromHeaders(h) });
+    if (skip) return { outcome: 'skipped', key, reason: skip };
+    const [outcome] = await this.deps.queue.addReady([
+      { key, source: ref.site, pgn: games[0]!.pgn, method: resolution.method, url, trigger },
+    ]);
+    this.deps.onQueueChanged();
+    return { outcome: outcome!, key };
   }
 
   /** Tries pending games again: all that are due, or one (the popup's retry). */

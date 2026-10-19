@@ -295,3 +295,50 @@ describe('Phase 5b — bridge sync', () => {
     expect(win.sentOfType('hello-ack')).toHaveLength(1);
   });
 });
+
+describe('Phase 5b — delivery without focus (bridge nudge)', () => {
+  it('a nudge makes an idle page sync now: the page answers bridge-ready with hello', async () => {
+    const queue = await makeQueue(0);
+    const stored: string[] = [];
+    const { bridge, client, win } = wire(queue, async (games) => {
+      stored.push(...games.map((g) => g.key));
+      return { saved: games.map((g) => g.key), duplicates: [], failed: [] };
+    });
+    bridge.start();
+    client.start();
+    await settle(bridge, client);
+    const hellos = win.sentOfType('hello').length;
+    // A game is captured while the page sits in a background tab (no focus, no visibility change)
+    await queue.addReady([{ key: 'lichess:Bjl39T9x', source: 'lichess', pgn: pgn(1), method: 'lichess-sync' }]);
+    bridge.nudge();
+    await vi.waitFor(() => expect(stored).toEqual(['lichess:Bjl39T9x']), { timeout: 3000, interval: 5 });
+    await settle(bridge, client);
+    expect(win.sentOfType('hello').length).toBe(hellos + 1);
+    expect(await queue.counts()).toMatchObject({ ready: 0, delivered: 1 });
+  });
+
+  it('a nudge during a sync starts one more sync after it, for games the running one missed', async () => {
+    const queue = await makeQueue(2);
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
+    const stored: string[] = [];
+    const { bridge, client, win } = wire(queue, async (games) => {
+      await gate;
+      stored.push(...games.map((g) => g.key));
+      return { saved: games.map((g) => g.key), duplicates: [], failed: [] };
+    });
+    bridge.start();
+    client.start();
+    await vi.waitFor(() => expect(win.sentOfType('games')).toHaveLength(1), { timeout: 3000, interval: 5 });
+    bridge.nudge();
+    bridge.nudge();
+    release();
+    await vi.waitFor(() => expect(win.sentOfType('sync-done').length).toBeGreaterThanOrEqual(2), { timeout: 3000, interval: 5 });
+    await settle(bridge, client);
+    expect(stored.sort()).toEqual(['chesscom:live-0', 'chesscom:live-1']);
+    // One sync from the page's own hello(s), one more from the nudges (not one per nudge)
+    expect(win.sentOfType('bridge-ready').length).toBe(2);
+  });
+});

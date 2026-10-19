@@ -89,14 +89,33 @@ The extension delivers games to the analysis site through a small content script
 registers on **one** URL: the **Analysis site URL** in Settings, `http://127.0.0.1:4173` by
 default (`npm run serve`). If you serve the site elsewhere (another port, or `localhost`),
 change it there; only `http://localhost:<port>` and `http://127.0.0.1:<port>` are accepted.
-Games are handed over whenever the site's tab opens or regains focus; without the
-extension the site works as usual.
+Games are handed over as soon as they are captured while the site is open in a tab (focused
+or not), and whenever its tab opens or regains focus. The popup's "N games waiting" counts
+games captured but not yet copied into the site's Games list. Without the extension the site
+works as usual.
 
 ### How games are captured
 
-- **Save button** on game pages, **auto-capture** when a game you played ends while its page
-  is open (Settings; on by default), and **Save game to Wizard's Chess** in the right-click
-  menu of game links.
+- **Save button** on game pages, and **Save game to Wizard's Chess** in the right-click menu
+  of game links.
+- **Automatic capture** (Settings; on by default; your usernames tell the extension which
+  games are yours):
+  - when a game you play ends on the page (Lichess: its official game stream; Chess.com: the
+    game's data, checked every 10 s while the game runs; the game-over markers on the page
+    as a faster hint),
+  - when you open a game of yours that ended in the last 6 hours (e.g. Chess.com moving from
+    /play/online to the game's page after the end),
+  - when you leave or close a game page (the extension fetches the game itself),
+  - and as a safety net, your recent games from the official history endpoints, every 3
+    minutes while a Lichess or Chess.com tab is open, right after you leave a game page and
+    for 30 minutes after, and at browser start. The first check of an account goes 24 h back;
+    use Import my history for older games.
+- **Debug this tab** (popup) shows what the capture script sees on the current tab (URL, game
+  ID and where it came from, game state, whether it's your game, what it watches, the last
+  detection events) and the background's view (settings, the last check of your recent
+  games, the last game page left). **Copy report** copies it as text. Tabs opened before the
+  extension was loaded or updated get the script when it is installed or updated, or with
+  **Start capture on this tab**.
 - **Popup**: paste a game link (one per line) or a PGN. Chess.com links come from the
   monthly archive and stay *pending* until the game appears there (it can lag up to 12 h;
   retried every 15 minutes for 48 hours, or with **Retry now**).
@@ -113,8 +132,11 @@ extension the site works as usual.
 | Lichess page data (`page-init-data` JSON in the game page) | game page, links (fallback) | **Unofficial** — may break when Lichess changes its pages |
 | Chess.com game data (`/callback/live/game/{id}`, TCN-encoded moves) | Chess.com game page | **Unofficial** — may break when Chess.com changes it |
 | Chess.com Share → PGN dialog | game page (fallback) | **Unofficial** — depends on Chess.com's page markup |
-| Chess.com monthly archives (`api.chess.com/pub/...`) | links, Import my history | Official Published-Data API |
-| Game-over detection on the page (Lichess `.result-wrap`, Chess.com game-over dialog) | auto-capture | **Unofficial** — Chess.com is also checked every 30 s while a game runs |
+| Chess.com monthly archives (`api.chess.com/pub/...`) | links, Import my history, background check of recent games | Official Published-Data API |
+| Lichess game stream (`/api/stream/game/{id}`) | end of a game on its page | Official API |
+| Lichess games of a user since a time (`/api/games/user/{name}?since=…`) | background check of recent games | Official API |
+| Chess.com game ID from the page's own requests (Resource Timing), on /play pages | auto-capture | **Unofficial** — depends on which URLs Chess.com's play page loads |
+| Game-over markers on the page (Lichess `.result-wrap`, Chess.com game-over dialog) | auto-capture (fast hint) | **Unofficial** — the game data / stream above don't depend on them |
 
 ## Dataset Generation (`scripts/` -> `data/`)
 

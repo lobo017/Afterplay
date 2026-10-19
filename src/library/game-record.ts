@@ -3,9 +3,12 @@ import type { Color } from '../core/rules';
 import type { GameSource } from '../capture/game-id';
 import { gameUrl } from '../capture/game-id';
 import type { ValidGame } from '../capture/pgn-games';
+import { playedAtFromHeaders } from '../capture/pgn-time';
 import type { MyAccounts } from '../capture/protocol';
 import { DEFAULT_USER_ACCOUNTS, type UserAccount } from '../review/perspective';
 import type { StoredGameRecord } from '../storage/db';
+
+export { playedAtFromHeaders };
 
 export type NewGameRecord = Omit<StoredGameRecord, 'schemaVersion' | 'createdAt' | 'updatedAt'>;
 
@@ -31,17 +34,6 @@ function pgnDate(headers: Readonly<Record<string, string>>): string {
     if (/^\d{4}\.\d{2}\.\d{2}$/.test(v)) return v;
   }
   return '';
-}
-
-/** When the game was played, from UTCDate + UTCTime (or Date + StartTime), in ms. */
-export function playedAtFromHeaders(headers: Readonly<Record<string, string>>): number | null {
-  const date = pgnDate(headers);
-  if (!date) return null;
-  const time = usable(headers.UTCTime) || usable(headers.StartTime) || '00:00:00';
-  const m = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(time);
-  const [y, mo, d] = date.split('.').map(Number) as [number, number, number];
-  const ms = Date.UTC(y, mo - 1, d, m ? Number(m[1]) : 0, m ? Number(m[2]) : 0, m?.[3] ? Number(m[3]) : 0);
-  return Number.isFinite(ms) ? ms : null;
 }
 
 /** A stored game from a checked PGN game. */

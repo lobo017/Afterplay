@@ -1,15 +1,28 @@
-import { gameKey, isValidRef, type CaptureSite } from '../../src/capture/game-id';
+import { gameKey, gameUrl, isValidRef, type CaptureSite } from '../../src/capture/game-id';
+import { readPgnHeaders } from '../../src/capture/pgn-time';
+import { AUTO_SYNC_PERIOD_MINUTES, AutoSync, type AutoSyncReason, type AutoSyncSiteState } from './auto-sync';
 import { BACKFILL_PAUSE_MS, BACKFILL_SITES, BackfillRunner, type BackfillSiteState } from './backfill';
 import { CaptureService, type LinkResolution, type LinkResolver } from './capture-service';
 import { lichessIdsExportExtractor } from './extractors/lichess-ids-export';
 import { lichessPageDataExtractor } from './extractors/lichess-page-data';
 import { describeAttempts, runExtractors, type Extractor } from './extractors/types';
-import { chessComUsernames, fetchChessComCallback } from './extractors/chesscom-callback';
+import { chessComCallbackExtractor, chessComUsernames, fetchChessComCallback } from './extractors/chesscom-callback';
 import { CHESSCOM_ARCHIVE_METHOD, lookupInArchives, monthOf, previousMonth } from './extractors/chesscom-archive';
 import { chromeLocalStore } from './chrome-store';
-import type { ExtRequest, StatusReply } from './messages';
-import { CaptureQueue } from './queue';
+import type { BackgroundDebugInfo, ExtRequest, LeaveRecord, PageStatus, StatusReply, TabRequest } from './messages';
+import { classifyPage, pageKey, SITE_CONTENT_SCRIPT, SITE_TAB_PATTERNS } from './pages';
+import { CaptureQueue, type KeyValueStore } from './queue';
 import { accountsOf, loadSettings, saveSettings, siteMatchPattern, validateSettings, type ExtensionSettings } from './settings';
+import {
+  hasLeft,
+  leaveAction,
+  leaveCaptureCheck,
+  tabFromReport,
+  tabFromUrl,
+  TRACKED_TABS_KEY,
+  type TrackedTab,
+  type TrackedTabs,
+} from './tab-tracker';
 
 // The background service worker: owns the capture queue and answers content scripts, the
 // popup and the bridge. Chrome stops it when idle, so listeners are registered at the top
@@ -21,14 +34,40 @@ const FAILURE_NOTIFICATION_ID = 'wizard-chess-capture-failed';
 const RETRY_ALARM = 'retry-pending';
 /** Wakes a running history import (after a rate limit, or if the worker was stopped mid-import). */
 const BACKFILL_ALARM = 'backfill';
+/** The safety net: my recent games, while a game site's tab is open (auto-sync.ts). */
+const AUTO_SYNC_ALARM = 'auto-sync';
 /** How often pending games (not yet in Chess.com's archive) are looked for again. */
 const RETRY_PERIOD_MINUTES = 15;
+/** After I leave a game page, the site is synced this soon, and on every alarm for this long. */
+const LEAVE_SYNC_DELAY_MS = 5000;
+const LEAVE_FOLLOW_UP_MS = 30 * 60_000;
+/** chrome.storage.session keys (gone when the browser closes, like the tabs they describe). */
+const FOLLOW_UP_KEY = 'autoSyncFollowUp';
+const LAST_LEAVE_KEY = 'lastLeave';
+
+const SITE_NAME: Record<CaptureSite, string> = { lichess: 'Lichess', chesscom: 'Chess.com' };
+
+const sessionStore: KeyValueStore = {
+  get: (keys) => chrome.storage.session.get(keys),
+  set: (items) => chrome.storage.session.set(items),
+  remove: (keys) => chrome.storage.session.remove(keys),
+};
+
+/** A PGN with the result "*" is a game still running (the Lichess exports answer for those too). */
+function isUnfinished(pgn: string): boolean {
+  return (readPgnHeaders(pgn).Result ?? '*') === '*';
+}
 
 /** A link resolved by trying extraction methods in order (from the service worker: no page, no session cookie). */
 function resolveWith(extractors: readonly Extractor[]): LinkResolver {
   return async (ref): Promise<LinkResolution> => {
     const { result, attempts } = await runExtractors(extractors, { ref, fetch: (i, init) => fetch(i, init) });
-    if (result.ok) return { kind: 'pgn', pgn: result.pgn, method: result.method };
+    if (result.ok) {
+      return isUnfinished(result.pgn)
+        ? { kind: 'in-progress', reason: 'The game is still in progress.' }
+        : { kind: 'pgn', pgn: result.pgn, method: result.method };
+    }
+    if (result.inProgress) return { kind: 'in-progress', reason: result.reason };
     if (result.retryAfterMs !== undefined) {
       return { kind: 'pending', reason: result.reason, retryAt: Date.now() + result.retryAfterMs };
     }
@@ -79,13 +118,32 @@ const resolvers: Partial<Record<CaptureSite, LinkResolver>> = {
   chesscom: resolveChessComLink,
 };
 
+/**
+ * A game I just left: Chess.com's game data gives the PGN at once (the archive can lag by
+ * hours); the archive when that fails. Lichess: as for links.
+ */
+const chessComFromGameData = resolveWith([chessComCallbackExtractor]);
+const leaveResolvers: Record<CaptureSite, LinkResolver> = {
+  lichess: resolvers.lichess!,
+  chesscom: async (ref) => {
+    const fromData = await chessComFromGameData(ref);
+    return fromData.kind === 'error' ? resolveChessComLink(ref) : fromData;
+  },
+};
+
 const queue = new CaptureQueue(chromeLocalStore);
+
+function onQueueChanged(): void {
+  void updateBadge();
+  nudgeSite();
+}
+
 const service = new CaptureService({
   queue,
   store: chromeLocalStore,
   now: Date.now,
   resolvers,
-  onQueueChanged: () => void updateBadge(),
+  onQueueChanged,
 });
 
 async function updateBadge(): Promise<void> {
@@ -96,9 +154,36 @@ async function updateBadge(): Promise<void> {
   await chrome.action.setTitle({
     title:
       waiting === 0
-        ? "Wizard's Chess capture"
-        : `Wizard's Chess capture: ${waiting} game${waiting === 1 ? '' : 's'} not yet on the analysis site`,
+        ? "Wizard's Chess capture: every captured game is on the analysis site"
+        : `Wizard's Chess capture: ${waiting} game${waiting === 1 ? '' : 's'} not on the analysis site yet (sent when it is open in a tab)`,
   });
+}
+
+/** Tabs showing the analysis site (where the bridge runs). */
+async function siteTabs(settings?: ExtensionSettings): Promise<chrome.tabs.Tab[]> {
+  const s = settings ?? (await loadSettings(chromeLocalStore));
+  try {
+    return await chrome.tabs.query({ url: siteMatchPattern(s.siteUrl) });
+  } catch {
+    return [];
+  }
+}
+
+let nudgeTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** Games are ready: the bridge in every open tab of the analysis site syncs now, focused or not. */
+function nudgeSite(): void {
+  if (nudgeTimer) return;
+  nudgeTimer = setTimeout(() => {
+    nudgeTimer = null;
+    void (async () => {
+      if ((await queue.counts()).ready === 0) return;
+      const message: TabRequest = { kind: 'bridge-nudge' };
+      for (const tab of await siteTabs()) {
+        if (tab.id !== undefined) await chrome.tabs.sendMessage(tab.id, message).catch(() => undefined);
+      }
+    })();
+  }, 200);
 }
 
 /** Registers the bridge content script on the configured site URL only (or moves it there). */
@@ -149,6 +234,28 @@ async function openPopup(): Promise<void> {
   }
 }
 
+/**
+ * Chrome runs manifest content scripts only in pages loaded after the extension: tabs that
+ * were open when it was installed or updated get the script now (an orphaned older copy
+ * sees the newer one and stops). Returns how many tabs got it.
+ */
+async function injectIntoOpenTabs(): Promise<number> {
+  let injected = 0;
+  for (const site of BACKFILL_SITES) {
+    const tabs = await chrome.tabs.query({ url: SITE_TAB_PATTERNS[site] }).catch(() => [] as chrome.tabs.Tab[]);
+    for (const tab of tabs) {
+      if (tab.id === undefined) continue;
+      try {
+        await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: [SITE_CONTENT_SCRIPT[site]] });
+        injected++;
+      } catch {
+        // A tab that can't take scripts (discarded, an error page): it gets one when reloaded
+      }
+    }
+  }
+  return injected;
+}
+
 const backfill = new BackfillRunner({
   store: chromeLocalStore,
   queue,
@@ -156,9 +263,26 @@ const backfill = new BackfillRunner({
   now: Date.now,
 });
 
+const autoSync = new AutoSync({
+  store: chromeLocalStore,
+  queue,
+  fetch: (i, init) => fetch(i, init),
+  now: Date.now,
+  importActive: async (site) => {
+    const state = await backfill.state(site);
+    return state.status === 'running' || state.status === 'waiting';
+  },
+});
+
 async function readBackfillStates(): Promise<Record<CaptureSite, BackfillSiteState>> {
   const out = {} as Record<CaptureSite, BackfillSiteState>;
   for (const site of BACKFILL_SITES) out[site] = await backfill.state(site);
+  return out;
+}
+
+async function readAutoSyncStates(): Promise<Record<CaptureSite, AutoSyncSiteState>> {
+  const out = {} as Record<CaptureSite, AutoSyncSiteState>;
+  for (const site of BACKFILL_SITES) out[site] = await autoSync.state(site);
   return out;
 }
 
@@ -187,7 +311,7 @@ async function pumpBackfill(): Promise<void> {
         if (r.next === 'continue') progressed = true;
         else if (r.next === 'wait' && r.atMs !== null) wakeAt = Math.min(wakeAt, r.atMs);
       }
-      void updateBadge();
+      onQueueChanged();
       if (!progressed) {
         if (Number.isFinite(wakeAt)) await chrome.alarms.create(BACKFILL_ALARM, { when: Math.max(wakeAt, Date.now() + 30_000) });
         return;
@@ -199,11 +323,173 @@ async function pumpBackfill(): Promise<void> {
   }
 }
 
+// --- Automatic sync (the safety net)
+
+function usernameFor(settings: ExtensionSettings, site: CaptureSite): string {
+  return (site === 'lichess' ? settings.lichessUsername : settings.chesscomUsername).trim();
+}
+
+/** Syncs one site's recent games, if automatic capture is on and my username is set. */
+async function runAutoSync(site: CaptureSite, reason: AutoSyncReason): Promise<AutoSyncSiteState | null> {
+  const settings = await loadSettings(chromeLocalStore);
+  const username = usernameFor(settings, site);
+  if (!settings.autoCapture || username === '') return null;
+  const before = await queue.counts();
+  const state = await autoSync.run(site, username, reason);
+  const after = await queue.counts();
+  if (after.ready !== before.ready || after.pending !== before.pending) onQueueChanged();
+  return state;
+}
+
+/** Which game sites have a tab open. */
+async function openGameSites(): Promise<Record<CaptureSite, boolean>> {
+  const out = { lichess: false, chesscom: false } as Record<CaptureSite, boolean>;
+  for (const site of BACKFILL_SITES) {
+    const tabs = await chrome.tabs.query({ url: SITE_TAB_PATTERNS[site] }).catch(() => [] as chrome.tabs.Tab[]);
+    out[site] = tabs.length > 0;
+  }
+  return out;
+}
+
+async function followUps(): Promise<Partial<Record<CaptureSite, number>>> {
+  return ((await sessionStore.get([FOLLOW_UP_KEY]))[FOLLOW_UP_KEY] as Partial<Record<CaptureSite, number>>) ?? {};
+}
+
+/** The alarm: each site with a tab open (or a game page left in the last 30 min) is synced. */
+async function onAutoSyncAlarm(): Promise<void> {
+  const open = await openGameSites();
+  const follow = await followUps();
+  const now = Date.now();
+  for (const site of BACKFILL_SITES) {
+    if (open[site] || (follow[site] ?? 0) > now) await runAutoSync(site, 'alarm');
+  }
+}
+
+const syncTimers: Partial<Record<CaptureSite, ReturnType<typeof setTimeout>>> = {};
+
+function scheduleSync(site: CaptureSite, reason: AutoSyncReason, delayMs: number): void {
+  if (syncTimers[site]) return;
+  syncTimers[site] = setTimeout(() => {
+    delete syncTimers[site];
+    void runAutoSync(site, reason);
+  }, delayMs);
+}
+
+// --- Tabs: what each game-site tab shows, and leaving a game page
+
+let tabsChain: Promise<unknown> = Promise.resolve();
+
+async function readTabs(): Promise<TrackedTabs> {
+  return ((await sessionStore.get([TRACKED_TABS_KEY]))[TRACKED_TABS_KEY] as TrackedTabs | undefined) ?? {};
+}
+
+/** Read-modify-write of the tracked tabs, one at a time. */
+function editTabs<T>(fn: (tabs: TrackedTabs) => T): Promise<T> {
+  const run = tabsChain.then(async () => {
+    const tabs = await readTabs();
+    const out = fn(tabs);
+    await sessionStore.set({ [TRACKED_TABS_KEY]: tabs });
+    return out;
+  });
+  tabsChain = run.catch(() => undefined);
+  return run;
+}
+
+async function recordLeave(site: CaptureSite, record: LeaveRecord): Promise<void> {
+  const all = ((await sessionStore.get([LAST_LEAVE_KEY]))[LAST_LEAVE_KEY] as Partial<Record<CaptureSite, LeaveRecord>>) ?? {};
+  await sessionStore.set({ [LAST_LEAVE_KEY]: { ...all, [site]: record } });
+}
+
+/**
+ * I left a game page (closed the tab, went to another page): the game is fetched from here
+ * and queued if it has ended and is mine, since the page may have gone before it could
+ * capture it; then the site's recent games are synced, and synced again on the alarm for a
+ * while (Chess.com's archive lags).
+ */
+async function onLeftPage(tab: TrackedTab): Promise<void> {
+  const action = leaveAction(tab);
+  if (!action.capture && !action.sync) return;
+  const settings = await loadSettings(chromeLocalStore);
+  const now = Date.now();
+  if (!settings.autoCapture) {
+    await recordLeave(tab.site, { at: now, url: tab.url, result: 'nothing done: automatic capture is off' });
+    return;
+  }
+  const follow = await followUps();
+  await sessionStore.set({ [FOLLOW_UP_KEY]: { ...follow, [tab.site]: now + LEAVE_FOLLOW_UP_MS } });
+  let result = action.capture ? '' : `synced only: ${action.reason}`;
+  if (action.capture && tab.ref) {
+    try {
+      const r = await service.captureFinished(
+        tab.ref,
+        gameUrl(tab.ref),
+        leaveResolvers[tab.site],
+        leaveCaptureCheck(tab, settings, now),
+        'left-page',
+      );
+      result =
+        r.outcome === 'skipped' || r.outcome === 'error'
+          ? `${r.outcome === 'skipped' ? 'not captured' : 'failed'}: ${r.reason}`
+          : r.outcome === 'known'
+            ? 'already captured'
+            : `captured (${r.outcome})`;
+    } catch (err) {
+      result = `failed: ${err instanceof Error ? err.message : String(err)}`;
+    }
+  }
+  await recordLeave(tab.site, { at: now, url: tab.url, result });
+  if (action.sync) scheduleSync(tab.site, 'left-page', LEAVE_SYNC_DELAY_MS);
+}
+
+async function onPageState(tabId: number, tabUrl: string | undefined, status: PageStatus): Promise<void> {
+  // A report from a page the tab has already left (sent just before it navigated) is stale
+  if (tabUrl !== undefined && pageKey(tabUrl) !== pageKey(status.url)) return;
+  const left = await editTabs((tabs) => {
+    const prev = tabs[tabId];
+    const next = tabFromReport(tabId, status, Date.now());
+    if (next) tabs[tabId] = next;
+    else delete tabs[tabId];
+    return prev && hasLeft(prev, status.url) ? prev : null;
+  });
+  if (left) await onLeftPage(left);
+}
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.url === undefined && changeInfo.status !== 'loading') return;
+  // Without host permission for the new page (it's off the game sites), Chrome leaves the URL out
+  const url = changeInfo.url ?? tab.url;
+  void (async () => {
+    const left = await editTabs((tabs) => {
+      const prev = tabs[tabId];
+      if (prev && !hasLeft(prev, url)) return null;
+      const next = url ? tabFromUrl(tabId, url, Date.now()) : null;
+      if (next) tabs[tabId] = next;
+      else delete tabs[tabId];
+      return prev ?? null;
+    });
+    if (left) await onLeftPage(left);
+  })();
+});
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  void (async () => {
+    const left = await editTabs((tabs) => {
+      const prev = tabs[tabId] ?? null;
+      delete tabs[tabId];
+      return prev;
+    });
+    if (left) await onLeftPage(left);
+  })();
+});
+
 async function init(): Promise<void> {
   await ensureBridge(await loadSettings(chromeLocalStore));
   await updateBadge();
   if (!(await chrome.alarms.get(RETRY_ALARM))) {
     await chrome.alarms.create(RETRY_ALARM, { periodInMinutes: RETRY_PERIOD_MINUTES });
+  }
+  if (!(await chrome.alarms.get(AUTO_SYNC_ALARM))) {
+    await chrome.alarms.create(AUTO_SYNC_ALARM, { periodInMinutes: AUTO_SYNC_PERIOD_MINUTES });
   }
 }
 
@@ -229,17 +515,56 @@ function fromGameSite(sender: chrome.runtime.MessageSender): boolean {
   return origin !== null && origin.startsWith('https://') && CAPTURE_HOSTS.has(new URL(origin).hostname);
 }
 
+async function debugBackground(tabId: number | null, url: string | null): Promise<BackgroundDebugInfo> {
+  const settings = await loadSettings(chromeLocalStore);
+  const tracked = tabId !== null ? ((await readTabs())[tabId] ?? null) : null;
+  const page = classifyPage(url ?? tracked?.url);
+  let sync: BackgroundDebugInfo['sync'] = null;
+  let lastLeave: LeaveRecord | null = null;
+  if (page) {
+    const site = page.site;
+    const username = usernameFor(settings, site);
+    const enabled = settings.autoCapture && username !== '';
+    const why = !settings.autoCapture
+      ? 'automatic capture is off in Settings'
+      : username === ''
+        ? `set your ${SITE_NAME[site]} username in Settings`
+        : `every ${AUTO_SYNC_PERIOD_MINUTES} min while a ${SITE_NAME[site]} tab is open, and when you leave a game page`;
+    sync = { site, state: await autoSync.state(site), enabled, why };
+    const leaves = ((await sessionStore.get([LAST_LEAVE_KEY]))[LAST_LEAVE_KEY] as Partial<Record<CaptureSite, LeaveRecord>>) ?? {};
+    lastLeave = leaves[site] ?? null;
+  }
+  const ref = tracked?.ref ?? page?.ref ?? null;
+  return {
+    settings: {
+      lichessUsername: settings.lichessUsername,
+      chesscomUsername: settings.chesscomUsername,
+      autoCapture: settings.autoCapture,
+      siteUrl: settings.siteUrl,
+    },
+    tracked,
+    sync,
+    entry: ref ? await queue.get(gameKey(ref)) : null,
+    lastLeave,
+    siteTabOpen: (await siteTabs(settings)).length > 0,
+  };
+}
+
 async function handle(msg: ExtRequest, sender: chrome.runtime.MessageSender): Promise<unknown> {
   switch (msg.kind) {
     case 'capture': {
       if (!fromGameSite(sender) && !fromExtension(sender)) return { ok: false, error: 'Not allowed.' };
-      const reply = await service.saveCapture(msg.site, msg.gameId, msg.pgn, msg.method, msg.url);
+      const reply = await service.saveCapture(msg.site, msg.gameId, msg.pgn, msg.method, msg.url, msg.trigger);
       if (!reply.ok && msg.auto) await notifyFailure(msg.url, reply.error);
       return reply;
     }
     case 'capture-failed':
       if (!fromGameSite(sender)) return { ok: false };
       await notifyFailure(msg.url, msg.error);
+      return { ok: true };
+    case 'page-state':
+      if (!fromGameSite(sender) || sender.tab?.id === undefined) return { ok: false };
+      await onPageState(sender.tab.id, sender.tab.url, msg.status);
       return { ok: true };
     case 'lookup': {
       if (!fromGameSite(sender) && !fromExtension(sender)) return null;
@@ -270,12 +595,15 @@ async function handle(msg: ExtRequest, sender: chrome.runtime.MessageSender): Pr
   if (!fromExtension(sender)) return { error: 'Not allowed.' };
   switch (msg.kind) {
     case 'status': {
+      const settings = await loadSettings(chromeLocalStore);
       const reply: StatusReply = {
         entries: (await queue.list()).slice(0, 100),
         counts: await queue.counts(),
-        settings: await loadSettings(chromeLocalStore),
+        settings,
         lastFailure: await service.lastFailure(),
         backfill: await readBackfillStates(),
+        autoSync: await readAutoSyncStates(),
+        siteTabOpen: (await siteTabs(settings)).length > 0,
         extensionVersion: chrome.runtime.getManifest().version,
       };
       return reply;
@@ -310,6 +638,23 @@ async function handle(msg: ExtRequest, sender: chrome.runtime.MessageSender): Pr
     }
     case 'backfill-stop':
       return { ok: true, state: await backfill.stop(msg.site) };
+    case 'debug-background':
+      return debugBackground(msg.tabId, msg.url);
+    case 'inject-tab': {
+      const page = classifyPage(msg.url);
+      if (!page) return { ok: false, error: 'Not a Lichess or Chess.com page.' };
+      try {
+        await chrome.scripting.executeScript({ target: { tabId: msg.tabId }, files: [SITE_CONTENT_SCRIPT[page.site]] });
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) };
+      }
+    }
+    case 'sync-now': {
+      const out: Partial<Record<CaptureSite, AutoSyncSiteState | null>> = {};
+      for (const site of BACKFILL_SITES) out[site] = await runAutoSync(site, 'manual');
+      return { ok: true, states: out };
+    }
     default:
       return { error: `Unknown request ${(msg as { kind: string }).kind}.` };
   }
@@ -323,13 +668,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true;
 });
 
-chrome.runtime.onInstalled.addListener(() => {
+chrome.runtime.onInstalled.addListener((details) => {
   setupContextMenu();
   void init();
+  if (details.reason === 'install' || details.reason === 'update') void injectIntoOpenTabs();
 });
 chrome.runtime.onStartup.addListener(() => {
   void init();
   void pumpBackfill();
+  // Games played while the browser was closed (or elsewhere)
+  for (const site of BACKFILL_SITES) void runAutoSync(site, 'startup');
 });
 
 /** "Save game to Wizard's Chess" on a game link. */
@@ -351,6 +699,7 @@ chrome.notifications.onClicked.addListener((id) => {
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === RETRY_ALARM) void service.retryPending();
   if (alarm.name === BACKFILL_ALARM) void pumpBackfill();
+  if (alarm.name === AUTO_SYNC_ALARM) void onAutoSyncAlarm();
 });
 
 /** Test and debugging hook, like the site's window.__wizardChess* objects. */
@@ -362,6 +711,11 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   contextMenuId: CONTEXT_MENU_ID,
   backfill,
   pumpBackfill,
+  autoSync,
+  onAutoSyncAlarm,
+  runAutoSync,
+  readTabs,
+  injectIntoOpenTabs,
   gameKey,
   isValidRef,
 };

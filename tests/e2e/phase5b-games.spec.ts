@@ -72,6 +72,9 @@ async function dropFiles(page: Page, files: Array<{ name: string; text: string }
 const opponents = (page: Page) => page.getByTestId('games-row-opponent').locator('.wc-games-opp-name').allTextContents();
 
 test.describe('Phase 5b — Games list (no extension)', () => {
+  // Dates are shown in the viewer's time zone: fixed here so the expected text doesn't depend on the machine
+  test.use({ timezoneId: 'UTC' });
+
   test('paste, drop and open PGN files; metadata, filters and sort; zero network requests', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     const external = await openGames(page);
@@ -112,7 +115,8 @@ test.describe('Phase 5b — Games list (no extension)', () => {
     await expect(lichessRow.getByTestId('games-row-opponent')).toContainText('1374 · me 1397');
     await expect(lichessRow.getByTestId('games-row-result')).toHaveText('W');
     await expect(lichessRow.getByTestId('games-row-tc')).toHaveText('2+1');
-    await expect(lichessRow.getByTestId('games-row-date')).toHaveText('2026-10-04');
+    // 05:33:38 UTC (the PGN's UTCDate / UTCTime), shown in the page's time zone (UTC here)
+    await expect(lichessRow.getByTestId('games-row-date')).toHaveText('2026-10-04 05:33');
     await expect(lichessRow.getByTestId('games-row-opening')).toContainText('Mieses');
     await expect(lichessRow.getByTestId('games-row-analysis')).toHaveText('Not analyzed');
     await expect(page.locator('[data-game-id="chesscom:live-185518487990"]').getByTestId('games-row-tc')).toHaveText('3+0');

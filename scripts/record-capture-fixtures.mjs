@@ -1,7 +1,11 @@
 // Records the page data and API responses the capture extension's extractors are tested
 // against (tests/fixtures/capture/). Dev-time only: the tests never touch the network.
 //
-//   node scripts/record-capture-fixtures.mjs
+//   node scripts/record-capture-fixtures.mjs [out-dir] [--live-stream]
+//
+// --live-stream also records the official game stream of a live game (Lichess TV's current
+// UltraBullet game, until it ends: under a minute or two) as lichess/stream-<id>-live.ndjson.
+// Which game that is depends on the moment; the tests only rely on its shape.
 //
 // The games are fixed (the tests refer to them by ID), so a re-recording fetches the same
 // set. One request at a time, with a pause between requests. Player records in Chess.com's
@@ -15,7 +19,10 @@ import { setTimeout as sleep } from 'node:timers/promises';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // An output folder can be given (e.g. to compare a fresh recording with the committed one)
-const OUT = process.argv[2] ? path.resolve(process.argv[2]) : path.resolve(__dirname, '..', 'tests', 'fixtures', 'capture');
+const args = process.argv.slice(2);
+const LIVE_STREAM = args.includes('--live-stream');
+const outArg = args.find((a) => !a.startsWith('--'));
+const OUT = outArg ? path.resolve(outArg) : path.resolve(__dirname, '..', 'tests', 'fixtures', 'capture');
 
 // lichess.org and www.chess.com game pages serve a reduced page to non-browser agents
 const BROWSER_UA =
@@ -100,6 +107,30 @@ async function recordLichess() {
     { headers: { Accept: 'application/x-ndjson' } },
   );
   write('lichess/user-games.ndjson', hist.body);
+
+  // The official game stream of a finished game: the description, every position, the final line
+  const stream = await request(`https://lichess.org/api/stream/game/${LICHESS_GAMES[0]}`, {
+    headers: { Accept: 'application/x-ndjson' },
+  });
+  write(`lichess/stream-${LICHESS_GAMES[0]}-finished.ndjson`, stream.body);
+  if (LIVE_STREAM) await recordLiveStream();
+}
+
+/** The stream of a game while it is played, read until Lichess closes it at the end. */
+async function recordLiveStream() {
+  const tv = JSON.parse((await request('https://lichess.org/api/tv/channels')).body);
+  const id = tv.ultraBullet?.gameId ?? tv.bullet?.gameId;
+  if (!id) throw new Error('No TV game to record');
+  console.log(`Recording the live stream of ${id} until the game ends…`);
+  const res = await fetch(`https://lichess.org/api/stream/game/${id}`, {
+    headers: { 'User-Agent': BROWSER_UA, Accept: 'application/x-ndjson' },
+    signal: AbortSignal.timeout(10 * 60_000),
+  });
+  if (!res.ok) throw new Error(`The stream answered ${res.status}`);
+  const body = await res.text();
+  const last = body.trim().split('\n').pop() ?? '';
+  if (!/"status"/.test(last)) throw new Error('The stream closed before the game ended');
+  write(`lichess/stream-${id}-live.ndjson`, body);
 }
 
 function pickArchiveGames(games, mustInclude, extra) {
