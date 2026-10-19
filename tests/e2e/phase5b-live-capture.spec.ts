@@ -348,3 +348,134 @@ test.describe('Phase 5b — live capture fixes', () => {
     await expect(popup.getByTestId('popup-open-site')).toHaveText('Show the analysis site');
   });
 });
+
+/**
+ * The sequence from live testing (docs/PROGRESS.md, "Chess.com in-progress games"): during a
+ * live game the URL is /game/{id} with no type, and Chess.com's game data answers 404 "Game is
+ * not found." until the game has ended, then the finished game.
+ */
+test.describe('Phase 5b — Chess.com games with no data until they end', () => {
+  const UNTYPED = 'https://www.chess.com/game/185518487990';
+  const NOT_FOUND = readFixture('chesscom/callback-live-in-progress-404.json');
+
+  /** The game page and its game data, which answers 404 until `end()`. */
+  function chessComGameInProgress(s: ExtensionSession) {
+    let ended = false;
+    const dataRequests: string[] = [];
+    mock(s, UNTYPED, { body: CHESSCOM_PAGE });
+    mock(
+      s,
+      (url) => url.startsWith('https://www.chess.com/callback/'),
+      (route) => {
+        const url = route.request().url();
+        dataRequests.push(url);
+        if (ended && url === CHESSCOM_CALLBACK) return route.fulfill(json(chessComCallback(3)));
+        return route.fulfill({ status: 404, ...json(NOT_FOUND) });
+      },
+    );
+    return {
+      dataRequests,
+      end: () => {
+        ended = true;
+      },
+    };
+  }
+
+  test('404 while the game runs, then the data: captured on the page by the game-data check', async () => {
+    const s = await start();
+    const game = chessComGameInProgress(s);
+    await setUsernames(s, '', 'hikaru');
+    const page = await s.context.newPage();
+    await page.goto(UNTYPED);
+    const save = page.getByTestId('wc-save-button');
+    await expect(save).toHaveAttribute('data-state', 'in-progress');
+    await expect(page.getByTestId('wc-save-note')).toHaveText('Captured when the game has ended (Chess.com shares it then).');
+
+    const popup = await openPopup(s, await tabIdOf(s, UNTYPED));
+    await popup.getByTestId('popup-debug-btn').click();
+    await expect(await debugRow(popup, 'Game ID')).toHaveText('live-185518487990 (from the URL)');
+    await expect(await debugRow(popup, 'Game state')).toHaveText(
+      "not available yet (Chess.com shares a live game's data once it has ended)",
+    );
+    await expect(await debugRow(popup, 'My game')).toHaveText("unknown until the site has the game's data (players)");
+    await expect(await debugRow(popup, 'Watching for the end')).toContainText('game data (callback) every 10 s');
+    // The page keeps checking while the game runs (first check 10 s after the page loaded): still 404
+    await expect.poll(() => game.dataRequests.length, { timeout: 15_000 }).toBeGreaterThanOrEqual(2);
+    await popup.getByTestId('popup-debug-btn').click();
+    await expect(popup.getByTestId('popup-debug-events')).toContainText('Game data check: not available yet (404).');
+    await expect(save).toHaveAttribute('data-state', 'in-progress');
+    await popup.screenshot({ path: path.join(SCREENSHOT_DIR, 'popup-debug-chesscom-not-available.png'), fullPage: true });
+
+    game.end();
+    await expect(save).toHaveAttribute('data-state', 'saved', { timeout: 15_000 });
+    expect(await queueEntry(s, 'chesscom:live-185518487990')).toMatchObject({ method: 'chesscom-callback', trigger: 'game-end' });
+    // A 12-digit ID is a live game: the daily endpoint is never asked
+    expect(game.dataRequests.every((u) => u === CHESSCOM_CALLBACK)).toBe(true);
+    await popup.getByTestId('popup-debug-btn').click();
+    await expect(popup.getByTestId('popup-debug-events')).toContainText('Game data check: finished.');
+    await expect(await debugRow(popup, 'Game state')).toHaveText('finished (game data (callback))');
+  });
+
+  test("a request of the page about the game triggers the check at once (no 10 s wait)", async () => {
+    const s = await start();
+    const game = chessComGameInProgress(s);
+    mock(s, 'https://www.chess.com/analysis/game/live/185518487990*', { body: '<!doctype html><p>review</p>' });
+    await setUsernames(s, '', 'hikaru');
+    const page = await s.context.newPage();
+    await page.goto(UNTYPED);
+    const save = page.getByTestId('wc-save-button');
+    await expect(save).toHaveAttribute('data-state', 'in-progress');
+
+    // The game ends; the page loads something about it (here: its review)
+    game.end();
+    const t0 = Date.now();
+    await page.evaluate(() => fetch('/analysis/game/live/185518487990?tab=review').then(() => undefined));
+    await expect(save).toHaveAttribute('data-state', 'saved', { timeout: 7000 });
+    expect(Date.now() - t0).toBeLessThan(7000);
+
+    const popup = await openPopup(s, await tabIdOf(s, UNTYPED));
+    await popup.getByTestId('popup-debug-btn').click();
+    await expect(popup.getByTestId('popup-debug-events')).toContainText('Page request about this game: /analysis/game/live/185518487990');
+  });
+
+  test('leaving while the data is still 404: the background tries again and captures the game', async () => {
+    const s = await start();
+    const game = chessComGameInProgress(s);
+    mock(s, 'https://api.chess.com/pub/player/hikaru/games/*', json('{"games":[]}'));
+    await setUsernames(s, '', 'hikaru');
+    const page = await s.context.newPage();
+    await page.goto(UNTYPED);
+    await expect(page.getByTestId('wc-save-button')).toHaveAttribute('data-state', 'in-progress');
+    await expect
+      .poll(() =>
+        s.worker.evaluate(async () => {
+          const api = (self as unknown as { __wizardChessCapture: { readTabs(): Promise<Record<string, { state: string }>> } })
+            .__wizardChessCapture;
+          return Object.values(await api.readTabs()).map((t) => t.state);
+        }),
+      )
+      .toEqual(['not-available']);
+
+    // I close the tab in the game's last seconds: the data isn't there when the background first asks
+    const before = game.dataRequests.length;
+    await page.close();
+    await expect.poll(() => game.dataRequests.length).toBeGreaterThan(before);
+    const retrying = () =>
+      s.worker.evaluate(async () => {
+        const api = (self as unknown as { __wizardChessCapture: { retries: { list(): Promise<Array<{ key: string; attempt: number }>> } } })
+          .__wizardChessCapture;
+        return api.retries.list();
+      });
+    await expect.poll(retrying).toEqual([expect.objectContaining({ key: 'chesscom:live-185518487990', attempt: 0 })]);
+    expect(await queueEntry(s, 'chesscom:live-185518487990')).toBeNull();
+
+    // The game ends; the retry 10 s later gets it
+    game.end();
+    await expect.poll(() => queueEntry(s, 'chesscom:live-185518487990'), { timeout: 20_000 }).toMatchObject({
+      status: 'ready',
+      method: 'chesscom-callback',
+      trigger: 'left-page',
+    });
+    expect(await retrying()).toEqual([]);
+  });
+});

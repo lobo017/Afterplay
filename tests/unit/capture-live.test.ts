@@ -3,6 +3,8 @@ import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { isMyGame, isRecentGame, RECENT_GAME_MS } from '../../extension/src/capture-rules';
 import { CaptureService, type LinkResolution } from '../../extension/src/capture-service';
+import { chessComTypeCandidates, fetchChessComGame } from '../../extension/src/extractors/chesscom-callback';
+import { GAME_RETRY_DELAYS_MS, GameRetries } from '../../extension/src/game-retry';
 import {
   classifyStreamLine,
   readGameStream,
@@ -361,5 +363,170 @@ describe('Phase 5b live capture — rules', () => {
     expect(log.list()).toHaveLength(DebugLog.MAX_EVENTS);
     expect(log.list()[0]!.text).toBe('e5');
     expect(log.last()).toEqual({ at: DebugLog.MAX_EVENTS + 5, text: `e${DebugLog.MAX_EVENTS + 4}` });
+  });
+});
+
+describe('Phase 5b — Chess.com games in progress (404 until the end)', () => {
+  const CC = path.join(__dirname, '..', 'fixtures', 'capture', 'chesscom');
+  const NOT_FOUND = fs.readFileSync(path.join(CC, 'callback-live-in-progress-404.json'), 'utf8');
+  const finished = JSON.parse(fs.readFileSync(path.join(CC, 'callback-live-185518487990.json'), 'utf8')) as {
+    game: Record<string, unknown>;
+  };
+  const json = (body: unknown, status = 200) =>
+    new Response(typeof body === 'string' ? body : JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+
+  it('the recorded answer for a running game is a 404 "Game is not found."', () => {
+    expect(JSON.parse(NOT_FOUND)).toEqual({ message: 'Game is not found.' });
+  });
+
+  it('a URL without the type: 12-digit IDs are live only; shorter ones try live then daily, checked by isLiveGame', async () => {
+    expect(chessComTypeCandidates('185558711264')).toEqual(['live']);
+    expect(chessComTypeCandidates('1033338800')).toEqual(['live', 'daily']);
+
+    const urls: string[] = [];
+    const answer = (byUrl: Record<string, () => Response>) => async (input: RequestInfo | URL) => {
+      urls.push(String(input));
+      return byUrl[String(input)]?.() ?? json(NOT_FOUND, 404);
+    };
+    // A running live game: 404, and only the live endpoint is asked
+    const running = await fetchChessComGame({ site: 'chesscom', gameId: 'live-185558711264' }, answer({}), true);
+    expect(running).toMatchObject({ ok: false, status: 404 });
+    expect(urls).toEqual(['https://www.chess.com/callback/live/game/185558711264']);
+
+    // A short ID: the live endpoint answers with a different (live) game of that number
+    const id = '1033338800';
+    const liveGame = { ...finished, game: { ...finished.game, id: Number(id), isLiveGame: true } };
+    const dailyGame = { ...finished, game: { ...finished.game, id: Number(id), isLiveGame: false } };
+    const both = answer({
+      [`https://www.chess.com/callback/live/game/${id}`]: () => json(liveGame),
+      [`https://www.chess.com/callback/daily/game/${id}`]: () => json(dailyGame),
+    });
+    expect(await fetchChessComGame({ site: 'chesscom', gameId: `live-${id}` }, both, true)).toMatchObject({
+      ok: true,
+      ref: { gameId: `live-${id}` },
+    });
+    const onlyDaily = answer({
+      [`https://www.chess.com/callback/live/game/${id}`]: () => json(dailyGame),
+      [`https://www.chess.com/callback/daily/game/${id}`]: () => json(dailyGame),
+    });
+    expect(await fetchChessComGame({ site: 'chesscom', gameId: `live-${id}` }, onlyDaily, true)).toMatchObject({
+      ok: true,
+      ref: { gameId: `daily-${id}` },
+    });
+    // With the type in the URL, the endpoint it names is used as is
+    const typed = await fetchChessComGame(
+      { site: 'chesscom', gameId: 'live-185518487990' },
+      answer({ 'https://www.chess.com/callback/live/game/185518487990': () => json(finished) }),
+      false,
+    );
+    expect(typed).toMatchObject({ ok: true, ref: { gameId: 'live-185518487990' } });
+  });
+
+  it('a page whose game had no data yet is captured on leaving (unknown players is not "not my game")', () => {
+    const now = Date.UTC(2026, 9, 19, 2, 20, 0);
+    const tab = tabFromReport(
+      4,
+      status({
+        url: 'https://www.chess.com/game/185558711264',
+        ref: { site: 'chesscom', gameId: 'live-185558711264' },
+        state: 'not-available',
+        white: null,
+        black: null,
+        mine: null,
+      }),
+      now,
+    )!;
+    expect(leaveAction(tab)).toMatchObject({ capture: true, sync: true });
+    const check = leaveCaptureCheck(tab, settings({ chesscomUsername: 'LocoLobo06' }), now);
+    expect(check({ white: 'LocoLobo06', black: 'someone', result: '0-1', playedAt: now - 30_000 })).toBeNull();
+    expect(check({ white: 'a', black: 'b', result: '0-1', playedAt: now - 30_000 })).toBe('not my game');
+    // A game the site really doesn't have still isn't fetched
+    expect(leaveAction({ ...tab, state: 'not-found' })).toMatchObject({ capture: false });
+  });
+
+  it('captureFinished flags a game that has not ended (or has no data yet) for another try', async () => {
+    const store = new MemoryStore();
+    const queue = new CaptureQueue(store, () => 1);
+    const service = new CaptureService({ queue, store, now: () => 1, resolvers: {}, onQueueChanged: () => undefined });
+    const ref = { site: 'chesscom' as const, gameId: 'live-185558711264' };
+    const notYet = async (): Promise<LinkResolution> => ({ kind: 'in-progress', reason: 'Chess.com has no data for this game yet.' });
+    expect(await service.captureFinished(ref, 'u', notYet, () => null, 'left-page')).toMatchObject({ outcome: 'skipped', retry: true });
+    const broken = async (): Promise<LinkResolution> => ({ kind: 'error', error: 'boom' });
+    expect(await service.captureFinished(ref, 'u', broken, () => null, 'left-page')).toEqual({
+      outcome: 'error',
+      key: 'chesscom:live-185558711264',
+      reason: 'boom',
+    });
+  });
+});
+
+describe('Phase 5b — retries of games left before their data was there', () => {
+  const tab = (n: string) =>
+    tabFromReport(1, status({ url: `https://www.chess.com/game/${n}`, ref: { site: 'chesscom', gameId: `live-${n}` }, state: 'not-available' }), 0)!;
+
+  function setup(answers: Array<'retry' | 'done'>) {
+    const clock = { now: 1_000_000 };
+    const store = new MemoryStore();
+    const schedule: Array<number | null> = [];
+    const tried: number[] = [];
+    const make = () =>
+      new GameRetries({
+        store,
+        now: () => clock.now,
+        attempt: async (item) => {
+          tried.push(item.attempt);
+          return (answers.shift() ?? 'retry') === 'retry'
+            ? { retry: true, result: 'not captured: no data yet' }
+            : { retry: false, result: 'captured (added)' };
+        },
+        onSchedule: (at) => schedule.push(at),
+      });
+    return { clock, schedule, tried, make };
+  }
+
+  it('tries again after 10 s, 30 s, 1, 2 and 5 min, then leaves the game to the archive check', async () => {
+    const s = setup([]);
+    const retries = s.make();
+    const item = await retries.add({ key: 'chesscom:live-1', ref: { site: 'chesscom', gameId: 'live-1' }, url: 'u', tab: tab('1') });
+    expect(item.nextAt).toBe(s.clock.now + GAME_RETRY_DELAYS_MS[0]);
+    expect(s.schedule).toEqual([item.nextAt]);
+    expect(GameRetries.describe(item, s.clock.now)).toBe('trying again in 10 s (retry 1 of 5)');
+    expect(await retries.runDue()).toEqual([]);
+    const gaps: number[] = [];
+    let last = s.clock.now;
+    let final = '';
+    for (let i = 0; i < GAME_RETRY_DELAYS_MS.length; i++) {
+      const [next] = await retries.list();
+      gaps.push(next!.nextAt - last);
+      s.clock.now = next!.nextAt;
+      last = s.clock.now;
+      const [report] = await retries.runDue();
+      expect(report!.done).toBe(i === GAME_RETRY_DELAYS_MS.length - 1);
+      final = report!.result;
+    }
+    expect(gaps).toEqual([...GAME_RETRY_DELAYS_MS]);
+    expect(s.tried).toEqual([0, 1, 2, 3, 4]);
+    expect(final).toBe('not captured: no data yet; gave up after 5 retries, left to the archive check');
+    expect(await retries.list()).toEqual([]);
+    expect(s.schedule[s.schedule.length - 1]).toBeNull();
+  });
+
+  it('stops as soon as a try captures the game, keeps one schedule per game, and survives the worker restarting', async () => {
+    const s = setup(['retry', 'done']);
+    const first = s.make();
+    const entry = { key: 'chesscom:live-2', ref: { site: 'chesscom' as const, gameId: 'live-2' }, url: 'u2', tab: tab('2') };
+    const a = await first.add(entry);
+    expect(await first.add(entry)).toEqual(a);
+    s.clock.now = a.nextAt;
+    const [r1] = await first.runDue();
+    expect(r1).toMatchObject({ done: false, result: 'not captured: no data yet; trying again in 30 s (retry 2 of 5)' });
+    // A new worker reads the schedule from storage
+    const second = s.make();
+    const [pending] = await second.list();
+    expect(pending).toMatchObject({ key: 'chesscom:live-2', attempt: 1 });
+    s.clock.now = pending!.nextAt;
+    const [r2] = await second.runDue();
+    expect(r2).toMatchObject({ done: true, result: 'captured (added)', site: 'chesscom', url: 'u2' });
+    expect(await second.list()).toEqual([]);
   });
 });

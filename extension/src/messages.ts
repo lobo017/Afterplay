@@ -41,7 +41,8 @@ export type ExtRequest =
 /** Messages the background and the popup send to content scripts (chrome.tabs.sendMessage). */
 export type TabRequest = { kind: 'debug-tab' } | { kind: 'bridge-nudge' };
 
-export type GameState = 'checking' | 'in-progress' | 'finished' | 'aborted' | 'not-found';
+/** `not-available`: the site has no data for the game yet (Chess.com, while a live game runs). */
+export type GameState = 'checking' | 'in-progress' | 'finished' | 'aborted' | 'not-found' | 'not-available';
 
 /**
  * What a game-site content script knows about its page; sent to the background on every
@@ -99,6 +100,8 @@ export interface BackgroundDebugInfo {
   entry: QueueEntry | null;
   /** The last time a game page of this site was left, and what came of it. */
   lastLeave: LeaveRecord | null;
+  /** Games of this site left before it had their data, being tried again. */
+  retrying: Array<{ key: string; url: string; description: string }>;
   siteTabOpen: boolean;
 }
 

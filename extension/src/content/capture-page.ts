@@ -24,7 +24,11 @@ export interface PageGame {
   source: string;
 }
 
-export type DetectResult = { game: PageGame } | { notFound: string };
+/**
+ * `notFound`: the site has no such game. `unavailable`: no data for it yet (Chess.com, while a
+ * live game runs): watched like a game in progress until the data appears.
+ */
+export type DetectResult = { game: PageGame } | { notFound: string } | { unavailable: string };
 
 /** "The game may have ended", from one of the things an adapter watches. */
 export interface EndSignal {
@@ -105,7 +109,9 @@ function mineReason(game: PageGame, settings: ExtensionSettings, site: SiteGameR
  * mine when it ends while the page is open, or when it is opened already finished within
  * the last few hours.
  */
-export async function runCapturePage(adapter: SiteAdapter, ref: SiteGameRef, hooks: PageHooks): Promise<CapturePageHandle> {
+export async function runCapturePage(adapter: SiteAdapter, pageRef: SiteGameRef, hooks: PageHooks): Promise<CapturePageHandle> {
+  /** The game: as the URL names it, until the site's data says otherwise (Chess.com daily vs live). */
+  let ref = pageRef;
   const { log, update } = hooks;
   const url = location.href;
   let stopped = false;
@@ -128,17 +134,32 @@ export async function runCapturePage(adapter: SiteAdapter, ref: SiteGameRef, hoo
     update({ state: 'not-found' });
     return STOPPED;
   }
-  let game = detected.game;
-  update({
-    state: game.state,
-    stateSource: game.source,
-    white: game.white,
-    black: game.black,
-    startedAt: game.startedAt,
-    endedAt: game.endedAt,
-    sawInProgress: game.state === 'in-progress',
-  });
-  log(`Game ${ref.gameId}: ${STATE_LABEL[game.state]} (${game.source}).`);
+  const unavailable = 'unavailable' in detected;
+  // Without data yet, the game is watched as one in progress (players unknown until it appears)
+  let game: PageGame =
+    'game' in detected
+      ? detected.game
+      : { ref, state: 'in-progress', white: '', black: '', viewerIsPlayer: null, startedAt: null, endedAt: null, source: '' };
+  if ('unavailable' in detected) {
+    log(detected.unavailable);
+    update({ state: 'not-available', stateSource: null, sawInProgress: true });
+  } else {
+    if (gameKey(game.ref) !== gameKey(ref)) {
+      log(`The site's data says this is ${game.ref.gameId}.`);
+      ref = game.ref;
+      update({ ref });
+    }
+    update({
+      state: game.state,
+      stateSource: game.source,
+      white: game.white,
+      black: game.black,
+      startedAt: game.startedAt,
+      endedAt: game.endedAt,
+      sawInProgress: game.state === 'in-progress',
+    });
+    log(`Game ${ref.gameId}: ${STATE_LABEL[game.state]} (${game.source}).`);
+  }
   if (game.state === 'aborted' || !hooks.isActive()) return STOPPED;
 
   let settings: ExtensionSettings;
@@ -155,7 +176,12 @@ export async function runCapturePage(adapter: SiteAdapter, ref: SiteGameRef, hoo
     update({ mine, mineReason: mineReason(g, settings, adapter.site, mine) });
     return mine;
   };
-  let mine = decideMine(game);
+  let mine: boolean | null = null;
+  if (unavailable) {
+    update({ mine: null, mineReason: "unknown until the site has the game's data (players)" });
+  } else {
+    mine = decideMine(game);
+  }
   update({ captured: known !== null });
   if (stopped || !hooks.isActive()) return STOPPED;
 
@@ -237,7 +263,10 @@ export async function runCapturePage(adapter: SiteAdapter, ref: SiteGameRef, hoo
       await capture('page-open');
     }
   } else {
-    setButton(known ?? 'in-progress', known ? '' : 'Save it when the game has ended.');
+    setButton(
+      known ?? 'in-progress',
+      known ? '' : unavailable ? 'Captured when the game has ended (Chess.com shares it then).' : 'Save it when the game has ended.',
+    );
     const onEndSignal = async (signal: EndSignal) => {
       if (checking || stopped || !watch) return;
       checking = true;
@@ -264,6 +293,10 @@ export async function runCapturePage(adapter: SiteAdapter, ref: SiteGameRef, hoo
         watch?.stop();
         watch = null;
         game = { ...ended, viewerIsPlayer: ended.viewerIsPlayer ?? game.viewerIsPlayer };
+        if (gameKey(game.ref) !== gameKey(ref)) {
+          ref = game.ref;
+          update({ ref });
+        }
         update({
           state: game.state,
           stateSource: game.source,

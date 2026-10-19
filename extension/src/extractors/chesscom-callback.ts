@@ -1,4 +1,4 @@
-import { chessComParts, type SiteGameRef } from '../../../src/capture/game-id';
+import { chessComParts, type ChessComGameType, type SiteGameRef } from '../../../src/capture/game-id';
 import { DEFAULT_POSITION } from '../../../src/core/rules';
 import { tcnToSan } from './chesscom-tcn';
 import { buildPgn, utcDateTime, type BuiltMove } from './pgn-builder';
@@ -17,6 +17,7 @@ export interface ChessComCallback {
   game: {
     id: number;
     isFinished?: boolean;
+    isLiveGame?: boolean;
     moveList?: string;
     moveTimestamps?: string;
     initialSetup?: string;
@@ -111,6 +112,46 @@ export async function fetchChessComCallback(
   const { id } = chessComParts(ref);
   if (!data?.game || String(data.game.id) !== id) return { ok: false, status: res.status, reason: 'The game data is for another game.' };
   return { ok: true, data };
+}
+
+/**
+ * The types to try for a game URL without one (`/game/{n}`). Live game IDs are 12 digits now
+ * and daily ones 10; below 11 digits the two ranges overlap (the live and the daily game with
+ * the same number are different games), so both are tried, live first.
+ */
+export function chessComTypeCandidates(id: string): ChessComGameType[] {
+  return id.length >= 11 ? ['live'] : ['live', 'daily'];
+}
+
+/**
+ * The game data for a game page. `untyped`: the URL had no live/daily segment, so the type
+ * comes from the ID and from the data's own `isLiveGame`; the result names the type found.
+ * Chess.com answers 404 for a live game while it is being played (probed: no running game
+ * ever answered) and the data within seconds of the end.
+ */
+export async function fetchChessComGame(
+  ref: SiteGameRef,
+  doFetch: typeof fetch,
+  untyped: boolean,
+): Promise<{ ok: true; ref: SiteGameRef; data: ChessComCallback } | { ok: false; status: number; reason: string }> {
+  if (!untyped) {
+    const r = await fetchChessComCallback(ref, doFetch);
+    return r.ok ? { ok: true, ref, data: r.data } : r;
+  }
+  const { id } = chessComParts(ref);
+  let last: { ok: false; status: number; reason: string } = { ok: false, status: 404, reason: 'No game data.' };
+  for (const type of chessComTypeCandidates(id)) {
+    const candidate: SiteGameRef = { site: 'chesscom', gameId: `${type}-${id}` };
+    const r = await fetchChessComCallback(candidate, doFetch);
+    if (r.ok) {
+      if ((r.data.game.isLiveGame !== false) === (type === 'live')) return { ok: true, ref: candidate, data: r.data };
+      last = { ok: false, status: 404, reason: `The ${type} game data is for another kind of game.` };
+      continue;
+    }
+    if (r.status !== 404) return r;
+    last = r;
+  }
+  return last;
 }
 
 export const chessComCallbackExtractor: Extractor = {

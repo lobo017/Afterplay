@@ -40,7 +40,8 @@ export type FinishedCaptureResult =
   | { outcome: AddOutcome | 'pending'; key: string }
   /** Already ready or delivered: nothing fetched. */
   | { outcome: 'known'; key: string }
-  | { outcome: 'skipped' | 'error'; key: string; reason: string };
+  /** `retry`: the game hasn't ended (or the site has no data for it) yet: worth another try later. */
+  | { outcome: 'skipped' | 'error'; key: string; reason: string; retry?: boolean };
 
 export interface CaptureServiceDeps {
   queue: CaptureQueue;
@@ -179,7 +180,7 @@ export class CaptureService {
     const existing = await this.deps.queue.get(key);
     if (existing && existing.status !== 'pending') return { outcome: 'known', key };
     const resolution = await resolver(ref);
-    if (resolution.kind === 'in-progress') return { outcome: 'skipped', key, reason: resolution.reason };
+    if (resolution.kind === 'in-progress') return { outcome: 'skipped', key, reason: resolution.reason, retry: true };
     if (resolution.kind === 'error') return { outcome: 'error', key, reason: resolution.error };
     if (resolution.kind === 'pending') {
       const skip = check({ white: resolution.white ?? '', black: resolution.black ?? '', result: '', playedAt: null });
@@ -201,7 +202,7 @@ export class CaptureService {
     const { games, errors } = checkPgnText(resolution.pgn);
     if (games.length !== 1) return { outcome: 'error', key, reason: errors[0] ?? 'Expected exactly one game.' };
     const h = readPgnHeaders(games[0]!.pgn);
-    if ((h.Result ?? '*') === '*') return { outcome: 'skipped', key, reason: 'The game is still in progress.' };
+    if ((h.Result ?? '*') === '*') return { outcome: 'skipped', key, reason: 'The game is still in progress.', retry: true };
     const skip = check({ white: h.White ?? '', black: h.Black ?? '', result: h.Result ?? '', playedAt: playedAtFromHeaders(h) });
     if (skip) return { outcome: 'skipped', key, reason: skip };
     const [outcome] = await this.deps.queue.addReady([

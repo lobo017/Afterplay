@@ -81,6 +81,7 @@ export function leaveAction(tab: TrackedTab): LeaveAction {
   if (tab.captured) return { capture: false, sync: true, reason: 'already captured' };
   if (tab.state === 'aborted') return { capture: false, sync: true, reason: 'the game was aborted' };
   if (tab.state === 'not-found') return { capture: false, sync: true, reason: 'the site has no such game' };
+  // 'not-available' (Chess.com has no data until a live game ends) is captured, with retries
   if (tab.mine === false) return { capture: false, sync: true, reason: 'not my game' };
   return { capture: true, sync: true, reason: '' };
 }

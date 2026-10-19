@@ -2439,3 +2439,82 @@ one worker): all pass.
 **Measured**: bundles: background 247 kB (was 216), Lichess content script 46 kB (was 27),
 Chess.com 160 kB (was 145), popup 26 kB (was 9), bridge 7 kB. New e2e tests take 1.3–8.2 s each
 (the leave test waits for the 5 s sync after leaving).
+
+## Phase 5b — Chess.com in-progress games (2026-10-19)
+
+Report from live testing: Lichess works; on Chess.com two back-to-back games were not captured
+live and only arrived later through the archive check. The Debug report showed the game page
+`https://www.chess.com/game/185558711264` (no live/daily segment), "Game state: not found on the
+site", event "Chess.com has no game live-185558711264", and on leaving the previous game "synced
+only: the site has no such game".
+
+### Diagnosis (probed from this machine, no login)
+
+- Both reported games (185558645780, 185558711264) and the earlier one (185556791450) now
+  answer 200 from `/callback/live/game/{id}` (finished, `isLiveGame: true`) and 404 `[]` from
+  `/callback/daily/game/{id}`. So the type was right ("live"); the data simply wasn't there yet.
+- Recent game IDs (they are multiples of 4, issued at roughly 440 per second): of 32 IDs from
+  the last 4 minutes, 9 answered and **every one was already finished** (some had ended 2–4 s
+  earlier); the other 23 answered 404 `{"message":"Game is not found."}`. No in-progress game
+  ever answered. Conclusion: **Chess.com's game data answers 404 while a live game is running
+  and 200 within seconds of its end.**
+- The content script treated that 404 as final ("not-found": no watching, no button), and the
+  background refused to fetch a game left in that state. Both paths therefore did nothing.
+- URLs without the type (`/game/{n}`) map to live, which is right for these 12-digit IDs. Live
+  IDs are 12 digits now and daily ones 10; for shorter untyped IDs the two ranges overlap
+  (`/callback/live/game/1033338800` is a different, live game than daily 1033338800), so the
+  data's own `isLiveGame` decides.
+
+### Plan (written before code)
+
+- `extractors/chesscom-callback.ts`: `fetchChessComGame(ref, fetch, untyped)`: for an untyped
+  URL, the types to try by ID length (≥ 11 digits: live only; shorter: live, then daily), each
+  accepted only when `isLiveGame` matches.
+- Content (`chesscom.ts`, `capture-page.ts`): a 404 on a game page is "not available yet"
+  (new state `not-available`): Save button "Game in progress", players unknown (not "not my
+  game"), seen in progress; the game data keeps being checked every 10 s (30 s hidden), and the
+  page's own requests that mention the game ID (Resource Timing, other than our own game-data
+  requests) trigger a check at once and are listed in the Debug log. When the data appears and
+  says finished: auto-capture as for any game that ended on the page. The ref is corrected to
+  daily when the data says so.
+- Background: leaving a `not-available` page captures (it no longer stops at "no such game").
+  Chess.com's game data 404 (or a game still in progress) on leaving → retries of the game data
+  after 10 s, 30 s, 1 min, 2 min and 5 min (`game-retry.ts`, kept in `chrome.storage.session`,
+  woken by a timer and an alarm), then left to the archive check. Shown in Debug ("Retrying").
+- Tests: unit (type candidates and `isLiveGame`, retry schedule incl. give-up and restart,
+  `captureFinished` retry flag, leave action for `not-available`); e2e replaying the reported
+  sequence: an untyped `/game/{id}` page answering 404 `{"message":"Game is not found."}`
+  while the game runs, then the finished data → captured on the page (by the 10 s check, and at
+  once after a page request about the game); leaving while it is still 404 → captured by a
+  background retry. Fixture: the recorded 404 body.
+
+Risks: the 10 s check of a page whose ID never exists keeps running while the page is open
+(same cost as during a game); retries are capped at 5.
+
+### Result (2026-10-19)
+
+- Confirmed before coding (see Diagnosis), plus a second probe: 23 recent IDs that answered
+  404 were asked again 4 minutes later; 13 now answered with a finished game whose end time
+  came after the first probe. A 404 is "still being played".
+- Built as planned. The content script's first check of a 404 page logs "Chess.com has no
+  data for this game yet: it shares a live game's data once the game has ended"; each change
+  of the game-data answer is logged ("Game data check: not available yet (404).", "…:
+  finished."), and so is every distinct page request about the game ("Page request about this
+  game: /analysis/game/live/…"). Debug shows the state "not available yet", My game "unknown
+  until the site has the game's data", and the watchers with their check count and last
+  answer.
+- Background: `captureLeftGame` (shared by leaving and the retries); the Chess.com leave
+  resolver maps a game-data 404 (and a rate limit) to "in progress" → `retry`; other
+  failures still go to the archive lookup. Retries record each try in "Last game page left"
+  and are listed as "Retrying" in Debug. Lichess games left in progress get the same retries.
+- Tests: unit +6 (`capture-live`: the recorded 404, type candidates and `isLiveGame`, leave
+  action and check for `not-available`, the retry flag, the retry schedule incl. give-up and a
+  worker restart). E2E +3 (`phase5b-live-capture.spec.ts`, "Chess.com games with no data until
+  they end": the page keeps checking through 404s and captures on the end; a page request about
+  the game triggers the check at once (captured within 7 s, well before the 10 s check); closing
+  the tab while it is still 404 → captured by the 10 s retry). With the old handling (404 =
+  "no such game") all three fail.
+- Checks: typecheck, lint, **388 unit tests**, build, build:ext, **58/58 e2e** (one worker,
+  7.1 min): all pass.
+- Known issue: whether Chess.com's page makes a request about the game when it ends is not
+  known (it can't be recorded without playing); the 10 s check doesn't depend on it.

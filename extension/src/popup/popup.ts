@@ -327,6 +327,7 @@ async function targetTab(): Promise<chrome.tabs.Tab | null> {
 
 const STATE_TEXT: Record<string, string> = {
   checking: 'checking…',
+  'not-available': "not available yet (Chess.com shares a live game's data once it has ended)",
   'in-progress': 'in progress',
   finished: 'finished',
   aborted: 'aborted',
@@ -372,7 +373,9 @@ function renderDebug(
       st.state ? `${STATE_TEXT[st.state] ?? st.state}${st.stateSource ? ` (${st.stateSource})` : ''}` : '—',
     ]);
     if (st.white || st.black) rows.push(['Players', `${st.white ?? '?'} (White) vs ${st.black ?? '?'} (Black)`]);
-    if (st.ref) rows.push(['My game', st.mineReason || '—', st.mine === true ? 'ok' : st.mine === false ? undefined : 'bad']);
+    // Unknown is expected while the site has no data for the game yet
+    const mineTone = st.mine === true ? 'ok' : st.mine === false || st.state === 'not-available' ? undefined : 'bad';
+    if (st.ref) rows.push(['My game', st.mineReason || '—', mineTone]);
     if (st.ref) rows.push(['Seen in progress', st.sawInProgress ? 'yes' : 'no']);
     if (st.watching.length > 0) rows.push(['Watching for the end', st.watching.join('; ')]);
     if (st.button) rows.push(['Save button', st.button]);
@@ -406,6 +409,7 @@ function renderDebug(
       ]);
     }
     if (bg.lastLeave) rows.push(['Last game page left', `${clockTime(bg.lastLeave.at)} ${bg.lastLeave.url} → ${bg.lastLeave.result}`]);
+    for (const r of bg.retrying) rows.push(['Retrying', `${r.url}: ${r.description}`]);
     rows.push(['Analysis site', bg.siteTabOpen ? `open in a tab (${s.siteUrl})` : `not open (${s.siteUrl})`]);
   }
 

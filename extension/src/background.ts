@@ -9,6 +9,7 @@ import { describeAttempts, runExtractors, type Extractor } from './extractors/ty
 import { chessComCallbackExtractor, chessComUsernames, fetchChessComCallback } from './extractors/chesscom-callback';
 import { CHESSCOM_ARCHIVE_METHOD, lookupInArchives, monthOf, previousMonth } from './extractors/chesscom-archive';
 import { chromeLocalStore } from './chrome-store';
+import { GameRetries, type GameRetryItem, type RetryOutcome } from './game-retry';
 import type { BackgroundDebugInfo, ExtRequest, LeaveRecord, PageStatus, StatusReply, TabRequest } from './messages';
 import { classifyPage, pageKey, SITE_CONTENT_SCRIPT, SITE_TAB_PATTERNS } from './pages';
 import { CaptureQueue, type KeyValueStore } from './queue';
@@ -36,6 +37,8 @@ const RETRY_ALARM = 'retry-pending';
 const BACKFILL_ALARM = 'backfill';
 /** The safety net: my recent games, while a game site's tab is open (auto-sync.ts). */
 const AUTO_SYNC_ALARM = 'auto-sync';
+/** Wakes the retries of games left before the site had their data (game-retry.ts). */
+const GAME_RETRY_ALARM = 'game-retry';
 /** How often pending games (not yet in Chess.com's archive) are looked for again. */
 const RETRY_PERIOD_MINUTES = 15;
 /** After I leave a game page, the site is synced this soon, and on every alarm for this long. */
@@ -120,14 +123,21 @@ const resolvers: Partial<Record<CaptureSite, LinkResolver>> = {
 
 /**
  * A game I just left: Chess.com's game data gives the PGN at once (the archive can lag by
- * hours); the archive when that fails. Lichess: as for links.
+ * hours). Chess.com answers 404 for a live game until it has ended, so a 404 here means "not
+ * yet" (the game is tried again); other failures fall back to the archive. Lichess: as for
+ * links.
  */
-const chessComFromGameData = resolveWith([chessComCallbackExtractor]);
 const leaveResolvers: Record<CaptureSite, LinkResolver> = {
   lichess: resolvers.lichess!,
   chesscom: async (ref) => {
-    const fromData = await chessComFromGameData(ref);
-    return fromData.kind === 'error' ? resolveChessComLink(ref) : fromData;
+    const { result, attempts } = await runExtractors([chessComCallbackExtractor], { ref, fetch: (i, init) => fetch(i, init) });
+    if (result.ok) return { kind: 'pgn', pgn: result.pgn, method: result.method };
+    if (result.inProgress) return { kind: 'in-progress', reason: result.reason };
+    if (result.notFound) {
+      return { kind: 'in-progress', reason: "Chess.com has no data for this game yet (it shares a live game's data once it has ended)." };
+    }
+    if (result.retryAfterMs !== undefined) return { kind: 'in-progress', reason: describeAttempts(attempts) || result.reason };
+    return resolveChessComLink(ref);
   },
 };
 
@@ -365,6 +375,56 @@ async function onAutoSyncAlarm(): Promise<void> {
   }
 }
 
+// --- Retries of games left before the site had their data
+
+let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+/** A timer for the next retry (seconds away), and an alarm in case the worker stops before it. */
+function scheduleRetryWake(nextAt: number | null): void {
+  if (retryTimer) clearTimeout(retryTimer);
+  retryTimer = null;
+  if (nextAt === null) {
+    void chrome.alarms.clear(GAME_RETRY_ALARM);
+    return;
+  }
+  retryTimer = setTimeout(() => {
+    retryTimer = null;
+    void runRetries();
+  }, Math.max(0, nextAt - Date.now()));
+  // Chrome runs alarms 30 s from now at the soonest
+  void chrome.alarms.create(GAME_RETRY_ALARM, { when: Math.max(nextAt, Date.now() + 30_000) });
+}
+
+/** Captures a game I left, as on leaving the page; `retry` when its data isn't there yet. */
+async function captureLeftGame(tab: TrackedTab): Promise<RetryOutcome & { reason?: string }> {
+  const settings = await loadSettings(chromeLocalStore);
+  if (!settings.autoCapture || !tab.ref) return { retry: false, result: 'nothing done: automatic capture is off' };
+  const r = await service.captureFinished(
+    tab.ref,
+    gameUrl(tab.ref),
+    leaveResolvers[tab.site],
+    leaveCaptureCheck(tab, settings, Date.now()),
+    'left-page',
+  );
+  if (r.outcome === 'skipped' || r.outcome === 'error') {
+    return { retry: r.outcome === 'skipped' && r.retry === true, result: `${r.outcome === 'skipped' ? 'not captured' : 'failed'}: ${r.reason}` };
+  }
+  return { retry: false, result: r.outcome === 'known' ? 'already captured' : `captured (${r.outcome})` };
+}
+
+const retries = new GameRetries({
+  store: sessionStore,
+  now: Date.now,
+  attempt: (item: GameRetryItem) => captureLeftGame(item.tab),
+  onSchedule: scheduleRetryWake,
+});
+
+async function runRetries(): Promise<void> {
+  for (const report of await retries.runDue()) {
+    await recordLeave(report.site, { at: Date.now(), url: report.url, result: `retry: ${report.result}` });
+  }
+}
+
 const syncTimers: Partial<Record<CaptureSite, ReturnType<typeof setTimeout>>> = {};
 
 function scheduleSync(site: CaptureSite, reason: AutoSyncReason, delayMs: number): void {
@@ -420,19 +480,12 @@ async function onLeftPage(tab: TrackedTab): Promise<void> {
   let result = action.capture ? '' : `synced only: ${action.reason}`;
   if (action.capture && tab.ref) {
     try {
-      const r = await service.captureFinished(
-        tab.ref,
-        gameUrl(tab.ref),
-        leaveResolvers[tab.site],
-        leaveCaptureCheck(tab, settings, now),
-        'left-page',
-      );
-      result =
-        r.outcome === 'skipped' || r.outcome === 'error'
-          ? `${r.outcome === 'skipped' ? 'not captured' : 'failed'}: ${r.reason}`
-          : r.outcome === 'known'
-            ? 'already captured'
-            : `captured (${r.outcome})`;
+      const r = await captureLeftGame(tab);
+      result = r.result;
+      if (r.retry) {
+        const item = await retries.add({ key: gameKey(tab.ref), ref: tab.ref, url: tab.url, tab });
+        result += `; ${GameRetries.describe(item, Date.now())}`;
+      }
     } catch (err) {
       result = `failed: ${err instanceof Error ? err.message : String(err)}`;
     }
@@ -521,6 +574,7 @@ async function debugBackground(tabId: number | null, url: string | null): Promis
   const page = classifyPage(url ?? tracked?.url);
   let sync: BackgroundDebugInfo['sync'] = null;
   let lastLeave: LeaveRecord | null = null;
+  let retrying: BackgroundDebugInfo['retrying'] = [];
   if (page) {
     const site = page.site;
     const username = usernameFor(settings, site);
@@ -531,6 +585,9 @@ async function debugBackground(tabId: number | null, url: string | null): Promis
         ? `set your ${SITE_NAME[site]} username in Settings`
         : `every ${AUTO_SYNC_PERIOD_MINUTES} min while a ${SITE_NAME[site]} tab is open, and when you leave a game page`;
     sync = { site, state: await autoSync.state(site), enabled, why };
+    retrying = (await retries.list())
+      .filter((r) => r.ref.site === site)
+      .map((r) => ({ key: r.key, url: r.url, description: GameRetries.describe(r, Date.now()) }));
     const leaves = ((await sessionStore.get([LAST_LEAVE_KEY]))[LAST_LEAVE_KEY] as Partial<Record<CaptureSite, LeaveRecord>>) ?? {};
     lastLeave = leaves[site] ?? null;
   }
@@ -546,6 +603,7 @@ async function debugBackground(tabId: number | null, url: string | null): Promis
     sync,
     entry: ref ? await queue.get(gameKey(ref)) : null,
     lastLeave,
+    retrying,
     siteTabOpen: (await siteTabs(settings)).length > 0,
   };
 }
@@ -700,6 +758,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === RETRY_ALARM) void service.retryPending();
   if (alarm.name === BACKFILL_ALARM) void pumpBackfill();
   if (alarm.name === AUTO_SYNC_ALARM) void onAutoSyncAlarm();
+  if (alarm.name === GAME_RETRY_ALARM) void runRetries();
 });
 
 /** Test and debugging hook, like the site's window.__wizardChess* objects. */
@@ -716,6 +775,8 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   runAutoSync,
   readTabs,
   injectIntoOpenTabs,
+  retries,
+  runRetries,
   gameKey,
   isValidRef,
 };
