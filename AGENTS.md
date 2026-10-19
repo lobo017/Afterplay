@@ -31,3 +31,4 @@
   the work done.
 - Run every command non-interactively and with a timeout. Never use npx for a package that isn't in package.json, since it can stall on an install prompt; ask me to add the dependency instead.
 - Only kill processes you started: ones you hold a handle to, or descendants of your own process found by parent PID. Re-check each process's parent PID and command line immediately before killing it. Never find processes by name or command-line text matching. For anything else, list it and ask me to stop it.
+- Never send personal information (email, name, tokens, file paths) to any external service without asking me first.
