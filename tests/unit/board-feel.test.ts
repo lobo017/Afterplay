@@ -122,6 +122,15 @@ describe('Phase 6b — drop square with tolerance', () => {
     expect(resolveDropSquare(4.5, 4.5, ['e4', 'e3'], 0.2, false)).toBe('e4');
   });
 
+  it('always lands on a legal square under the pointer, even right next to another legal one', () => {
+    // Inside e4 (y 4–5), 0.02 squares below its border with e5; both are legal
+    expect(resolveDropSquare(4.5, 4.02, ['e5', 'e4'], 0.5, false)).toBe('e4');
+    // Inside e5, 0.02 squares above that border
+    expect(resolveDropSquare(4.5, 3.98, ['e4', 'e5'], 0.5, false)).toBe('e5');
+    // Tolerance only helps when the square under the pointer is illegal
+    expect(resolveDropSquare(4.5, 3.98, ['e4'], 0.5, false)).toBe('e4');
+  });
+
   it('lands on a target just past its edge, within the tolerance', () => {
     // e4 spans x 4–5, y 4–5. The point is 0.15 squares into e5 (above e4).
     expect(resolveDropSquare(4.5, 3.85, ['e4'], 0.2, false)).toBe('e4');

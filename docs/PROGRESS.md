@@ -12,7 +12,7 @@
 | **Phase 5** | Game review | **Done** | MultiPV 2 review pipeline on its own 1-thread engine with verification searches, win%/accuracy/ACPL/performance formulas, 10 move classes (docs/classification.md), 8 motif detectors, one-sentence explanations computed in a worker, review panel (live win% chart, key moments, Retry / Refutation / Play vs Bot / annotated PGN, sample game). **2026-10-18:** Lichess-matched formulas and thresholds; "Review as" White / Black / Both perspective and redesigned summary |
 | **Phase 5b** | Capture extension + Games list | **Done** | Chrome MV3 capture extension (Lichess, Chess.com, queue, popup, backfill), localhost bridge, Games list with background review queue, IndexedDB v4. **2026-10-19 live capture fixes:** end of game from the sites' own data (Lichess game stream, Chess.com game data), finished games captured on open and on leaving the page, Chess.com play pages, background sync of recent games, delivery without focus, Debug this tab, local dates |
 | **Phase 6** | Puzzles & spaced repetition | **Done** | Personal mistake puzzles, bundled 20k Lichess puzzles, Glicko-2, FSRS scheduler, Today screen |
-| **Phase 6b** | UX redesign | **In progress** | Audit done; board feel (lift on press, drop tolerance and glide, touch offset, cursors, larger hints, resizable board) with a live tuning panel in the dev overlay; board badges. Waiting for tuning approval before the layout proposal |
+| **Phase 6b** | UX redesign | **In progress** | Audit done; board feel (lift on press, drop tolerance and glide, touch offset, cursors, larger hints, resizable board) with live tuning (approved, defaults kept); board badges. Layout proposal written; waiting for approval |
 | **Phase 7** | Repertoire, endgame & visualization | Pending | White/Black repertoire trees, 6 curated endgame drills, coordinate/blindfold/guess-the-move |
 | **Phase 8** | Library, insights, settings, offline | Pending | Auto-save library, worker bulk PGN import, insights charts, a11y, full offline PWA |
 | **Phase 9** | Performance pass & final audit | Pending | Frame-time/memory/startup profiling against budgets and full spec verification |
@@ -3019,3 +3019,122 @@ gzip), +11.8 kB.
 **Not measured:** `npm run perf:drag` aborted twice on its own memory guard (2.80 GB free, it
 needs 3.00 GB; other applications were using the memory). It has to be re-run before the phase
 is done.
+
+### Step 2 approved (2026-10-19)
+
+You kept the default board feel values. Changes asked for:
+- **Drop rule (confirmed, now pinned by a unit test):** if the square under the pointer is
+  legal, the piece always lands there. Tolerance applies only when that square is illegal (or
+  off the board) and a legal square is within reach; then the nearest one wins. For a touch
+  drag, "the pointer" means where the piece is drawn, above the finger.
+- **Board feel sliders move to the user-facing Settings** ("Board feel" section, with "Reset to
+  defaults"); the dev overlay keeps only its metrics. This replaces the spec's "Board feel
+  panel in the dev overlay" (your instruction). Part of the layout build below.
+- Lift on press stays.
+
+### Proposal — step 3: layout, navigation and shared components (waiting for approval)
+
+Mockups (real board images from the app, layout mocked with the app's colours):
+`test-results/phase6b-mockups/` — `desktop-play.png`, `desktop-play-setup.png`,
+`desktop-review.png`, `desktop-puzzles.png`, `desktop-games.png`, `desktop-settings.png`,
+`phone-play.png`, `phone-review.png`. Source: `test-results/phase6b-mockups/src/mockups.html`.
+
+**Navigation.** One slim top bar: crest and name on the left, four destinations in the middle
+(**Play · Puzzles · Review · Games**), a Settings button on the right. Original line icons
+(crossed swords, star, chart line, card stack, gear) replace the emoji. On a phone the four
+destinations move to a bottom tab bar and the top bar shows the screen name and Settings.
+- **Review** = today's Analysis Board and its review panel, merged: one place to look at a
+  game, with or without a review.
+- **Today** folds into Puzzles: a "Today" strip at the top of Puzzles (each tile opens its
+  session), and the number due shows as a count on the Puzzles tab. `#today` opens Puzzles.
+- **Analyze Game →** goes: Play's ⋯ menu gets "Analyze this position", and the game-over
+  panel's primary button is "Review this game".
+- The five header badges and the eight-card diagnostics strip move into Settings › About &
+  diagnostics (same text, kept for the tests), with the dev overlay switch.
+
+**Settings** (a sheet from the right; full screen on a phone). Everything that isn't part of
+starting or playing a game:
+- Board: board theme, piece set, board size (shows the size, Reset).
+- Board feel: the six sliders and "Reset to defaults".
+- Moves: auto-queen, confirm move, max premoves, analysis move animation (off/fast/normal).
+- Sound & effects: sound, volume, capture shards.
+- About & diagnostics: engine and threading, offline status, storage version, dev overlay.
+Settings are remembered on this device (today, theme, piece set, sound and the toggles reset
+on every reload).
+
+**Shared components** (in `src/ui/components/`; Phases 7 and 8 build on them):
+1. `AppShell` — top bar, nav (top / bottom), content host, Settings sheet.
+2. `BoardLayout` — board column (slots above and below the board, eval bar slot, transport)
+   plus one side panel; stacked under 960 px; sized from the shared board size.
+3. `SidePanel` + `Tabs` — tabbed panel with a fixed footer for the action bar; every tab
+   keeps a reserved height (no layout shift when switching).
+4. `ActionBar` — at most one primary button, secondary buttons, and a ⋯ `Menu`.
+5. `Menu` (popover, keyboard and Escape), `Sheet` (side or full-screen dialog).
+6. `Button` (46 px tall, 44 px minimum on touch), `SegmentedControl`, `ChipGroup`, `Slider`,
+   `Toggle`, `SettingRow`, `StatTile`.
+7. `PlayerStrip` (avatar, name, rating, captured pieces, clock).
+8. `MoveList` (Play's two-column list; Review's tree reuses it), `CoachCard`, `Icon` set.
+
+**Screens**
+- **Play** (`desktop-play.png`, `desktop-play-setup.png`, `phone-play.png`): before a game the
+  panel is a **New game** card: opponent level slider with tier names, style, time chips, play
+  as White / Random / Black, "More options" (think time, takebacks, hints), and one primary
+  **Play** button. Settings apply when you press Play (today, changing colour or time control
+  restarts the game at once). In a game: Moves / Analysis tabs; the action bar has Hint,
+  Takeback, Flip and ⋯ (Offer draw, Analyze this position, Game options, Resign). After the game:
+  primary **Review this game**, secondary New game.
+- **Review** (`desktop-review.png`, `phone-review.png`): opening line above the board, larger
+  transport buttons under it. Panel tabs **Review · Analysis · Moves**.
+  - Review tab: the two accuracy tiles, the win% chart, then the **coach card**: "Key moment
+    1 of 5" with progress, the move and its badge, the eval change, the review's sentence, the
+    best move and refutation, **Try it** (primary; today's Retry This Mistake), Show best line,
+    previous / **Next moment**. Class counts become a row of chips (click to jump); the full
+    table opens from "All moves by class". Review as White / Black / Both sits in the footer;
+    Export PGN, Play vs bot here and the preset go in ⋯.
+  - Before a review: a "Review this game" card (preset, primary Start review, sample game).
+  - Analysis tab: engine on/off, lines, engine lines, best/threat arrow toggles.
+  - Moves tab: the move tree, annotation glyphs and comment; ⋯ holds Import PGN, Export PGN,
+    Copy FEN, Position editor.
+- **Puzzles** (`desktop-puzzles.png`): Today strip, session control (Due reviews · My
+  mistakes · Rated) with theme, status card with rating, Hint / Show solution / ⋯ (Retry,
+  Analyze, Flip), rating and "from my games" tiles, and **Next puzzle** as the primary once a
+  puzzle is solved or failed (while solving, the board is the action).
+- **Games** (`desktop-games.png`): title with counts, **Import** menu (Paste PGN, Open file,
+  drop files anywhere), a capture card (extension status in words, what it does, today's
+  deliveries, capture settings), filter chips, taller rows with a Review button or the
+  accuracy, and a floating selection bar ("2 selected · preset · Analyze 2 games"). Rows become
+  cards on a phone.
+- **Phone**: board edge to edge (8 px gutter, thinner frame: ~374 px wide instead of 290 px),
+  compact player strips, move list as one scrolling line, four big action buttons, bottom nav.
+
+**Every existing control has a home** (nothing is dropped): bot tier/rating/style, time
+control, colour → New game card; min/max think, takebacks → More options; hints, takeback,
+draw, resign, flip → action bar and ⋯; board theme, piece set, max premoves, auto-queen,
+confirm move, shards, sound, volume, infinite analysis → Settings (infinite analysis →
+Play's Analysis tab); analysis toggles, lines, editor, FEN, PGN, NAGs, comments, promote /
+demote / delete → Review tabs and ⋯; review preset, perspective, retry, refutation, play vs
+bot, export → coach card, footer, ⋯.
+
+**Test impact.** The e2e tests reach some controls through the old layout (e.g.
+`mode-tab-analysis` in 8 files, the theme select, the header badges). Test ids stay on the
+moved controls where they still make sense; where a control moves into a menu, a tab or
+Settings, the tests gain the click that opens it. No assertion is removed or loosened. New
+tests: navigation, Settings (each section, persistence, both resets), coach card walk-through
+and Try it, New game card, Games selection bar, Today strip, zero layout shift while switching
+tabs and walking key moments, phone screenshots of every screen.
+
+**Build order** (a commit after each, all earlier tests passing at every step):
+1. Icons, `AppShell`, nav, Settings sheet (board feel moves out of the dev overlay; settings
+   remembered).
+2. `BoardLayout`, `SidePanel`/`Tabs`, `ActionBar`/`Menu`, `PlayerStrip`, `MoveList`; Play.
+3. Review (merge, tabs, coach card).
+4. Puzzles with the Today strip; Games.
+5. Phone pass, screenshots, layout-shift and `perf:drag` (needs ≥ 3 GB free memory).
+
+**Questions for you**
+1. Merge Analysis into Review (one destination with Review / Analysis / Moves tabs)?
+2. Fold Today into Puzzles (strip + count on the tab)? Phase 7's trainers would then also
+   live under Puzzles, perhaps renamed "Train" then.
+3. Move the technical badges and diagnostics into Settings › About?
+4. New game settings apply on "Play" instead of restarting at once?
+5. Remember all Settings on this device?
