@@ -77,8 +77,9 @@ export async function runCapturePage(adapter: SiteAdapter): Promise<() => void> 
           return;
         }
         const error = describeAttempts(outcome.attempts) || outcome.result.reason;
-        button.set('failed', 'Open the extension to paste the link or PGN.');
+        // Report first, so the notification is up when the button says so
         await sendToBackground({ kind: 'capture-failed', url, error, auto });
+        button.set('failed', 'Open the extension to paste the link or PGN.');
         return;
       }
       const reply = await sendToBackground<CaptureReply>({

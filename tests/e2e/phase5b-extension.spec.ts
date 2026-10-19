@@ -436,10 +436,15 @@ test.describe('Phase 5b — capture extension', () => {
     await save.click();
     await expect(save).toHaveAttribute('data-state', 'failed');
     await expect(page.getByTestId('wc-save-note')).toContainText('Open the extension');
-    const notifications = await session.worker.evaluate(
-      () => (chrome.notifications as unknown as { getAll(): Promise<Record<string, boolean>> }).getAll(),
-    );
-    expect(Object.keys(notifications)).toContain('wizard-chess-capture-failed');
+    await expect
+      .poll(async () =>
+        Object.keys(
+          await session.worker.evaluate(() =>
+            (chrome.notifications as unknown as { getAll(): Promise<Record<string, boolean>> }).getAll(),
+          ),
+        ),
+      )
+      .toContain('wizard-chess-capture-failed');
 
     const popup = await openPopup(session);
     await expect(popup.getByTestId('popup-failure')).toBeVisible();

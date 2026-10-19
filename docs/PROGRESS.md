@@ -10,7 +10,7 @@
 | **Phase 3** | 2D board and play mode | **Done** | Imperative SVG board (`translate3d` + Web Animations API), dirty-checked SVG overlay, 180-shard fixed `<canvas>` pool, Web Audio synth, clocks, vs-bot Play Mode, legacy bug regression suite. **2026-10-17 fixes:** drags survive board updates, drag cancel (right-click / Esc / off-board), premove queue (max 10) on a hypothetical board, same-frame premove execution |
 | **Phase 4** | Analysis board | **Done** | Animated mate-aware eval bar, live MultiPV 1–5 lines + ghost preview, best/threat/user arrows, variation tree & keyboard navigation, FEN position editor, ECO opening lookup. **2026-10-17 fixes:** zero layout shift while navigating (was 694 shifts), ~100 ms step animation with reverse and snap-on-repeat, engine lines batched to ≤ 1 DOM update per frame |
 | **Phase 5** | Game review | **Done** | MultiPV 2 review pipeline on its own 1-thread engine with verification searches, win%/accuracy/ACPL/performance formulas, 10 move classes (docs/classification.md), 8 motif detectors, one-sentence explanations computed in a worker, review panel (live win% chart, key moments, Retry / Refutation / Play vs Bot / annotated PGN, sample game). **2026-10-18:** Lichess-matched formulas and thresholds; "Review as" White / Black / Both perspective and redesigned summary |
-| **Phase 5b** | Capture extension + Games list | In progress (built; full e2e run pending) | Chrome MV3 capture extension (Lichess, Chess.com, queue, popup, backfill), localhost bridge, Games list with background review queue, IndexedDB v4 |
+| **Phase 5b** | Capture extension + Games list | **Done** | Chrome MV3 capture extension (Lichess, Chess.com, queue, popup, backfill), localhost bridge, Games list with background review queue, IndexedDB v4 |
 | **Phase 6** | Puzzles & spaced repetition | Pending | Personal mistake puzzles, bundled 20k Lichess puzzles, Glicko-2, FSRS scheduler, Today screen |
 | **Phase 7** | Repertoire, endgame & visualization | Pending | White/Black repertoire trees, 6 curated endgame drills, coordinate/blindfold/guess-the-move |
 | **Phase 8** | Library, insights, settings, offline | Pending | Auto-save library, worker bulk PGN import, insights charts, a11y, full offline PWA |
@@ -2189,12 +2189,13 @@ link showed only its URL (now the players from the game data).
 - Parsing a big pasted or imported PGN runs on the main thread, one game per task (Phase 8
   moves bulk import to a worker).
 
-**Checks (2026-10-18) — not complete, so Phase 5b is not marked done.** typecheck, lint,
-**351 unit tests** (30 files), `npm run build` and `npm run build:ext` pass. The full e2e run
-was stopped by the environment (the machine ran critically low on memory) after 31 tests:
-all 30 earlier-phase tests passed (Phase 1's extended migration test included) and the first
-Phase 5b test passed. Every other Phase 5b e2e test passed in targeted runs during the work
-(`phase5b-extension.spec.ts` 11/11, `phase5b-games.spec.ts` 4/4), but the suite has not yet
-completed one uninterrupted run on the final code; the last change (the popup naming the
-capture method) is covered only by the updated first extension test. Still to do: one full
-`npx playwright test` run, then the "Phase 5b" commit.
+**Checks (final run, 2026-10-18):** typecheck, lint, **351 unit tests** (30 files), `npm run build`,
+`npm run build:ext`, **46/46 e2e** (30 earlier + 15 Phase 5b + Phase 1's extended migration
+test; 5.8 min, one worker): all pass.
+- A first full run was stopped by the environment (the machine ran low on memory) after 31
+  tests, all passing.
+- The user's full run then had 45/46: the extraction-failure test read the notifications
+  right after the Save button turned "failed", but the content script set the button before
+  telling the background, which creates the notification. The content script now reports
+  the failure first, and the test polls; the failure-path tests passed 3 times in a row, then
+  the full run above.
