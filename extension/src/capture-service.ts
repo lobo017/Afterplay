@@ -2,7 +2,7 @@ import { gameKey, isValidRef, parseGameUrl, type CaptureSite, type SiteGameRef }
 import { checkPgnText } from '../../src/capture/pgn-games';
 import type { BridgeGame } from '../../src/capture/protocol';
 import { readPgnHeaders, playedAtFromHeaders } from '../../src/capture/pgn-time';
-import type { AddOutcome, CaptureQueue, CaptureTrigger, KeyValueStore } from './queue';
+import type { AddOutcome, CaptureQueue, CaptureTrigger, KeyValueStore, RejectInput } from './queue';
 import type { CaptureReply, LastFailure, SaveTextResult } from './messages';
 
 /** Resolves a game link to its PGN (or to "not available yet"); added per site. */
@@ -87,6 +87,10 @@ export class CaptureService {
     const key = gameKey(ref);
     const [outcome] = await this.deps.queue.addReady([{ key, source: site, pgn: games[0]!.pgn, method, url, trigger }]);
     this.deps.onQueueChanged();
+    if (outcome === 'not-importable' || outcome === 'already-rejected') {
+      const entry = await this.deps.queue.get(key);
+      return { ok: true, key, outcome, reason: entry?.rejectReason ?? undefined };
+    }
     return { ok: true, key, outcome: outcome! };
   }
 
@@ -107,7 +111,11 @@ export class CaptureService {
       const outcomes = await this.deps.queue.addReady(
         games.map((g) => ({ key: g.key, source: g.source, pgn: g.pgn, method: 'pasted-pgn', url: null, trigger: 'paste' as const })),
       );
-      games.forEach((g, i) => results.push({ label: gameLabel(g.headers), ok: true, outcome: outcomes[i]! }));
+      for (const [i, g] of games.entries()) {
+        const outcome = outcomes[i]!;
+        const entry = outcome === 'not-importable' || outcome === 'already-rejected' ? await this.deps.queue.get(g.key) : null;
+        results.push({ label: gameLabel(g.headers), ok: true, outcome, reason: entry?.rejectReason ?? undefined });
+      }
       this.deps.onQueueChanged();
     }
     return results;
@@ -244,6 +252,12 @@ export class CaptureService {
 
   public takeBatch(max: number, exclude: readonly string[]): Promise<{ games: BridgeGame[]; remaining: number }> {
     return this.deps.queue.takeBatch(max, new Set(exclude));
+  }
+
+  public async markRejected(items: readonly RejectInput[]): Promise<number> {
+    const n = await this.deps.queue.markRejected(items);
+    if (n > 0) this.deps.onQueueChanged();
+    return n;
   }
 
   public async markDelivered(keys: readonly string[]): Promise<number> {

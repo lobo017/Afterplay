@@ -13,7 +13,7 @@ import type {
 } from '../messages';
 import { classifyPage } from '../pages';
 import type { CaptureTrigger, QueueEntry } from '../queue';
-import { siteMatchPattern, type ExtensionSettings } from '../settings';
+import { siteMatchPatterns, type ExtensionSettings } from '../settings';
 
 const q = <T extends HTMLElement>(id: string) => document.querySelector(`[data-testid="${id}"]`) as T;
 
@@ -31,6 +31,9 @@ const els = {
   save: q<HTMLButtonElement>('popup-save'),
   result: q('popup-result'),
   entries: q<HTMLUListElement>('popup-entries'),
+  rejectedSection: q('popup-rejected-section'),
+  rejectedText: q('popup-rejected-text'),
+  rejected: q<HTMLUListElement>('popup-rejected'),
   autoSummary: q('popup-auto-summary'),
   syncNow: q<HTMLButtonElement>('popup-sync-now'),
   syncResult: q('popup-sync-result'),
@@ -91,12 +94,14 @@ const STATUS_LABEL: Record<QueueEntry['status'], string> = {
   pending: 'not available yet',
   ready: 'ready to send',
   delivered: 'on the site',
+  rejected: 'not imported',
 };
 
 const STATUS_TITLE: Record<QueueEntry['status'], string> = {
   pending: "Known, but its PGN isn't available yet (Chess.com's archive can lag); tried again every 15 min.",
   ready: 'Captured and kept in the extension; copied to the analysis site as soon as it is open in a tab.',
   delivered: "In the analysis site's Games list.",
+  rejected: 'The analysis site does not take this game; see Not imported.',
 };
 
 function setResult(el: HTMLElement, text: string, tone: 'ok' | 'bad' | 'info' = 'info'): void {
@@ -196,6 +201,66 @@ function renderEntries(entries: readonly QueueEntry[]): void {
   }
 }
 
+/** "not imported (variant: Antichess)", "not imported (no moves)", "rejected: <the site's reason>". */
+function rejectLabel(e: QueueEntry): string {
+  if (e.rejectKind === 'invalid') return `rejected: ${e.rejectReason ?? 'the site could not read it'}`;
+  return `not imported (${e.rejectReason ?? (e.rejectKind === 'variant' ? 'variant' : 'no moves')})`;
+}
+
+function renderRejected(entries: readonly QueueEntry[]): void {
+  els.rejectedSection.hidden = entries.length === 0;
+  els.rejected.replaceChildren();
+  const unreadable = entries.filter((e) => e.rejectKind === 'invalid').length;
+  els.rejectedText.textContent =
+    `${plural(entries.length, 'game')} the analysis site doesn't take: variants it doesn't play and games without moves are skipped` +
+    (unreadable > 0 ? `; ${unreadable} it couldn't read can be tried again.` : '.') +
+    ' Dismiss hides one (it is not imported again).';
+  for (const e of entries) {
+    const li = document.createElement('li');
+    li.setAttribute('data-testid', 'popup-rejected-entry');
+    li.setAttribute('data-key', e.key);
+    li.setAttribute('data-kind', e.rejectKind ?? '');
+    const site = document.createElement('span');
+    site.className = `site site-${e.source}`;
+    site.textContent = SITE_BADGE[e.source].label;
+    site.title = SITE_BADGE[e.source].title;
+    const who = document.createElement('span');
+    who.className = 'who';
+    who.textContent = e.white || e.black ? `${e.white || '?'} vs ${e.black || '?'}` : (e.url ?? e.key);
+    const sub = document.createElement('small');
+    const reason = document.createElement('span');
+    reason.setAttribute('data-testid', 'popup-rejected-reason');
+    reason.textContent = rejectLabel(e);
+    sub.append(...[playedText(e), e.method ? (METHOD_LABEL[e.method] ?? e.method) : ''].filter(Boolean).map((t) => `${t} · `), reason);
+    who.appendChild(sub);
+    who.title = [who.firstChild?.textContent, sub.textContent].filter(Boolean).join('\n');
+    const actions = document.createElement('div');
+    actions.className = 'entry-actions';
+    if (e.rejectKind === 'invalid') {
+      const retry = document.createElement('button');
+      retry.type = 'button';
+      retry.textContent = 'Retry';
+      retry.setAttribute('data-testid', 'popup-rejected-retry');
+      retry.addEventListener('click', () => {
+        retry.disabled = true;
+        void sendToBackground({ kind: 'retry-rejected', key: e.key }).then(refresh);
+      });
+      actions.appendChild(retry);
+    }
+    const dismiss = document.createElement('button');
+    dismiss.type = 'button';
+    dismiss.textContent = 'Dismiss';
+    dismiss.setAttribute('data-testid', 'popup-rejected-dismiss');
+    dismiss.addEventListener('click', () => {
+      dismiss.disabled = true;
+      void sendToBackground({ kind: 'dismiss-rejected', key: e.key }).then(refresh);
+    });
+    actions.appendChild(dismiss);
+    li.append(site, who, actions);
+    els.rejected.appendChild(li);
+  }
+}
+
 function backfillText(state: BackfillSiteState): string {
   switch (state.status) {
     case 'idle':
@@ -237,6 +302,7 @@ function render(s: StatusReply): void {
     waiting === 0
       ? `No games waiting · ${plural(delivered, 'game')} on the analysis site`
       : `${plural(waiting, 'game')} waiting for the analysis site`;
+  if (s.counts.rejected > 0) els.counts.textContent += ` · ${s.counts.rejected} not imported`;
   els.counts.classList.toggle('big', waiting > 0);
   els.counts.title = `Extension v${s.extensionVersion}`;
   els.deliveryText.textContent =
@@ -259,6 +325,7 @@ function render(s: StatusReply): void {
   els.openSite.textContent = s.siteTabOpen ? 'Show the analysis site' : 'Open the analysis site';
 
   renderEntries(s.entries);
+  renderRejected(s.rejected);
   for (const site of ['lichess', 'chesscom'] as const) {
     renderBackfill(site, s.backfill[site], s.settings);
     q(`popup-sync-${site}-status`).textContent = syncText(site, s.autoSync[site], s.settings);
@@ -300,6 +367,9 @@ function describe(results: readonly SaveTextResult[]): { text: string; tone: 'ok
         return `${r.label}: already on the site`;
       case 'already-queued':
         return `${r.label}: already waiting`;
+      case 'not-importable':
+      case 'already-rejected':
+        return `${r.label}: not imported (${r.reason ?? 'the analysis site does not take it'})`;
       default:
         return `Saved ${r.label}`;
     }
@@ -506,7 +576,7 @@ els.debugInject.addEventListener('click', () => {
 els.openSite.addEventListener('click', () => {
   const siteUrl = status?.settings.siteUrl;
   if (!siteUrl) return;
-  void chrome.tabs.query({ url: siteMatchPattern(siteUrl) }).then(async (tabs) => {
+  void chrome.tabs.query({ url: siteMatchPatterns(siteUrl) }).then(async (tabs) => {
     const tab = tabs[0];
     if (tab?.id !== undefined) {
       await chrome.tabs.update(tab.id, { active: true });

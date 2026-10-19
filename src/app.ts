@@ -481,6 +481,7 @@ export function mountAppShell(container: HTMLElement): {
       },
       setOrientation: (color) => analysisController.setOrientation(color),
       importPgn: (pgn) => analysisController.importPgn(pgn),
+      importPgnFromStart: (pgn) => analysisController.importPgnFromStart(pgn),
       addLine: (fromNodeId, ucis, options) => analysisController.addLine(fromNodeId, ucis, options),
       deleteNode: (nodeId) => analysisController.deleteNode(nodeId),
       stripEngineAnnotations: () => analysisController.stripEngineAnnotations(),

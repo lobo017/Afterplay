@@ -9,6 +9,7 @@ export type SaveButtonState =
   | 'saved'
   | 'already-queued'
   | 'already-delivered'
+  | 'not-imported'
   | 'failed';
 
 const LABELS: Record<SaveButtonState, string> = {
@@ -18,6 +19,7 @@ const LABELS: Record<SaveButtonState, string> = {
   saved: 'Saved ✓',
   'already-queued': 'Already saved ✓',
   'already-delivered': 'On the analysis site ✓',
+  'not-imported': 'Not imported',
   failed: "Couldn't save",
 };
 
@@ -42,6 +44,7 @@ const STYLE = `
     color: #86efac; border-color: rgba(52, 211, 153, 0.6);
   }
   button[data-state='failed'] { color: #fca5a5; border-color: rgba(248, 113, 113, 0.6); }
+  button[data-state='not-imported'] { color: #cbd5e1; border-color: rgba(148, 163, 184, 0.5); }
   button[data-state='in-progress'] { color: #cbd5e1; border-color: rgba(148, 163, 184, 0.5); }
   .mark { font-size: 15px; }
   .note {
@@ -83,7 +86,8 @@ export class SaveButton {
     this.label.textContent = LABELS[state];
     this.button.setAttribute('data-state', state);
     this.host.setAttribute('data-state', state);
-    this.button.disabled = state === 'saving' || state === 'saved' || state === 'already-queued' || state === 'already-delivered';
+    this.button.disabled =
+      state === 'saving' || state === 'saved' || state === 'already-queued' || state === 'already-delivered' || state === 'not-imported';
     this.note.textContent = note;
   }
 

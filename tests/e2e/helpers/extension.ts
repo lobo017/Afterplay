@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url';
 import { chromium, expect, type BrowserContext, type Page, type Route, type Worker } from '@playwright/test';
 
 export const SITE_URL = 'http://127.0.0.1:4173';
+/** The same server under its other name. */
+export const SITE_URL_LOCALHOST = 'http://localhost:4173';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 export const EXTENSION_DIR = path.join(ROOT, 'dist-ext');
 export const CAPTURE_FIXTURES = path.join(ROOT, 'tests', 'fixtures', 'capture');
@@ -99,7 +101,8 @@ export async function launchWithExtension(options: LaunchOptions = {}): Promise<
   await context.route('**/*', async (route) => {
     const req = route.request();
     const url = req.url();
-    if (url.startsWith(SITE_URL) || url.startsWith('chrome-extension://') || url.startsWith('data:')) {
+    // The site under both loopback names (the extension delivers to either)
+    if (url.startsWith(SITE_URL) || url.startsWith(SITE_URL_LOCALHOST) || url.startsWith('chrome-extension://') || url.startsWith('data:')) {
       await route.continue();
       return;
     }
@@ -136,11 +139,11 @@ export async function launchWithExtension(options: LaunchOptions = {}): Promise<
     .poll(
       () =>
         worker.evaluate(async () =>
-          (await chrome.scripting.getRegisteredContentScripts()).map((s) => (s.matches ?? []).join(',')),
+          (await chrome.scripting.getRegisteredContentScripts()).map((s) => [...(s.matches ?? [])].sort().join(',')),
         ),
       { timeout: 10_000 },
     )
-    .toEqual([`${SITE_URL}/*`]);
+    .toEqual([`${SITE_URL}/*,${SITE_URL_LOCALHOST}/*`]);
 
   return {
     context,

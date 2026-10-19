@@ -10,6 +10,8 @@ const bridge = new ExtensionBridge(window as unknown as MessageWindow, {
   takeBatch: (max, exclude) => sendToBackground<BridgeBatchReply>({ kind: 'bridge-batch', max, exclude: [...exclude] }),
   markDelivered: async (keys) =>
     (await sendToBackground<{ delivered: number }>({ kind: 'bridge-delivered', keys: [...keys] })).delivered,
+  markRejected: async (items) =>
+    (await sendToBackground<{ rejected: number }>({ kind: 'bridge-rejected', items: items.map((i) => ({ ...i })) })).rejected,
 });
 bridge.start();
 

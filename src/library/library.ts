@@ -1,4 +1,4 @@
-import { checkPgnText } from '../capture/pgn-games';
+import { checkPgnText, describeImportProblem, importProblemOf } from '../capture/pgn-games';
 import type { BridgeGame, MyAccounts } from '../capture/protocol';
 import type { UserAccount } from '../review/perspective';
 import type { StoredGameRecord, WizardChessStorage } from '../storage/db';
@@ -110,9 +110,16 @@ export class GameLibrary {
           outcome.duplicates.push(g.key);
           continue;
         }
+        // Games the app doesn't play, or that have no moves: never stored, and said so
+        const problem = importProblemOf(g.pgn);
+        if (problem) {
+          outcome.failed.push({ key: g.key, kind: problem.kind, reason: describeImportProblem(problem) });
+          continue;
+        }
         const { games, errors } = checkPgnText(g.pgn);
         if (games.length !== 1) {
-          outcome.failed.push({ key: g.key, reason: (errors[0] ?? 'Expected exactly one game.').slice(0, 200) });
+          const reason = (errors[0] ?? 'Expected exactly one game.').slice(0, 200);
+          outcome.failed.push({ key: g.key, kind: reason === 'no moves.' ? 'no-moves' : 'invalid', reason });
           continue;
         }
         // The extension's key names the game it captured, whatever the PGN headers say
@@ -120,7 +127,8 @@ export class GameLibrary {
         await this.storage.saveGame(buildGameRecord(game, { capturedAt: g.capturedAt, method: g.method }));
         outcome.saved.push(g.key);
       } catch (err) {
-        outcome.failed.push({ key: g.key, reason: (err instanceof Error ? err.message : String(err)).slice(0, 200) });
+        // Storage trouble: worth another try on the next sync
+        outcome.failed.push({ key: g.key, kind: 'error', reason: (err instanceof Error ? err.message : String(err)).slice(0, 200) });
       }
       await yieldToEventLoop();
     }

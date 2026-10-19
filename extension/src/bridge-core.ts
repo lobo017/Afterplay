@@ -4,6 +4,7 @@ import {
   parsePageMessage,
   type BridgeGame,
   type BridgeMessage,
+  type FailedDelivery,
   type MessageEventLike,
   type MessageWindow,
   type MyAccounts,
@@ -14,6 +15,19 @@ export interface BridgeBackend {
   hello(): Promise<{ extensionVersion: string; accounts: MyAccounts }>;
   takeBatch(max: number, exclude: readonly string[]): Promise<{ games: BridgeGame[]; remaining: number }>;
   markDelivered(keys: readonly string[]): Promise<number>;
+  /** Games the site won't take (a variant, no moves, a PGN it can't read): not offered again. */
+  markRejected(items: ReadonlyArray<{ key: string; kind: 'variant' | 'no-moves' | 'invalid'; reason: string }>): Promise<number>;
+}
+
+/**
+ * What a failed game means: a variant, no moves or a PGN the site can't read won't change by
+ * trying again (rejected); `error` (the site couldn't store it) is tried again on the next
+ * sync, and so is a failure without a kind (an older page; the queue itself already rejects
+ * variants and games without moves).
+ */
+export function rejectionOf(f: FailedDelivery): { key: string; kind: 'variant' | 'no-moves' | 'invalid'; reason: string } | null {
+  if (!f.kind || f.kind === 'error') return null;
+  return { key: f.key, kind: f.kind, reason: f.reason };
 }
 
 /** A batch waits this long for the page's answer before the sync gives up (a later hello retries). */
@@ -25,6 +39,7 @@ interface Sync {
   /** Keys the page couldn't store in this sync: not offered again until the next one. */
   failed: Set<string>;
   delivered: number;
+  rejected: number;
   timer: ReturnType<typeof setTimeout> | null;
 }
 
@@ -99,12 +114,14 @@ export class ExtensionBridge {
     sync.batch = null;
     if (sync.timer) this.timers.clear(sync.timer);
     sync.timer = null;
+    // Stored now, or already on the site: delivered
     const acked = [...msg.saved, ...msg.duplicates].filter((k) => batchKeys.has(k));
-    for (const f of msg.failed) if (batchKeys.has(f.key)) sync.failed.add(f.key);
-    // Anything the page neither stored nor reported failed is retried next sync, not now
-    for (const k of batchKeys) if (!acked.includes(k)) sync.failed.add(k);
+    const rejected = msg.failed.filter((f) => batchKeys.has(f.key)).map(rejectionOf).filter((r) => r !== null);
+    // Anything else (couldn't store, or not answered) is tried again on the next sync, not now
+    for (const k of batchKeys) if (!acked.includes(k) && !rejected.some((r) => r.key === k)) sync.failed.add(k);
     try {
       sync.delivered += acked.length > 0 ? await this.backend.markDelivered(acked) : 0;
+      sync.rejected += rejected.length > 0 ? await this.backend.markRejected(rejected) : 0;
     } catch {
       this.finishSync();
       return;
@@ -113,7 +130,7 @@ export class ExtensionBridge {
   }
 
   private async startSync(): Promise<void> {
-    this.sync = { batch: null, failed: new Set(), delivered: 0, timer: null };
+    this.sync = { batch: null, failed: new Set(), delivered: 0, rejected: 0, timer: null };
     try {
       const { extensionVersion, accounts } = await this.backend.hello();
       this.post(bridgeMessage('hello-ack', { extensionVersion, accounts }));

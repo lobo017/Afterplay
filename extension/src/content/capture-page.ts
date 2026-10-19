@@ -232,6 +232,11 @@ export async function runCapturePage(adapter: SiteAdapter, pageRef: SiteGameRef,
       }
       update({ captured: true });
       log(`Captured with ${result.method} (${TRIGGER_LABEL[trigger] ?? trigger}): ${reply.outcome}.`);
+      if (reply.outcome === 'not-importable' || reply.outcome === 'already-rejected') {
+        setButton('not-imported', `The analysis site doesn't take this game (${reply.reason ?? 'variant or no moves'}).`);
+        log(`Not imported: ${reply.reason ?? reply.outcome}.`);
+        return;
+      }
       if (reply.outcome === 'already-delivered') setButton('already-delivered');
       else if (reply.outcome === 'already-queued') setButton('already-queued');
       else setButton('saved', auto ? 'Captured automatically. It goes to the analysis site as soon as that is open.' : '');

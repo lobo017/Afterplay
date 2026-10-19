@@ -13,7 +13,15 @@ import { GameRetries, type GameRetryItem, type RetryOutcome } from './game-retry
 import type { BackgroundDebugInfo, ExtRequest, LeaveRecord, PageStatus, StatusReply, TabRequest } from './messages';
 import { classifyPage, pageKey, SITE_CONTENT_SCRIPT, SITE_TAB_PATTERNS } from './pages';
 import { CaptureQueue, type KeyValueStore } from './queue';
-import { accountsOf, loadSettings, saveSettings, siteMatchPattern, validateSettings, type ExtensionSettings } from './settings';
+import {
+  accountsOf,
+  loadSettings,
+  saveSettings,
+  siteMatchPatterns,
+  siteOrigins,
+  validateSettings,
+  type ExtensionSettings,
+} from './settings';
 import {
   hasLeft,
   leaveAction,
@@ -173,7 +181,7 @@ async function updateBadge(): Promise<void> {
 async function siteTabs(settings?: ExtensionSettings): Promise<chrome.tabs.Tab[]> {
   const s = settings ?? (await loadSettings(chromeLocalStore));
   try {
-    return await chrome.tabs.query({ url: siteMatchPattern(s.siteUrl) });
+    return await chrome.tabs.query({ url: siteMatchPatterns(s.siteUrl) });
   } catch {
     return [];
   }
@@ -198,7 +206,8 @@ function nudgeSite(): void {
 
 /** Registers the bridge content script on the configured site URL only (or moves it there). */
 async function ensureBridge(settings: ExtensionSettings): Promise<void> {
-  const matches = [siteMatchPattern(settings.siteUrl)];
+  // Both loopback names: the site opened as localhost or as 127.0.0.1 gets its games
+  const matches = siteMatchPatterns(settings.siteUrl);
   const existing = await chrome.scripting.getRegisteredContentScripts({ ids: [BRIDGE_SCRIPT_ID] });
   const script = {
     id: BRIDGE_SCRIPT_ID,
@@ -208,7 +217,8 @@ async function ensureBridge(settings: ExtensionSettings): Promise<void> {
     persistAcrossSessions: true,
   };
   if (existing.length === 0) await chrome.scripting.registerContentScripts([script]);
-  else if (JSON.stringify(existing[0]!.matches ?? []) !== JSON.stringify(matches)) {
+  // Chrome may hand the patterns back in another order
+  else if (JSON.stringify([...(existing[0]!.matches ?? [])].sort()) !== JSON.stringify([...matches].sort())) {
     await chrome.scripting.updateContentScripts([script]);
   }
 }
@@ -537,6 +547,8 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 
 async function init(): Promise<void> {
   await ensureBridge(await loadSettings(chromeLocalStore));
+  // Waiting games queued before the queue knew variants and games without moves
+  await queue.classifyWaiting();
   await updateBadge();
   if (!(await chrome.alarms.get(RETRY_ALARM))) {
     await chrome.alarms.create(RETRY_ALARM, { periodInMinutes: RETRY_PERIOD_MINUTES });
@@ -633,9 +645,21 @@ async function handle(msg: ExtRequest, sender: chrome.runtime.MessageSender): Pr
       return loadSettings(chromeLocalStore);
     case 'bridge-hello':
     case 'bridge-batch':
-    case 'bridge-delivered': {
+    case 'bridge-delivered':
+    case 'bridge-rejected': {
       const settings = await loadSettings(chromeLocalStore);
-      if (senderOrigin(sender) !== settings.siteUrl) return { error: 'Not the configured site.' };
+      const origin = senderOrigin(sender);
+      if (origin === null || !siteOrigins(settings.siteUrl).includes(origin)) return { error: 'Not the configured site.' };
+      if (msg.kind === 'bridge-rejected') {
+        const items = (Array.isArray(msg.items) ? msg.items : []).filter(
+          (i) =>
+            i &&
+            typeof i.key === 'string' &&
+            (i.kind === 'variant' || i.kind === 'no-moves' || i.kind === 'invalid') &&
+            typeof i.reason === 'string',
+        );
+        return { rejected: await service.markRejected(items.map((i) => ({ key: i.key, kind: i.kind, reason: i.reason.slice(0, 200) }))) };
+      }
       if (msg.kind === 'bridge-hello') {
         return { extensionVersion: chrome.runtime.getManifest().version, accounts: accountsOf(settings) };
       }
@@ -656,6 +680,7 @@ async function handle(msg: ExtRequest, sender: chrome.runtime.MessageSender): Pr
       const settings = await loadSettings(chromeLocalStore);
       const reply: StatusReply = {
         entries: (await queue.list()).slice(0, 100),
+        rejected: (await queue.list()).filter((e) => e.status === 'rejected' && !e.dismissed).slice(0, 200),
         counts: await queue.counts(),
         settings,
         lastFailure: await service.lastFailure(),
@@ -678,6 +703,16 @@ async function handle(msg: ExtRequest, sender: chrome.runtime.MessageSender): Pr
     case 'retry':
       await service.retryPending(msg.key);
       return queue.get(msg.key);
+    case 'retry-rejected': {
+      const retried = await queue.retryRejected(msg.key);
+      if (retried) onQueueChanged();
+      return { retried };
+    }
+    case 'dismiss-rejected': {
+      const dismissed = await queue.dismissRejected(msg.key);
+      if (dismissed) onQueueChanged();
+      return { dismissed };
+    }
     case 'remove': {
       const removed = await queue.remove(msg.key);
       await updateBadge();

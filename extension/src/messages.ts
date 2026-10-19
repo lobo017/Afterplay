@@ -34,6 +34,9 @@ export type ExtRequest =
   | { kind: 'bridge-hello' }
   | { kind: 'bridge-batch'; max: number; exclude: string[] }
   | { kind: 'bridge-delivered'; keys: string[] }
+  | { kind: 'bridge-rejected'; items: Array<{ key: string; kind: 'variant' | 'no-moves' | 'invalid'; reason: string }> }
+  | { kind: 'retry-rejected'; key: string }
+  | { kind: 'dismiss-rejected'; key: string }
   | { kind: 'debug-background'; tabId: number | null; url: string | null }
   | { kind: 'inject-tab'; tabId: number; url: string }
   | { kind: 'sync-now' };
@@ -112,7 +115,8 @@ export interface LeaveRecord {
   result: string;
 }
 
-export type CaptureReply = { ok: true; key: string; outcome: AddOutcome } | { ok: false; error: string };
+/** `reason`: why a game isn't imported (outcome not-importable / already-rejected). */
+export type CaptureReply = { ok: true; key: string; outcome: AddOutcome; reason?: string } | { ok: false; error: string };
 
 export interface SaveTextResult {
   /** What was saved: "GEU3 vs Lobo017", or the link. */
@@ -120,6 +124,8 @@ export interface SaveTextResult {
   ok: boolean;
   /** For saved games: what happened in the queue ('pending' = waiting for the site's archive). */
   outcome?: AddOutcome | 'pending';
+  /** Why it isn't imported (outcome not-importable / already-rejected). */
+  reason?: string;
   error?: string;
 }
 
@@ -131,6 +137,8 @@ export interface LastFailure {
 
 export interface StatusReply {
   entries: QueueEntry[];
+  /** Games the site doesn't take, not dismissed (newest first). */
+  rejected: QueueEntry[];
   counts: QueueCounts;
   settings: ExtensionSettings;
   lastFailure: LastFailure | null;

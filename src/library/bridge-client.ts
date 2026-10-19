@@ -118,7 +118,8 @@ export class ExtensionBridgeClient {
             outcome = await this.store.saveGames(msg.games);
           } catch (err) {
             const reason = (err instanceof Error ? err.message : String(err)).slice(0, 200);
-            outcome = { saved: [], duplicates: [], failed: msg.games.map((g) => ({ key: g.key, reason })) };
+            // Storage trouble: worth another try on the next sync
+            outcome = { saved: [], duplicates: [], failed: msg.games.map((g) => ({ key: g.key, kind: 'error' as const, reason })) };
           }
           this.post(pageMessage('saved', { batchId: msg.batchId, ...outcome }));
         });

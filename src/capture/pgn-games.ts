@@ -51,12 +51,81 @@ export function splitPgnGames(text: string): string[] {
 }
 
 /**
+ * Why a game can't be imported, whatever its moves: a variant the app doesn't play, or no
+ * moves at all. (A game that doesn't parse is `invalid`, found by checkPgnText.)
+ */
+export type ImportProblem = { kind: 'variant'; variant: string } | { kind: 'no-moves' };
+
+/** Variants the app plays (by `[Variant]`, lowercased without spaces); no tag is standard chess. */
+const SUPPORTED_VARIANTS = new Set(['', 'standard', 'chess', 'chess960', 'fromposition']);
+
+const TAG_LINE = /^\s*\[([A-Za-z][A-Za-z0-9_]*)\s*(.*?)\s*\]\s*$/;
+
+/**
+ * The variant / no-moves problem of one game's PGN, or null. Cheap (no move parsing): the
+ * extension uses it on every game it queues, the site on every game it is sent.
+ */
+export function importProblemOf(pgn: string): ImportProblem | null {
+  const variant = /^\s*\[Variant\s+"([^"]*)"\s*\]\s*$/m.exec(pgn)?.[1]?.trim() ?? '';
+  if (!SUPPORTED_VARIANTS.has(variant.toLowerCase().replace(/[\s_-]/g, ''))) return { kind: 'variant', variant };
+  const movetext = pgn
+    .split(/\r?\n/)
+    .filter((line) => !TAG_LINE.test(line) && !/^\s*%/.test(line))
+    .join('\n')
+    .replace(/\{[^}]*\}/g, ' ')
+    .replace(/;[^\n]*/g, ' ')
+    .replace(/\$\d+/g, ' ')
+    .replace(/\b(1-0|0-1|1\/2-1\/2)\b|\*/g, ' ')
+    .replace(/\d+\s*\.(\s*\.\.)?/g, ' ')
+    .trim();
+  return movetext === '' ? { kind: 'no-moves' } : null;
+}
+
+/** "variant: Antichess", "no moves". */
+export function describeImportProblem(problem: ImportProblem): string {
+  return problem.kind === 'variant' ? `variant: ${problem.variant}` : 'no moves';
+}
+
+/**
+ * Tag lines the parser can't read, rewritten: a value with quotes inside (`[Event "The "big"
+ * one"]`) or in single quotes (`[Event 'x']`). Other lines are kept as they are, including
+ * several tags on one line.
+ */
+export function repairTagLines(text: string): string {
+  return text
+    .split(/\r?\n/)
+    .map((line) => {
+      const m = TAG_LINE.exec(line);
+      if (!m) return line;
+      const value = m[2]!;
+      if (/^"(?:[^"\\]|\\.)*"$/.test(value) || /"\s*\]\s*\[/.test(line)) return line;
+      const inner = value.replace(/^["']/, '').replace(/["']$/, '');
+      return `[${m[1]} "${inner.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"]`;
+    })
+    .join('\n');
+}
+
+/**
  * Parses a PGN text (one or more games) with the app's own parser. A game is accepted when
  * every move is legal and it has at least one move; a bad game doesn't stop the others. Its
  * key comes from the site it names (Lichess Site / GameId, Chess.com Link), otherwise from a
- * hash of players, date and moves.
+ * hash of players, date and moves. When some games fail, malformed tag lines are repaired
+ * (repairTagLines) and the text is read again; the better reading wins.
  */
 export function checkPgnText(text: string): PgnCheckResult {
+  const first = checkPgnTextOnce(text);
+  if (first.errors.length === 0) return first;
+  const repaired = repairTagLines(text);
+  if (repaired === text) return first;
+  const second = checkPgnTextOnce(repaired);
+  // A broken tag line can also split one game in two (half of it then fails): fewer errors wins
+  const better =
+    second.games.length > first.games.length ||
+    (second.games.length === first.games.length && second.errors.length < first.errors.length);
+  return better ? second : first;
+}
+
+function checkPgnTextOnce(text: string): PgnCheckResult {
   const trimmed = text.trim();
   if (trimmed === '') return { games: [], errors: ['The text is empty.'] };
   if (trimmed.length > MAX_PGN_TEXT_LENGTH) return { games: [], errors: ['The text is too large (over 8 MB).'] };

@@ -91,7 +91,24 @@ export function accountsOf(settings: ExtensionSettings): MyAccounts {
   return { lichess: settings.lichessUsername, chesscom: settings.chesscomUsername };
 }
 
-/** The match pattern of the site's pages, for the bridge content script. */
+/** The match pattern of the site's pages under one origin. */
 export function siteMatchPattern(siteUrl: string): string {
   return `${siteUrl}/*`;
+}
+
+/**
+ * The origins the site is reached at: the configured one and the same port under the other
+ * loopback name (`localhost` and `127.0.0.1` are the same server). Each keeps its own
+ * library (IndexedDB is per origin), so games go to whichever one is open.
+ */
+export function siteOrigins(siteUrl: string): string[] {
+  const url = new URL(siteUrl);
+  const twin = new URL(siteUrl);
+  twin.hostname = url.hostname === 'localhost' ? '127.0.0.1' : 'localhost';
+  return [url.origin, twin.origin];
+}
+
+/** Match patterns of the site's pages under both loopback names (bridge, tab lookups). */
+export function siteMatchPatterns(siteUrl: string): string[] {
+  return siteOrigins(siteUrl).map(siteMatchPattern);
 }

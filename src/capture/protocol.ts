@@ -10,8 +10,10 @@ import { isGameKey, type GameSource } from './game-id';
  *    `games` batches.
  * 3. The page stores them (skipping duplicates by site + game ID) and answers `saved` with
  *    the keys it stored, the keys it already had, and the ones it couldn't store.
- * 4. The extension marks stored and already-stored keys delivered and sends the next batch;
- *    failed games stay ready for the next sync.
+ * 4. The extension marks stored and already-stored keys delivered and sends the next batch.
+ *    A failed game says why (`kind`): one the site will never take (a variant, no moves, a PGN
+ *    that doesn't parse) is marked rejected; one it couldn't store (`error`) is offered again
+ *    on the next sync.
  *
  * Both sides check the sender (same window, same origin) and the message shape.
  */
@@ -42,9 +44,14 @@ export interface MyAccounts {
   chesscom: string;
 }
 
+/** Why the page didn't store a game. Optional in messages: a page without it sent `invalid`-like failures. */
+export type DeliveryFailureKind = 'variant' | 'no-moves' | 'invalid' | 'error';
+export const DELIVERY_FAILURE_KINDS: readonly DeliveryFailureKind[] = ['variant', 'no-moves', 'invalid', 'error'];
+
 export interface FailedDelivery {
   key: string;
   reason: string;
+  kind?: DeliveryFailureKind;
 }
 
 export type PageMessage =
@@ -120,7 +127,14 @@ export function parsePageMessage(data: unknown): PageMessage | null {
     if (
       !Array.isArray(failed) ||
       failed.length > BRIDGE_MAX_BATCH ||
-      !failed.every((f) => isRecord(f) && typeof f.key === 'string' && isGameKey(f.key) && isShortString(f.reason))
+      !failed.every(
+        (f) =>
+          isRecord(f) &&
+          typeof f.key === 'string' &&
+          isGameKey(f.key) &&
+          isShortString(f.reason) &&
+          (f.kind === undefined || DELIVERY_FAILURE_KINDS.includes(f.kind as DeliveryFailureKind)),
+      )
     ) {
       return null;
     }
@@ -131,7 +145,7 @@ export function parsePageMessage(data: unknown): PageMessage | null {
       batchId: data.batchId,
       saved: [...data.saved],
       duplicates: [...data.duplicates],
-      failed: (failed as FailedDelivery[]).map((f) => ({ key: f.key, reason: f.reason })),
+      failed: (failed as FailedDelivery[]).map((f) => ({ key: f.key, reason: f.reason, ...(f.kind ? { kind: f.kind } : {}) })),
     };
   }
   return null;

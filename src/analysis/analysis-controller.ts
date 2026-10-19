@@ -1184,6 +1184,30 @@ export class AnalysisController {
     }
   }
 
+  /**
+   * Loads a PGN shown from its first position, in two tasks: parsing, then showing it (one
+   * render). importPgn does both in one task and shows the last position, which a caller
+   * going to the start then renders again; on a busy machine that one task passed 50 ms.
+   */
+  public async importPgnFromStart(pgnText: string): Promise<boolean> {
+    let parsed: GameTree;
+    try {
+      parsed = parsePgn(pgnText);
+    } catch (err) {
+      this.pgnStatusEl.textContent = err instanceof Error ? err.message : 'Invalid PGN';
+      this.pgnStatusEl.setAttribute('data-status', 'error');
+      return false;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    parsed.goToStart();
+    this.gameTree = parsed;
+    this.notifyTreeReplaced();
+    this.pgnStatusEl.textContent = 'PGN Loaded';
+    this.pgnStatusEl.setAttribute('data-status', 'ok');
+    this.syncAllFromCurrentNode({ treeChanged: true });
+    return true;
+  }
+
   public exportPgn(): string {
     const pgn = writePgn(this.gameTree);
     this.pgnTextareaEl.value = pgn;

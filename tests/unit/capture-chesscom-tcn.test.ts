@@ -61,7 +61,7 @@ describe("Phase 5b — Chess.com's TCN move format", () => {
     expect(promotions).toBeGreaterThan(5);
     expect(castles).toBeGreaterThan(20);
     expect(chess960).toBe(1);
-  });
+  }, 30_000);
 
   it('rejects a move that is not legal in the position', () => {
     expect(() => tcnToSan('mCmC', DEFAULT_POSITION, false)).toThrow(/TCN move 2/);

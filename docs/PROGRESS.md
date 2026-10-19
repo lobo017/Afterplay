@@ -2518,3 +2518,117 @@ Risks: the 10 s check of a page whose ID never exists keeps running while the pa
   7.1 min): all pass.
 - Known issue: whether Chess.com's page makes a request about the game when it ends is not
   known (it can't be recorded without playing); the 10 s check doesn't depend on it.
+
+## Phase 5b — Delivery outcomes (2026-10-19)
+
+Report: the popup has said "21 games waiting for the analysis site" for hours; reloading the
+site or the extension never delivers them. The site is open at http://127.0.0.1:4173.
+
+### Diagnosis
+
+Read from a copy of the extension's own storage (Chrome profile, `Local Extension Settings`,
+read only; LevelDB log + tables decoded with a throwaway script in the scratchpad), then each
+waiting PGN run through the site's own `checkPgnText`:
+
+- Queue: 8984 delivered, **21 ready**, all from history imports. Settings: site URL
+  `http://127.0.0.1:4173` (the one in use), so the URL is not the cause.
+- **15 Lichess games are variants** (2021 history): 9 Antichess, 5 Atomic, 1 Crazyhouse
+  (`[Variant "…"]`). The site plays them as standard chess and fails on the first move that's
+  illegal in standard chess ("Illegal move: Qc5 in position …"). The history import does not
+  filter Lichess variants (the Chess.com one keeps chess and chess960 only).
+- **6 Chess.com games have no moves**: 5 games of the 2022 Daily Chess Championship won on time
+  before the opponent moved, 1 live game drawn by agreement at move 0. The site answers "no
+  moves."
+- What happens on each sync: the page answers `saved` with these keys under `failed` (with
+  the reason); the bridge keeps failed games **ready** (only skipped for the rest of that sync),
+  so every sync offers them again, they fail again, and they stay "waiting" forever. The
+  reason is never stored or shown.
+- Also found while probing: two kinds of unusual header lines make a standard game fail to
+  parse (`[Event "The "big" one"]` with unescaped quotes, and `[Event 'x']` with single
+  quotes): the tag line is read as moves. 23 other unusual header forms already import
+  (lowercase or unknown tags, duplicates, `????.??.??`, missing / empty / contradicting
+  Result, BOM, CRLF, tags on one line, `%` lines, `;` comments, FEN without SetUp, …).
+- Site URL: the bridge runs only on the configured origin. `localhost` and `127.0.0.1` are the
+  same server but different origins (and different IndexedDB libraries), so opening the site
+  under the other name never received anything.
+
+### Plan (written before code)
+
+- `src/capture/pgn-games.ts` (shared by the site and the extension): `importProblemOf(pgn)`:
+  an unsupported variant (anything but Standard, Chess960, From Position) or no moves at all;
+  `checkPgnText` repairs malformed tag lines (quotes inside, single quotes) and parses again
+  before giving up.
+- Protocol: a failed delivery carries `kind`: `variant`, `no-moves`, `invalid` (won't parse)
+  or `error` (couldn't store; worth another try). Optional field, same protocol version.
+- Site (`library.saveBridgeGames`): already on the site → `duplicates`; a problem → `failed`
+  with its kind; a standard game with unusual headers is saved.
+- Extension queue: new status `rejected` (`rejectKind`, `rejectReason`; `dismissed`), not
+  counted as waiting. The bridge marks `variant` / `no-moves` / `invalid` games rejected
+  (`bridge-rejected`), keeps `error` ones ready, and marks already-stored ones delivered as
+  before. Games with a variant or no moves are classified when they enter the queue (history,
+  sync, Save) and never offered; games already waiting are classified when the extension
+  starts. A rejected game isn't revived by history imports or the sync, only by Save / a link
+  / paste or Retry.
+- Popup: a "Not imported" section: "not imported (variant: Antichess)", "not imported (no
+  moves)" with Dismiss; "rejected: <reason>" with Retry and Dismiss. Dismiss keeps the game's
+  index row (so it isn't imported again) and drops its PGN.
+- Site URL: the bridge is registered on both `127.0.0.1:<port>` and `localhost:<port>`, the
+  background accepts both, and the popup's "open in a tab" check looks for both. The popup says
+  which one received the games, since their libraries are separate.
+- Tests: unit (classification, header repair, every page outcome incl. already on the site,
+  bridge marking per kind, queue rejected / retry / dismiss / no revival / start-up
+  classification, protocol `kind`, site origins); e2e: the reported set (variants, no-move
+  games) plus a normal game, a game already on the site, unusual headers and an invalid game,
+  with the popup's outcomes, Retry and Dismiss; delivery to `localhost` with `127.0.0.1`
+  configured.
+
+### Result (2026-10-19)
+
+Built as planned.
+- `importProblemOf` (variant / no moves), `describeImportProblem`, `repairTagLines`;
+  `checkPgnText` re-reads a repaired text when the first reading has errors and keeps the
+  reading with more games or, as many, fewer errors (a broken tag line can split one game in
+  two).
+- The site answers `failed` with `kind` (`variant`, `no-moves`, `invalid`, `error`; a page that
+  throws while storing → `error`). The bridge (`rejectionOf`) marks `variant` / `no-moves` /
+  `invalid` rejected through `bridge-rejected`; `error`, failures without a kind (an older,
+  cached page) and unanswered keys stay ready for the next sync, as before.
+- Queue: status `rejected` with `rejectKind`, `rejectReason`, `dismissed`; `markRejected`
+  (variant / no-moves lose their PGN, invalid keeps it), `retryRejected`, `dismissRejected`,
+  `classifyWaiting` (run in `init()`, i.e. on install, update and browser start: the reported
+  21 are rejected as soon as the updated extension loads, before any sync). `addReady` rejects
+  variants and no-move games on the way in (outcome `not-importable`) and doesn't revive a
+  rejected game unless the trigger is Save, a link or a paste (`already-rejected`). Counts gain
+  `rejected` (not dismissed); the badge still counts pending + ready only.
+- Popup: "Not imported" section (reason per game, Retry for `invalid`, Dismiss for all), the
+  header adds "· N not imported", entries say "not imported"; the Save button on a game page
+  says "Not imported" with the reason; a paste says "not imported (…)".
+- Site URL: `siteOrigins` / `siteMatchPatterns`; the bridge is registered on both loopback names
+  (compared regardless of order: Chrome returns the patterns in its own order), the background
+  accepts both origins, tab lookups use both.
+- **Also fixed (Phase 5 test failing on this machine, before this change too):** the review
+  test's "no main-thread task over 50 ms" check failed 3 of 3 on the previous commit while the
+  machine was busy (OneDrive sync). Long Animation Frame attribution and a CPU profile pointed
+  at the Review-sample click: `importPgn` (parse + render at the last position, 34–60 ms) then
+  `goToNode(root)` (another render) in one task. New `AnalysisController.importPgnFromStart`
+  parses in one task and shows the game from its start in the next (one render);
+  `ReviewPanel.loadSampleGame` uses it. 5 of 5 runs then had no long task.
+- **Test changes:** `capture-chesscom-tcn` "reproduces Chess.com's own PGN … (42 games)" got an
+  explicit 30 s timeout, like the other heavy unit tests (`bot-selection-golden`,
+  `perft-crosscheck`): it takes ~2 s alone but passed the 5 s default in the parallel run on the
+  busy machine; no assertion changed. Exact `counts()` expectations gained `rejected: 0`. The
+  bridge test of a page that throws now expects `kind: 'error'`. The settings e2e expects both
+  loopback patterns, compared sorted. Fixture-free: the delivery tests use synthetic PGNs of the
+  reported games' shape (no personal games recorded).
+- Tests: unit `capture-delivery` (8: classification, header repair, every page outcome incl.
+  already on the site and a storage error, protocol kind, the reported set through a real
+  bridge + library sync with Retry and Dismiss, a storage error retried, queue-time and start-up
+  classification, no revival, both site origins). E2E `phase5b-delivery.spec.ts` (2: the
+  reported set — 6 waiting → none waiting, 2 on the site, 4 not imported with their reasons;
+  Retry and Dismiss; the site opened as localhost with 127.0.0.1 configured).
+- Known issue: `localhost` and `127.0.0.1` are separate libraries in the browser (IndexedDB is
+  per origin); games go to whichever is open.
+- Checks (2026-10-19): typecheck, lint, **396 unit tests** (34 files), build, build:ext,
+  **60/60 e2e** (one worker, 8.8 min): all pass. A run before that had 59/60 (the Phase 3
+  bot-worker test hit its 120 s limit in a 21-minute run while the machine was busy; it passed
+  alone in 33 s and in the full run above).

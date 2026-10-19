@@ -505,8 +505,9 @@ test.describe('Phase 5b — capture extension', () => {
     await expect(popup.getByTestId('popup-settings-result')).toHaveText('Saved.');
     await expect(popup.getByTestId('popup-site-url')).toHaveValue('http://localhost:5173');
     const matches = () =>
-      session.worker.evaluate(async () => (await chrome.scripting.getRegisteredContentScripts()).flatMap((c) => c.matches ?? []));
-    expect(await matches()).toEqual(['http://localhost:5173/*']);
+      session.worker.evaluate(async () => (await chrome.scripting.getRegisteredContentScripts()).flatMap((c) => c.matches ?? []).sort());
+    // Both loopback names of the port
+    expect(await matches()).toEqual(['http://127.0.0.1:5173/*', 'http://localhost:5173/*']);
     for (const [field, value, message] of [
       ['popup-site-url', 'https://example.com', 'The site URL must be http on localhost or 127.0.0.1'],
       ['popup-lichess-user', 'not a name!', 'That is not a valid Lichess username.'],
@@ -517,10 +518,10 @@ test.describe('Phase 5b — capture extension', () => {
       await expect(popup.getByTestId('popup-settings-result')).toHaveAttribute('data-tone', 'bad');
       await popup.getByTestId(field).fill(field === 'popup-site-url' ? 'http://127.0.0.1:4173' : '');
     }
-    expect(await matches()).toEqual(['http://localhost:5173/*']);
+    expect(await matches()).toEqual(['http://127.0.0.1:5173/*', 'http://localhost:5173/*']);
     await popup.getByTestId('popup-settings-save').click();
     await expect(popup.getByTestId('popup-settings-result')).toHaveText('Saved.');
-    expect(await matches()).toEqual(['http://127.0.0.1:4173/*']);
+    expect(await matches()).toEqual(['http://127.0.0.1:4173/*', 'http://localhost:4173/*']);
     await popup.close();
 
     // Auto-capture off: my game ending on the page only enables the button

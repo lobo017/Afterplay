@@ -74,6 +74,8 @@ export interface ReviewPanelHost {
   /** Shows the board from this side. */
   setOrientation(color: 'w' | 'b'): void;
   importPgn(pgn: string): boolean;
+  /** The same, shown from the first position, parsed and shown in separate tasks. */
+  importPgnFromStart(pgn: string): Promise<boolean>;
   /**
    * Adds the moves as a line from `fromNodeId` without navigating; returns the nodes.
    * `forceNewVariation` starts a new branch even when the first move already exists.
@@ -578,10 +580,9 @@ export class ReviewPanel {
 
   public async loadSampleGame(): Promise<ReviewRunResult | null> {
     this.cancel();
-    if (!this.host.importPgn(SAMPLE_GAME_PGN)) return null;
-    this.host.goToNode(this.host.getGameTree().root.id);
-    // Loading the game and starting the review are each ~20–30 ms of main-thread work;
-    // run them as separate tasks so neither click becomes a long task
+    // Parsing the game, showing it and starting the review are each ~10–30 ms of main-thread
+    // work (more on a busy machine): separate tasks, so none becomes a long task
+    if (!(await this.host.importPgnFromStart(SAMPLE_GAME_PGN))) return null;
     await new Promise((resolve) => setTimeout(resolve, 0));
     return this.start();
   }

@@ -66,6 +66,7 @@ function wire(queue: CaptureQueue, save: (games: readonly BridgeGame[]) => Promi
     hello: async () => ({ extensionVersion: '9.9.9', accounts: { lichess: 'Lobo017', chesscom: 'lobo' } }),
     takeBatch: (max, exclude) => queue.takeBatch(max, new Set(exclude)),
     markDelivered: (keys) => queue.markDelivered(keys),
+    markRejected: (items) => queue.markRejected(items),
   });
   const client = new ExtensionBridgeClient(win, { saveGames: save, setAccounts: (a) => void accounts.push(a) });
   return { win, bridge, client, accounts };
@@ -126,7 +127,7 @@ describe('Phase 5b — bridge sync', () => {
     client.start();
     await settle(bridge, client);
     expect(stored.size).toBe(120);
-    expect(await queue.counts()).toEqual({ pending: 0, ready: 0, delivered: 120 });
+    expect(await queue.counts()).toEqual({ pending: 0, ready: 0, delivered: 120, rejected: 0 });
     expect(win.sentOfType('games').map((m) => (m.games as unknown[]).length)).toEqual([50, 50, 20]);
     expect(accounts).toContainEqual({ lichess: 'Lobo017', chesscom: 'lobo' });
     expect(client.getStatus()).toMatchObject({ state: 'connected', extensionVersion: '9.9.9', lastDelivered: 120 });
@@ -184,9 +185,10 @@ describe('Phase 5b — bridge sync', () => {
     await settle(bridge, client);
     expect(await queue.counts()).toMatchObject({ ready: 2, delivered: 0 });
     const saved = win.sentOfType('saved')[0]!;
+    // A storage error: kept ready for the next sync (not rejected)
     expect(saved.failed).toEqual([
-      { key: 'chesscom:live-0', reason: 'QuotaExceededError' },
-      { key: 'chesscom:live-1', reason: 'QuotaExceededError' },
+      { key: 'chesscom:live-0', kind: 'error', reason: 'QuotaExceededError' },
+      { key: 'chesscom:live-1', kind: 'error', reason: 'QuotaExceededError' },
     ]);
   });
 
@@ -198,6 +200,7 @@ describe('Phase 5b — bridge sync', () => {
       hello: async () => ({ extensionVersion: '1', accounts: { lichess: '', chesscom: '' } }),
       takeBatch: (max, exclude) => queue.takeBatch(Math.min(max, 2), new Set(exclude)),
       markDelivered: (keys) => queue.markDelivered(keys),
+      markRejected: (items) => queue.markRejected(items),
     });
     bridge.start();
     win.postMessage(pageMessage('hello', {}), ORIGIN);
@@ -259,6 +262,7 @@ describe('Phase 5b — bridge sync', () => {
         hello: async () => ({ extensionVersion: '1', accounts: { lichess: '', chesscom: '' } }),
         takeBatch: (max, exclude) => queue.takeBatch(max, new Set(exclude)),
         markDelivered: (keys) => queue.markDelivered(keys),
+        markRejected: (items) => queue.markRejected(items),
       });
       bridge.start();
       win.postMessage(pageMessage('hello', {}), ORIGIN);
