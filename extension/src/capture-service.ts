@@ -7,7 +7,15 @@ import type { CaptureReply, LastFailure, SaveTextResult } from './messages';
 /** Resolves a game link to its PGN (or to "not available yet"); added per site. */
 export type LinkResolution =
   | { kind: 'pgn'; pgn: string; method: string }
-  | { kind: 'pending'; reason: string; retryAt: number }
+  | {
+      kind: 'pending';
+      reason: string;
+      retryAt: number;
+      /** What is known about the game already (from the site's game data), for the popup. */
+      white?: string;
+      black?: string;
+      date?: string;
+    }
   | { kind: 'error'; error: string };
 
 export type LinkResolver = (ref: SiteGameRef) => Promise<LinkResolution>;
@@ -23,6 +31,8 @@ export interface CaptureServiceDeps {
 }
 
 const LAST_FAILURE_KEY = 'lastFailure';
+/** A game still pending this long after it was first seen is no longer retried on its own. */
+export const PENDING_MAX_AGE_MS = 48 * 3600_000;
 const URL_LINE = /^https?:\/\/\S+$/i;
 
 /** "GEU3 vs Lobo017" from a PGN's headers. */
@@ -101,12 +111,19 @@ export class CaptureService {
       return { label: gameLabel(games[0]!.headers), ok: true, outcome: outcome! };
     }
     if (resolution.kind === 'pending') {
+      const existing = await this.deps.queue.get(key);
+      const tooOld = existing !== null && this.deps.now() - existing.capturedAt > PENDING_MAX_AGE_MS;
       await this.deps.queue.addPending({
         key,
         source: ref.site,
         url: link,
-        error: resolution.reason,
-        nextRetryAt: resolution.retryAt,
+        error: tooOld
+          ? `${resolution.reason} Gave up retrying after 48 h: press Retry now, or open the game page and press Save.`
+          : resolution.reason,
+        nextRetryAt: tooOld ? null : resolution.retryAt,
+        white: resolution.white,
+        black: resolution.black,
+        date: resolution.date,
       });
       return { label: link, ok: true, outcome: 'pending' };
     }

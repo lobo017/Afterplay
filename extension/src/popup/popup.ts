@@ -34,6 +34,19 @@ const SITE_BADGE: Record<QueueEntry['source'], { label: string; title: string }>
   paste: { label: 'P', title: 'Pasted PGN' },
 };
 
+/** How each game was obtained, as the popup says it (so a capture shows which method worked). */
+const METHOD_LABEL: Record<string, string> = {
+  'lichess-session-export': 'Lichess export (your session)',
+  'lichess-ids-export': 'Lichess export by ID',
+  'lichess-page-data': 'Lichess page data',
+  'lichess-history': 'Lichess history',
+  'chesscom-callback': 'Chess.com game data',
+  'chesscom-share-pgn': 'Chess.com Share dialog',
+  'chesscom-archive': 'Chess.com archive',
+  'chesscom-archive-history': 'Chess.com archive',
+  'pasted-pgn': 'pasted PGN',
+};
+
 const STATUS_LABEL: Record<QueueEntry['status'], string> = {
   pending: 'pending',
   ready: 'waiting for site',
@@ -75,10 +88,13 @@ function renderEntries(entries: readonly QueueEntry[]): void {
     who.className = 'who';
     who.textContent = e.white || e.black ? `${e.white || '?'} vs ${e.black || '?'}` : (e.url ?? e.key);
     const sub = document.createElement('small');
-    sub.textContent = [e.result, e.date, timeAgo(e.capturedAt), e.status === 'pending' ? e.error : null]
+    const method = e.method ? (METHOD_LABEL[e.method] ?? e.method) : null;
+    sub.setAttribute('data-method', e.method ?? '');
+    sub.textContent = [e.result, e.date, method, timeAgo(e.capturedAt), e.status === 'pending' ? e.error : null]
       .filter(Boolean)
       .join(' · ');
     who.appendChild(sub);
+    who.title = [who.firstChild?.textContent, sub.textContent].filter(Boolean).join('\n');
     const st = document.createElement('span');
     st.className = `status status-${e.status}`;
     st.textContent = STATUS_LABEL[e.status];
@@ -212,7 +228,10 @@ for (const site of ['lichess', 'chesscom'] as const) {
   btn.addEventListener('click', () => {
     const kind = btn.getAttribute('data-action') === 'stop' ? 'backfill-stop' : 'backfill-start';
     btn.disabled = true;
-    void sendToBackground({ kind, site }).then(refresh);
+    void sendToBackground<{ ok: boolean; error?: string }>({ kind, site }).then(async (reply) => {
+      await refresh();
+      if (!reply.ok && reply.error) q(`popup-backfill-${site}-status`).textContent = reply.error;
+    });
   });
 }
 
@@ -235,8 +254,13 @@ els.form.addEventListener('submit', (e) => {
   });
 });
 
+let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 chrome.storage.onChanged.addListener((_changes, area) => {
-  if (area === 'local') void refresh();
+  if (area !== 'local' || refreshTimer) return;
+  refreshTimer = setTimeout(() => {
+    refreshTimer = null;
+    void refresh();
+  }, 300);
 });
 
 void sendToBackground<StatusReply>({ kind: 'status' }).then((s) => {

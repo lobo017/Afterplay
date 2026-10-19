@@ -45,6 +45,15 @@
         "lichess.js"
       ],
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://www.chess.com/*"
+      ],
+      "js": [
+        "chesscom.js"
+      ],
+      "run_at": "document_idle"
     }
   ],
   "content_security_policy": {

@@ -22,13 +22,21 @@ export interface SiteAdapter {
   readonly site: SiteGameRef['site'];
   /** The game on this page (`fresh`: reload the site's data, e.g. after the game ended). */
   detect(fresh: boolean): Promise<PageGame | null>;
-  /** Calls back when the page shows that the game has ended; returns a stop function. */
-  watchForEnd(onEnd: () => void): () => void;
+  /**
+   * Calls back when the game may have ended; returns a stop function. `shown`: the page
+   * showed the end (worth a few checks while the site catches up); otherwise a periodic check.
+   */
+  watchForEnd(onEnd: (shown: boolean) => void): () => void;
   readonly extractors: readonly Extractor[];
 }
 
 /** Waiting this long after the end shows on the page lets the site finish writing the game. */
 const END_SETTLE_MS = 1500;
+/** When the page shows the end but the site's data doesn't yet: checks, this far apart. */
+const END_CHECKS = 3;
+const END_CHECK_GAP_MS = 2000;
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function isMine(game: PageGame, settings: ExtensionSettings, site: SiteGameRef['site']): boolean {
   const me = (site === 'lichess' ? settings.lichessUsername : settings.chesscomUsername).trim().toLowerCase();
@@ -51,7 +59,9 @@ export async function runCapturePage(adapter: SiteAdapter): Promise<() => void> 
   if (!game || game.state === 'aborted') return () => undefined;
 
   let stopWatching: (() => void) | null = null;
+  let stopped = false;
   let busy = false;
+  let checking = false;
   const ref = game.ref;
   const url = location.href;
 
@@ -102,29 +112,41 @@ export async function runCapturePage(adapter: SiteAdapter): Promise<() => void> 
     button.set(known ?? 'ready');
   } else {
     button.set(known ?? 'in-progress', known ? '' : 'Save it when the game has ended.');
-    stopWatching = adapter.watchForEnd(() => {
-      stopWatching?.();
-      stopWatching = null;
-      void (async () => {
-        await new Promise((r) => setTimeout(r, END_SETTLE_MS));
-        const ended = await adapter.detect(true);
-        if (!ended || ended.state !== 'finished') return;
-        const settings = await sendToBackground<ExtensionSettings>({ kind: 'get-settings' });
+    const onEndSignal = async (shown: boolean) => {
+      if (checking || stopped || !stopWatching) return;
+      checking = true;
+      try {
+        if (shown) await sleep(END_SETTLE_MS);
+        let ended: PageGame | null = null;
+        for (let i = 0; i < (shown ? END_CHECKS : 1) && !stopped; i++) {
+          if (i > 0) await sleep(END_CHECK_GAP_MS);
+          ended = await adapter.detect(true);
+          if (ended?.state === 'finished') break;
+        }
+        // Not over after all (or not yet in the site's data): keep watching
+        if (stopped || !ended || ended.state !== 'finished') return;
+        stopWatching?.();
+        stopWatching = null;
         if (known) return;
+        const settings = await sendToBackground<ExtensionSettings>({ kind: 'get-settings' });
         if (settings.autoCapture && isMine(ended, settings, adapter.site)) await capture(true);
         else button.set('ready');
-      })();
-    });
+      } finally {
+        checking = false;
+      }
+    };
+    stopWatching = adapter.watchForEnd((shown) => void onEndSignal(shown));
   }
 
   return () => {
+    stopped = true;
     stopWatching?.();
     button.remove();
   };
 }
 
 /** Calls `onMatch` (at most once) when an element matching `selector` is in the page. */
-export function watchForSelector(selector: string, onMatch: () => void): () => void {
+export function watchForSelector(selector: string, onMatch: (shown: boolean) => void): () => void {
   let done = false;
   let scheduled = false;
   const check = () => {
@@ -132,7 +154,7 @@ export function watchForSelector(selector: string, onMatch: () => void): () => v
     if (done || !document.querySelector(selector)) return;
     done = true;
     observer.disconnect();
-    onMatch();
+    onMatch(true);
   };
   const observer = new MutationObserver(() => {
     if (!scheduled) {

@@ -10,7 +10,7 @@
 | **Phase 3** | 2D board and play mode | **Done** | Imperative SVG board (`translate3d` + Web Animations API), dirty-checked SVG overlay, 180-shard fixed `<canvas>` pool, Web Audio synth, clocks, vs-bot Play Mode, legacy bug regression suite. **2026-10-17 fixes:** drags survive board updates, drag cancel (right-click / Esc / off-board), premove queue (max 10) on a hypothetical board, same-frame premove execution |
 | **Phase 4** | Analysis board | **Done** | Animated mate-aware eval bar, live MultiPV 1–5 lines + ghost preview, best/threat/user arrows, variation tree & keyboard navigation, FEN position editor, ECO opening lookup. **2026-10-17 fixes:** zero layout shift while navigating (was 694 shifts), ~100 ms step animation with reverse and snap-on-repeat, engine lines batched to ≤ 1 DOM update per frame |
 | **Phase 5** | Game review | **Done** | MultiPV 2 review pipeline on its own 1-thread engine with verification searches, win%/accuracy/ACPL/performance formulas, 10 move classes (docs/classification.md), 8 motif detectors, one-sentence explanations computed in a worker, review panel (live win% chart, key moments, Retry / Refutation / Play vs Bot / annotated PGN, sample game). **2026-10-18:** Lichess-matched formulas and thresholds; "Review as" White / Black / Both perspective and redesigned summary |
-| **Phase 5b** | Capture extension + Games list | In progress | Chrome MV3 capture extension (Lichess, Chess.com, queue, popup, backfill), localhost bridge, Games list with background review queue |
+| **Phase 5b** | Capture extension + Games list | In progress (built; full e2e run pending) | Chrome MV3 capture extension (Lichess, Chess.com, queue, popup, backfill), localhost bridge, Games list with background review queue, IndexedDB v4 |
 | **Phase 6** | Puzzles & spaced repetition | Pending | Personal mistake puzzles, bundled 20k Lichess puzzles, Glicko-2, FSRS scheduler, Today screen |
 | **Phase 7** | Repertoire, endgame & visualization | Pending | White/Black repertoire trees, 6 curated endgame drills, coordinate/blindfold/guess-the-move |
 | **Phase 8** | Library, insights, settings, offline | Pending | Auto-save library, worker bulk PGN import, insights charts, a11y, full offline PWA |
@@ -2002,3 +2002,199 @@ on `focus` and when its tab becomes visible; the bridge announces itself when it
   driven by alarms and stored state, not timers.
 - The site's existing e2e tests must not change: the Games tab is a new mode, and the
   Lichess review test still opens as Black through the fallback account.
+
+### Result (2026-10-18)
+
+Built in the order asked for: (1) queue and bridge, tested with pasted PGN; (2) Lichess
+capture; (3) Chess.com capture; (4) history backfill; (5) Games list polish. A WIP commit
+after step 2 (16ab006).
+
+**Extension** (`extension/`, `npm run build:ext` → `dist-ext/`, plain IIFE bundles, no
+remote code; the build checks for `importScripts` / remote `import()`)
+- Manifest V3. Permissions and why: `storage` (queue, settings, import progress);
+  `alarms` (pending retries every 15 min, waking a rate-limited or interrupted import:
+  service workers can't keep timers); `contextMenus` (the link menu); `notifications`
+  (extraction failures); `scripting` (registers the bridge on the configured site URL only).
+  Hosts: lichess.org, www.chess.com, api.chess.com, and `http://localhost/*`,
+  `http://127.0.0.1/*` (any port, since the site URL is a setting; only the configured origin
+  gets the bridge).
+- `chrome.d.ts`: the chrome.* calls used, typed by hand (no new dependency).
+- Extractors behind one interface (`extractors/types.ts`, `runExtractors`: first PGN wins,
+  stops early on "game in progress"), one file per method: `lichess-session-export`,
+  `lichess-ids-export`, `lichess-page-data`, `chesscom-callback` (+ `chesscom-tcn`),
+  `chesscom-share`, `chesscom-archive`.
+- Content scripts `content/lichess.ts`, `content/chesscom.ts` on a shared runner
+  (`content/capture-page.ts`): Save button in a shadow root on `<html>`; a game in progress
+  shows "Game in progress" and is watched (Lichess `.result-wrap`; Chess.com game-over
+  dialog selectors plus a 30 s check of the game data while the tab is visible); when it
+  ends, auto-capture if the setting is on and it is my game (my username for that site, or
+  for Lichess the page's own non-spectator view). Chess.com changes games without reloading:
+  the URL is checked every second and the runner restarts.
+- `queue.ts` (index + one key per waiting PGN; a delivered game drops its PGN), badge =
+  pending + ready, `capture-service.ts` (PGN checks with the app's own parser before
+  anything is queued, link resolution, pending retries, last failure), `background.ts`
+  (messages with sender checks: game sites, the popup, the configured site origin for the
+  bridge), `backfill.ts`, popup.
+
+**Lichess and the login-gated export (the question asked).** Measured here:
+- Anonymous `GET /game/export/{id}` → 303 `/signup` (401 `{"error":"Login required"}` as
+  JSON); recorded in `tests/fixtures/capture/lichess/export-anonymous.json`.
+- In Chrome 155 with the unpacked extension and a `SameSite=Lax; HttpOnly; Secure` session
+  cookie: a **content-script** fetch on lichess.org carries the cookie, the **service
+  worker's** fetch (`credentials: 'include'`) does not.
+- So on a Lichess game page the extension asks the export with your session first; the e2e
+  test serves the export only when the `lila2` cookie is present and checks it was sent and
+  used (method `lichess-session-export`). If the export wants a login, it falls back to the
+  game page's own data (`page-init-data`), as instructed; that PGN matches Lichess's export
+  of the same game exactly in moves and clocks and in 16 headers (unit test, both recorded
+  games).
+- **Not verified with a real Lichess login** (no access to your session from here). The
+  queue records which method produced each game; the popup shows it, so the first game you
+  save on Lichess while logged in tells you whether the session export worked
+  ("Lichess export (your session)") or the page data was used.
+- Links (popup, context menu, pending retries) run in the service worker, which has no
+  session cookie: they use the official, still-anonymous `POST /api/games/export/_ids`
+  (added, see deviations), then the page data from the fetched game page.
+
+**What Chess.com's pages load** (recorded 2026-10-18; fixtures in `tests/fixtures/capture/chesscom/`)
+- The HTML of `/game/live/{id}` has no game data (meta tags, login links). The page loads
+  `GET /callback/live/game/{id}` (daily: `/callback/daily/game/{id}`), JSON `{ game, players }`.
+  It answered 200 to a browser User-Agent without cookies; a fake ID gives 404
+  `{"message":"Game is not found."}`.
+- `game.moveList`: TCN, two characters per ply from
+  `a–z A–Z 0–9 ! ?` = squares a1…h8 (index = file + 8·rank). A second character ≥ 64 is a
+  promotion: piece = `qnrb`[(c − 64) / 3], target file offset (c − 64) % 3 − 1 (capture
+  left / straight / capture right). Castling is the king's move: e1→g1 in standard chess,
+  **onto its own rook in Chess960** (`db` = Kd1×Rb1 for O-O-O). Characters above index 75
+  in the first position are crazyhouse drops (not supported).
+- `game.moveTimestamps` (live): the clock left after each ply in deciseconds
+  ("1800,1800,1763,…" for 3+0); Chess.com's own PGN writes these as `[%clk 0:02:56.3]`.
+  Daily games have `game.timestamps` instead (deciseconds too, up to 864000 for a one-day
+  move limit), which don't match the `[%clk]` Chess.com's archive PGN writes for daily games,
+  so daily captures carry no clocks.
+- `game.pgnHeaders`: Event, Site, Date, White, Black, Result, ECO, WhiteElo, BlackElo (numbers),
+  TimeControl, EndTime ("9:34:36 GMT+0000"), Termination, and for every game SetUp/FEN (the
+  start position even for standard games); Chess960 adds Variant and `initialSetup`
+  (Shredder castling `FBfb`). Values escape apostrophes as `\'` ("Let\'s Play!").
+- Other fields used: `isFinished`, `colorOfWinner`, `gameEndReason`, `endTime` (s), `type`
+  (`chess` / `chess960`), `plyCount`, `initialSetup`; `players.top/bottom` (username, color,
+  rating; the recorder keeps only these).
+- The archive API (`api.chess.com/pub/player/{u}/games/{YYYY}/{MM}`) has `pgn` **and** `tcn`
+  for every game, plus `initial_setup` (X-FEN `KQkq` for Chess960, unlike the PGN's FEN
+  header); answers carry `ETag`, `Last-Modified`, `cache-control: public, max-age=60`; it
+  refused the default curl User-Agent (403). The TCN decoder reproduces Chess.com's own PGN
+  for all 42 recorded archive games (promotions, both castlings, a Chess960 game).
+- A game page's in-page navigation (next game) changes the URL without a reload.
+
+**Bridge** (protocol v1 as planned). Found and fixed while testing: the page's `hello` and
+the bridge's `bridge-ready` cross at startup, so the page says hello twice; the first version
+queued a second full sync for that. A hello during a sync is now ignored: the running sync
+reads the queue afresh for every batch, so games captured meanwhile go out with it (unit
+test). Also found by the first browser run: the bridge kept `setTimeout` in an object and
+called it as a method, which browsers reject ("Illegal invocation") and Node doesn't.
+
+**Website**
+- **Games** tab (`library/games-list.ts`): source, date (the PGN's UTC date), my color, opponent
+  with ratings (or "White vs Black" when I'm not in the game), result from my side (W/L/D; a
+  game I'm not in shows its result as played), time control ("2+1", "3+0", "1 day"), opening
+  (the app's openings dataset), and Analyzed / Not analyzed / Queued / Analyzing n% / Failed.
+  Filters (source, result, analysis), sort (newest, oldest, opponent, accuracy), select /
+  select all → **Analyze** on the preset picked, **default Standard**; **Auto-analyze new
+  games** (off by default, remembered) reviews on **Quick**. Paste PGN, Open PGN file…, drag
+  and drop. 200 rows per page with "Show more". Phone layout: two-line cards.
+- `library/library.ts` + `game-record.ts`: keys `lichess:<id>`, `chesscom:<live|daily>-<n>`,
+  `paste:<hash of players, date, moves>`; a pasted Lichess or Chess.com PGN gets its site
+  key from Site/GameId/Link, so pasting a game the extension later captures stores it once.
+  Imports yield between games (no single long task).
+- `library/review-queue.ts`: background reviews on the review engine, one game at a time.
+  `library/saved-review.ts`: the finished review is stored and shown again on open
+  (`ReviewPanel.showSavedReview`, node IDs mapped by ply after checking the moves match);
+  a review run on the board for a list game is saved too.
+- "Review as": my accounts are the usernames the extension sends (`hello-ack`), kept in the
+  site's settings; the built-in `Lobo017` is only the fallback until then (Phase 5's tests
+  rely on it, unchanged).
+
+**Deviations from the spec / plan (with reasons)**
+1. **IndexedDB schema v4** (the plan said no schema change): a stored review is ~100 kB and
+   the list loads every game record, so reviews got their own `reviews` store. Two earlier
+   tests hard-coded v3; they now pin their v1→v2→v3 steps to version 3 and add a v3→v4 step
+   (stores, migration history, data kept). The header badges read "IDB v4". Extended, not
+   weakened; backup/restore includes the reviews.
+2. **Lichess `POST /api/games/export/_ids`** for links and the popup: the service worker has
+   no Lichess session (measured), and this official endpoint still answers anonymously.
+   On game pages the order is the one asked for: session export, then page data.
+3. **Chess.com links** read the game's own data (the callback) to know whose archive and
+   which month to look in, then take the PGN from the official archive. Without it, my
+   archive for this month and the last. Pending games are retried every 15 min and no
+   longer automatically after 48 h (Retry now still works).
+4. Extra permissions beyond the spec's list (alarms, contextMenus, notifications, scripting):
+   each is needed by a feature the spec asks for (see above).
+5. A game the site already had is acknowledged as stored (`duplicates`), so the extension
+   marks it delivered instead of sending it forever.
+6. History imports aren't auto-analyzed (they are not "new games"; a full Lichess history can
+   be thousands of games).
+7. Auto-capture is on by default; on Chess.com it needs my username (the page's player
+   isn't readable from the extension's isolated world).
+8. Lichess clocks are rounded to the nearest second, as Lichess's export does (floor gave
+   23 mismatches of 46 against the recorded export, rounding none).
+9. The e2e test loads the unpacked extension through CDP `Extensions.loadUnpacked`
+   (`--enable-unsafe-extension-debugging`): branded Chrome ignores `--load-extension` since
+   Chrome 137, and the suite uses the installed Chrome.
+
+**Tests** — unit: `capture-game-id` (8), `capture-queue` (6), `capture-bridge` (10, incl.
+partial failure, failures not re-offered in the same sync, duplicates, foreign batch / keys,
+spoofed origin and window, reply timeout), `capture-lichess` (10), `capture-chesscom-tcn` (3),
+`capture-chesscom` (12, incl. ETag / 304 / 429 / pending / 48 h), `capture-backfill` (8,
+incl. pagination, since, ETag, 429 doubling and cap, queue-full pause, one request at a
+time across both sites), `library` (8), storage extended. E2E: `phase5b-extension.spec.ts`
+(11: pasted PGN round trip + focus sync; Lichess without login → page data, Games list,
+Analyze, saved review on open; Lichess logged-in live game ending → session export
+auto-capture; someone else's game not captured; Lichess link; Chess.com Save (TCN);
+Share-dialog fallback; Chess.com live game after in-page navigation; Chess.com link pending
+→ ready via the context-menu handler and Retry; extraction failure → notification + popup;
+history import of both sites; settings incl. site URL re-registration and auto-capture off),
+`phase5b-games.spec.ts` (4, no extension: paste / drop / file picker, metadata, filters, sort,
+selection, zero network; Analyze on Standard, opening the saved review makes no engine
+call, "Review as" from the extension's Chess.com username, auto-analyze on Quick, toggle
+remembered; review run on the board saved; phone width with no horizontal scroll and no
+layout shift). Mocked pages: the recorded Lichess HTML without its scripts and styles; for
+Chess.com a minimal page (its HTML has no game data anyway) and a mocked Share dialog.
+
+**Measured** — bundles: background 216 kB, Chess.com content script 145 kB (chess.js for
+TCN → SAN), Lichess 27 kB, bridge 6 kB, popup 9 kB. The Chess.com Save → badge → site test
+runs in 2.8 s including the browser start. Quick review of the 46-ply Lichess game from the list: the whole test 35 s.
+History import of 44 games (4 Lichess + 40 Chess.com, 3 requests) and their delivery to the
+site: 10 s for the test.
+
+**Screenshots looked at** (`test-results/phase5b-screens/`): `games-list-desktop.png`,
+`games-list-phone.png`, `games-list-analyzed.png`, `saved-review-opened.png` (board flipped
+to Black for hikaru, "Reviewed · Standard"), `lichess-save-button.png`, `popup-after-paste.png`,
+`popup-pending.png`, `popup-backfill-done.png`. Fixed after looking: dates were the day
+before (UTC date shown in local time); a game I'm not in showed "W" from White's side; the
+Black color dot was invisible on the dark row; an empty message line left a gap; a pending
+link showed only its URL (now the players from the game data).
+
+**Known issues**
+- Unofficial methods can break silently when the sites change: Lichess `page-init-data` and
+  `.result-wrap`; Chess.com's callback endpoint, its game-over dialog selectors and the Share
+  dialog selectors. The last two could not be recorded (no live game, no logged-in page);
+  they are tested on mocked pages modelled on the site and are the most likely to need
+  updating. A failure always ends in the notification → popup paste path.
+- The logged-in Lichess export is verified with a simulated session cookie, not a real login
+  (see above).
+- The popup shows the 40 newest entries; delivered entries keep a ~150-byte index row each
+  (dedupe), never pruned.
+- The Games list's background reviews and a review started on the board share the one review
+  engine; both run, interleaved, each slower.
+- Parsing a big pasted or imported PGN runs on the main thread, one game per task (Phase 8
+  moves bulk import to a worker).
+
+**Checks (2026-10-18) — not complete, so Phase 5b is not marked done.** typecheck, lint,
+**351 unit tests** (30 files), `npm run build` and `npm run build:ext` pass. The full e2e run
+was stopped by the environment (the machine ran critically low on memory) after 31 tests:
+all 30 earlier-phase tests passed (Phase 1's extended migration test included) and the first
+Phase 5b test passed. Every other Phase 5b e2e test passed in targeted runs during the work
+(`phase5b-extension.spec.ts` 11/11, `phase5b-games.spec.ts` 4/4), but the suite has not yet
+completed one uninterrupted run on the final code; the last change (the popup naming the
+capture method) is covered only by the updated first extension test. Still to do: one full
+`npx playwright test` run, then the "Phase 5b" commit.

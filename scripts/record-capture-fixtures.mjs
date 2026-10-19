@@ -3,26 +3,35 @@
 //
 //   node scripts/record-capture-fixtures.mjs
 //
-// One request at a time, with a pause between requests. Player records in Chess.com's
+// The games are fixed (the tests refer to them by ID), so a re-recording fetches the same
+// set. One request at a time, with a pause between requests. Player records in Chess.com's
 // callback JSON are trimmed to the fields the extractor reads (name, color, rating); the
-// game objects are kept as recorded.
+// game objects are kept as recorded. Archive months are trimmed to the games listed below
+// plus up to 40 others (promotions and long castling first), to keep the files small.
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const OUT = path.resolve(__dirname, '..', 'tests', 'fixtures', 'capture');
+// An output folder can be given (e.g. to compare a fresh recording with the committed one)
+const OUT = process.argv[2] ? path.resolve(process.argv[2]) : path.resolve(__dirname, '..', 'tests', 'fixtures', 'capture');
 
-// www.chess.com and lichess.org game pages serve a reduced page to non-browser agents
+// lichess.org and www.chess.com game pages serve a reduced page to non-browser agents
 const BROWSER_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36';
+// api.chess.com refuses requests without a User-Agent
 const SCRIPT_UA = 'wizard-chess-fixture-recorder';
 
-const LICHESS_GAME = 'Bjl39T9x';
 const LICHESS_USER = 'lobo017';
-const CHESSCOM_LIVE_PLAYER = 'hikaru';
-const CHESSCOM_DAILY_PLAYER = 'erik';
+/** The reference game (Phase 5) and a second one with both kinds of castling. */
+const LICHESS_GAMES = ['Bjl39T9x', 'iTIXmTZF'];
+/** The history fixture: the 4 games up to and including iTIXmTZF (createdAt 1792077093083). */
+const LICHESS_HISTORY_UNTIL = 1792077093084;
+
+const CHESSCOM_LIVE = { player: 'hikaru', month: '2026/10', games: ['185518487990', '185358990103'] };
+/** A daily Chess960 game and a daily standard game. */
+const CHESSCOM_DAILY = { player: 'erik', month: '2026/10', games: ['1036320138', '1033338800'] };
 
 async function request(url, init = {}, ua = BROWSER_UA) {
   await sleep(1200);
@@ -34,6 +43,7 @@ async function request(url, init = {}, ua = BROWSER_UA) {
   });
   const body = await res.text();
   console.log(`${res.status} ${init.method ?? 'GET'} ${url} (${body.length} bytes)`);
+  if (res.status >= 400 && res.status !== 401) throw new Error(`${url} answered ${res.status}`);
   return { res, body };
 }
 
@@ -52,13 +62,23 @@ function trimPlayers(players) {
 }
 
 async function recordLichess() {
-  // The game page (finished game): the page-init-data JSON the page boots from
-  const page = await request(`https://lichess.org/${LICHESS_GAME}`);
-  write(`lichess/page-${LICHESS_GAME}.html`, page.body);
+  for (const id of LICHESS_GAMES) {
+    // The game page (finished game): the page-init-data JSON the page boots from
+    const page = await request(`https://lichess.org/${id}`);
+    write(`lichess/page-${id}.html`, page.body);
+    // Export by IDs (POST): works without a session
+    const ids = await request('https://lichess.org/api/games/export/_ids?clocks=true&evals=false&opening=true', {
+      method: 'POST',
+      body: id,
+      headers: { 'Content-Type': 'text/plain' },
+    });
+    write(`lichess/export-ids-${id}.pgn`, ids.body);
+  }
 
   // The single-game export, anonymous: answers with a login wall
-  const anon = await request(`https://lichess.org/game/export/${LICHESS_GAME}?clocks=true&evals=false`);
-  const anonJson = await request(`https://lichess.org/game/export/${LICHESS_GAME}?clocks=true&evals=false`, {
+  const id = LICHESS_GAMES[0];
+  const anon = await request(`https://lichess.org/game/export/${id}?clocks=true&evals=false`);
+  const anonJson = await request(`https://lichess.org/game/export/${id}?clocks=true&evals=false`, {
     headers: { Accept: 'application/json' },
   });
   write(
@@ -74,37 +94,12 @@ async function recordLichess() {
     )}\n`,
   );
 
-  // Export by IDs (POST): works without a session
-  const ids = await request(`https://lichess.org/api/games/export/_ids?clocks=true&evals=false&opening=true`, {
-    method: 'POST',
-    body: LICHESS_GAME,
-    headers: { 'Content-Type': 'text/plain' },
-  });
-  write(`lichess/export-ids-${LICHESS_GAME}.pgn`, ids.body);
-
   // The user's game history (backfill): NDJSON with the PGN in each line
   const hist = await request(
-    `https://lichess.org/api/games/user/${LICHESS_USER}?max=4&clocks=true&evals=false&opening=true&pgnInJson=true&sort=dateDesc`,
+    `https://lichess.org/api/games/user/${LICHESS_USER}?until=${LICHESS_HISTORY_UNTIL}&max=4&clocks=true&evals=false&opening=true&pgnInJson=true&sort=dateDesc`,
     { headers: { Accept: 'application/x-ndjson' } },
   );
   write('lichess/user-games.ndjson', hist.body);
-
-  // A second game page, picked from the history for castling and a promotion if there is one
-  const games = hist.body
-    .split('\n')
-    .filter(Boolean)
-    .map((l) => JSON.parse(l));
-  const second = games.find((g) => g.id !== LICHESS_GAME && /=[QRBN]/.test(g.pgn)) ?? games.find((g) => g.id !== LICHESS_GAME);
-  if (second) {
-    const p2 = await request(`https://lichess.org/${second.id}`);
-    write(`lichess/page-${second.id}.html`, p2.body);
-    const e2 = await request(`https://lichess.org/api/games/export/_ids?clocks=true&evals=false&opening=true`, {
-      method: 'POST',
-      body: second.id,
-      headers: { 'Content-Type': 'text/plain' },
-    });
-    write(`lichess/export-ids-${second.id}.pgn`, e2.body);
-  }
 }
 
 function pickArchiveGames(games, mustInclude, extra) {
@@ -118,68 +113,41 @@ function pickArchiveGames(games, mustInclude, extra) {
 }
 
 async function recordChessCom() {
-  const archives = await request(`https://api.chess.com/pub/player/${CHESSCOM_LIVE_PLAYER}/games/archives`, {}, SCRIPT_UA);
-  const list = JSON.parse(archives.body).archives;
-  const monthUrl = list.at(-1);
-  const month = await request(monthUrl, {}, SCRIPT_UA);
-  const monthJson = JSON.parse(month.body);
-
-  const live = monthJson.games.filter((g) => g.rules === 'chess' && g.url.includes('/game/live/'));
-  const plain = live.at(-1);
-  const promo = live.find((g) => /=[QRBN]/.test(g.pgn) && /O-O-O/.test(g.pgn)) ?? live.find((g) => /=[QRBN]/.test(g.pgn));
-  const picked = [plain, promo].filter(Boolean);
-  for (const g of picked) {
-    const id = g.url.split('/').pop();
-    const cb = await request(`https://www.chess.com/callback/live/game/${id}`);
-    const json = JSON.parse(cb.body);
-    json.players = trimPlayers(json.players);
-    write(`chesscom/callback-live-${id}.json`, `${JSON.stringify(json, null, 2)}\n`);
-  }
-
+  const archives = await request(`https://api.chess.com/pub/player/${CHESSCOM_LIVE.player}/games/archives`, {}, SCRIPT_UA);
   write(
-    `chesscom/archives-${CHESSCOM_LIVE_PLAYER}.json`,
-    `${JSON.stringify({ archives: list.slice(-3) }, null, 2)}\n`,
+    `chesscom/archives-${CHESSCOM_LIVE.player}.json`,
+    `${JSON.stringify({ archives: JSON.parse(archives.body).archives.slice(-3) }, null, 2)}\n`,
   );
-  const ids = picked.map((g) => g.url.split('/').pop());
-  write(
-    `chesscom/archive-${CHESSCOM_LIVE_PLAYER}-${monthUrl.split('/').slice(-2).join('-')}.json`,
-    `${JSON.stringify(
-      {
-        recorded: {
-          url: monthUrl,
-          etag: month.res.headers.get('etag'),
-          lastModified: month.res.headers.get('last-modified'),
-          totalGames: monthJson.games.length,
+
+  for (const { player, month, games, type } of [
+    { ...CHESSCOM_LIVE, type: 'live' },
+    { ...CHESSCOM_DAILY, type: 'daily' },
+  ]) {
+    const monthUrl = `https://api.chess.com/pub/player/${player}/games/${month}`;
+    const m = await request(monthUrl, {}, SCRIPT_UA);
+    const all = JSON.parse(m.body).games;
+    write(
+      `chesscom/archive-${player}-${month.replace('/', '-')}.json`,
+      `${JSON.stringify(
+        {
+          recorded: {
+            url: monthUrl,
+            etag: m.res.headers.get('etag'),
+            lastModified: m.res.headers.get('last-modified'),
+            totalGames: all.length,
+          },
+          games: type === 'live' ? pickArchiveGames(all, games, 40) : all.filter((g) => games.some((id) => g.url.endsWith(`/${id}`))),
         },
-        games: pickArchiveGames(monthJson.games, ids, 40),
-      },
-      null,
-      2,
-    )}\n`,
-  );
-
-  // A daily Chess960 game: Chess960 castling and the daily callback
-  const dArchives = await request(`https://api.chess.com/pub/player/${CHESSCOM_DAILY_PLAYER}/games/archives`, {}, SCRIPT_UA);
-  const dList = JSON.parse(dArchives.body).archives;
-  for (const url of dList.slice(-3).reverse()) {
-    const dm = await request(url, {}, SCRIPT_UA);
-    const dJson = JSON.parse(dm.body);
-    const c960 = dJson.games.find((g) => g.rules === 'chess960' && g.url.includes('/game/daily/'));
-    const daily = dJson.games.find((g) => g.rules === 'chess' && g.url.includes('/game/daily/'));
-    if (!c960) continue;
-    const keep = [c960, daily].filter(Boolean);
-    for (const g of keep) {
-      const id = g.url.split('/').pop();
-      const cb = await request(`https://www.chess.com/callback/daily/game/${id}`);
+        null,
+        2,
+      )}\n`,
+    );
+    for (const id of games) {
+      const cb = await request(`https://www.chess.com/callback/${type}/game/${id}`);
       const json = JSON.parse(cb.body);
       json.players = trimPlayers(json.players);
-      write(`chesscom/callback-daily-${id}.json`, `${JSON.stringify(json, null, 2)}\n`);
+      write(`chesscom/callback-${type}-${id}.json`, `${JSON.stringify(json, null, 2)}\n`);
     }
-    write(
-      `chesscom/archive-${CHESSCOM_DAILY_PLAYER}-${url.split('/').slice(-2).join('-')}.json`,
-      `${JSON.stringify({ recorded: { url, etag: dm.res.headers.get('etag') }, games: keep }, null, 2)}\n`,
-    );
-    break;
   }
 }
 

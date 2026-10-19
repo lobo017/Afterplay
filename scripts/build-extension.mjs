@@ -19,6 +19,7 @@ const ENTRIES = [
   ['bridge', 'extension/src/bridge.ts'],
   ['popup', 'extension/src/popup/popup.ts'],
   ['lichess', 'extension/src/content/lichess.ts'],
+  ['chesscom', 'extension/src/content/chesscom.ts'],
 ];
 
 // --- PNG icons (gold pawn on obsidian), drawn with 4× supersampling

@@ -28,12 +28,49 @@ async function rowCount(page: Page): Promise<number> {
   return page.getByTestId('games-row').count();
 }
 
+/** A Chess.com game page as the extension sees it: the game data comes from the callback request. */
+const CHESSCOM_PAGE = '<!doctype html><html><head><title>Chess.com</title></head><body><div id="board-layout-main"></div></body></html>';
+
+/** A Chess.com page whose Share button opens a dialog with a PGN tab, like the site's. */
+function shareDialogPage(pgn: string): string {
+  return `<!doctype html><html><body><div id="board-layout-main"></div>
+<button type="button" aria-label="Share" class="share-button-component">Share</button>
+<script>
+document.querySelector('button[aria-label="Share"]').addEventListener('click', () => {
+  const menu = document.createElement('div');
+  menu.className = 'share-menu-component';
+  menu.innerHTML = '<div class="share-menu-tab-selector-component"><button role="tab">Link</button><button role="tab">PGN</button></div><button aria-label="Close">×</button>';
+  document.body.appendChild(menu);
+  menu.querySelectorAll('[role="tab"]')[1].addEventListener('click', () => {
+    setTimeout(() => {
+      const box = document.createElement('textarea');
+      box.className = 'share-menu-tab-pgn-textarea';
+      box.value = ${JSON.stringify(pgn)};
+      menu.appendChild(box);
+    }, 200);
+  });
+  menu.querySelector('[aria-label="Close"]').addEventListener('click', () => menu.remove());
+});
+</script></body></html>`;
+}
+
+function archivePgn(file: string, id: string): string {
+  const games = JSON.parse(readFixture(`chesscom/${file}`)).games as Array<{ url: string; pgn: string }>;
+  return games.find((g) => g.url.endsWith(`/${id}`))!.pgn;
+}
+
 /** Sets my usernames through the popup's settings form. */
-async function setUsernames(session: ExtensionSession, lichess: string, chesscom: string): Promise<void> {
+async function setUsernames(
+  session: ExtensionSession,
+  lichess: string,
+  chesscom: string,
+  options: { autoCapture?: boolean } = {},
+): Promise<void> {
   const popup = await openPopup(session);
   await popup.getByTestId('popup-settings').locator('summary').click();
   await popup.getByTestId('popup-lichess-user').fill(lichess);
   await popup.getByTestId('popup-chesscom-user').fill(chesscom);
+  await popup.getByTestId('popup-auto-capture').setChecked(options.autoCapture ?? true);
   await popup.getByTestId('popup-settings-save').click();
   await expect(popup.getByTestId('popup-settings-result')).toHaveText('Saved.');
   await popup.close();
@@ -65,6 +102,7 @@ test.describe('Phase 5b — capture extension', () => {
     await expect(popup.getByTestId('popup-result')).toHaveText('Saved Alice vs Bob');
     await expect(popup.getByTestId('popup-entry')).toHaveCount(1);
     await expect(popup.getByTestId('popup-entry')).toHaveAttribute('data-status', 'ready');
+    await expect(popup.getByTestId('popup-entry')).toContainText('pasted PGN');
     await expect.poll(() => badgeText(session.worker)).toBe('1');
 
     // An invalid PGN is rejected before it reaches the queue
@@ -87,12 +125,21 @@ test.describe('Phase 5b — capture extension', () => {
     await expect.poll(() => badgeText(session.worker)).toBe('');
     await expect(popup.getByTestId('popup-entry')).toHaveAttribute('data-status', 'delivered');
 
-    // Another sync (tab focus) and a reload don't duplicate it
+    // A game captured while the site is open arrives when its tab regains focus
+    await popup.getByTestId('popup-paste').fill(PASTED_PGN.replace('"Alice"', '"Alicia"'));
+    await popup.getByTestId('popup-save').click();
+    await expect(popup.getByTestId('popup-result')).toHaveText('Saved Alicia vs Bob');
+    await expect.poll(() => badgeText(session.worker)).toBe('1');
+    await site.evaluate(() => window.dispatchEvent(new Event('focus')));
+    await expect(site.getByTestId('games-row')).toHaveCount(2);
+    await expect.poll(() => badgeText(session.worker)).toBe('');
+
+    // Another sync and a reload don't duplicate anything
     await site.evaluate(() => window.dispatchEvent(new Event('focus')));
     await site.reload();
     await site.evaluate(() => window.__wizardChessLibraryReady);
     await expect(site.getByTestId('games-extension-status')).toContainText('up to date');
-    expect(await rowCount(site)).toBe(1);
+    expect(await rowCount(site)).toBe(2);
 
     // Pasting it again in the popup: already on the site
     await popup.getByTestId('popup-paste').fill(PASTED_PGN);
@@ -243,5 +290,272 @@ test.describe('Phase 5b — capture extension', () => {
     expect(exportCalls).toEqual(['iTIXmTZF']);
     expect(await queueEntry(session, 'lichess:iTIXmTZF')).toMatchObject({ status: 'ready', method: 'lichess-ids-export' });
     await expect.poll(() => badgeText(session.worker)).toBe('1');
+  });
+
+  test('Chess.com: Save on a finished game decodes the page data (TCN); the site gets it once', async () => {
+    const GAME = 'https://www.chess.com/game/live/185518487990';
+    mock(session, GAME, { body: CHESSCOM_PAGE });
+    mock(session, 'https://www.chess.com/callback/live/game/185518487990', {
+      body: readFixture('chesscom/callback-live-185518487990.json'),
+      contentType: 'application/json',
+    });
+    await setUsernames(session, '', 'Hikaru');
+    const page = await session.context.newPage();
+    await page.goto(GAME);
+    const save = page.getByTestId('wc-save-button');
+    await expect(save).toHaveAttribute('data-state', 'ready');
+    await save.click();
+    await expect(save).toHaveAttribute('data-state', 'saved');
+    expect(await queueEntry(session, 'chesscom:live-185518487990')).toMatchObject({
+      status: 'ready',
+      method: 'chesscom-callback',
+      white: 'Billy_thekid30',
+      black: 'Hikaru',
+    });
+    await expect.poll(() => badgeText(session.worker)).toBe('1');
+
+    const site = await openGamesList(session);
+    await expect(site.getByTestId('games-row')).toHaveCount(1);
+    const row = site.getByTestId('games-row').first();
+    await expect(row).toHaveAttribute('data-source', 'chesscom');
+    await expect(row.getByTestId('games-row-color')).toHaveAttribute('data-color', 'b');
+    await expect(row.getByTestId('games-row-opponent')).toContainText('Billy_thekid30');
+    await expect(row.getByTestId('games-row-tc')).toHaveText('3+0');
+    await expect(row.getByTestId('games-row-result')).toHaveText('W');
+    await expect.poll(() => badgeText(session.worker)).toBe('');
+    // The stored PGN keeps Chess.com's clocks
+    const pgn = await site.evaluate(async () => (await window.__wizardChessLibrary!.library.get('chesscom:live-185518487990'))!.pgn);
+    expect(pgn).toContain('[%clk 0:02:56.3]');
+    expect(pgn).toContain('[Link "https://www.chess.com/game/live/185518487990"]');
+  });
+
+  test("Chess.com: when the page data fails, the site's own Share → PGN dialog is used", async () => {
+    const GAME = 'https://www.chess.com/game/live/185518487990';
+    let callbackCalls = 0;
+    mock(session, GAME, { body: shareDialogPage(archivePgn('archive-hikaru-2026-10.json', '185518487990')) });
+    // The page's first request (is the game over?) works; the extractor's fails, so the dialog is next
+    mock(session, 'https://www.chess.com/callback/live/game/185518487990', (route) =>
+      ++callbackCalls === 1
+        ? route.fulfill({ body: readFixture('chesscom/callback-live-185518487990.json'), contentType: 'application/json' })
+        : route.fulfill({ status: 500, body: 'oops' }),
+    );
+    const page = await session.context.newPage();
+    await page.goto(GAME);
+    const save = page.getByTestId('wc-save-button');
+    await expect(save).toHaveAttribute('data-state', 'ready');
+    await save.click();
+    await expect(save).toHaveAttribute('data-state', 'saved');
+    expect(await queueEntry(session, 'chesscom:live-185518487990')).toMatchObject({ method: 'chesscom-share-pgn' });
+    // The dialog was closed again
+    await expect(page.locator('.share-menu-component')).toHaveCount(0);
+  });
+
+  test('Chess.com: my live game ends after an in-page navigation and is captured automatically', async () => {
+    const FIRST = 'https://www.chess.com/game/live/185358990103';
+    const GAME = 'https://www.chess.com/game/live/185518487990';
+    const finished = readFixture('chesscom/callback-live-185518487990.json');
+    const running = JSON.stringify({ ...JSON.parse(finished), game: { ...JSON.parse(finished).game, isFinished: false } });
+    let callback = running;
+    mock(session, FIRST, { body: CHESSCOM_PAGE });
+    mock(session, 'https://www.chess.com/callback/live/game/185358990103', {
+      body: readFixture('chesscom/callback-live-185358990103.json'),
+      contentType: 'application/json',
+    });
+    mock(session, 'https://www.chess.com/callback/live/game/185518487990', (route) =>
+      route.fulfill({ body: callback, contentType: 'application/json' }),
+    );
+    await setUsernames(session, '', 'hikaru');
+    const page = await session.context.newPage();
+    await page.goto(FIRST);
+    await expect(page.getByTestId('wc-save-button')).toHaveAttribute('data-state', 'ready');
+    // Chess.com moves to the next game without reloading the page
+    await page.evaluate((url) => history.pushState({}, '', url), GAME);
+    const save = page.getByTestId('wc-save-button');
+    await expect(save).toHaveAttribute('data-state', 'in-progress', { timeout: 5000 });
+    callback = finished;
+    await page.evaluate(() => document.body.insertAdjacentHTML('beforeend', '<div class="game-over-modal-content">Hikaru won on time</div>'));
+    await expect(save).toHaveAttribute('data-state', 'saved', { timeout: 15_000 });
+    expect(await queueEntry(session, 'chesscom:live-185518487990')).toMatchObject({ method: 'chesscom-callback' });
+    // The first game was only viewed, not saved
+    expect(await queueEntry(session, 'chesscom:live-185358990103')).toBeNull();
+  });
+
+  test('Chess.com link: pending until the monthly archive has it, then ready (popup Retry and the context menu)', async () => {
+    const LINK = 'https://www.chess.com/game/live/185518487990';
+    const archiveUrl = 'https://api.chess.com/pub/player/hikaru/games/2026/10';
+    let archive = { games: [] as unknown[] };
+    const archiveCalls: string[] = [];
+    mock(session, 'https://www.chess.com/callback/live/game/185518487990', {
+      body: readFixture('chesscom/callback-live-185518487990.json'),
+      contentType: 'application/json',
+    });
+    mock(session, archiveUrl, (route) => {
+      archiveCalls.push(route.request().url());
+      return route.fulfill({ body: JSON.stringify(archive), contentType: 'application/json' });
+    });
+    await setUsernames(session, '', 'Hikaru');
+
+    // The context menu on a game link runs the same resolution as a pasted link
+    await session.worker.evaluate(async (link) => {
+      const api = (self as unknown as {
+        __wizardChessCapture: { onContextMenuClick(info: unknown): Promise<void>; contextMenuId: string };
+      }).__wizardChessCapture;
+      await api.onContextMenuClick({ menuItemId: api.contextMenuId, linkUrl: link });
+    }, LINK);
+    expect(await queueEntry(session, 'chesscom:live-185518487990')).toMatchObject({ status: 'pending' });
+    await expect.poll(() => badgeText(session.worker)).toBe('1');
+    expect(archiveCalls).toEqual([archiveUrl]);
+
+    const popup = await openPopup(session);
+    const entry = popup.getByTestId('popup-entry');
+    await expect(entry).toHaveAttribute('data-status', 'pending');
+    await expect(entry).toContainText("Not in Chess.com's archive yet");
+    await popup.screenshot({ path: path.join(SCREENSHOT_DIR, 'popup-pending.png') });
+
+    // The archive catches up
+    archive = { games: JSON.parse(readFixture('chesscom/archive-hikaru-2026-10.json')).games };
+    await entry.getByTestId('popup-entry-retry').click();
+    await expect(entry).toHaveAttribute('data-status', 'ready');
+    expect(await queueEntry(session, 'chesscom:live-185518487990')).toMatchObject({ status: 'ready', method: 'chesscom-archive' });
+    expect(await badgeText(session.worker)).toBe('1');
+  });
+
+  test('Extraction failure: a notification, and the popup offers the link for pasting', async () => {
+    const GAME = 'https://www.chess.com/game/live/185518487990';
+    let calls = 0;
+    mock(session, GAME, { body: CHESSCOM_PAGE });
+    mock(session, 'https://www.chess.com/callback/live/game/185518487990', (route) =>
+      ++calls === 1
+        ? route.fulfill({ body: readFixture('chesscom/callback-live-185518487990.json'), contentType: 'application/json' })
+        : route.fulfill({ status: 503, body: 'down' }),
+    );
+    const page = await session.context.newPage();
+    await page.goto(GAME);
+    const save = page.getByTestId('wc-save-button');
+    await expect(save).toHaveAttribute('data-state', 'ready');
+    await save.click();
+    await expect(save).toHaveAttribute('data-state', 'failed');
+    await expect(page.getByTestId('wc-save-note')).toContainText('Open the extension');
+    const notifications = await session.worker.evaluate(
+      () => (chrome.notifications as unknown as { getAll(): Promise<Record<string, boolean>> }).getAll(),
+    );
+    expect(Object.keys(notifications)).toContain('wizard-chess-capture-failed');
+
+    const popup = await openPopup(session);
+    await expect(popup.getByTestId('popup-failure')).toBeVisible();
+    await expect(popup.getByTestId('popup-failure-text')).toContainText(GAME);
+    await expect(popup.getByTestId('popup-failure-text')).toContainText('chesscom-share-pgn: No Share button on the page.');
+    await popup.getByTestId('popup-failure-use').click();
+    await expect(popup.getByTestId('popup-paste')).toHaveValue(GAME);
+    await expect(popup.getByTestId('popup-failure')).toBeHidden();
+    expect(await badgeText(session.worker)).toBe('');
+  });
+
+  test('Import my history (both sites) from the popup: one request at a time into the queue, then to the site', async () => {
+    const lichessRequests: string[] = [];
+    mock(session, 'https://lichess.org/api/games/user/Lobo017*', (route) => {
+      lichessRequests.push(route.request().url());
+      return route.fulfill({ body: readFixture('lichess/user-games.ndjson'), contentType: 'application/x-ndjson' });
+    });
+    const ccRequests: string[] = [];
+    mock(session, 'https://api.chess.com/pub/player/hikaru/games/*', (route) => {
+      const url = route.request().url();
+      ccRequests.push(url);
+      if (url.endsWith('/archives')) {
+        return route.fulfill({
+          body: JSON.stringify({ archives: ['https://api.chess.com/pub/player/hikaru/games/2026/10'] }),
+          contentType: 'application/json',
+        });
+      }
+      return route.fulfill({ body: readFixture('chesscom/archive-hikaru-2026-10.json'), contentType: 'application/json' });
+    });
+    await setUsernames(session, 'Lobo017', 'hikaru');
+    const popup = await openPopup(session);
+    await popup.getByTestId('popup-backfill-lichess-btn').click();
+    await expect(popup.getByTestId('popup-backfill-lichess-status')).toHaveText('Up to date · 4 new games imported', {
+      timeout: 15_000,
+    });
+    expect(lichessRequests).toHaveLength(1);
+    const params = new URL(lichessRequests[0]!).searchParams;
+    expect(params.get('since')).toBe('0');
+    expect(params.get('clocks')).toBe('true');
+
+    await popup.getByTestId('popup-backfill-chesscom-btn').click();
+    const ccGames = JSON.parse(readFixture('chesscom/archive-hikaru-2026-10.json')).games.length as number;
+    await expect(popup.getByTestId('popup-backfill-chesscom-status')).toHaveText(`Up to date · ${ccGames} new games imported`, {
+      timeout: 20_000,
+    });
+    expect(ccRequests.map((u) => u.slice(-8))).toEqual(['archives', '/2026/10']);
+    await expect.poll(() => badgeText(session.worker)).toBe(String(4 + ccGames));
+
+    // The site collects them all, in batches
+    const site = await openGamesList(session);
+    await expect(site.getByTestId('games-count')).toHaveText(`${4 + ccGames} games`, { timeout: 30_000 });
+    await expect.poll(() => badgeText(session.worker), { timeout: 30_000 }).toBe('');
+    await site.getByTestId('games-filter-source').selectOption('lichess');
+    await expect(site.getByTestId('games-row')).toHaveCount(4);
+    // History imports aren't "new games": auto-analyze (off here anyway) would skip them
+    const methods = await site.evaluate(async () =>
+      (await window.__wizardChessLibrary!.library.list()).map((r) => r.captureMethod),
+    );
+    expect(new Set(methods)).toEqual(new Set(['lichess-history', 'chesscom-archive-history']));
+    await popup.screenshot({ path: path.join(SCREENSHOT_DIR, 'popup-backfill-done.png') });
+
+    // Importing again asks only for what's new
+    await popup.getByTestId('popup-backfill-lichess-btn').click();
+    await expect(popup.getByTestId('popup-backfill-lichess-status')).toHaveText('Up to date · 0 new games imported', {
+      timeout: 15_000,
+    });
+    const newest = Math.max(
+      ...readFixture('lichess/user-games.ndjson')
+        .split('\n')
+        .filter(Boolean)
+        .map((l) => (JSON.parse(l) as { createdAt: number }).createdAt),
+    );
+    expect(new URL(lichessRequests[1]!).searchParams.get('since')).toBe(String(newest + 1));
+  });
+
+  test('Settings: the bridge moves with the site URL; bad values are refused; auto-capture can be switched off', async () => {
+    const popup = await openPopup(session);
+    await popup.getByTestId('popup-settings').locator('summary').click();
+    await expect(popup.getByTestId('popup-site-url')).toHaveValue('http://127.0.0.1:4173');
+    await expect(popup.getByTestId('popup-auto-capture')).toBeChecked();
+    await popup.getByTestId('popup-site-url').fill('localhost:5173');
+    await popup.getByTestId('popup-settings-save').click();
+    await expect(popup.getByTestId('popup-settings-result')).toHaveText('Saved.');
+    await expect(popup.getByTestId('popup-site-url')).toHaveValue('http://localhost:5173');
+    const matches = () =>
+      session.worker.evaluate(async () => (await chrome.scripting.getRegisteredContentScripts()).flatMap((c) => c.matches ?? []));
+    expect(await matches()).toEqual(['http://localhost:5173/*']);
+    for (const [field, value, message] of [
+      ['popup-site-url', 'https://example.com', 'The site URL must be http on localhost or 127.0.0.1'],
+      ['popup-lichess-user', 'not a name!', 'That is not a valid Lichess username.'],
+    ] as const) {
+      await popup.getByTestId(field).fill(value);
+      await popup.getByTestId('popup-settings-save').click();
+      await expect(popup.getByTestId('popup-settings-result')).toContainText(message);
+      await expect(popup.getByTestId('popup-settings-result')).toHaveAttribute('data-tone', 'bad');
+      await popup.getByTestId(field).fill(field === 'popup-site-url' ? 'http://127.0.0.1:4173' : '');
+    }
+    expect(await matches()).toEqual(['http://localhost:5173/*']);
+    await popup.getByTestId('popup-settings-save').click();
+    await expect(popup.getByTestId('popup-settings-result')).toHaveText('Saved.');
+    expect(await matches()).toEqual(['http://127.0.0.1:4173/*']);
+    await popup.close();
+
+    // Auto-capture off: my game ending on the page only enables the button
+    const PAGE = 'https://lichess.org/Bjl39T9x';
+    const finished = stripPageAssets(readFixture('lichess/page-Bjl39T9x.html'));
+    let pageHtml = finished.replace('"status":{"id":30,"name":"mate"}', '"status":{"id":20,"name":"started"}');
+    mock(session, PAGE, (route) => route.fulfill({ body: pageHtml, contentType: 'text/html; charset=utf-8' }));
+    mock(session, 'https://lichess.org/game/export/Bjl39T9x*', { status: 401, body: '{"error":"Login required"}' });
+    await setUsernames(session, 'Lobo017', '', { autoCapture: false });
+    const page = await session.context.newPage();
+    await page.goto(PAGE);
+    await expect(page.getByTestId('wc-save-button')).toHaveAttribute('data-state', 'in-progress');
+    pageHtml = finished;
+    await page.evaluate(() => document.body.insertAdjacentHTML('beforeend', '<div class="result-wrap"></div>'));
+    await expect(page.getByTestId('wc-save-button')).toHaveAttribute('data-state', 'ready', { timeout: 15_000 });
+    expect(await badgeText(session.worker)).toBe('');
   });
 });

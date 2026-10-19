@@ -1,9 +1,11 @@
 import { gameKey, isValidRef, type CaptureSite } from '../../src/capture/game-id';
-import { BACKFILL_SITES, IDLE_BACKFILL, type BackfillSiteState } from './backfill';
+import { BACKFILL_PAUSE_MS, BACKFILL_SITES, BackfillRunner, type BackfillSiteState } from './backfill';
 import { CaptureService, type LinkResolution, type LinkResolver } from './capture-service';
 import { lichessIdsExportExtractor } from './extractors/lichess-ids-export';
 import { lichessPageDataExtractor } from './extractors/lichess-page-data';
 import { describeAttempts, runExtractors, type Extractor } from './extractors/types';
+import { chessComUsernames, fetchChessComCallback } from './extractors/chesscom-callback';
+import { CHESSCOM_ARCHIVE_METHOD, lookupInArchives, monthOf, previousMonth } from './extractors/chesscom-archive';
 import { chromeLocalStore } from './chrome-store';
 import type { ExtRequest, StatusReply } from './messages';
 import { CaptureQueue } from './queue';
@@ -17,6 +19,8 @@ const BRIDGE_SCRIPT_ID = 'wizard-chess-bridge';
 const CONTEXT_MENU_ID = 'wizard-chess-save-link';
 const FAILURE_NOTIFICATION_ID = 'wizard-chess-capture-failed';
 const RETRY_ALARM = 'retry-pending';
+/** Wakes a running history import (after a rate limit, or if the worker was stopped mid-import). */
+const BACKFILL_ALARM = 'backfill';
 /** How often pending games (not yet in Chess.com's archive) are looked for again. */
 const RETRY_PERIOD_MINUTES = 15;
 
@@ -32,9 +36,47 @@ function resolveWith(extractors: readonly Extractor[]): LinkResolver {
   };
 }
 
+/**
+ * A Chess.com link: the game's PGN from the official monthly archive. To know whose archive
+ * and which month, the game's own data (the callback the game page loads) names the players
+ * and the end time; without it, my archive for this month and the last. A game not in the
+ * archive yet stays pending and is looked for again.
+ */
+const resolveChessComLink: LinkResolver = async (ref): Promise<LinkResolution> => {
+  const settings = await loadSettings(chromeLocalStore);
+  const me = settings.chesscomUsername.trim();
+  const doFetch: typeof fetch = (i, init) => fetch(i, init);
+  const meta = await fetchChessComCallback(ref, doFetch).catch(() => null);
+  let username: string;
+  let months: string[];
+  let known: { white?: string; black?: string; date?: string } = {};
+  if (meta?.ok) {
+    const h = meta.data.game.pgnHeaders ?? {};
+    known = { white: String(h.White ?? ''), black: String(h.Black ?? ''), date: String(h.Date ?? '') };
+    if (!meta.data.game.isFinished) {
+      return { kind: 'pending', reason: 'The game is still in progress.', retryAt: Date.now() + 15 * 60_000, ...known };
+    }
+    const names = chessComUsernames(meta.data);
+    username = me && (names.white === me.toLowerCase() || names.black === me.toLowerCase()) ? me : names.white;
+    months = [monthOf(meta.data.game.endTime ? meta.data.game.endTime * 1000 : Date.now())];
+  } else {
+    if (!me) return { kind: 'error', error: 'Set your Chess.com username in Settings to find this game in your archive.' };
+    username = me;
+    const now = monthOf(Date.now());
+    months = [now, previousMonth(now)];
+  }
+  const found = await lookupInArchives(doFetch, ref, username, months);
+  if (found.status === 'found') return { kind: 'pgn', pgn: found.pgn, method: CHESSCOM_ARCHIVE_METHOD };
+  if (found.status === 'pending') {
+    return { kind: 'pending', reason: found.reason, retryAt: Date.now() + found.retryAfterMs, ...known };
+  }
+  return { kind: 'error', error: found.reason };
+};
+
 const resolvers: Partial<Record<CaptureSite, LinkResolver>> = {
   // The single-game export needs the Lichess session, which service-worker requests don't carry
   lichess: resolveWith([lichessIdsExportExtractor, lichessPageDataExtractor]),
+  chesscom: resolveChessComLink,
 };
 
 const queue = new CaptureQueue(chromeLocalStore);
@@ -107,15 +149,54 @@ async function openPopup(): Promise<void> {
   }
 }
 
+const backfill = new BackfillRunner({
+  store: chromeLocalStore,
+  queue,
+  fetch: (i, init) => fetch(i, init),
+  now: Date.now,
+});
+
 async function readBackfillStates(): Promise<Record<CaptureSite, BackfillSiteState>> {
-  const keys = BACKFILL_SITES.map((s) => `backfill:${s}:state`);
-  const raw = await chrome.storage.local.get(keys);
   const out = {} as Record<CaptureSite, BackfillSiteState>;
-  for (const site of BACKFILL_SITES) {
-    const v = raw[`backfill:${site}:state`];
-    out[site] = v && typeof v === 'object' ? (v as BackfillSiteState) : { ...IDLE_BACKFILL };
-  }
+  for (const site of BACKFILL_SITES) out[site] = await backfill.state(site);
   return out;
+}
+
+let pumping = false;
+
+/**
+ * Drives running imports: a step per site (one request), a pause, again, until each is
+ * done or waits. A waiting import is woken by an alarm (rate limit), or by the site
+ * collecting games. The alarm also restarts an import whose worker was stopped.
+ */
+async function pumpBackfill(): Promise<void> {
+  if (pumping) return;
+  pumping = true;
+  try {
+    for (;;) {
+      const active = await backfill.active();
+      if (active.length === 0) {
+        await chrome.alarms.clear(BACKFILL_ALARM);
+        return;
+      }
+      await chrome.alarms.create(BACKFILL_ALARM, { delayInMinutes: 1 });
+      let progressed = false;
+      let wakeAt = Number.POSITIVE_INFINITY;
+      for (const { site } of active) {
+        const r = await backfill.step(site);
+        if (r.next === 'continue') progressed = true;
+        else if (r.next === 'wait' && r.atMs !== null) wakeAt = Math.min(wakeAt, r.atMs);
+      }
+      void updateBadge();
+      if (!progressed) {
+        if (Number.isFinite(wakeAt)) await chrome.alarms.create(BACKFILL_ALARM, { when: Math.max(wakeAt, Date.now() + 30_000) });
+        return;
+      }
+      await new Promise((r) => setTimeout(r, BACKFILL_PAUSE_MS));
+    }
+  } finally {
+    pumping = false;
+  }
 }
 
 async function init(): Promise<void> {
@@ -176,7 +257,10 @@ async function handle(msg: ExtRequest, sender: chrome.runtime.MessageSender): Pr
         return { extensionVersion: chrome.runtime.getManifest().version, accounts: accountsOf(settings) };
       }
       if (msg.kind === 'bridge-batch') return service.takeBatch(Math.min(Math.max(1, msg.max), 50), msg.exclude);
-      return { delivered: await service.markDelivered(msg.keys) };
+      const delivered = await service.markDelivered(msg.keys);
+      // An import paused for a full queue can go on now
+      if (delivered > 0) void pumpBackfill();
+      return { delivered };
     }
     default:
       break;
@@ -216,6 +300,16 @@ async function handle(msg: ExtRequest, sender: chrome.runtime.MessageSender): Pr
     case 'dismiss-failure':
       await service.dismissFailure();
       return { ok: true };
+    case 'backfill-start': {
+      const settings = await loadSettings(chromeLocalStore);
+      const username = msg.site === 'lichess' ? settings.lichessUsername : settings.chesscomUsername;
+      if (!username) return { ok: false, error: 'Set your username in Settings first.' };
+      const state = await backfill.start(msg.site, username);
+      void pumpBackfill();
+      return { ok: true, state };
+    }
+    case 'backfill-stop':
+      return { ok: true, state: await backfill.stop(msg.site) };
     default:
       return { error: `Unknown request ${(msg as { kind: string }).kind}.` };
   }
@@ -233,16 +327,20 @@ chrome.runtime.onInstalled.addListener(() => {
   setupContextMenu();
   void init();
 });
-chrome.runtime.onStartup.addListener(() => void init());
+chrome.runtime.onStartup.addListener(() => {
+  void init();
+  void pumpBackfill();
+});
 
-chrome.contextMenus.onClicked.addListener((info) => {
+/** "Save game to Wizard's Chess" on a game link. */
+async function onContextMenuClick(info: chrome.contextMenus.OnClickData): Promise<void> {
   if (info.menuItemId !== CONTEXT_MENU_ID || !info.linkUrl) return;
   const link = info.linkUrl;
-  void service.saveLink(link).then((result) => {
-    if (!result.ok) return notifyFailure(link, result.error ?? 'The link could not be saved.');
-    return undefined;
-  });
-});
+  const result = await service.saveLink(link);
+  if (!result.ok) await notifyFailure(link, result.error ?? 'The link could not be saved.');
+}
+
+chrome.contextMenus.onClicked.addListener((info) => void onContextMenuClick(info));
 
 chrome.notifications.onClicked.addListener((id) => {
   if (id !== FAILURE_NOTIFICATION_ID) return;
@@ -252,6 +350,7 @@ chrome.notifications.onClicked.addListener((id) => {
 
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === RETRY_ALARM) void service.retryPending();
+  if (alarm.name === BACKFILL_ALARM) void pumpBackfill();
 });
 
 /** Test and debugging hook, like the site's window.__wizardChess* objects. */
@@ -259,6 +358,10 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   service,
   queue,
   updateBadge,
+  onContextMenuClick,
+  contextMenuId: CONTEXT_MENU_ID,
+  backfill,
+  pumpBackfill,
   gameKey,
   isValidRef,
 };

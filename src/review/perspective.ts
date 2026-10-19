@@ -12,8 +12,9 @@ export interface UserAccount {
 }
 
 /**
- * My accounts, used to pick my side of an imported game. Phase 5b replaces this with the
- * username fields in settings.
+ * The fallback for my accounts, used to pick my side of an imported game until the capture
+ * extension has sent the usernames from its settings (library/game-record.ts,
+ * accountsFromSettings).
  */
 export const DEFAULT_USER_ACCOUNTS: readonly UserAccount[] = [{ site: 'lichess', username: 'Lobo017' }];
 
