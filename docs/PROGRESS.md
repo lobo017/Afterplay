@@ -2147,7 +2147,7 @@ spoofed origin and window, reply timeout), `capture-lichess` (10), `capture-ches
 `capture-chesscom` (12, incl. ETag / 304 / 429 / pending / 48 h), `capture-backfill` (8,
 incl. pagination, since, ETag, 429 doubling and cap, queue-full pause, one request at a
 time across both sites), `library` (8), storage extended. E2E: `phase5b-extension.spec.ts`
-(11: pasted PGN round trip + focus sync; Lichess without login → page data, Games list,
+(12: pasted PGN round trip + focus sync; Lichess without login → page data, Games list,
 Analyze, saved review on open; Lichess logged-in live game ending → session export
 auto-capture; someone else's game not captured; Lichess link; Chess.com Save (TCN);
 Share-dialog fallback; Chess.com live game after in-page navigation; Chess.com link pending
@@ -2190,8 +2190,8 @@ link showed only its URL (now the players from the game data).
   moves bulk import to a worker).
 
 **Checks (final run, 2026-10-18):** typecheck, lint, **351 unit tests** (30 files), `npm run build`,
-`npm run build:ext`, **46/46 e2e** (30 earlier + 15 Phase 5b + Phase 1's extended migration
-test; 5.8 min, one worker): all pass.
+`npm run build:ext`, **46/46 e2e** (30 earlier, Phase 1's migration test now extended to v4, + 16 Phase 5b;
+5.8 min, one worker): all pass.
 - A first full run was stopped by the environment (the machine ran low on memory) after 31
   tests, all passing.
 - The user's full run then had 45/46: the extraction-failure test read the notifications
