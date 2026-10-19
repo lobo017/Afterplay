@@ -391,6 +391,9 @@ through a game ends on the correct position with no layout shift.
   - Status line kept short ("Reviewed · Deep · 124 s"); details such as positions, depth
     and replaced annotations go in a tooltip.
   - No layout shift when switching perspective; works at phone width.
+- **Board badges:** in review, the current move's classification icon appears on the
+  corner of its destination square (both orientations, every class), in addition to the
+  move list.
 
 **Done when:** fixture tests cover every class and every motif, and an end-to-end test
 reviews the sample game. End-to-end tests cover each perspective (White, Black, Both),
@@ -484,6 +487,57 @@ capture methods are unofficial and may break when the sites change.
 **Done when:** tests cover the spaced-repetition scheduler and puzzle validation, and an
 end-to-end test solves a puzzle.
 
+### Phase 6b — UX redesign (Chess.com-style usability)
+**Goal:** make the app as easy and fluid to use as Chess.com, keeping its own visual
+identity (marble and obsidian theme, original icons). Borrow interaction patterns, never
+Chess.com's branding, icon designs, or assets.
+
+**Focus areas, in priority order:**
+
+1. **Board feel (top priority).** The board currently feels "sticky" (like Lichess) rather
+   than fluid (like Chess.com). Rework piece handling:
+   - **Lift:** a picked-up piece lifts visibly (slight scale-up and shadow) and stays
+     centered under the cursor. On touch screens it's offset above the finger so it stays
+     visible.
+   - **Drag start:** a small, tuned threshold, so drags start immediately but clicks are
+     never misread as drags.
+   - **While dragging:** the square under the piece is highlighted.
+   - **Drop:** forgiving near square edges, with a short smooth glide into place. An
+     illegal drop slides back smoothly.
+   - **Cursors:** grab and grabbing cursors on desktop.
+   - **Click-to-move:** large, clear legal-move hints.
+   - **Board size:** resizable by dragging its corner; the size is remembered.
+   - **Tuning panel:** add a "Board feel" panel to the dev overlay with live sliders
+     (drag threshold, lift scale, snap duration, drop tolerance, touch offset, animation
+     speed), so I can tune by hand. My chosen values become the defaults.
+   - Must keep every existing input behavior and test: premove queue, drag cancel,
+     drag through opponent moves.
+
+2. **Layout:** board on the left, one tidy panel on the right with tabs (moves, analysis,
+   review), stacked on phones.
+
+3. **Fewer, clearer controls:** bigger buttons, one primary action per screen, and
+   secondary options moved into menus.
+
+4. **Coach-style review:** walk me through the key moments one at a time, each with its
+   explanation and a "Try it" button, instead of only showing a summary panel.
+
+5. **Navigation:** clear top-level navigation between Play, Puzzles, Review, and Games.
+   The extension's capture features fit into Games.
+
+**Process:**
+1. **Audit:** take screenshots of every current screen and list the usability problems.
+2. **Board feel first:** build the tuning panel and the new defaults, then wait for me to
+   tune and approve before moving on.
+3. **Proposal:** propose the new layout, navigation, and shared components, with
+   screenshots or mockups of the key screens. Get my approval before implementing.
+4. **Build:** implement it as shared components that Phases 7 and 8 reuse.
+
+**Done when:**
+- All earlier tests pass.
+- The layout-shift and perf budgets still hold.
+- Phone-width screenshots have been checked.
+
 ### Phase 7 — Repertoire, endgame, and visualization trainers
 - **Repertoire trainer:**
   - Build White and Black repertoire trees by playing moves or importing PGN.
@@ -525,3 +579,26 @@ analysis, review, puzzles, and the Games list all still work.
 - Profile and fix until every performance budget is met. Record the numbers.
 - Audit every requirement in this spec as Done, Partial, or Missing. Fix the gaps, and
   write the final state into PROGRESS.md and README.
+
+### Phase 10 (optional) — Native engine mode
+The app keeps working exactly as today with the WebAssembly engine. When available, it can
+also use a native Stockfish for stronger, faster analysis.
+
+- **Native engine:** `npm run serve` can launch a native Stockfish 17.1 program (full NNUE
+  network) and connect it to the page over a local WebSocket on localhost only.
+  - A setup script downloads the official build for the current OS and records its version
+    and checksum. The program and network file stay out of git.
+- **Same interface:** EngineClient gets a native backend behind the same API. Analysis,
+  review, and the bots work unchanged; thread and hash changes still restart the engine
+  cleanly.
+- **Fallback:** if the native engine isn't available (no server, an installed PWA, the
+  setup step not run), use the WebAssembly engine automatically. A small engine badge
+  shows which one is active.
+- **Settings:** an engine choice of Auto / Native / WebAssembly, defaulting to Auto.
+- **Comparison:** review my Lichess fixture game with the native engine and report
+  accuracy and ACPL next to Lichess's numbers and the WebAssembly result.
+- **Safety:** the WebSocket only accepts connections from the app's own page. The native
+  engine process is cleaned up on every exit path, following the AGENTS.md process rules.
+
+**Done when:** unit and end-to-end tests pass on both backends, the fallback is tested,
+and the comparison is recorded in PROGRESS.md.
