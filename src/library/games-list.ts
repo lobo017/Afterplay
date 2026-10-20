@@ -603,6 +603,12 @@ export class GamesList {
     }
   }
 
+  /** Re-reads the auto-analyze switch from storage (after a restore). */
+  public async syncAutoAnalyze(): Promise<void> {
+    this.autoAnalyze = await this.options.library.getAutoAnalyze();
+    this.els.auto.checked = this.autoAnalyze;
+  }
+
   private renderExtensionStatus(status: ExtensionStatus): void {
     const el = this.els.extStatus;
     el.setAttribute('data-state', status.state);

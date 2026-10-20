@@ -196,7 +196,14 @@ test.describe('Phase 6b — Play', () => {
     await expect(sheet.getByTestId('settings-moves')).toBeVisible();
     await expect(sheet.getByTestId('settings-sound')).toBeVisible();
     // Sections in order, About last
-    await expect(sheet.locator('.wc-settings-sec-title')).toHaveText(['Board', 'Moves', 'Sound & effects', 'About & diagnostics']);
+    await expect(sheet.locator('.wc-settings-sec-title')).toHaveText([
+      'Board',
+      'Board feel',
+      'Moves',
+      'Sound & effects',
+      'Your data',
+      'About & diagnostics',
+    ]);
 
     await page.getByTestId('select-board-theme').selectOption('imperial-walnut');
     await page.getByTestId('select-piece-set').selectOption('staunton');

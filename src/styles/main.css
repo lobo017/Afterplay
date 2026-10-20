@@ -1340,68 +1340,35 @@ html.wc-resizing-board * {
   overflow-y: auto;
 }
 
-.wc-dev-feel {
-  margin-top: 0.7rem;
-  padding-top: 0.6rem;
-  border-top: 1px solid rgba(212, 175, 55, 0.35);
-}
-
-.wc-dev-feel-title {
-  margin-bottom: 0.35rem;
-}
-
-.wc-dev-feel-hint {
-  font-weight: 400;
-  font-size: 0.66rem;
-  color: var(--text-muted);
-}
-
-.wc-dev-feel-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  column-gap: 0.75rem;
-  padding: 0.2rem 0;
-}
-
-.wc-dev-feel-range {
-  grid-column: 1 / -1;
-  width: 100%;
-}
-
-.wc-dev-feel-value {
-  font-variant-numeric: tabular-nums;
-  color: var(--text-muted);
-}
-
-.wc-dev-feel-value.wc-dev-feel-changed {
+.wc-feel-changed {
   color: var(--accent-gold);
 }
 
-.wc-dev-feel-json {
-  display: block;
-  margin: 0.45rem 0;
-  padding: 0.35rem 0.45rem;
-  border-radius: 0.3rem;
-  background: var(--bg-obsidian);
-  font-size: 0.66rem;
-  color: var(--text-muted);
-  word-break: break-all;
-  user-select: all;
-}
-
-.wc-dev-feel-actions {
-  display: flex;
+.wc-setting-inline {
+  display: inline-flex;
   align-items: center;
-  gap: 0.45rem;
-  flex-wrap: wrap;
+  gap: 0.5rem;
 }
 
-.wc-dev-feel-copy-status {
-  font-size: 0.68rem;
+.wc-setting-hint-block {
+  display: block;
+  margin: 0;
+}
+
+.wc-setting-status {
+  margin: 0;
+  min-height: 1.2rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.wc-setting-status[data-tone='ok'] {
   color: var(--status-ok);
 }
 
+.wc-setting-status[data-tone='bad'] {
+  color: #fca5a5;
+}
 .wc-dev-overlay-title {
   font-weight: 700;
   color: var(--accent-gold);

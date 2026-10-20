@@ -507,9 +507,15 @@ Chess.com's branding, icon designs, or assets.
    - **Cursors:** grab and grabbing cursors on desktop.
    - **Click-to-move:** large, clear legal-move hints.
    - **Board size:** resizable by dragging its corner; the size is remembered.
-   - **Tuning panel:** add a "Board feel" panel to the dev overlay with live sliders
-     (drag threshold, lift scale, snap duration, drop tolerance, touch offset, animation
-     speed), so I can tune by hand. My chosen values become the defaults.
+   - **Tuning panel:** a "Board feel" section in Settings with live sliders (drag
+     threshold, lift scale, snap duration, drop tolerance, touch offset, animation speed)
+     and "Reset to defaults". The defaults are the values I approved (3 px, 1.12×, 110 ms,
+     0.2 squares, 0.8 squares, 170 ms). (First built in the dev overlay for tuning.)
+   - **Drop rule:** if the pointer is over a legal square, the piece lands there; the drop
+     tolerance applies only when the pointer is over an illegal square (or just off the
+     board) near a legal one. For a touch drag, "the pointer" is where the piece is drawn.
+   - **Lift on press:** pressing a piece lifts it at once; the drag threshold only decides
+     click vs drag.
    - Must keep every existing input behavior and test: premove queue, drag cancel,
      drag through opponent moves.
 
@@ -524,6 +530,27 @@ Chess.com's branding, icon designs, or assets.
 
 5. **Navigation:** clear top-level navigation between Play, Puzzles, Review, and Games.
    The extension's capture features fit into Games.
+
+**Navigation and settings (decided while building Phase 6b):**
+- **Four destinations:** Play, Train, Review, Games, in a top bar on desktop and a bottom tab
+  bar on phones, with a Settings button. Routes `#play`, `#train`, `#review`, `#games`; the
+  earlier `#analysis`, `#today` and `#puzzles` links still open Review and Train.
+- **Review** holds the analysis board and the game review: tabs Review / Analysis / Moves.
+  Free analysis stays one click away with no game needed: New board, Edit position, and Load
+  FEN / PGN.
+- **Train** holds the Today screen (what's due) and the puzzles; Phase 7's trainers join it.
+  Its tab shows how many reviews and new puzzles are waiting.
+- **Play:** new-game choices (opponent, style, time, colour, think time, takebacks) apply only
+  when Play is pressed; changing them never ends a game in progress, and starting a new game
+  while one is in progress asks first.
+- **Settings:** one sheet for everything that isn't part of starting a game: Board (theme,
+  piece set, size), Board feel (the six sliders and "Reset to defaults"; this replaces the
+  dev overlay's tuning panel), Moves (auto-queen, confirm move, max premoves, Review's move
+  animation), Sound & effects, Your data (JSON backup and restore), and About & diagnostics
+  (the former header badges and diagnostics cards, and the performance overlay switch; the
+  backtick key still toggles the overlay, which shows performance numbers only).
+- **Remembered:** every setting, the new-game choices, the board feel and the board size are
+  kept on this device and included in the JSON backup; a restore brings them back.
 
 **Process:**
 1. **Audit:** take screenshots of every current screen and list the usability problems.

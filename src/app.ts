@@ -1,7 +1,10 @@
 import { DevOverlayController } from './ui/dev-overlay';
 import { SettingsPanel } from './ui/settings-panel';
 import { AppSettingsStore, type AppSettings } from './ui/app-settings';
-import { mountAppSettingsSections } from './ui/settings-sections';
+import { SETTINGS_ORDER, mountAppSettingsSections } from './ui/settings-sections';
+import { mountBoardFeelSection } from './ui/settings-feel-section';
+import { mountDataSection } from './ui/settings-data-section';
+import { Preferences, loadStoredAppSettings } from './ui/settings-persistence';
 import { icon, type IconName } from './ui/components/icons';
 import { initBoardSize } from './render/board-size';
 import { boardFeel, type BoardFeelStore } from './render/board-feel';
@@ -451,9 +454,12 @@ export function mountAppShell(container: HTMLElement): {
     hashMb: 16,
   });
 
-  // Every setting in one store: Settings and the New game card write it, every screen follows it
-  const appSettings = new AppSettingsStore();
+  // Every setting in one store: Settings and the New game card write it, every screen follows
+  // it. Remembered on this device and mirrored into the database for the JSON backup.
+  const appSettings = new AppSettingsStore(loadStoredAppSettings());
+  const preferences = new Preferences({ appSettings, boardFeel });
   mountAppSettingsSections(settings, appSettings);
+  mountBoardFeelSection(settings, SETTINGS_ORDER.boardFeel, SETTINGS_ORDER.board);
 
   // One synthesizer for every screen, so only one AudioContext is ever built.
   const audio = new CathedralAudio({
@@ -748,10 +754,27 @@ export function mountAppShell(container: HTMLElement): {
     return true;
   };
 
+  let resolveStorage!: (storage: WizardChessStorage) => void;
+  const storageReady = new Promise<WizardChessStorage>((resolve) => {
+    resolveStorage = resolve;
+  });
+  /** Brings every screen's data up to date after a restore. */
+  let afterRestore: () => Promise<void> = async () => undefined;
+  mountDataSection({
+    panel: settings,
+    order: SETTINGS_ORDER.data,
+    getBackend: () => storageReady,
+    beforeBackup: () => preferences.mirrorNow(),
+    applyPreferences: (snapshot) => preferences.apply(snapshot),
+    afterRestore: () => afterRestore(),
+  });
+
   const libraryReady: Promise<WizardChessLibraryApi> = WizardChessStorage.create().then(async (storage) => {
     const lib = new GameLibrary(storage);
     await lib.init();
     library = lib;
+    resolveStorage(storage);
+    await preferences.attach(storage);
     const queue = new ReviewQueue({
       library: lib,
       getEngine: getReviewEngine,
@@ -831,6 +854,14 @@ export function mountAppShell(container: HTMLElement): {
     };
     window.__wizardChessPuzzles = puzzlesApi;
     resolvePuzzles(puzzlesApi);
+    afterRestore = async () => {
+      await lib.init();
+      await list.syncAutoAnalyze();
+      await list.refresh();
+      await syncPersonal();
+      await today.refresh();
+      await refreshTrainCount();
+    };
     if (currentMode === 'train' && trainView === 'hub') void today.refresh();
     void refreshTrainCount();
     return api;

@@ -3431,3 +3431,59 @@ extension; the selection bar (appears, counts, clears, analyzes); phone.
 **Checks:** typecheck, lint, unit tests, build, **108/108 e2e** (9.5 min). Screens looked at:
 `desktop-games-selected.png`, `phone-games-selected.png`, `desktop-games-list.png`,
 `phone-games-list.png`.
+
+### Stage 6 plan — Settings (written before code)
+- `settings-persistence.ts`: `Preferences` keeps the app settings in `localStorage`
+  (`wc.settings.v1`, read synchronously so the first frame has them) and mirrors the app
+  settings, board feel and board size into one IndexedDB settings record (`app.preferences`), so
+  the existing JSON backup carries them. A device with no saved settings takes them from that
+  record; a restore applies a backup's record everywhere.
+- `settings-feel-section.ts`: Settings › Board feel (the six sliders, live, changed values in
+  gold, "Reset to defaults") and the board size (shown, "Default"); the dev overlay keeps only
+  its performance numbers (your decision; the overlay's JSON / "Copy values" line goes too).
+- `settings-data-section.ts`: Settings › Your data: "Download a backup" (a dated JSON file) and
+  "Restore a backup…" (checked, counted, confirmed, then applied: games, reviews, puzzles,
+  cards, accounts, auto-analyze and every setting, with the screens refreshed).
+- `docs/SPEC.md`: the navigation and settings decisions written into Phase 6b.
+- Tests: unit `app-settings.test.ts` (9); e2e `phase6b-settings.spec.ts` (5): section order and
+  the overlay without the panel, Board feel live + reset, everything remembered after a reload,
+  backup download → change → restore (and a non-backup file refused), phone. The board-feel
+  test that used the overlay panel uses Settings; the Play spec's section list grows.
+
+### Stage 6 result — Settings (2026-10-19)
+
+Built as planned.
+- **Remembered on this device:** every setting (board, board feel, board size, moves, sound,
+  Review's move animation, Play's live evaluation) and the new-game choices. App settings in
+  `localStorage` `wc.settings.v1`, read before the first frame; board feel and size keep their
+  own keys. All three are mirrored (300 ms after the last change) into the IndexedDB settings
+  record `app.preferences`, so the existing JSON backup carries them. A device with no saved
+  settings but a record in the database (site data partly cleared) takes the record.
+- **Settings sheet**, in order: Board (theme, piece set, board size with Reset), **Board feel**
+  (the six sliders, changed values in gold, "Reset to defaults"), Moves, Sound & effects,
+  **Your data**, About & diagnostics. The dev overlay shows performance numbers only.
+- **Your data:** "Download a backup" writes the preferences record first, then saves
+  `wizards-chess-backup-YYYY-MM-DD.json`; "Restore a backup…" checks the file, says what it holds
+  ("1 game, 1 review and 3 puzzles, and replaces your settings"), restores after Restore, applies
+  the settings everywhere and refreshes the Games list (accounts, auto-analyze) and Train. A file
+  that isn't a backup is refused with a message.
+- `docs/SPEC.md` Phase 6b now records the four destinations, Review / Train, Play's choices, the
+  Settings sheet, what's remembered and backed up, the drop rule and lift on press, and the
+  Board feel defaults you approved.
+
+**Found and fixed while checking:** Escape didn't close the Settings sheet after a restore (the
+focused Restore button had just been hidden, so focus was outside the sheet): Escape now closes an
+open sheet wherever focus is, and focus goes back to "Restore a backup…" after the confirmation
+closes. The board size row said "Default" twice (now "Reset", disabled at the default; the hint
+says the grip is on wide screens).
+
+**Tests:** unit `app-settings.test.ts` (9): sanitizing, merging new-game choices, restore,
+remembering, the database record both ways, backup parsing and naming. E2E
+`phase6b-settings.spec.ts` (5): section order and the overlay without the panel; Board feel live
+and Reset; everything remembered after a reload (new-game choices, theme, piece set, auto-queen,
+max premoves, Review's animation, sound, volume, snap duration, board size); backup → change and
+delete → refused non-backup → restore → all back; phone. Changed: the board-feel test that drove
+the overlay's panel drives Settings' section (its check of the overlay's JSON / "Copy values" line
+is gone with that line); the Play spec's list of sections includes the new two.
+
+**Checks:** typecheck, lint, **461 unit tests** (41 files), build (main bundle 1,420.22 kB, 260.77 kB gzip: +33 kB over the board-feel commit for the shell, components and five redesigned screens), build:ext, **113/113 e2e** (10.3 min). Screens looked at: `desktop-settings-board-feel.png`, `desktop-settings-restore.png`, `phone-settings.png`.

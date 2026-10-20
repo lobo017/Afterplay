@@ -1,19 +1,3 @@
-import {
-  BOARD_FEEL_KEYS,
-  BOARD_FEEL_RANGES,
-  DEFAULT_BOARD_FEEL,
-  boardFeel,
-  type BoardFeel,
-  type BoardFeelKey,
-} from '../render/board-feel';
-
-/** A feel value as the panel shows it (fixed decimals per range step). */
-function formatFeelValue(key: BoardFeelKey, value: number): string {
-  const r = BOARD_FEEL_RANGES[key];
-  const decimals = r.step >= 1 ? 0 : r.step >= 0.1 ? 1 : 2;
-  return `${value.toFixed(decimals)} ${r.unit}`;
-}
-
 export interface DevOverlayMetrics {
   fps: number;
   p95FrameMs: number;
@@ -41,11 +25,6 @@ export class DevOverlayController {
   private cacheTotal = 0;
   private observer: PerformanceObserver | null = null;
   private readonly onToggleCallbacks: Array<(visible: boolean) => void> = [];
-  private readonly unsubscribeFeel: () => void;
-  private readonly feelInputs = new Map<BoardFeelKey, HTMLInputElement>();
-  private readonly feelValueEls = new Map<BoardFeelKey, HTMLElement>();
-  private readonly feelJsonEl: HTMLElement;
-  private readonly feelCopyStatusEl: HTMLElement;
 
   private readonly fpsValEl: HTMLElement;
   private readonly p95ValEl: HTMLElement;
@@ -85,26 +64,6 @@ export class DevOverlayController {
         <span>Cache Hit Rate</span>
         <span data-metric="cache">0.0%</span>
       </div>
-      <section class="wc-dev-feel" data-testid="dev-board-feel" aria-label="Board feel">
-        <div class="wc-dev-overlay-title wc-dev-feel-title">
-          <span>BOARD FEEL</span>
-          <span class="wc-dev-feel-hint">applies live to every board</span>
-        </div>
-        ${BOARD_FEEL_KEYS.map((key) => {
-          const r = BOARD_FEEL_RANGES[key];
-          return `<label class="wc-dev-feel-row" title="Default ${formatFeelValue(key, DEFAULT_BOARD_FEEL[key])}">
-            <span class="wc-dev-feel-label">${r.label}</span>
-            <span class="wc-dev-feel-value" data-testid="dev-feel-value-${key}"></span>
-            <input type="range" class="wc-range wc-dev-feel-range" min="${r.min}" max="${r.max}" step="${r.step}" data-feel-key="${key}" data-testid="dev-feel-${key}" aria-label="${r.label}" />
-          </label>`;
-        }).join('')}
-        <code class="wc-dev-feel-json" data-testid="dev-feel-json"></code>
-        <div class="wc-dev-feel-actions">
-          <button type="button" class="wc-btn wc-btn-secondary wc-btn-sm" data-testid="dev-feel-copy">Copy values</button>
-          <button type="button" class="wc-btn wc-btn-ghost wc-btn-sm" data-testid="dev-feel-reset">Reset to defaults</button>
-          <span class="wc-dev-feel-copy-status" data-testid="dev-feel-copy-status" role="status"></span>
-        </div>
-      </section>
     `;
 
     parent.appendChild(this.element);
@@ -114,64 +73,9 @@ export class DevOverlayController {
     this.longTaskValEl = this.element.querySelector('[data-metric="longtasks"]') as HTMLElement;
     this.engineValEl = this.element.querySelector('[data-metric="engine"]') as HTMLElement;
     this.cacheValEl = this.element.querySelector('[data-metric="cache"]') as HTMLElement;
-    this.feelJsonEl = this.element.querySelector('[data-testid="dev-feel-json"]') as HTMLElement;
-    this.feelCopyStatusEl = this.element.querySelector(
-      '[data-testid="dev-feel-copy-status"]',
-    ) as HTMLElement;
-    for (const key of BOARD_FEEL_KEYS) {
-      const input = this.element.querySelector(`[data-feel-key="${key}"]`) as HTMLInputElement;
-      this.feelInputs.set(key, input);
-      this.feelValueEls.set(
-        key,
-        this.element.querySelector(`[data-testid="dev-feel-value-${key}"]`) as HTMLElement,
-      );
-      input.addEventListener('input', () => {
-        boardFeel.set({ [key]: Number(input.value) });
-      });
-    }
-    this.element
-      .querySelector('[data-testid="dev-feel-copy"]')
-      ?.addEventListener('click', () => void this.copyFeel());
-    this.element
-      .querySelector('[data-testid="dev-feel-reset"]')
-      ?.addEventListener('click', () => boardFeel.reset());
-    this.renderFeel(boardFeel.get());
-    this.unsubscribeFeel = boardFeel.subscribe((feel) => this.renderFeel(feel));
 
     this.initLongTaskObserver();
     window.addEventListener('keydown', this.handleKeyDown);
-  }
-
-  /** Shows the current board feel on the sliders, their labels and the JSON line. */
-  private renderFeel(feel: BoardFeel): void {
-    for (const key of BOARD_FEEL_KEYS) {
-      const input = this.feelInputs.get(key);
-      if (input && Number(input.value) !== feel[key]) input.value = String(feel[key]);
-      const valueEl = this.feelValueEls.get(key);
-      if (valueEl) {
-        valueEl.textContent = formatFeelValue(key, feel[key]);
-        valueEl.classList.toggle('wc-dev-feel-changed', feel[key] !== DEFAULT_BOARD_FEEL[key]);
-      }
-    }
-    this.feelJsonEl.textContent = JSON.stringify(feel);
-    this.feelCopyStatusEl.textContent = '';
-  }
-
-  /** Copies the values as JSON, so they can be sent along and made the defaults. */
-  private async copyFeel(): Promise<void> {
-    const text = JSON.stringify(boardFeel.get());
-    try {
-      await navigator.clipboard.writeText(text);
-      this.feelCopyStatusEl.textContent = 'Copied';
-    } catch {
-      // No clipboard access: select the JSON line so it can be copied by hand
-      const range = document.createRange();
-      range.selectNodeContents(this.feelJsonEl);
-      const selection = window.getSelection();
-      selection?.removeAllRanges();
-      selection?.addRange(range);
-      this.feelCopyStatusEl.textContent = 'Selected: press Ctrl+C';
-    }
   }
 
   private initLongTaskObserver(): void {
@@ -319,7 +223,6 @@ export class DevOverlayController {
 
   public destroy(): void {
     window.removeEventListener('keydown', this.handleKeyDown);
-    this.unsubscribeFeel();
     if (this.rafId !== null) {
       cancelAnimationFrame(this.rafId);
       this.rafId = null;

@@ -42,6 +42,9 @@ export function saveBoardSize(px: number | null, store: FeelStorage | null = sto
   } catch {
     // Storage blocked: the size still applies until the page reloads
   }
+  if (typeof window !== 'undefined' && typeof Event !== 'undefined') {
+    window.dispatchEvent(new Event('wc-board-size'));
+  }
 }
 
 /** Sets (or, with null, clears) the size every board column uses. */

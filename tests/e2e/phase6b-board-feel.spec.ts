@@ -46,37 +46,37 @@ async function hasPiece(page: Page, sq: string): Promise<boolean> {
 }
 
 test.describe('Phase 6b — board feel', () => {
-  test('the dev overlay tunes the board live, remembers the values, and resets them', async ({ page }) => {
+  test('Settings › Board feel tunes the board live, remembers the values, and resets them', async ({ page }) => {
     await openPlay(page);
-    await expect(page.getByTestId('dev-board-feel')).toBeHidden();
-    await page.keyboard.press('`');
-    const panel = page.getByTestId('dev-board-feel');
+    // (Phase 6b: the tuning panel moved from the dev overlay into Settings)
+    await page.getByTestId('btn-settings').click();
+    const panel = page.getByTestId('settings-board-feel');
     await expect(panel).toBeVisible();
     for (const key of ['dragThresholdPx', 'liftScale', 'snapMs', 'dropTolerance', 'touchOffset', 'animationMs']) {
-      await expect(panel.getByTestId(`dev-feel-${key}`)).toBeVisible();
+      await expect(panel.getByTestId(`feel-${key}`)).toBeVisible();
     }
-    await expect(panel.getByTestId('dev-feel-value-liftScale')).toHaveText('1.12 ×');
+    await expect(panel.getByTestId('feel-value-liftScale')).toHaveText('1.12 ×');
 
     // Moving a slider changes the board at once
-    await panel.getByTestId('dev-feel-liftScale').fill('1.25');
-    await expect(panel.getByTestId('dev-feel-value-liftScale')).toHaveText('1.25 ×');
-    await expect(panel.getByTestId('dev-feel-json')).toContainText('"liftScale":1.25');
+    await panel.getByTestId('feel-liftScale').fill('1.25');
+    await expect(panel.getByTestId('feel-value-liftScale')).toHaveText('1.25 ×');
+    await panel.screenshot({ path: path.join(SCREENSHOT_DIR, 'desktop-board-feel-panel.png') });
+    await page.keyboard.press('Escape');
     const e2 = await squareBox(page, 'e2');
     await page.mouse.move(e2.cx, e2.cy);
     await page.mouse.down();
     expect((await pieceState(page, 'e2')).transform).toContain('scale(1.25)');
     await page.mouse.up();
-    await page.getByTestId('dev-board-feel').screenshot({ path: path.join(SCREENSHOT_DIR, 'desktop-board-feel-panel.png') });
 
     // Remembered across a reload
     await page.reload();
     await expect(page.getByTestId('play-layout')).toBeVisible();
     expect(await page.evaluate(() => window.__wizardChessPlay!.boardFeel.get().liftScale)).toBe(1.25);
-    await page.keyboard.press('`');
-    await expect(page.getByTestId('dev-feel-liftScale')).toHaveValue('1.25');
+    await page.getByTestId('btn-settings').click();
+    await expect(page.getByTestId('feel-liftScale')).toHaveValue('1.25');
 
-    await page.getByTestId('dev-feel-reset').click();
-    await expect(page.getByTestId('dev-feel-value-liftScale')).toHaveText('1.12 ×');
+    await page.getByTestId('btn-feel-reset').click();
+    await expect(page.getByTestId('feel-value-liftScale')).toHaveText('1.12 ×');
     expect(await page.evaluate(() => localStorage.getItem('wc.boardFeel.v1'))).toBeNull();
   });
 

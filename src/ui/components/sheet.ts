@@ -55,6 +55,8 @@ export class Sheet {
     this.returnFocus = active instanceof HTMLElement ? active : null;
     this.root.hidden = false;
     document.documentElement.classList.add('wc-sheet-open');
+    // Escape closes it even when focus has left it (e.g. a button inside was just hidden)
+    document.addEventListener('keydown', this.handleDocumentKeyDown);
     (this.panel.querySelector(FOCUSABLE) as HTMLElement | null)?.focus();
     this.options.onToggle?.(true);
   }
@@ -63,6 +65,7 @@ export class Sheet {
     if (!this.isOpen()) return;
     this.root.hidden = true;
     document.documentElement.classList.remove('wc-sheet-open');
+    document.removeEventListener('keydown', this.handleDocumentKeyDown);
     this.returnFocus?.focus();
     this.returnFocus = null;
     this.options.onToggle?.(false);
@@ -72,6 +75,13 @@ export class Sheet {
     if (this.isOpen()) this.close();
     else this.open();
   }
+
+  private readonly handleDocumentKeyDown = (e: KeyboardEvent): void => {
+    if (e.key !== 'Escape' || this.root.contains(e.target as Node | null)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    this.close();
+  };
 
   private readonly handleKeyDown = (e: KeyboardEvent): void => {
     if (e.key === 'Escape') {
