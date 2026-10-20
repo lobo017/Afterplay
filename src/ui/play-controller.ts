@@ -17,7 +17,6 @@ import {
   computeBotThinkTimeMs,
   getTierForRating,
   type BotStyleId,
-  type BotTierId,
 } from '../engine/bot';
 import {
   EngineCancelledError,
@@ -30,20 +29,28 @@ import { CathedralAudio } from '../render/audio';
 import { BoardRenderer } from '../render/board-renderer';
 import { getPieceSvgMarkup } from '../render/piece-sets';
 import {
-  BOARD_THEMES,
-  DEFAULT_BOARD_THEME,
-  DEFAULT_PIECE_SET,
-  PIECE_SETS,
-  type BoardThemeId,
-  type PieceSetId,
-} from '../render/themes';
-import {
   ChessClock,
   TIME_CONTROL_PRESETS,
   type ClockSnapshot,
   type TimeControlPresetId,
 } from './clock';
 import type { DevOverlayController } from './dev-overlay';
+import {
+  AppSettingsStore,
+  MAX_PREMOVES_LIMIT,
+  type AppSettings,
+  type NewGameOptions,
+} from './app-settings';
+import { icon } from './components/icons';
+import { Menu } from './components/menu';
+import { Tabs, tabListHtml, tabPanelAttrs } from './components/tabs';
+import {
+  bindChoiceGroups,
+  chipsHtml,
+  segmentedHtml,
+  setChoice,
+  switchRowHtml,
+} from './components/controls';
 
 export interface HintUsageRecord {
   ply: number;
@@ -153,10 +160,15 @@ export interface PlayControllerOptions {
   botMinDelayMs?: number;
   botMaxDelayMs?: number;
   maxPremoves?: number;
+  /** App settings: board, input, sound and the new-game choices (a private store if absent). */
+  settings?: AppSettingsStore;
+  /** ⋯ › Analyze this position: open the game in Review. */
+  onAnalyzeGame?: () => void;
+  /** Game over › Review this game. */
+  onReviewGame?: () => void;
 }
 
 export const DEFAULT_MAX_PREMOVES = 10;
-const MAX_PREMOVES_LIMIT = 20;
 
 /**
  * Phase 3 Play Mode Controller.
@@ -174,6 +186,19 @@ export class PlayController {
   private readonly botSelection: BotSelectionClient;
   private readonly ownsBotSelection: boolean;
   private board!: BoardRenderer;
+  private readonly settings: AppSettingsStore;
+  private readonly unsubscribeSettings: () => void;
+  private readonly onAnalyzeGame: (() => void) | undefined;
+  private readonly onReviewGame: (() => void) | undefined;
+  private menu!: Menu;
+  private panelEl!: HTMLElement;
+  private flipBtnEl!: HTMLButtonElement;
+  /** The side panel: the New game card, or the game. */
+  private panelView: 'setup' | 'game' = 'setup';
+  /** The New game card was opened from the menu, so moves don't switch the panel away. */
+  private setupOpenedByUser = false;
+  /** Where the game waiting for "End it and play" starts (Review's position), if not the start. */
+  private pendingStartOptions: { fen?: string; playerColor?: Color } | undefined;
 
   private adapter: RulesAdapter;
   private gameTree: GameTree;
@@ -218,13 +243,14 @@ export class PlayController {
   private moveListEl!: HTMLElement;
   private hintBtnEl!: HTMLButtonElement;
   private takebackBtnEl!: HTMLButtonElement;
-  private drawBtnEl!: HTMLButtonElement;
-  private resignBtnEl!: HTMLButtonElement;
   private hintsLogEl!: HTMLElement;
 
   constructor(options: PlayControllerOptions) {
     this.container = options.container;
     this.engine = options.engine;
+    this.settings = options.settings ?? new AppSettingsStore();
+    this.onAnalyzeGame = options.onAnalyzeGame;
+    this.onReviewGame = options.onReviewGame;
     if (options.botEngine) {
       this.botEngine = options.botEngine;
       this.ownsBotEngine = false;
@@ -236,9 +262,12 @@ export class PlayController {
       this.ownsBotEngine = true;
     }
 
-    this.botRating = clampBotRating(options.initialBotRating ?? 1400);
-    this.botStyle = options.initialBotStyle ?? 'solid';
-    this.timeControlId = options.initialTimeControl ?? '5+3';
+    const ng = this.settings.get().newGame;
+    this.playerColorChoice = ng.color;
+    this.allowTakebacks = ng.takebacks;
+    this.botRating = clampBotRating(options.initialBotRating ?? ng.botRating);
+    this.botStyle = options.initialBotStyle ?? ng.botStyle;
+    this.timeControlId = options.initialTimeControl ?? ng.timeControlId;
     this.maxHintsPerGame = options.maxHintsPerGame ?? 3;
     this.hintsRemaining = this.maxHintsPerGame;
 
@@ -246,10 +275,10 @@ export class PlayController {
       this.botMinDelayMs = Math.max(0, options.botMoveDelayMs);
       this.botMaxDelayMs = Math.max(0, options.botMoveDelayMs);
     } else {
-      this.botMinDelayMs = Math.max(0, options.botMinDelayMs ?? 500);
+      this.botMinDelayMs = Math.max(0, options.botMinDelayMs ?? ng.minThinkMs);
       this.botMaxDelayMs = Math.max(
         this.botMinDelayMs,
-        options.botMaxDelayMs ?? 3000,
+        options.botMaxDelayMs ?? ng.maxThinkMs,
       );
     }
 
@@ -257,7 +286,7 @@ export class PlayController {
       1,
       Math.min(
         MAX_PREMOVES_LIMIT,
-        Math.floor(options.maxPremoves ?? DEFAULT_MAX_PREMOVES),
+        Math.floor(options.maxPremoves ?? this.settings.get().maxPremoves),
       ),
     );
 
@@ -286,21 +315,25 @@ export class PlayController {
     });
 
     this.mountLayout();
+    this.infiniteAnalysisEnabled = this.settings.get().playLiveEval;
+    this.unsubscribeSettings = this.settings.subscribe((next, prev) => this.applySettings(next, prev));
     this.updateAllHud();
   }
 
   private mountLayout(): void {
-    const tier = getTierForRating(this.botRating);
+    const s = this.settings.get();
+    const ng = s.newGame;
+    const tierChoices = Object.values(BOT_TIERS);
 
     this.container.innerHTML = `
       <div class="wc-play-layout" data-testid="play-layout">
-        <!-- Left column: Top Opponent Bar + 2D Board + Bottom Player Bar -->
+        <!-- Board column: opponent strip, board, my strip -->
         <div class="wc-board-column">
           <div class="wc-player-bar wc-player-bar-top" data-testid="player-bar-top">
             <div class="wc-player-info">
-              <span class="wc-player-avatar" data-testid="top-player-avatar">♚</span>
-              <div>
-                <div class="wc-player-name" data-testid="top-player-name">Stockfish ${tier} (${this.botRating})</div>
+              <span class="wc-player-avatar" data-testid="top-player-avatar">${icon('bot')}</span>
+              <div class="wc-player-text">
+                <div class="wc-player-name" data-testid="top-player-name"></div>
                 <div class="wc-captured-tray" data-testid="top-captured-tray" aria-label="Top player captured pieces"></div>
               </div>
             </div>
@@ -311,9 +344,9 @@ export class PlayController {
 
           <div class="wc-player-bar wc-player-bar-bottom" data-testid="player-bar-bottom">
             <div class="wc-player-info">
-              <span class="wc-player-avatar wc-player-avatar-you" data-testid="bottom-player-avatar">♔</span>
-              <div>
-                <div class="wc-player-name" data-testid="bottom-player-name">You (White)</div>
+              <span class="wc-player-avatar wc-player-avatar-you" data-testid="bottom-player-avatar">${icon('person')}</span>
+              <div class="wc-player-text">
+                <div class="wc-player-name" data-testid="bottom-player-name"></div>
                 <div class="wc-captured-tray" data-testid="bottom-captured-tray" aria-label="Bottom player captured pieces"></div>
               </div>
             </div>
@@ -321,228 +354,132 @@ export class PlayController {
           </div>
         </div>
 
-        <!-- Right column: Status, Live Eval, Move History, Game Controls & Settings -->
-        <aside class="wc-side-panel" aria-label="Game Controls and Move History">
-          <div class="wc-status-header">
-            <div class="wc-status-banner" data-testid="game-status-banner" role="status" aria-live="polite">
-              White to move
-            </div>
-            <div class="wc-eval-pill" data-testid="live-eval-score" title="Current Position Evaluation (White perspective)">
-              +0.00
-            </div>
-          </div>
+        <!-- Side panel: the New game card, or the game in progress -->
+        <aside class="wc-panel wc-play-panel" data-testid="play-panel" data-view="setup" aria-label="Game">
+          <div class="wc-panel-inner">
+            <section class="wc-play-view" data-testid="new-game-card" data-view="setup" aria-labelledby="new-game-title">
+              <div class="wc-panel-body wc-newgame">
+                <div class="wc-panel-head">
+                  <h2 class="wc-panel-title" id="new-game-title">New game</h2>
+                  <button type="button" class="wc-btn wc-btn-ghost wc-btn-sm wc-btn-inline" data-testid="btn-back-to-game" hidden>Back to game${icon('next')}</button>
+                </div>
 
-          <!-- Primary Game Actions -->
-          <div class="wc-action-row">
-            <button type="button" class="wc-btn wc-btn-primary" data-testid="btn-new-game">
-              New Game
-            </button>
-            <button type="button" class="wc-btn wc-btn-secondary" data-testid="btn-flip-board" title="Flip Board (F)">
-              Flip Board
-            </button>
-            <button type="button" class="wc-btn wc-btn-secondary" data-testid="btn-hint">
-              Hint (${this.hintsRemaining})
-            </button>
-          </div>
+                <div class="wc-field-block">
+                  <div class="wc-label-row">
+                    <span class="wc-label" id="new-game-opponent">Opponent</span>
+                    <span class="wc-label-value" data-testid="bot-rating-label"></span>
+                  </div>
+                  <input type="range" class="wc-range" min="400" max="2400" step="50" value="${ng.botRating}" data-testid="slider-bot-rating" aria-labelledby="new-game-opponent" />
+                  <div class="wc-tier-ticks" role="group" aria-label="Bot level">
+                    ${tierChoices
+                      .map(
+                        (t) =>
+                          `<button type="button" class="wc-tier-tick" data-rating="${t.defaultRating}" data-tier="${t.id}" data-testid="bot-tier-${t.id}" title="${t.label} · ${t.defaultRating}">${t.label}</button>`,
+                      )
+                      .join('')}
+                  </div>
+                  ${segmentedHtml(
+                    'style',
+                    'bot-style',
+                    Object.values(BOT_STYLE_PRESETS).map((p) => ({ value: p.id, label: p.label })),
+                    ng.botStyle,
+                    'Bot style',
+                  )}
+                </div>
 
-          <div class="wc-action-row">
-            <button type="button" class="wc-btn wc-btn-ghost" data-testid="btn-takeback">
-              Takeback
-            </button>
-            <button type="button" class="wc-btn wc-btn-ghost" data-testid="btn-offer-draw">
-              Offer Draw
-            </button>
-            <button type="button" class="wc-btn wc-btn-danger" data-testid="btn-resign">
-              Resign
-            </button>
-          </div>
+                <div class="wc-field-block">
+                  <span class="wc-label">Time</span>
+                  ${chipsHtml(
+                    'time',
+                    'time-control',
+                    Object.values(TIME_CONTROL_PRESETS).map((tc) => {
+                      const [main, sub] = tc.label.split(' · ');
+                      return tc.id === 'unlimited'
+                        ? { value: tc.id, label: '∞', sub: 'Unlimited', title: tc.label }
+                        : { value: tc.id, label: (main ?? tc.id).replace(/ /g, ''), sub: sub ?? '', title: tc.label };
+                    }),
+                    ng.timeControlId,
+                    'Time control',
+                  )}
+                </div>
 
-          <!-- Move History List -->
-          <div class="wc-moves-panel">
-            <div class="wc-panel-section-title">
-              <span>Moves</span>
-              <span class="wc-hints-log-badge" data-testid="hints-used-badge">0 hints used</span>
-            </div>
-            <div class="wc-move-list" data-testid="move-history-list" role="log" aria-label="Move history"></div>
-          </div>
+                <div class="wc-field-block">
+                  <span class="wc-label">Play as</span>
+                  ${segmentedHtml(
+                    'color',
+                    'play-as',
+                    [
+                      { value: 'w', label: 'White' },
+                      { value: 'random', label: 'Random' },
+                      { value: 'b', label: 'Black' },
+                    ],
+                    ng.color,
+                    'Play as',
+                  )}
+                </div>
 
-          <!-- Match & Bot Configuration -->
-          <div class="wc-settings-section">
-            <div class="wc-panel-section-title">Match &amp; Opponent</div>
-            <div class="wc-controls-grid">
-              <label class="wc-field">
-                <span class="wc-field-label">Play As</span>
-                <select class="wc-select" data-testid="select-player-color">
-                  <option value="w" selected>White</option>
-                  <option value="b">Black</option>
-                  <option value="random">Random</option>
-                </select>
-              </label>
-
-              <label class="wc-field">
-                <span class="wc-field-label">Time Control</span>
-                <select class="wc-select" data-testid="select-time-control">
-                  ${Object.values(TIME_CONTROL_PRESETS)
-                    .map(
-                      (tc) =>
-                        `<option value="${tc.id}" ${tc.id === this.timeControlId ? 'selected' : ''}>${tc.label}</option>`,
-                    )
-                    .join('')}
-                </select>
-              </label>
-
-              <label class="wc-field">
-                <span class="wc-field-label">Bot Tier</span>
-                <select class="wc-select" data-testid="select-bot-tier">
-                  ${Object.values(BOT_TIERS)
-                    .map(
-                      (t) =>
-                        `<option value="${t.id}" ${t.id === tier ? 'selected' : ''}>${t.label} (${t.defaultRating})</option>`,
-                    )
-                    .join('')}
-                </select>
-              </label>
-
-              <label class="wc-field">
-                <span class="wc-field-label">Bot Style</span>
-                <select class="wc-select" data-testid="select-bot-style">
-                  ${Object.values(BOT_STYLE_PRESETS)
-                    .map(
-                      (s) =>
-                        `<option value="${s.id}" ${s.id === this.botStyle ? 'selected' : ''}>${s.label}</option>`,
-                    )
-                    .join('')}
-                </select>
-              </label>
-
-              <label class="wc-field">
-                <span class="wc-field-label">Min Think (s)</span>
-                <input
-                  type="number"
-                  min="0"
-                  max="10"
-                  step="0.1"
-                  value="${(this.botMinDelayMs / 1000).toFixed(1)}"
-                  class="wc-select"
-                  data-testid="input-bot-min-delay"
-                />
-              </label>
-
-              <label class="wc-field">
-                <span class="wc-field-label">Max Think (s)</span>
-                <input
-                  type="number"
-                  min="0.1"
-                  max="15"
-                  step="0.1"
-                  value="${(this.botMaxDelayMs / 1000).toFixed(1)}"
-                  class="wc-select"
-                  data-testid="input-bot-max-delay"
-                />
-              </label>
-            </div>
-
-            <label class="wc-field wc-field-slider">
-              <div class="wc-field-row">
-                <span class="wc-field-label">Bot Rating</span>
-                <span class="wc-field-val" data-testid="bot-rating-label">${this.botRating} Elo (${tier})</span>
+                <details class="wc-disclosure" data-testid="new-game-more">
+                  <summary>More options <span class="wc-disclosure-hint">think time, takebacks</span>${icon('caret')}</summary>
+                  <div class="wc-disclosure-body">
+                    <div class="wc-think-grid">
+                      <label class="wc-field">
+                        <span class="wc-field-label">Bot thinks at least (s)</span>
+                        <input type="number" min="0" max="10" step="0.1" value="${(ng.minThinkMs / 1000).toFixed(1)}" class="wc-select" data-testid="input-bot-min-delay" />
+                      </label>
+                      <label class="wc-field">
+                        <span class="wc-field-label">At most (s)</span>
+                        <input type="number" min="0.1" max="15" step="0.1" value="${(ng.maxThinkMs / 1000).toFixed(1)}" class="wc-select" data-testid="input-bot-max-delay" />
+                      </label>
+                    </div>
+                    ${switchRowHtml('toggle-takebacks', 'Allow takebacks', ng.takebacks)}
+                  </div>
+                </details>
               </div>
-              <input
-                type="range"
-                min="400"
-                max="2400"
-                step="50"
-                value="${this.botRating}"
-                class="wc-range"
-                data-testid="slider-bot-rating"
-              />
-            </label>
-          </div>
-
-          <!-- Board, Input & Audio Settings -->
-          <div class="wc-settings-section">
-            <div class="wc-panel-section-title">Board, Input &amp; Audio</div>
-            <div class="wc-controls-grid">
-              <label class="wc-field">
-                <span class="wc-field-label">Board Theme</span>
-                <select class="wc-select" data-testid="select-board-theme">
-                  ${Object.values(BOARD_THEMES)
-                    .map(
-                      (t) =>
-                        `<option value="${t.id}" ${t.id === DEFAULT_BOARD_THEME ? 'selected' : ''}>${t.label}</option>`,
-                    )
-                    .join('')}
-                </select>
-              </label>
-
-              <label class="wc-field">
-                <span class="wc-field-label">Piece Set</span>
-                <select class="wc-select" data-testid="select-piece-set">
-                  ${Object.values(PIECE_SETS)
-                    .map(
-                      (s) =>
-                        `<option value="${s.id}" ${s.id === DEFAULT_PIECE_SET ? 'selected' : ''}>${s.label}</option>`,
-                    )
-                    .join('')}
-                </select>
-              </label>
-
-              <label class="wc-field" title="How many premoves you can queue during the opponent's turn. 1 = Lichess-style single premove.">
-                <span class="wc-field-label">Max Premoves</span>
-                <input
-                  type="number"
-                  min="1"
-                  max="${MAX_PREMOVES_LIMIT}"
-                  step="1"
-                  value="${this.maxPremoves}"
-                  class="wc-select"
-                  data-testid="input-max-premoves"
-                />
-              </label>
-            </div>
-
-            <div class="wc-toggles-grid">
-              <label class="wc-checkbox-label">
-                <input type="checkbox" data-testid="toggle-auto-queen" />
-                <span>Auto-Queen</span>
-              </label>
-              <label class="wc-checkbox-label">
-                <input type="checkbox" data-testid="toggle-confirm-move" />
-                <span>Confirm Move</span>
-              </label>
-              <label class="wc-checkbox-label">
-                <input type="checkbox" data-testid="toggle-takebacks" checked />
-                <span>Allow Takebacks</span>
-              </label>
-              <label class="wc-checkbox-label">
-                <input type="checkbox" data-testid="toggle-capture-particles" checked />
-                <span>Capture Shards</span>
-              </label>
-              <label class="wc-checkbox-label">
-                <input type="checkbox" data-testid="toggle-audio-mute" checked />
-                <span>Sound Effects</span>
-              </label>
-              <label class="wc-checkbox-label">
-                <input type="checkbox" data-testid="toggle-infinite-analysis" />
-                <span>Infinite Analysis</span>
-              </label>
-            </div>
-
-            <label class="wc-field wc-field-slider">
-              <div class="wc-field-row">
-                <span class="wc-field-label">Audio Volume</span>
-                <span class="wc-field-val" data-testid="audio-volume-label">75%</span>
+              <div class="wc-panel-foot wc-panel-foot-stack">
+                <div class="wc-confirm-end" data-testid="new-game-confirm" role="alertdialog" aria-label="End your current game?" hidden>
+                  <span>This ends the game in progress.</span>
+                  <div class="wc-confirm-end-actions">
+                    <button type="button" class="wc-btn wc-btn-secondary" data-testid="btn-new-game-keep">Keep playing</button>
+                    <button type="button" class="wc-btn wc-btn-danger" data-testid="btn-new-game-end">End it and play</button>
+                  </div>
+                </div>
+                <button type="button" class="wc-btn wc-btn-primary wc-btn-lg wc-btn-block" data-testid="btn-new-game">${icon('play')}Play</button>
               </div>
-              <input
-                type="range"
-                min="0"
-                max="100"
-                step="1"
-                value="75"
-                class="wc-range"
-                data-testid="slider-audio-volume"
-              />
-            </label>
+            </section>
+
+            <section class="wc-play-view" data-testid="game-view" data-view="game" hidden>
+              <div class="wc-status-header">
+                <div class="wc-status-banner" data-testid="game-status-banner" role="status" aria-live="polite">White to move</div>
+                <div class="wc-eval-pill" data-testid="live-eval-score" title="Evaluation (White's point of view)">+0.00</div>
+              </div>
+              ${tabListHtml('play', [{ id: 'moves', label: 'Moves' }, { id: 'analysis', label: 'Analysis' }], 'moves', 'Game')}
+              <div class="wc-panel-body">
+                <div class="wc-tab-panel wc-moves-panel" ${tabPanelAttrs('play', 'moves', 'moves')}>
+                  <div class="wc-panel-section-title wc-panel-section-title-end">
+                    <span class="wc-hints-log-badge" data-testid="hints-used-badge">0 hints used</span>
+                  </div>
+                  <div class="wc-move-list" data-testid="move-history-list" role="log" aria-label="Move history"></div>
+                </div>
+                <div class="wc-tab-panel" ${tabPanelAttrs('play', 'analysis', 'moves')}>
+                  ${switchRowHtml(
+                    'toggle-infinite-analysis',
+                    'Live evaluation',
+                    s.playLiveEval,
+                    'Stockfish evaluates your position while it is your move; the score shows at the top.',
+                  )}
+                  <p class="wc-panel-note">For a full analysis with engine lines, use ⋯ › Analyze this position.</p>
+                </div>
+              </div>
+              <div class="wc-panel-foot wc-action-bar" data-testid="play-actions">
+                <button type="button" class="wc-btn wc-btn-secondary wc-btn-action" data-testid="btn-hint">${icon('hint')}<span class="wc-btn-text">Hint (${this.hintsRemaining})</span></button>
+                <button type="button" class="wc-btn wc-btn-secondary wc-btn-action" data-testid="btn-takeback">${icon('undo')}<span class="wc-btn-text">Takeback</span></button>
+                <button type="button" class="wc-btn wc-btn-secondary wc-btn-icon" data-testid="btn-flip-board" title="Flip board (F)" aria-label="Flip board">${icon('flip')}</button>
+              </div>
+              <div class="wc-panel-foot wc-action-bar" data-testid="game-over-actions" hidden>
+                <button type="button" class="wc-btn wc-btn-primary wc-btn-lg wc-grow" data-testid="btn-review-game">${icon('review')}Review this game</button>
+                <button type="button" class="wc-btn wc-btn-secondary wc-btn-lg" data-testid="btn-game-over-new">New game</button>
+              </div>
+            </section>
           </div>
         </aside>
       </div>
@@ -557,11 +494,11 @@ export class PlayController {
       interactiveColor: this.playerColor,
       enablePremoves: true,
       maxPremoves: this.maxPremoves,
-      autoQueen: false,
-      confirmMove: false,
-      captureEffects: true,
-      boardTheme: DEFAULT_BOARD_THEME,
-      pieceSet: DEFAULT_PIECE_SET,
+      autoQueen: s.autoQueen,
+      confirmMove: s.confirmMove,
+      captureEffects: s.captureEffects,
+      boardTheme: s.boardTheme,
+      pieceSet: s.pieceSet,
       onMove: (move, wasDragged) => {
         this.handleUserMove(move, wasDragged);
       },
@@ -570,236 +507,206 @@ export class PlayController {
       },
     });
 
-    this.topPlayerNameEl = this.container.querySelector(
-      '[data-testid="top-player-name"]',
-    ) as HTMLElement;
-    this.bottomPlayerNameEl = this.container.querySelector(
-      '[data-testid="bottom-player-name"]',
-    ) as HTMLElement;
-    this.topClockEl = this.container.querySelector(
-      '[data-testid="top-clock"]',
-    ) as HTMLElement;
-    this.bottomClockEl = this.container.querySelector(
-      '[data-testid="bottom-clock"]',
-    ) as HTMLElement;
-    this.topCapturedEl = this.container.querySelector(
-      '[data-testid="top-captured-tray"]',
-    ) as HTMLElement;
-    this.bottomCapturedEl = this.container.querySelector(
-      '[data-testid="bottom-captured-tray"]',
-    ) as HTMLElement;
-    this.statusBannerEl = this.container.querySelector(
-      '[data-testid="game-status-banner"]',
-    ) as HTMLElement;
-    this.evalBadgeEl = this.container.querySelector(
-      '[data-testid="live-eval-score"]',
-    ) as HTMLElement;
-    this.moveListEl = this.container.querySelector(
-      '[data-testid="move-history-list"]',
-    ) as HTMLElement;
-    this.hintBtnEl = this.container.querySelector(
-      '[data-testid="btn-hint"]',
-    ) as HTMLButtonElement;
-    this.takebackBtnEl = this.container.querySelector(
-      '[data-testid="btn-takeback"]',
-    ) as HTMLButtonElement;
-    this.drawBtnEl = this.container.querySelector(
-      '[data-testid="btn-offer-draw"]',
-    ) as HTMLButtonElement;
-    this.resignBtnEl = this.container.querySelector(
-      '[data-testid="btn-resign"]',
-    ) as HTMLButtonElement;
-    this.hintsLogEl = this.container.querySelector(
-      '[data-testid="hints-used-badge"]',
-    ) as HTMLElement;
+    const q = <T extends HTMLElement>(id: string) =>
+      this.container.querySelector(`[data-testid="${id}"]`) as T;
+    this.topPlayerNameEl = q('top-player-name');
+    this.bottomPlayerNameEl = q('bottom-player-name');
+    this.topClockEl = q('top-clock');
+    this.bottomClockEl = q('bottom-clock');
+    this.topCapturedEl = q('top-captured-tray');
+    this.bottomCapturedEl = q('bottom-captured-tray');
+    this.statusBannerEl = q('game-status-banner');
+    this.evalBadgeEl = q('live-eval-score');
+    this.moveListEl = q('move-history-list');
+    this.hintBtnEl = q('btn-hint');
+    this.takebackBtnEl = q('btn-takeback');
+    this.hintsLogEl = q('hints-used-badge');
+    this.panelEl = q('play-panel');
+
+    this.menu = new Menu(
+      q('play-actions'),
+      [
+        { id: 'draw', label: 'Offer draw', testId: 'btn-offer-draw', icon: 'handshake', onSelect: () => void this.offerDraw() },
+        {
+          id: 'analyze',
+          label: 'Analyze this position',
+          testId: 'btn-analyze-game',
+          icon: 'review',
+          onSelect: () => this.onAnalyzeGame?.(),
+        },
+        { id: 'new', label: 'New game…', testId: 'menu-new-game', icon: 'plus', onSelect: () => this.showPanelView('setup', true) },
+        { id: 'resign', label: 'Resign', testId: 'btn-resign', icon: 'flag', danger: true, separatorBefore: true, onSelect: () => this.resign() },
+      ],
+      { testId: 'play-menu', label: 'More game actions' },
+    );
 
     this.bindUiControls();
+    this.renderNewGameCard();
+  }
+
+  /** Which view the side panel shows. `byUser`: opened from the menu, so moves don't leave it. */
+  private showPanelView(view: 'setup' | 'game', byUser = false): void {
+    this.panelView = view;
+    this.setupOpenedByUser = view === 'setup' && byUser;
+    this.panelEl.setAttribute('data-view', view);
+    for (const el of this.panelEl.querySelectorAll<HTMLElement>('.wc-play-view')) {
+      el.hidden = el.dataset.view !== view;
+    }
+    this.hideEndGameConfirm();
+    this.renderNewGameCard();
+  }
+
+  public getPanelView(): 'setup' | 'game' {
+    return this.panelView;
+  }
+
+  /** A move has been played and the game isn't over. */
+  public isGameInProgress(): boolean {
+    return this.plyHistory.length > 0 && !this.gameOver;
+  }
+
+  /** Shows the pending new-game choices on the card, and whether a game is waiting behind it. */
+  private renderNewGameCard(): void {
+    const ng = this.settings.get().newGame;
+    const q = (id: string) => this.container.querySelector<HTMLElement>(`[data-testid="${id}"]`);
+    const slider = q('slider-bot-rating') as HTMLInputElement | null;
+    if (slider && Number(slider.value) !== ng.botRating) slider.value = String(ng.botRating);
+    const tier = getTierForRating(ng.botRating);
+    const label = q('bot-rating-label');
+    if (label) label.textContent = `${ng.botRating} Elo (${tier})`;
+    for (const el of this.container.querySelectorAll<HTMLElement>('.wc-tier-tick')) {
+      el.setAttribute('aria-pressed', String(el.dataset.tier === tier));
+    }
+    setChoice(this.container.querySelector('[data-seg="style"]'), ng.botStyle);
+    setChoice(this.container.querySelector('[data-seg="time"]'), ng.timeControlId);
+    setChoice(this.container.querySelector('[data-seg="color"]'), ng.color);
+    const minInput = q('input-bot-min-delay') as HTMLInputElement | null;
+    const maxInput = q('input-bot-max-delay') as HTMLInputElement | null;
+    if (minInput && document.activeElement !== minInput) minInput.value = (ng.minThinkMs / 1000).toFixed(1);
+    if (maxInput && document.activeElement !== maxInput) maxInput.value = (ng.maxThinkMs / 1000).toFixed(1);
+    const takebacks = q('toggle-takebacks') as HTMLInputElement | null;
+    if (takebacks) takebacks.checked = ng.takebacks;
+    const back = q('btn-back-to-game');
+    if (back) back.hidden = !this.isGameInProgress();
+  }
+
+  private hideEndGameConfirm(): void {
+    const confirm = this.container.querySelector<HTMLElement>('[data-testid="new-game-confirm"]');
+    const play = this.container.querySelector<HTMLElement>('[data-testid="btn-new-game"]');
+    if (confirm) confirm.hidden = true;
+    if (play) play.hidden = false;
+  }
+
+  /**
+   * Starts a new game (the card's choices, optionally from `options`' position and colour).
+   * With a game in progress it asks first, on the New game card: nothing ends without a yes.
+   */
+  public requestNewGame(options?: { fen?: string; playerColor?: Color }): void {
+    this.pendingStartOptions = options;
+    if (!this.isGameInProgress()) {
+      this.startNewGame(options);
+      return;
+    }
+    this.showPanelView('setup', true);
+    const confirm = this.container.querySelector<HTMLElement>('[data-testid="new-game-confirm"]');
+    const play = this.container.querySelector<HTMLElement>('[data-testid="btn-new-game"]');
+    if (confirm) confirm.hidden = false;
+    if (play) play.hidden = true;
+    this.container.querySelector<HTMLElement>('[data-testid="btn-new-game-keep"]')?.focus();
   }
 
   private bindUiControls(): void {
-    this.container
-      .querySelector('[data-testid="btn-new-game"]')
-      ?.addEventListener('click', () => {
-        this.startNewGame();
-      });
+    const q = <T extends HTMLElement>(id: string) =>
+      this.container.querySelector(`[data-testid="${id}"]`) as T;
 
-    this.container
-      .querySelector('[data-testid="btn-flip-board"]')
-      ?.addEventListener('click', () => {
-        this.board.setFlipped(!this.board.isFlipped());
-        this.updatePlayerBars();
-      });
+    // New game card: every change only updates the pending choices
+    q<HTMLButtonElement>('btn-new-game').addEventListener('click', () => this.requestNewGame());
+    q<HTMLButtonElement>('btn-new-game-keep').addEventListener('click', () => this.showPanelView('game'));
+    q<HTMLButtonElement>('btn-new-game-end').addEventListener('click', () => this.startNewGame(this.pendingStartOptions));
+    q<HTMLButtonElement>('btn-back-to-game').addEventListener('click', () => this.showPanelView('game'));
 
+    const slider = q<HTMLInputElement>('slider-bot-rating');
+    slider.addEventListener('input', () => {
+      this.settings.set({ newGame: { botRating: Number(slider.value) } });
+    });
+    for (const tick of this.container.querySelectorAll<HTMLButtonElement>('.wc-tier-tick')) {
+      tick.addEventListener('click', () => {
+        this.settings.set({ newGame: { botRating: Number(tick.dataset.rating) } });
+      });
+    }
+    bindChoiceGroups(q('new-game-card'), (name, value) => {
+      if (name === 'style') this.settings.set({ newGame: { botStyle: value as BotStyleId } });
+      else if (name === 'time') this.settings.set({ newGame: { timeControlId: value as TimeControlPresetId } });
+      else if (name === 'color') this.settings.set({ newGame: { color: value as Color | 'random' } });
+    });
+    const minInput = q<HTMLInputElement>('input-bot-min-delay');
+    const maxInput = q<HTMLInputElement>('input-bot-max-delay');
+    const syncThink = () => {
+      const minSec = Number(minInput.value);
+      const maxSec = Number(maxInput.value);
+      const minMs = Number.isFinite(minSec) ? Math.max(0, Math.round(minSec * 1000)) : 500;
+      const maxMs = Number.isFinite(maxSec) ? Math.max(minMs, Math.round(maxSec * 1000)) : Math.max(minMs, 3000);
+      this.settings.set({ newGame: { minThinkMs: minMs, maxThinkMs: maxMs } });
+    };
+    minInput.addEventListener('change', syncThink);
+    maxInput.addEventListener('change', syncThink);
+    const takebacks = q<HTMLInputElement>('toggle-takebacks');
+    takebacks.addEventListener('change', () => {
+      this.settings.set({ newGame: { takebacks: takebacks.checked } });
+    });
+
+    // In game
+    new Tabs(q('game-view'));
+    this.flipBtnEl = q<HTMLButtonElement>('btn-flip-board');
+    this.flipBtnEl.addEventListener('click', () => {
+      this.board.setFlipped(!this.board.isFlipped());
+      this.updatePlayerBars();
+    });
     this.hintBtnEl.addEventListener('click', () => {
       void this.requestHint();
     });
-
     this.takebackBtnEl.addEventListener('click', () => {
       this.takeback();
     });
-
-    this.drawBtnEl.addEventListener('click', () => {
-      void this.offerDraw();
+    const liveEval = q<HTMLInputElement>('toggle-infinite-analysis');
+    liveEval.addEventListener('change', () => {
+      this.setInfiniteAnalysis(liveEval.checked);
     });
 
-    this.resignBtnEl.addEventListener('click', () => {
-      this.resign();
-    });
+    // Game over
+    q<HTMLButtonElement>('btn-review-game').addEventListener('click', () => this.onReviewGame?.());
+    q<HTMLButtonElement>('btn-game-over-new').addEventListener('click', () => this.showPanelView('setup', true));
+  }
 
-    const colorSelect = this.container.querySelector(
-      '[data-testid="select-player-color"]',
-    ) as HTMLSelectElement | null;
-    colorSelect?.addEventListener('change', () => {
-      this.playerColorChoice = colorSelect.value as Color | 'random';
-      this.startNewGame();
-    });
-
-    const tcSelect = this.container.querySelector(
-      '[data-testid="select-time-control"]',
-    ) as HTMLSelectElement | null;
-    tcSelect?.addEventListener('change', () => {
-      this.timeControlId = tcSelect.value as TimeControlPresetId;
-      this.startNewGame();
-    });
-
-    const tierSelect = this.container.querySelector(
-      '[data-testid="select-bot-tier"]',
-    ) as HTMLSelectElement | null;
-    const ratingSlider = this.container.querySelector(
-      '[data-testid="slider-bot-rating"]',
-    ) as HTMLInputElement | null;
-    const ratingLabel = this.container.querySelector(
-      '[data-testid="bot-rating-label"]',
-    ) as HTMLElement | null;
-
-    tierSelect?.addEventListener('change', () => {
-      const tierId = tierSelect.value as BotTierId;
-      const preset = BOT_TIERS[tierId];
-      if (preset) {
-        this.setBotRating(preset.defaultRating);
-        if (ratingSlider) ratingSlider.value = String(this.botRating);
-        if (ratingLabel) {
-          ratingLabel.textContent = `${this.botRating} Elo (${tierId})`;
-        }
-      }
-    });
-
-    ratingSlider?.addEventListener('input', () => {
-      const rating = Number(ratingSlider.value);
-      this.setBotRating(rating);
-      const tier = getTierForRating(this.botRating);
-      if (tierSelect) tierSelect.value = tier;
-      if (ratingLabel) {
-        ratingLabel.textContent = `${this.botRating} Elo (${tier})`;
-      }
-    });
-
-    const styleSelect = this.container.querySelector(
-      '[data-testid="select-bot-style"]',
-    ) as HTMLSelectElement | null;
-    styleSelect?.addEventListener('change', () => {
-      this.botStyle = styleSelect.value as BotStyleId;
-      this.bot.setStyle(this.botStyle);
-    });
-
-    const themeSelect = this.container.querySelector(
-      '[data-testid="select-board-theme"]',
-    ) as HTMLSelectElement | null;
-    themeSelect?.addEventListener('change', () => {
-      this.board.setBoardTheme(themeSelect.value as BoardThemeId);
-    });
-
-    const pieceSetSelect = this.container.querySelector(
-      '[data-testid="select-piece-set"]',
-    ) as HTMLSelectElement | null;
-    pieceSetSelect?.addEventListener('change', () => {
-      this.board.setPieceSet(pieceSetSelect.value as PieceSetId);
+  /** Board, input and sound settings that apply to this board at once. */
+  private applySettings(next: AppSettings, prev: AppSettings): void {
+    if (next.boardTheme !== prev.boardTheme) this.board.setBoardTheme(next.boardTheme);
+    if (next.pieceSet !== prev.pieceSet) {
+      this.board.setPieceSet(next.pieceSet);
       this.updateCapturedTrays();
-    });
+    }
+    if (next.autoQueen !== prev.autoQueen) this.board.setAutoQueen(next.autoQueen);
+    if (next.confirmMove !== prev.confirmMove) this.board.setConfirmMove(next.confirmMove);
+    if (next.captureEffects !== prev.captureEffects) this.board.setCaptureEffectsEnabled(next.captureEffects);
+    if (next.maxPremoves !== this.maxPremoves) {
+      this.maxPremoves = next.maxPremoves;
+      this.board.setMaxPremoves(next.maxPremoves);
+    }
+    if (next.playLiveEval !== this.infiniteAnalysisEnabled) this.setInfiniteAnalysis(next.playLiveEval);
+    if (next.newGame !== prev.newGame) this.renderNewGameCard();
+  }
 
-    const autoQueenToggle = this.container.querySelector(
-      '[data-testid="toggle-auto-queen"]',
-    ) as HTMLInputElement | null;
-    autoQueenToggle?.addEventListener('change', () => {
-      this.board.setAutoQueen(autoQueenToggle.checked);
-    });
-
-    const confirmMoveToggle = this.container.querySelector(
-      '[data-testid="toggle-confirm-move"]',
-    ) as HTMLInputElement | null;
-    confirmMoveToggle?.addEventListener('change', () => {
-      this.board.setConfirmMove(confirmMoveToggle.checked);
-    });
-
-    const takebacksToggle = this.container.querySelector(
-      '[data-testid="toggle-takebacks"]',
-    ) as HTMLInputElement | null;
-    takebacksToggle?.addEventListener('change', () => {
-      this.allowTakebacks = takebacksToggle.checked;
-      this.updateControlsDisabledState();
-    });
-
-    const particlesToggle = this.container.querySelector(
-      '[data-testid="toggle-capture-particles"]',
-    ) as HTMLInputElement | null;
-    particlesToggle?.addEventListener('change', () => {
-      this.board.setCaptureEffectsEnabled(particlesToggle.checked);
-    });
-
-    const muteToggle = this.container.querySelector(
-      '[data-testid="toggle-audio-mute"]',
-    ) as HTMLInputElement | null;
-    muteToggle?.addEventListener('change', () => {
-      this.audio.setEnabled(muteToggle.checked);
-    });
-
-    const volumeSlider = this.container.querySelector(
-      '[data-testid="slider-audio-volume"]',
-    ) as HTMLInputElement | null;
-    const volumeLabel = this.container.querySelector(
-      '[data-testid="audio-volume-label"]',
-    ) as HTMLElement | null;
-    volumeSlider?.addEventListener('input', () => {
-      const pct = Number(volumeSlider.value);
-      this.audio.setVolume(pct / 100);
-      if (volumeLabel) {
-        volumeLabel.textContent = `${pct}%`;
-      }
-    });
-
-    const infiniteToggle = this.container.querySelector(
-      '[data-testid="toggle-infinite-analysis"]',
-    ) as HTMLInputElement | null;
-    infiniteToggle?.addEventListener('change', () => {
-      this.setInfiniteAnalysis(infiniteToggle.checked);
-    });
-
-    const minDelayInput = this.container.querySelector(
-      '[data-testid="input-bot-min-delay"]',
-    ) as HTMLInputElement | null;
-    const maxDelayInput = this.container.querySelector(
-      '[data-testid="input-bot-max-delay"]',
-    ) as HTMLInputElement | null;
-
-    const syncDelayInputs = () => {
-      const minSec = Number(minDelayInput?.value ?? 0.5);
-      const maxSec = Number(maxDelayInput?.value ?? 3.0);
-      const minMs = Number.isFinite(minSec) ? Math.max(0, Math.round(minSec * 1000)) : 500;
-      const maxMs = Number.isFinite(maxSec)
-        ? Math.max(minMs, Math.round(maxSec * 1000))
-        : Math.max(minMs, 3000);
-      this.setBotDelayRangeMs(minMs, maxMs);
-    };
-
-    minDelayInput?.addEventListener('change', syncDelayInputs);
-    maxDelayInput?.addEventListener('change', syncDelayInputs);
-
-    const maxPremovesInput = this.container.querySelector(
-      '[data-testid="input-max-premoves"]',
-    ) as HTMLInputElement | null;
-    maxPremovesInput?.addEventListener('change', () => {
-      this.setMaxPremoves(Number(maxPremovesInput.value));
-    });
+  /** Copies the pending new-game choices into the game about to start. */
+  private applyNewGameOptions(ng: NewGameOptions): void {
+    this.playerColorChoice = ng.color;
+    this.timeControlId = ng.timeControlId;
+    this.botRating = clampBotRating(ng.botRating);
+    this.bot.setRating(this.botRating);
+    this.botStyle = ng.botStyle;
+    this.bot.setStyle(this.botStyle);
+    this.botMinDelayMs = ng.minThinkMs;
+    this.botMaxDelayMs = Math.max(ng.minThinkMs, ng.maxThinkMs);
+    this.allowTakebacks = ng.takebacks;
   }
 
   public setMaxPremoves(max: number): void {
@@ -808,21 +715,18 @@ export class PlayController {
       : DEFAULT_MAX_PREMOVES;
     this.maxPremoves = value;
     this.board.setMaxPremoves(value);
-    const input = this.container.querySelector(
-      '[data-testid="input-max-premoves"]',
-    ) as HTMLInputElement | null;
-    if (input && input.value !== String(value)) {
-      input.value = String(value);
-    }
+    if (this.settings.get().maxPremoves !== value) this.settings.set({ maxPremoves: value });
   }
 
   public getMaxPremoves(): number {
     return this.maxPremoves;
   }
 
+  /** Sets the bot's rating now (and as the next game's choice). */
   public setBotRating(rating: number): void {
     this.botRating = clampBotRating(rating);
     this.bot.setRating(this.botRating);
+    this.settings.set({ newGame: { botRating: this.botRating } });
     this.updatePlayerBars();
   }
 
@@ -831,21 +735,11 @@ export class PlayController {
     this.setBotDelayRangeMs(clamped, clamped);
   }
 
+  /** Sets the bot's think time now (and as the next game's choice). */
   public setBotDelayRangeMs(minMs: number, maxMs: number): void {
     this.botMinDelayMs = Math.max(0, Math.round(minMs));
     this.botMaxDelayMs = Math.max(this.botMinDelayMs, Math.round(maxMs));
-    const minDelayInput = this.container.querySelector(
-      '[data-testid="input-bot-min-delay"]',
-    ) as HTMLInputElement | null;
-    const maxDelayInput = this.container.querySelector(
-      '[data-testid="input-bot-max-delay"]',
-    ) as HTMLInputElement | null;
-    if (minDelayInput) {
-      minDelayInput.value = (this.botMinDelayMs / 1000).toFixed(1);
-    }
-    if (maxDelayInput) {
-      maxDelayInput.value = (this.botMaxDelayMs / 1000).toFixed(1);
-    }
+    this.settings.set({ newGame: { minThinkMs: this.botMinDelayMs, maxThinkMs: this.botMaxDelayMs } });
   }
 
   public getBotDelayRangeMs(): { minMs: number; maxMs: number } {
@@ -877,6 +771,7 @@ export class PlayController {
 
   public setInfiniteAnalysis(enabled: boolean): void {
     this.infiniteAnalysisEnabled = enabled;
+    if (this.settings.get().playLiveEval !== enabled) this.settings.set({ playLiveEval: enabled });
     const toggle = this.container.querySelector(
       '[data-testid="toggle-infinite-analysis"]',
     ) as HTMLInputElement | null;
@@ -952,12 +847,17 @@ export class PlayController {
     }
   }
 
+  /**
+   * Starts a new game with the New game card's choices (the colour can be overridden, e.g.
+   * for a position from Review). Ends any game in progress: the card asks first.
+   */
   public startNewGame(options?: {
     fen?: string;
     playerColor?: Color;
   }): void {
     this.cancelInFlightBotSearch();
     this.cancelInfiniteAnalysis();
+    this.applyNewGameOptions(this.settings.get().newGame);
 
     const startFen = options?.fen?.trim() || DEFAULT_POSITION;
     this.adapter = new RulesAdapter(startFen);
@@ -986,6 +886,7 @@ export class PlayController {
     this.board.setPosition(this.adapter, { lastMove: null });
     this.board.getParticles().clear();
 
+    this.showPanelView('game');
     this.updateAllHud();
 
     // If the side to move is the bot, start the clock and trigger the bot's move
@@ -1532,6 +1433,10 @@ export class PlayController {
   }
 
   private updateMoveList(): void {
+    if (this.panelView === 'setup' && !this.setupOpenedByUser && this.plyHistory.length > 0) {
+      this.showPanelView('game');
+    }
+    if (this.panelView === 'setup') this.renderNewGameCard();
     if (this.plyHistory.length === 0) {
       this.moveListEl.innerHTML = `<div class="wc-move-empty">No moves played yet. Drag or click a piece to begin.</div>`;
       return;
@@ -1551,7 +1456,9 @@ export class PlayController {
       `);
     }
     this.moveListEl.innerHTML = rows.join('');
+    // The latest move in view (the list scrolls sideways on phones)
     this.moveListEl.scrollTop = this.moveListEl.scrollHeight;
+    this.moveListEl.scrollLeft = this.moveListEl.scrollWidth;
   }
 
   private updateStatusBanner(): void {
@@ -1561,7 +1468,8 @@ export class PlayController {
   }
 
   private updateControlsDisabledState(): void {
-    this.hintBtnEl.textContent = `Hint (${this.hintsRemaining})`;
+    const hintText = this.hintBtnEl.querySelector('.wc-btn-text');
+    if (hintText) hintText.textContent = `Hint (${this.hintsRemaining})`;
     this.hintBtnEl.disabled =
       this.gameOver ||
       this.hintsRemaining <= 0 ||
@@ -1570,8 +1478,13 @@ export class PlayController {
 
     this.takebackBtnEl.disabled =
       !this.allowTakebacks || this.plyHistory.length === 0;
-    this.drawBtnEl.disabled = this.gameOver;
-    this.resignBtnEl.disabled = this.gameOver;
+    this.menu.setDisabled('draw', this.gameOver);
+    this.menu.setDisabled('resign', this.gameOver);
+    // Game over: Review this game takes the action bar's place
+    const over = this.container.querySelector<HTMLElement>('[data-testid="game-over-actions"]');
+    const actions = this.container.querySelector<HTMLElement>('[data-testid="play-actions"]');
+    if (over) over.hidden = !this.gameOver;
+    if (actions) actions.hidden = this.gameOver;
     this.hintsLogEl.textContent = `${this.hintsLog.length} hint${
       this.hintsLog.length === 1 ? '' : 's'
     } used`;
@@ -1649,6 +1562,8 @@ export class PlayController {
   public destroy(): void {
     this.cancelInFlightBotSearch();
     this.cancelInfiniteAnalysis();
+    this.unsubscribeSettings();
+    this.menu.destroy();
     if (this.pendingEvalRafId !== null) {
       cancelAnimationFrame(this.pendingEvalRafId);
     }

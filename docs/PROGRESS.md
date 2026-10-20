@@ -3219,3 +3219,87 @@ it, full-screen Settings, no sideways scroll).
 looked at: `desktop-today.png` (Train hub), `desktop-settings-about.png`, `phone-shell-play.png`,
 `phone-today.png`, `phone-settings-about.png`, plus every screen in `phase6b-screens`.
 "Analyze game" sits in Play's action row until stage 2.
+
+### Stage 2 plan — Play (written before code)
+- `src/ui/app-settings.ts`: `AppSettingsStore` (get / set / subscribe) holding board theme,
+  piece set, auto-queen, confirm move, max premoves, capture shards, sound, volume, Play's live
+  evaluation, and the **new-game choices** (colour, time control, bot rating, style, min/max
+  think time, takebacks). Every board subscribes, so a theme chosen in Settings applies to Play,
+  Review and Train at once. In memory for now; stage 6 adds remembering and backup.
+- Shared components (`src/ui/components/`): `panel.ts` (a side panel whose height follows the
+  board column, so its content never resizes the page, with tabs, a scrolling body and a fixed
+  footer), `menu.ts` (⋯ popover: `role=menu`, arrow keys, Escape, click outside), `controls.ts`
+  (segmented control, chips, switch row, select row, slider row).
+- `src/ui/play-controller.ts` — the panel has three views:
+  - **New game** (on load, and from ⋯ › New game): opponent slider with the five tier names
+    (click one to jump), style (Solid / Aggressive / Gambiteer), ten time chips, play as White /
+    Random / Black, "More options" (min/max think time, takebacks), primary **Play**. Choices are
+    pending until Play (or any explicit new game, e.g. Review's Play vs bot here). With a game in
+    progress (a move played, not over), Play first asks "End your current game?" (Keep playing /
+    End it and play), and "Back to game" returns to it. Changing a choice never touches the game.
+    The board stays playable on load, so a first move starts a game with the shown choices.
+  - **In game**: status and evaluation, tabs Moves / Analysis (the live evaluation switch),
+    action bar Hint (n), Takeback, Flip, ⋯ (Offer draw, Analyze this position, New game…, Resign).
+  - **Game over**: the result, primary **Review this game** (opens it in Review), New game.
+- Settings sections (wired to the store): Board (theme, piece set), Moves (auto-queen, confirm
+  move, max premoves), Sound & effects (sound, volume, capture shards). Test ids kept.
+- Player strips: original bot / person icons instead of ♚ ♔.
+- Phone: board nearly edge to edge (smaller gutters and frame), the move list one scrolling
+  line, four large action buttons.
+- Tests: controls that moved gain the click that reaches them (Settings for theme / piece set /
+  confirm move / max premoves; "More options" for think time; time chips instead of the time
+  select; Play to apply new-game choices; the Analysis tab for the live evaluation, also in
+  `scripts/perf-drag.mjs`). New `phase6b-play.spec.ts`: New game card (pending choices, Play
+  applies, a game in progress never ends from a change, the confirm, Back to game), in-game
+  menu and tabs, game over → Review this game, Settings applying to every board, phone layout.
+- Risk: many Phase 3 tests play straight after load; the board stays live on load for that
+  reason, and the first move switches the panel to the game view.
+
+### Stage 2 result — Play (2026-10-19)
+
+Built as planned.
+- **Settings store** (`app-settings.ts`): one `AppSettingsStore` for board, input, sound, Play's
+  live evaluation, Review's move animation and the new-game choices; every board follows it
+  (Play itself, Review and Train boards through `app.ts`). Settings sheet sections Board,
+  Moves, Sound & effects (`settings-sections.ts`), both ways in step with the store.
+- **Shared components**: `panel` CSS (a side panel exactly as tall as the board column, its
+  body scrolling inside, a fixed footer), `Tabs` (arrow keys, Home/End), `Menu` (⋯: arrow keys,
+  Escape, click outside, focus back to the button), `controls.ts` (segmented control, chips,
+  switch row on a real checkbox, select row, slider row).
+- **New game card**: opponent slider with the five tier names, style, ten time chips, play as
+  White / Random / Black, More options (think time, takebacks), one primary Play. Choices are
+  pending; they apply on Play or any explicit new game. With a game in progress, Play asks
+  ("This ends the game in progress": Keep playing / End it and play), and Review's Play vs bot
+  here goes through the same question. "Back to game" when a game waits behind the card.
+- **In game**: status and evaluation, Moves / Analysis tabs (live evaluation switch), action bar
+  Hint (n) · Takeback · Flip · ⋯ (Offer draw, Analyze this position, New game…, Resign).
+  **Game over**: Review this game (opens it in Review and starts the review) and New game.
+- Player strips use the bot / person icons. Phone: board 374 px wide (was 290), the move list on
+  one scrolling line, actions ≥ 44 px tall.
+
+**Decisions**
+- The board stays live on load (a first move starts a game with the card's choices), so a quick
+  start needs no click; the card switches to the game on the first move.
+- The game API setters (`setBotRating`, `setBotDelayRangeMs`, `setMaxPremoves`) change the
+  current game as before *and* become the next game's choices (the tests set a bot delay and
+  then start a game).
+- A global `[hidden] { display: none !important }`: a component's `display` no longer beats the
+  attribute (it did for "Back to game").
+
+**Tests changed** (each gains the click that reaches a moved control; no assertion removed):
+`phase3` (Settings for confirm move / theme / piece set; More options + Play for think time;
+Play before the move-1 hint), `phase3-premoves` (time chip; Settings for max premoves),
+`scripts/perf-drag.mjs` (Play, then the Analysis tab, for live evaluation),
+`phase6b-shell` (visible elements measured with `checkVisibility()`: closed `<details>`
+content has a layout box). New `phase6b-play.spec.ts` (7): pending choices and Play, a game in
+progress never ending without the confirm (Back to game, Keep playing, End it and play), the
+same from Review, tabs / action bar / menu (keyboard, outside click) / resign / Review this game,
+Analyze this position, Settings applying to every board, phone.
+
+**Checks:** typecheck, lint, 452 unit tests, build, **94/94 e2e** (93 in the full run, then the
+one phone-layout test fixed as above and re-run). Screens looked at: `desktop-play-start.png`,
+`desktop-play-new-game.png`, `desktop-play-confirm-end.png`, `desktop-play-menu.png`,
+`desktop-play-game-over.png`, `desktop-settings-play.png`, `phone-play-start.png`,
+`phone-play-new-game.png`, `phone-play-game.png`. Fixed after looking: "Back to game" showing
+with no game (the `hidden` rule above), the small Play label (`.wc-btn-lg` lost to `.wc-btn`),
+the current-move highlight spanning its whole column, a "Moves" heading repeating the tab.

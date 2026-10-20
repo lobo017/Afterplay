@@ -25,6 +25,11 @@
   box-sizing: border-box;
 }
 
+/* The hidden attribute always hides, whatever display a component's class sets */
+[hidden] {
+  display: none !important;
+}
+
 html,
 body {
   margin: 0;
@@ -383,7 +388,7 @@ body {
   font-size: 0.92rem;
 }
 
-.wc-btn-lg {
+.wc-btn.wc-btn-lg {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -497,7 +502,7 @@ body {
   display: grid;
   grid-template-columns: minmax(18rem, var(--wc-board-size, 37.5rem)) minmax(20rem, 1fr);
   gap: 1.35rem;
-  align-items: start;
+  align-items: stretch;
   width: 100%;
 }
 
@@ -3752,6 +3757,599 @@ html.wc-resizing-board * {
   }
 }
 
+/* ==========================================================================
+   Phase 6b: shared components — side panel, tabs, menu, controls
+   ========================================================================== */
+
+/* A side panel as tall as the board column; its content scrolls inside it, so nothing in it
+   ever resizes the page */
+.wc-panel {
+  position: relative;
+  min-height: 24rem;
+  border-radius: 1rem;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-carved);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.5);
+}
+
+.wc-panel-inner {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: inherit;
+}
+
+.wc-play-view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.wc-play-view[hidden],
+.wc-panel-foot[hidden],
+.wc-tab-panel[hidden],
+.wc-confirm-end[hidden] {
+  display: none;
+}
+
+.wc-panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  padding: 1rem 1.15rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.05rem;
+}
+
+.wc-panel-foot {
+  flex: none;
+  padding: 0.85rem 1.15rem;
+  border-top: 1px solid var(--border-subtle);
+  background: rgba(9, 11, 16, 0.55);
+}
+
+.wc-panel-foot-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.wc-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.wc-panel-title {
+  margin: 0;
+  font-size: 1.3rem;
+}
+
+.wc-panel-note {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+.wc-tab-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-height: 0;
+}
+
+/* Tabs */
+.wc-tabs {
+  flex: none;
+  display: flex;
+  gap: 0.2rem;
+  padding: 0 0.85rem;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.wc-tab {
+  padding: 0.8rem 0.9rem 0.68rem;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.wc-tab:hover {
+  color: var(--text-marble);
+}
+
+.wc-tab[aria-selected='true'] {
+  color: var(--text-marble);
+  border-bottom-color: var(--accent-gold);
+}
+
+.wc-tab:focus-visible {
+  outline: 2px solid var(--accent-arcane);
+  outline-offset: -2px;
+}
+
+/* Buttons for touch: actions, icon buttons, the one big primary */
+.wc-btn-action,
+.wc-btn-inline {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+}
+
+.wc-btn-action {
+  flex: 1;
+  min-height: 2.9rem;
+  font-size: 0.92rem;
+}
+
+.wc-btn-icon {
+  flex: none;
+  width: 2.9rem;
+  height: 2.9rem;
+  padding: 0;
+  display: inline-grid;
+  place-items: center;
+}
+
+.wc-btn-block {
+  width: 100%;
+}
+
+.wc-grow {
+  flex: 1;
+}
+
+.wc-btn-primary.wc-btn-lg {
+  background: linear-gradient(180deg, #e2bf4a, #b8902a);
+  border-color: #e7c55a;
+  color: #15110a;
+  box-shadow: 0 6px 18px rgba(212, 175, 55, 0.22);
+}
+
+.wc-btn-primary.wc-btn-lg:hover:not(:disabled) {
+  background: linear-gradient(180deg, #ecca58, #c29a30);
+}
+
+.wc-btn:focus-visible {
+  outline: 2px solid var(--accent-arcane);
+  outline-offset: 2px;
+}
+
+.wc-action-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+/* ⋯ menu */
+.wc-menu-wrap {
+  position: relative;
+  flex: none;
+}
+
+.wc-menu {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 0.5rem);
+  z-index: 70;
+  min-width: 15.5rem;
+  padding: 0.35rem;
+  border-radius: 0.75rem;
+  background: #1c2130;
+  border: 1px solid var(--border-carved);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.6);
+}
+
+.wc-menu[hidden] {
+  display: none;
+}
+
+.wc-menu-left {
+  right: auto;
+  left: 0;
+}
+
+.wc-menu-down {
+  bottom: auto;
+  top: calc(100% + 0.5rem);
+}
+
+.wc-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  width: 100%;
+  padding: 0.65rem 0.75rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: none;
+  color: var(--text-marble);
+  font-family: var(--font-sans);
+  font-size: 0.92rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.wc-menu-item:hover:not(:disabled),
+.wc-menu-item:focus-visible {
+  background: rgba(255, 255, 255, 0.07);
+  outline: none;
+}
+
+.wc-menu-item:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.wc-menu-item-danger {
+  color: #fca5a5;
+}
+
+.wc-menu-sep {
+  height: 1px;
+  margin: 0.3rem 0.4rem;
+  background: var(--border-subtle);
+}
+
+.wc-icon-gap {
+  width: 20px;
+  flex: none;
+}
+
+/* Segmented control and chips (radio groups) */
+.wc-seg {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border-radius: 0.7rem;
+  background: #090b10;
+  border: 1px solid var(--border-carved);
+}
+
+.wc-seg-item {
+  flex: 1;
+  min-height: 2.5rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: none;
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.wc-seg-item:hover {
+  color: var(--text-marble);
+}
+
+.wc-seg-item[aria-checked='true'] {
+  background: rgba(212, 175, 55, 0.16);
+  color: #fde68a;
+  box-shadow: inset 0 0 0 1px rgba(212, 175, 55, 0.5);
+}
+
+.wc-seg-item:focus-visible,
+.wc-chip:focus-visible,
+.wc-tier-tick:focus-visible {
+  outline: 2px solid var(--accent-arcane);
+  outline-offset: 1px;
+}
+
+.wc-chips {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.wc-chip {
+  min-height: 2.9rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.05rem;
+  padding: 0.3rem 0.2rem;
+  border-radius: 0.6rem;
+  border: 1px solid var(--border-carved);
+  background: var(--bg-elevated);
+  color: var(--text-marble);
+  font-family: var(--font-sans);
+  cursor: pointer;
+}
+
+.wc-chip:hover {
+  border-color: rgba(212, 175, 55, 0.5);
+}
+
+.wc-chip[aria-checked='true'] {
+  border-color: var(--accent-gold);
+  background: rgba(212, 175, 55, 0.16);
+  color: #fde68a;
+}
+
+.wc-chip-main {
+  font-size: 0.9rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.wc-chip-sub {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+}
+
+/* Labels and field blocks */
+.wc-field-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.wc-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.wc-label-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.wc-label-value {
+  font-weight: 700;
+  color: #fde68a;
+  font-variant-numeric: tabular-nums;
+}
+
+.wc-tier-ticks {
+  display: flex;
+  justify-content: space-between;
+  margin-top: -0.2rem;
+}
+
+.wc-tier-tick {
+  padding: 0.25rem 0.15rem;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+
+.wc-tier-tick:hover {
+  color: var(--text-marble);
+}
+
+.wc-tier-tick[aria-pressed='true'] {
+  color: #fde68a;
+  font-weight: 700;
+}
+
+/* Disclosure ("More options") */
+.wc-disclosure {
+  border: 1px dashed var(--border-carved);
+  border-radius: 0.65rem;
+}
+
+.wc-disclosure > summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.7rem 0.85rem;
+  color: var(--text-marble);
+  font-size: 0.9rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.wc-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.wc-disclosure > summary .wc-icon {
+  margin-left: auto;
+  transition: transform 140ms ease;
+}
+
+.wc-disclosure[open] > summary .wc-icon {
+  transform: rotate(180deg);
+}
+
+.wc-disclosure-hint {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.wc-disclosure-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.2rem 0.85rem 0.85rem;
+}
+
+.wc-think-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+/* End-the-game confirmation */
+.wc-confirm-end {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.75rem 0.85rem;
+  border-radius: 0.65rem;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  font-size: 0.92rem;
+}
+
+.wc-confirm-end-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.wc-confirm-end-actions .wc-btn {
+  flex: 1;
+  min-height: 2.6rem;
+}
+
+/* A real checkbox drawn as a switch */
+.wc-switch-input {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  flex: none;
+  margin: 0;
+  width: 2.75rem;
+  height: 1.55rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-carved);
+  background: #2a3042;
+  cursor: pointer;
+  transition: background-color 140ms ease;
+}
+
+.wc-switch-input::after {
+  content: '';
+  position: absolute;
+  top: 0.17rem;
+  left: 0.2rem;
+  width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 50%;
+  background: #94a3b8;
+  transition:
+    transform 140ms ease,
+    background-color 140ms ease;
+}
+
+.wc-switch-input:checked {
+  background: rgba(212, 175, 55, 0.55);
+}
+
+.wc-switch-input:checked::after {
+  transform: translateX(1.15rem);
+  background: #fde68a;
+}
+
+.wc-switch-input:focus-visible {
+  outline: 2px solid var(--accent-arcane);
+  outline-offset: 2px;
+}
+
+label.wc-setting-row {
+  cursor: pointer;
+}
+
+.wc-setting-select {
+  min-width: 0;
+  max-width: 62%;
+  min-height: 2.3rem;
+  font-size: 0.88rem;
+}
+
+.wc-setting-number {
+  width: 5rem;
+  min-height: 2.3rem;
+  font-size: 0.88rem;
+}
+
+.wc-slider-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  row-gap: 0.35rem;
+  font-size: 0.92rem;
+}
+
+.wc-slider-row .wc-range {
+  grid-column: 1 / -1;
+}
+
+.wc-slider-value {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Play panel */
+.wc-play-panel .wc-status-header {
+  margin: 1rem 1.15rem 0.35rem;
+}
+
+.wc-play-panel .wc-status-banner {
+  font-size: 1rem;
+}
+
+.wc-play-panel .wc-moves-panel {
+  flex: 1;
+}
+
+.wc-play-panel .wc-move-list {
+  flex: 1;
+  height: auto;
+  min-height: 7rem;
+  font-size: 0.92rem;
+}
+
+.wc-play-panel .wc-move-row {
+  padding: 0.3rem 0.35rem;
+}
+
+.wc-play-panel .wc-move-san {
+  justify-self: start;
+}
+
+.wc-panel-section-title-end {
+  justify-content: flex-end;
+}
+
+.wc-player-avatar .wc-icon {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
+.wc-player-text {
+  min-width: 0;
+}
+
+/* Stacked layouts: the panel takes its content's height */
+@media (max-width: 960px) {
+  .wc-panel {
+    min-height: 0;
+  }
+
+  .wc-panel-inner {
+    position: static;
+  }
+
+  .wc-panel-body {
+    overflow: visible;
+  }
+}
+
 /* Phones: the destinations move to a bottom tab bar; the top bar names the screen */
 @media (max-width: 760px) {
   .wc-topbar {
@@ -3832,5 +4430,69 @@ html.wc-resizing-board * {
 
   .wc-about-stats {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* Phones: the board nearly edge to edge, the move list one scrolling line */
+@media (max-width: 760px) {
+  .wc-main {
+    padding-top: 0.5rem;
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
+
+  .wc-board-frame {
+    padding: 0.3rem;
+    border-radius: 0.55rem;
+  }
+
+  .wc-board-column {
+    gap: 0.4rem;
+  }
+
+  .wc-player-bar {
+    padding: 0.35rem 0.6rem;
+  }
+
+  .wc-panel-body {
+    padding: 0.85rem;
+  }
+
+  .wc-panel-foot {
+    padding: 0.7rem 0.85rem;
+  }
+
+  .wc-play-panel .wc-status-header {
+    margin: 0.75rem 0.85rem 0.25rem;
+  }
+
+  .wc-play-panel .wc-move-list {
+    min-height: 0;
+    display: flex;
+    gap: 0.3rem;
+    overflow-x: auto;
+    overflow-y: hidden;
+    white-space: nowrap;
+    padding: 0.35rem;
+  }
+
+  .wc-play-panel .wc-move-row {
+    flex: none;
+    display: inline-flex;
+    gap: 0.15rem;
+    padding: 0.15rem 0.3rem;
+  }
+
+  .wc-play-panel .wc-move-row:nth-child(even) {
+    background: none;
+  }
+
+  .wc-chips {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 0.3rem;
+  }
+
+  .wc-btn-action {
+    font-size: 0.85rem;
   }
 }

@@ -1,5 +1,7 @@
 import { DevOverlayController } from './ui/dev-overlay';
 import { SettingsPanel } from './ui/settings-panel';
+import { AppSettingsStore, type AppSettings } from './ui/app-settings';
+import { mountAppSettingsSections } from './ui/settings-sections';
 import { icon, type IconName } from './ui/components/icons';
 import { initBoardSize } from './render/board-size';
 import { boardFeel, type BoardFeelStore } from './render/board-feel';
@@ -446,8 +448,15 @@ export function mountAppShell(container: HTMLElement): {
     hashMb: 16,
   });
 
-  // One synthesizer for both modes, so only one AudioContext is ever built.
-  const audio = new CathedralAudio({ enabled: true, volume: 0.75 });
+  // Every setting in one store: Settings and the New game card write it, every screen follows it
+  const appSettings = new AppSettingsStore();
+  mountAppSettingsSections(settings, appSettings);
+
+  // One synthesizer for every screen, so only one AudioContext is ever built.
+  const audio = new CathedralAudio({
+    enabled: appSettings.get().sound,
+    volume: appSettings.get().volume / 100,
+  });
 
   const playController = new PlayController({
     container: playRootEl,
@@ -455,6 +464,12 @@ export function mountAppShell(container: HTMLElement): {
     botEngine,
     devOverlay,
     audio,
+    settings: appSettings,
+    onAnalyzeGame: () => setMode('review', true),
+    onReviewGame: () => {
+      setMode('review', true);
+      void reviewPanel.start();
+    },
   });
 
   const analysisController = new AnalysisController({
@@ -518,7 +533,7 @@ export function mountAppShell(container: HTMLElement): {
     onPlayVsBot: (fen) => {
       const turn = fen.trim().split(/\s+/)[1] === 'b' ? 'b' : 'w';
       setMode('play', false);
-      playController.startNewGame({ fen, playerColor: turn });
+      playController.requestNewGame({ fen, playerColor: turn });
     },
   });
 
@@ -637,6 +652,7 @@ export function mountAppShell(container: HTMLElement): {
         },
         onOpenGames: () => setMode('games', false),
       });
+      applyAppSettings(appSettings.get(), null);
       return puzzleTrainer;
     });
     trainerLoading.catch((err: unknown) => {
@@ -816,16 +832,20 @@ export function mountAppShell(container: HTMLElement): {
   });
   window.__wizardChessLibraryReady = libraryReady;
 
-  const analyzeGameBtn = document.createElement('button');
-  analyzeGameBtn.type = 'button';
-  analyzeGameBtn.className = 'wc-btn wc-btn-secondary';
-  analyzeGameBtn.setAttribute('data-testid', 'btn-analyze-game');
-  analyzeGameBtn.title = 'Open this game in Review';
-  analyzeGameBtn.textContent = 'Analyze game';
-  playRootEl.querySelector('.wc-action-row')?.appendChild(analyzeGameBtn);
-  analyzeGameBtn.addEventListener('click', () => {
-    setMode('review', true);
-  });
+  /** Board look, effects and sound follow the settings on every screen (Play follows them itself). */
+  const applyAppSettings = (next: AppSettings, prev: AppSettings | null): void => {
+    const boards = [analysisController.getBoard(), puzzleTrainer?.getBoard()];
+    for (const board of boards) {
+      if (!board) continue;
+      if (!prev || next.boardTheme !== prev.boardTheme) board.setBoardTheme(next.boardTheme);
+      if (!prev || next.pieceSet !== prev.pieceSet) board.setPieceSet(next.pieceSet);
+      if (!prev || next.captureEffects !== prev.captureEffects) board.setCaptureEffectsEnabled(next.captureEffects);
+    }
+    if (!prev || next.sound !== prev.sound) audio.setEnabled(next.sound);
+    if (!prev || next.volume !== prev.volume) audio.setVolume(next.volume / 100);
+  };
+  applyAppSettings(appSettings.get(), null);
+  appSettings.subscribe(applyAppSettings);
 
   if (typeof window !== 'undefined') {
     const requested = modeFromLocation(window.location.search, window.location.hash);

@@ -288,7 +288,8 @@ test.describe('Phase 3 — Drag survival, drag cancel & premove queue', () => {
   }) => {
     test.setTimeout(60_000);
     // Black has only a king and two pawns, so it can never check or block our knights
-    await page.getByTestId('select-time-control').selectOption('5+3');
+    // The New game card's time chips (applied when the game below starts)
+    await page.getByTestId('time-control-5+3').click();
     await setupGame(page, '7k/6pp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQ - 0 1', 'w', 700);
     expect(
       await page.evaluate(() => window.__wizardChessPlay!.controller.getMaxPremoves()),
@@ -481,9 +482,12 @@ test.describe('Phase 3 — Drag survival, drag cancel & premove queue', () => {
     await page.mouse.click(h5.x, h5.y, { button: 'right' });
     await expect(page.getByTestId('overlay-user-circle')).toHaveCount(1);
 
-    // Max premoves = 1 (Lichess style): a second premove is refused
+    // Max premoves = 1 (Lichess style): a second premove is refused. Set in Settings › Moves.
+    await page.getByTestId('btn-settings').click();
     await page.getByTestId('input-max-premoves').fill('1');
     await page.getByTestId('input-max-premoves').dispatchEvent('change');
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('settings-sheet')).toBeHidden();
     await clickSquare(page, 'd2');
     await clickSquare(page, 'd4');
     await clickSquare(page, 'g1');

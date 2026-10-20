@@ -378,7 +378,11 @@ async function scenarioPlay(page) {
   // Infinite analysis on the shared engine while the user drags pieces in Play mode.
   await page.getByTestId('square-e2').click();
   await page.getByTestId('square-e2').click();
+  // Live evaluation is a switch in the game view's Analysis tab (a game must be started)
+  await page.getByTestId('btn-new-game').click();
+  await page.getByTestId('play-tab-analysis').click();
   await page.getByTestId('toggle-infinite-analysis').check();
+  await page.getByTestId('play-tab-moves').click();
   await page.waitForFunction(
     () => {
       const m = window.__wizardChessPlay?.devOverlay.getMetrics();

@@ -63,6 +63,9 @@ test.describe('Phase 3 — 2D Board, Play Mode vs Bot & Legacy Bug Regression Su
     await page.evaluate(() => {
       window.__wizardChessPlay!.controller.setBotMoveDelayMs(5);
     });
+    // Start the game from the New game card; the in-game actions (Hint, Takeback) appear
+    await page.getByTestId('btn-new-game').click();
+    await expect(page.getByTestId('game-view')).toBeVisible();
 
     // Request a hint on move 1 and verify it is logged and draws a hint arrow on the SVG overlay
     await page.getByTestId('btn-hint').click();
@@ -271,7 +274,11 @@ test.describe('Phase 3 — 2D Board, Play Mode vs Bot & Legacy Bug Regression Su
     // -------------------------------------------------------------------------
     // 6. Optional Confirm-Move Setting, Board Themes, Piece Sets, and Flip
     // -------------------------------------------------------------------------
+    // Board and input settings live in Settings
+    await page.getByTestId('btn-settings').click();
     await page.getByTestId('toggle-confirm-move').check();
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('settings-sheet')).toBeHidden();
     await page.getByTestId('square-e2').click();
     await page.getByTestId('square-e4').click();
 
@@ -287,6 +294,7 @@ test.describe('Phase 3 — 2D Board, Play Mode vs Bot & Legacy Bug Regression Su
     await expect(page.getByTestId('confirm-move-bar')).toBeVisible();
     await page.getByTestId('confirm-move-accept').click();
     await expect(page.getByTestId('confirm-move-bar')).toBeHidden();
+    await page.getByTestId('btn-settings').click();
     await page.getByTestId('toggle-confirm-move').uncheck();
 
     // Switch Board Theme & Piece Set (including High Contrast)
@@ -305,6 +313,8 @@ test.describe('Phase 3 — 2D Board, Play Mode vs Bot & Legacy Bug Regression Su
       .getByTestId('select-board-theme')
       .selectOption('marble-obsidian');
     await page.getByTestId('select-piece-set').selectOption('cathedral');
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('settings-sheet')).toBeHidden();
 
     // -------------------------------------------------------------------------
     // 7. Play a Full Game to Checkmate Against the Bot & Trigger Capture Shatter Particles
@@ -381,7 +391,8 @@ test.describe('Phase 3 — 2D Board, Play Mode vs Bot & Legacy Bug Regression Su
     await page.goto('/');
     await expect(page.getByTestId('chess-board')).toBeVisible();
 
-    // Configure human-like bot delay via the UI settings (0.7s min, 1.4s max)
+    // Configure human-like bot delay on the New game card (More options: 0.7s min, 1.4s max)
+    await page.getByTestId('new-game-more').locator('summary').click();
     const minInput = page.getByTestId('input-bot-min-delay');
     const maxInput = page.getByTestId('input-bot-max-delay');
     await expect(minInput).toBeVisible();
@@ -391,6 +402,8 @@ test.describe('Phase 3 — 2D Board, Play Mode vs Bot & Legacy Bug Regression Su
     await minInput.dispatchEvent('change');
     await maxInput.fill('1.4');
     await maxInput.dispatchEvent('change');
+    // New-game choices apply when the game starts
+    await page.getByTestId('btn-new-game').click();
 
     // Play 1. e4 as White
     const movePlayedAt = Date.now();

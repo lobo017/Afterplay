@@ -173,7 +173,8 @@ test.describe('Phase 6b — app frame and navigation', () => {
     // The bottom of the page isn't hidden under the tab bar
     await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
     const lastBottom = await page.evaluate(() => {
-      const els = [...document.querySelectorAll('.wc-main *')].filter((e) => (e as HTMLElement).offsetParent !== null);
+      // checkVisibility: closed <details> content keeps a layout box but isn't shown
+      const els = [...document.querySelectorAll('.wc-main *')].filter((e) => e.checkVisibility());
       return Math.max(...els.map((e) => e.getBoundingClientRect().bottom));
     });
     expect(lastBottom).toBeLessThanOrEqual(nav.y + 1);
