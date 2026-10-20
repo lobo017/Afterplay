@@ -24,14 +24,6 @@ import type { UciScore } from '../engine/uci-parser';
 import { CathedralAudio } from '../render/audio';
 import { BoardRenderer } from '../render/board-renderer';
 import {
-  BOARD_THEMES,
-  DEFAULT_BOARD_THEME,
-  DEFAULT_PIECE_SET,
-  PIECE_SETS,
-  type BoardThemeId,
-  type PieceSetId,
-} from '../render/themes';
-import {
   EngineLinesPanel,
   type GhostLinePreviewPayload,
   type SelectLineVariationPayload,
@@ -49,6 +41,11 @@ import {
 import { PositionEditor } from './position-editor';
 import { classBadgeHtml, type ReviewTreeEntry } from '../review/review-panel';
 import { stripEngineAnnotations } from '../review/annotations';
+import type { AppSettings, AppSettingsStore } from '../ui/app-settings';
+import { switchRowHtml } from '../ui/components/controls';
+import { icon } from '../ui/components/icons';
+import { Sheet } from '../ui/components/sheet';
+import { Tabs, tabListHtml, tabPanelAttrs } from '../ui/components/tabs';
 import {
   detectOpponentThreat,
   type ThreatDetectionResult,
@@ -85,7 +82,12 @@ export interface AnalysisControllerOptions {
   showBestMoveArrow?: boolean;
   showThreatArrow?: boolean;
   initialActive?: boolean;
+  /** App settings (board look, move animation); followed live when given. */
+  settings?: AppSettingsStore;
 }
+
+/** The Review side panel's tabs. */
+export type ReviewShellTab = 'review' | 'analysis' | 'moves';
 
 /**
  * Phase 4 Analysis Board Controller.
@@ -122,6 +124,10 @@ export class AnalysisController {
   private showThreatArrow: boolean;
   private editorVisible = false;
   private navAnimation: NavAnimationMode;
+  private readonly settings: AppSettingsStore | null;
+  private unsubscribeSettings: (() => void) | null = null;
+  private shellTabs!: Tabs;
+  private loadSheet!: Sheet;
   private lastNavigationAt = -Infinity;
   /** The latest navigation came hard on the heels of the previous one. */
   private rapidNavigation = false;
@@ -192,7 +198,9 @@ export class AnalysisController {
     this.threatSearchDepth = options.threatSearchDepth ?? 8;
     this.showBestMoveArrow = options.showBestMoveArrow ?? true;
     this.showThreatArrow = options.showThreatArrow ?? true;
-    this.navAnimation = options.initialNavAnimation ?? 'normal';
+    this.settings = options.settings ?? null;
+    this.navAnimation =
+      options.initialNavAnimation ?? this.settings?.get().navigationAnimation ?? 'normal';
 
     this.audio =
       options.audio ?? new CathedralAudio({ enabled: true, volume: 0.75 });
@@ -215,7 +223,7 @@ export class AnalysisController {
   private mountLayout(): void {
     this.container.innerHTML = `
       <div class="wc-analysis-layout" data-testid="analysis-layout">
-        <!-- Left column: Opening Bar + (EvalBar + 2D Board) + Transport & Arrow Controls -->
+        <!-- Board column: opening line, eval bar + board, move navigation -->
         <div class="wc-analysis-board-column">
           <div class="wc-opening-banner" data-testid="opening-badge">
             <span class="wc-opening-eco" data-testid="opening-eco">A00</span>
@@ -230,186 +238,123 @@ export class AnalysisController {
             <div class="wc-board-mount" data-testid="analysis-board-mount"></div>
           </div>
 
-          <!-- Transport Navigation & Quick Toggles -->
-          <div class="wc-analysis-transport-bar">
-            <div class="wc-transport-buttons" role="group" aria-label="Move navigation">
-              <button type="button" class="wc-btn wc-btn-secondary wc-btn-sm" data-testid="btn-nav-start" title="Start of game (Home)">
-                ⏮
-              </button>
-              <button type="button" class="wc-btn wc-btn-secondary wc-btn-sm" data-testid="btn-nav-prev" title="Previous move (←)">
-                ◀
-              </button>
-              <button type="button" class="wc-btn wc-btn-secondary wc-btn-sm" data-testid="btn-nav-next" title="Next move (→)">
-                ▶
-              </button>
-              <button type="button" class="wc-btn wc-btn-secondary wc-btn-sm" data-testid="btn-nav-end" title="End of game (End)">
-                ⏭
-              </button>
-              <button type="button" class="wc-btn wc-btn-secondary wc-btn-sm" data-testid="btn-flip-board" title="Flip board (F)">
-                Flip Board
-              </button>
-              <button type="button" class="wc-btn wc-btn-ghost wc-btn-sm" data-testid="btn-clear-arrows" title="Clear user arrows and circles">
-                Clear Shapes
-              </button>
-            </div>
-
-            <div class="wc-arrow-toggles">
-              <label class="wc-checkbox-label" title="Show Stockfish best move arrow">
-                <input type="checkbox" data-testid="toggle-best-arrow" ${this.showBestMoveArrow ? 'checked' : ''} />
-                <span>Best Arrow</span>
-              </label>
-              <label class="wc-checkbox-label" title="Show opponent threat arrow from null-move search">
-                <input type="checkbox" data-testid="toggle-threat-arrow" ${this.showThreatArrow ? 'checked' : ''} />
-                <span>Threat Arrow</span>
-              </label>
-              <label class="wc-inline-label" title="Animation when stepping one move with ← / →">
-                <span>Move anim</span>
-                <select class="wc-select wc-select-sm" data-testid="select-nav-animation" aria-label="Navigation animation">
-                  ${(['off', 'fast', 'normal'] as const)
-                    .map(
-                      (m) =>
-                        `<option value="${m}" ${m === this.navAnimation ? 'selected' : ''}>${m[0]!.toUpperCase()}${m.slice(1)}</option>`,
-                    )
-                    .join('')}
-                </select>
-              </label>
-            </div>
-          </div>
-
-          <div class="wc-fen-readout-row">
-            <span class="wc-field-label">FEN</span>
-            <code class="wc-fen-readout" data-testid="analysis-current-fen">${this.adapter.fen()}</code>
+          <div class="wc-transport" role="group" aria-label="Move navigation">
+            <button type="button" class="wc-btn wc-btn-secondary wc-transport-btn" data-testid="btn-nav-start" title="Start (Home)" aria-label="Start of game">${icon('first')}</button>
+            <button type="button" class="wc-btn wc-btn-secondary wc-transport-btn" data-testid="btn-nav-prev" title="Previous move (←)" aria-label="Previous move">${icon('back')}</button>
+            <button type="button" class="wc-btn wc-btn-secondary wc-transport-btn" data-testid="btn-nav-next" title="Next move (→)" aria-label="Next move">${icon('next')}</button>
+            <button type="button" class="wc-btn wc-btn-secondary wc-transport-btn" data-testid="btn-nav-end" title="End (End)" aria-label="End of game">${icon('last')}</button>
+            <button type="button" class="wc-btn wc-btn-secondary wc-transport-btn wc-transport-flip" data-testid="btn-flip-board" title="Flip board (F)" aria-label="Flip board">${icon('flip')}</button>
           </div>
         </div>
 
-        <!-- Right column: Status, MultiPV Engine Lines, Variation Tree, Annotations, Position Editor, PGN Import/Export -->
-        <aside class="wc-side-panel wc-analysis-side-panel" aria-label="Analysis Tools">
-          <div class="wc-status-header">
-            <div class="wc-status-banner" data-testid="analysis-status-banner" role="status" aria-live="polite">
-              White to move
+        <!-- Side panel: free-analysis tools, status, and the Review / Analysis / Moves tabs -->
+        <aside class="wc-panel wc-review-shell" data-testid="review-shell" data-view="tabs" aria-label="Review and analysis">
+          <div class="wc-panel-inner">
+            <div class="wc-review-toolbar" role="toolbar" aria-label="Free analysis">
+              <button type="button" class="wc-btn wc-btn-secondary wc-tool-btn" data-testid="btn-reset-analysis" title="An empty board at the starting position">${icon('board')}<span>New board</span></button>
+              <button type="button" class="wc-btn wc-btn-secondary wc-tool-btn" data-testid="btn-toggle-editor" aria-expanded="false" title="Set up any position">${icon('edit')}<span>Edit position</span></button>
+              <button type="button" class="wc-btn wc-btn-secondary wc-tool-btn" data-testid="btn-load-pgn" aria-haspopup="dialog" title="Paste a FEN or a PGN">${icon('upload')}<span>Load<span class="wc-tool-more"> FEN / PGN</span></span></button>
             </div>
-            <div class="wc-eval-pill" data-testid="analysis-eval-pill" title="Current Evaluation (White perspective)">
-              +0.00
+            <div class="wc-status-header">
+              <div class="wc-status-banner" data-testid="analysis-status-banner" role="status" aria-live="polite">White to move</div>
+              <div class="wc-eval-pill" data-testid="analysis-eval-pill" title="Evaluation (White's point of view)">+0.00</div>
             </div>
-          </div>
 
-          <!-- Engine Lines Panel (1-5 MultiPV lines, hover for ghost pieces, click to insert variation) -->
-          <div data-testid="engine-lines-mount"></div>
-
-          <!-- Game Review (Phase 5): mounted by the app -->
-          <div data-testid="review-panel-mount"></div>
-
-          <!-- Move Tree & Variations Panel -->
-          <div class="wc-moves-panel">
-            <div class="wc-panel-section-title">
-              <span>Game Tree &amp; Variations</span>
-              <div class="wc-variation-actions">
-                <button type="button" class="wc-btn wc-btn-ghost wc-btn-xs" data-testid="btn-promote-variation" title="Promote variation up">
-                  ↑ Promote
-                </button>
-                <button type="button" class="wc-btn wc-btn-ghost wc-btn-xs" data-testid="btn-promote-mainline" title="Promote variation to main line">
-                  ⇈ Main Line
-                </button>
-                <button type="button" class="wc-btn wc-btn-ghost wc-btn-xs" data-testid="btn-demote-variation" title="Demote variation down">
-                  ↓ Demote
-                </button>
-                <button type="button" class="wc-btn wc-btn-danger wc-btn-xs" data-testid="btn-delete-variation" title="Delete move / variation">
-                  ✕ Delete
-                </button>
+            <section class="wc-review-editor-view" data-testid="review-editor-view" aria-label="Position editor" hidden>
+              <div class="wc-panel-body">
+                <div class="wc-panel-head">
+                  <h2 class="wc-panel-title">Edit position</h2>
+                  <button type="button" class="wc-btn wc-btn-primary wc-btn-inline" data-testid="btn-editor-done">Done</button>
+                </div>
+                <div data-testid="position-editor-mount"></div>
               </div>
-            </div>
-            <div class="wc-move-tree" data-testid="analysis-move-tree" role="tree" aria-label="Game moves and variations"></div>
-          </div>
+            </section>
 
-          <!-- Move Comment & NAG Symbols -->
-          <div class="wc-annotation-bar">
-            <div class="wc-nag-row" role="group" aria-label="Move annotation symbols">
-              ${[
-                { code: 1, sym: '!', title: 'Good move (!)' },
-                { code: 2, sym: '?', title: 'Mistake (?)' },
-                { code: 3, sym: '!!', title: 'Brilliant move (!!)' },
-                { code: 4, sym: '??', title: 'Blunder (??)' },
-                { code: 5, sym: '!?', title: 'Interesting move (!?)' },
-                { code: 6, sym: '?!', title: 'Dubious move (?!)' },
-              ]
-                .map(
-                  (n) =>
-                    `<button type="button" class="wc-btn wc-btn-ghost wc-btn-xs wc-nag-btn" data-nag-code="${n.code}" data-testid="btn-nag-${n.code}" title="${n.title}">${n.sym}</button>`,
-                )
-                .join('')}
-            </div>
-            <input
-              type="text"
-              class="wc-input wc-input-sm"
-              data-testid="input-move-comment"
-              placeholder="Add comment on current move..."
-              aria-label="Move comment"
-            />
-          </div>
+            <section class="wc-review-tabs-view" data-testid="review-tabs-view">
+              ${tabListHtml(
+                'review-shell',
+                [
+                  { id: 'review', label: 'Review' },
+                  { id: 'analysis', label: 'Analysis' },
+                  { id: 'moves', label: 'Moves' },
+                ],
+                'review',
+                'Review and analysis',
+              )}
+              <div class="wc-panel-body">
+                <div class="wc-tab-panel" ${tabPanelAttrs('review-shell', 'review', 'review')}>
+                  <div data-testid="review-panel-mount"></div>
+                </div>
 
-          <!-- Position Editor Toggle & Mount -->
-          <div class="wc-editor-section">
-            <div class="wc-action-row">
-              <button
-                type="button"
-                class="wc-btn wc-btn-secondary wc-btn-sm"
-                data-testid="btn-toggle-editor"
-                aria-expanded="false"
-              >
-                Position Editor
-              </button>
-              <button
-                type="button"
-                class="wc-btn wc-btn-secondary wc-btn-sm"
-                data-testid="btn-reset-analysis"
-              >
-                Reset Start Pos
-              </button>
-              <select class="wc-select wc-select-sm" data-testid="select-analysis-theme" aria-label="Board theme">
-                ${Object.values(BOARD_THEMES)
-                  .map(
-                    (t) =>
-                      `<option value="${t.id}" ${t.id === DEFAULT_BOARD_THEME ? 'selected' : ''}>${t.label}</option>`,
-                  )
-                  .join('')}
-              </select>
-            </div>
-            <div data-testid="position-editor-mount" hidden></div>
-          </div>
+                <div class="wc-tab-panel" ${tabPanelAttrs('review-shell', 'analysis', 'review')}>
+                  <div data-testid="engine-lines-mount"></div>
+                  <div class="wc-settings-sec-body">
+                    ${switchRowHtml('toggle-best-arrow', 'Best-move arrow', this.showBestMoveArrow)}
+                    ${switchRowHtml('toggle-threat-arrow', 'Threat arrow', this.showThreatArrow, 'What the opponent threatens (a null-move search)')}
+                  </div>
+                  <button type="button" class="wc-btn wc-btn-ghost wc-btn-inline wc-self-start" data-testid="btn-clear-arrows" title="Clear the arrows and circles you drew">${icon('close')}Clear my arrows</button>
+                  <div class="wc-fen-readout-row">
+                    <span class="wc-field-label">FEN</span>
+                    <code class="wc-fen-readout" data-testid="analysis-current-fen">${this.adapter.fen()}</code>
+                    <button type="button" class="wc-btn wc-btn-ghost wc-btn-icon wc-btn-icon-sm" data-testid="btn-copy-fen" title="Copy FEN" aria-label="Copy FEN">${icon('copy')}</button>
+                  </div>
+                </div>
 
-          <!-- PGN Import / Export -->
-          <div class="wc-pgn-section">
-            <div class="wc-panel-section-title">
-              <span>PGN Import &amp; Export</span>
-              <span class="wc-pgn-status" data-testid="pgn-status">Ready</span>
-            </div>
-            <textarea
-              class="wc-textarea wc-input-mono"
-              data-testid="textarea-pgn"
-              rows="3"
-              placeholder="Paste PGN with variations, comments, NAGs, [%eval], [%cal], [%csl]..."
-              aria-label="PGN text"
-            ></textarea>
-            <div class="wc-action-row">
-              <button type="button" class="wc-btn wc-btn-primary wc-btn-sm" data-testid="btn-import-pgn">
-                Load PGN
-              </button>
-              <button type="button" class="wc-btn wc-btn-secondary wc-btn-sm" data-testid="btn-export-pgn">
-                Export PGN
-              </button>
-              <select class="wc-select wc-select-sm" data-testid="select-analysis-piece-set" aria-label="Piece set">
-                ${Object.values(PIECE_SETS)
-                  .map(
-                    (s) =>
-                      `<option value="${s.id}" ${s.id === DEFAULT_PIECE_SET ? 'selected' : ''}>${s.label}</option>`,
-                  )
-                  .join('')}
-              </select>
-            </div>
+                <div class="wc-tab-panel wc-moves-tab" ${tabPanelAttrs('review-shell', 'moves', 'review')}>
+                  <div class="wc-moves-panel">
+                    <div class="wc-panel-section-title">
+                      <span>Moves &amp; variations</span>
+                      <div class="wc-variation-actions">
+                        <button type="button" class="wc-btn wc-btn-ghost wc-btn-xs" data-testid="btn-promote-variation" title="Promote variation up">↑ Promote</button>
+                        <button type="button" class="wc-btn wc-btn-ghost wc-btn-xs" data-testid="btn-promote-mainline" title="Promote variation to main line">⇈ Main line</button>
+                        <button type="button" class="wc-btn wc-btn-ghost wc-btn-xs" data-testid="btn-demote-variation" title="Demote variation down">↓ Demote</button>
+                        <button type="button" class="wc-btn wc-btn-danger wc-btn-xs" data-testid="btn-delete-variation" title="Delete move / variation">✕ Delete</button>
+                      </div>
+                    </div>
+                    <div class="wc-move-tree" data-testid="analysis-move-tree" role="tree" aria-label="Game moves and variations"></div>
+                  </div>
+                  <div class="wc-annotation-bar">
+                    <div class="wc-nag-row" role="group" aria-label="Move annotation symbols">
+                      ${[
+                        { code: 1, sym: '!', title: 'Good move (!)' },
+                        { code: 2, sym: '?', title: 'Mistake (?)' },
+                        { code: 3, sym: '!!', title: 'Brilliant move (!!)' },
+                        { code: 4, sym: '??', title: 'Blunder (??)' },
+                        { code: 5, sym: '!?', title: 'Interesting move (!?)' },
+                        { code: 6, sym: '?!', title: 'Dubious move (?!)' },
+                      ]
+                        .map(
+                          (n) =>
+                            `<button type="button" class="wc-btn wc-btn-ghost wc-btn-xs wc-nag-btn" data-nag-code="${n.code}" data-testid="btn-nag-${n.code}" title="${n.title}">${n.sym}</button>`,
+                        )
+                        .join('')}
+                    </div>
+                    <input type="text" class="wc-input wc-input-sm" data-testid="input-move-comment" placeholder="Add a comment on this move…" aria-label="Move comment" />
+                  </div>
+                </div>
+              </div>
+            </section>
           </div>
         </aside>
       </div>
     `;
+
+    // Load FEN / PGN: a sheet with the game's PGN, kept in step with the board
+    this.loadSheet = new Sheet(this.container, { title: 'Load FEN or PGN', testId: 'pgn-sheet' });
+    this.loadSheet.body.innerHTML = `
+      <div class="wc-pgn-section">
+        <p class="wc-panel-note">Paste a FEN to analyze a position, or a PGN (variations, comments, NAGs, [%eval], [%cal], [%csl]) to look at or review a game. The box shows this game's PGN.</p>
+        <div class="wc-panel-section-title">
+          <span>FEN or PGN</span>
+          <span class="wc-pgn-status" data-testid="pgn-status">Ready</span>
+        </div>
+        <textarea class="wc-textarea wc-input-mono" data-testid="textarea-pgn" rows="14" spellcheck="false" placeholder="Paste a FEN or a PGN…" aria-label="FEN or PGN"></textarea>
+        <div class="wc-action-bar">
+          <button type="button" class="wc-btn wc-btn-primary wc-btn-lg wc-grow" data-testid="btn-import-pgn">${icon('upload')}Load</button>
+          <button type="button" class="wc-btn wc-btn-secondary wc-btn-lg" data-testid="btn-export-pgn" title="Show this game's PGN">This game</button>
+          <button type="button" class="wc-btn wc-btn-secondary wc-btn-icon" data-testid="btn-copy-pgn" title="Copy" aria-label="Copy the text">${icon('copy')}</button>
+        </div>
+      </div>`;
 
     this.openingEcoEl = this.container.querySelector(
       '[data-testid="opening-eco"]',
@@ -481,9 +426,10 @@ export class AnalysisController {
       enablePremoves: false,
       autoQueen: false,
       confirmMove: false,
-      captureEffects: true,
-      boardTheme: DEFAULT_BOARD_THEME,
-      pieceSet: DEFAULT_PIECE_SET,
+      captureEffects: this.settings?.get().captureEffects ?? true,
+      ...(this.settings
+        ? { boardTheme: this.settings.get().boardTheme, pieceSet: this.settings.get().pieceSet }
+        : {}),
       onMove: (move, wasDragged) => {
         this.handleBoardMove(move, wasDragged);
       },
@@ -521,7 +467,7 @@ export class AnalysisController {
 
     this.positionEditor = new PositionEditor(this.editorMountEl, {
       initialFen: this.adapter.fen(),
-      pieceSet: DEFAULT_PIECE_SET,
+      pieceSet: this.board.getPieceSet(),
       onApplyPosition: (fen) => {
         this.loadFen(fen);
       },
@@ -533,7 +479,80 @@ export class AnalysisController {
       },
     });
 
+    this.shellTabs = new Tabs(
+      this.container.querySelector('[data-testid="review-tabs-view"]') as HTMLElement,
+    );
     this.bindUiEvents();
+    if (this.settings) {
+      this.unsubscribeSettings = this.settings.subscribe((next, prev) => this.applySettings(next, prev));
+    }
+  }
+
+  /** Board look and the move animation follow the app settings. */
+  private applySettings(next: AppSettings, prev: AppSettings): void {
+    if (next.boardTheme !== prev.boardTheme) this.board.setBoardTheme(next.boardTheme);
+    if (next.pieceSet !== prev.pieceSet) {
+      this.board.setPieceSet(next.pieceSet);
+      this.positionEditor.setPieceSet(next.pieceSet);
+    }
+    if (next.captureEffects !== prev.captureEffects) this.board.setCaptureEffectsEnabled(next.captureEffects);
+    if (next.navigationAnimation !== this.navAnimation) this.setNavAnimation(next.navigationAnimation);
+  }
+
+  /** Shows one of the side panel's tabs (Review, Analysis, Moves). */
+  public showTab(tab: ReviewShellTab): void {
+    if (this.editorVisible) this.setEditorVisible(false);
+    this.shellTabs.select(tab);
+  }
+
+  public getTab(): ReviewShellTab {
+    return this.shellTabs.getSelected() as ReviewShellTab;
+  }
+
+  /** Loads a FEN (a position to analyze) or a PGN (a game), whichever the text is. */
+  public loadText(text: string): boolean {
+    const trimmed = text.trim();
+    if (trimmed && !trimmed.includes('\n') && validateChessFen(trimmed).ok) {
+      if (!this.loadFen(trimmed)) return false;
+      this.pgnStatusEl.textContent = 'Position loaded';
+      this.pgnStatusEl.setAttribute('data-status', 'ok');
+      this.showTab('analysis');
+      return true;
+    }
+    if (!this.importPgn(text)) return false;
+    this.showTab('review');
+    return true;
+  }
+
+  /** Opens the Load sheet showing this game's PGN (empty when there is no game yet). */
+  public openLoadSheet(): void {
+    this.syncPgnTextarea();
+    const empty = this.gameTree.root.children.length === 0 && this.gameTree.root.fen === DEFAULT_POSITION;
+    if (empty) this.pgnTextareaEl.value = '';
+    this.pgnStatusEl.textContent = 'Ready';
+    this.pgnStatusEl.removeAttribute('data-status');
+    this.loadSheet.open();
+  }
+
+  public closeLoadSheet(): void {
+    this.loadSheet.close();
+  }
+
+  private copyText(text: string, statusEl: HTMLElement | null): void {
+    void navigator.clipboard
+      ?.writeText(text)
+      .then(() => {
+        if (statusEl) {
+          statusEl.textContent = 'Copied';
+          statusEl.setAttribute('data-status', 'ok');
+        }
+      })
+      .catch(() => {
+        if (statusEl) {
+          statusEl.textContent = 'Copy blocked: select the text and copy it';
+          statusEl.setAttribute('data-status', 'error');
+        }
+      });
   }
 
   private bindUiEvents(): void {
@@ -585,13 +604,6 @@ export class AnalysisController {
     ) as HTMLInputElement | null;
     threatArrowCheck?.addEventListener('change', () => {
       this.setShowThreatArrow(threatArrowCheck.checked);
-    });
-
-    const navAnimSelect = this.container.querySelector(
-      '[data-testid="select-nav-animation"]',
-    ) as HTMLSelectElement | null;
-    navAnimSelect?.addEventListener('change', () => {
-      this.setNavAnimation(navAnimSelect.value as NavAnimationMode);
     });
 
     this.promoteVarBtnEl.addEventListener('click', () => {
@@ -671,33 +683,42 @@ export class AnalysisController {
     this.toggleEditorBtnEl.addEventListener('click', () => {
       this.setEditorVisible(!this.editorVisible);
     });
+    this.container
+      .querySelector('[data-testid="btn-editor-done"]')
+      ?.addEventListener('click', () => {
+        this.setEditorVisible(false);
+      });
 
+    // New board: the starting position, nothing from the last game, the engine lines in view
     this.container
       .querySelector('[data-testid="btn-reset-analysis"]')
       ?.addEventListener('click', () => {
         this.loadFen(DEFAULT_POSITION);
+        this.showTab('analysis');
       });
 
-    const themeSelect = this.container.querySelector(
-      '[data-testid="select-analysis-theme"]',
-    ) as HTMLSelectElement | null;
-    themeSelect?.addEventListener('change', () => {
-      this.board.setBoardTheme(themeSelect.value as BoardThemeId);
-    });
+    this.container
+      .querySelector('[data-testid="btn-load-pgn"]')
+      ?.addEventListener('click', () => {
+        this.openLoadSheet();
+      });
 
-    const pieceSetSelect = this.container.querySelector(
-      '[data-testid="select-analysis-piece-set"]',
-    ) as HTMLSelectElement | null;
-    pieceSetSelect?.addEventListener('change', () => {
-      const setId = pieceSetSelect.value as PieceSetId;
-      this.board.setPieceSet(setId);
-      this.positionEditor.setPieceSet(setId);
-    });
+    this.container
+      .querySelector('[data-testid="btn-copy-fen"]')
+      ?.addEventListener('click', () => {
+        this.copyText(this.adapter.fen(), null);
+      });
+
+    this.container
+      .querySelector('[data-testid="btn-copy-pgn"]')
+      ?.addEventListener('click', () => {
+        this.copyText(this.pgnTextareaEl.value, this.pgnStatusEl);
+      });
 
     this.container
       .querySelector('[data-testid="btn-import-pgn"]')
       ?.addEventListener('click', () => {
-        this.importPgn(this.pgnTextareaEl.value);
+        if (this.loadText(this.pgnTextareaEl.value)) this.loadSheet.close();
       });
 
     this.container
@@ -709,6 +730,7 @@ export class AnalysisController {
 
   private readonly handleWindowKeyDown = (e: KeyboardEvent): void => {
     if (!this.isActive || !this.container.isConnected) return;
+    if (document.documentElement.classList.contains('wc-sheet-open')) return;
 
     const target = e.target as HTMLElement | null;
     if (
@@ -787,11 +809,8 @@ export class AnalysisController {
 
   public setNavAnimation(mode: NavAnimationMode): void {
     this.navAnimation = mode in NAV_ANIMATION_DURATION_MS ? mode : 'normal';
-    const select = this.container.querySelector(
-      '[data-testid="select-nav-animation"]',
-    ) as HTMLSelectElement | null;
-    if (select && select.value !== this.navAnimation) {
-      select.value = this.navAnimation;
+    if (this.settings && this.settings.get().navigationAnimation !== this.navAnimation) {
+      this.settings.set({ navigationAnimation: this.navAnimation });
     }
   }
 
@@ -845,7 +864,12 @@ export class AnalysisController {
   public setEditorVisible(visible: boolean): void {
     this.editorVisible = visible;
     this.syncMoveBadge();
-    this.editorMountEl.hidden = !visible;
+    const shell = this.container.querySelector<HTMLElement>('[data-testid="review-shell"]');
+    shell?.setAttribute('data-view', visible ? 'editor' : 'tabs');
+    const editorView = this.container.querySelector<HTMLElement>('[data-testid="review-editor-view"]');
+    const tabsView = this.container.querySelector<HTMLElement>('[data-testid="review-tabs-view"]');
+    if (editorView) editorView.hidden = !visible;
+    if (tabsView) tabsView.hidden = visible;
     this.toggleEditorBtnEl.setAttribute('aria-expanded', String(visible));
     this.toggleEditorBtnEl.classList.toggle('wc-btn-primary', visible);
     if (!visible) {
@@ -1915,6 +1939,7 @@ export class AnalysisController {
     this.pgnTextareaEl.value = pgn;
     this.pgnStatusEl.textContent = status;
     this.pgnStatusEl.setAttribute('data-status', 'ok');
+    this.loadSheet.open();
   }
 
   public getBoard(): BoardRenderer {
@@ -1951,6 +1976,8 @@ export class AnalysisController {
 
   public destroy(): void {
     this.cancelActiveSearches();
+    this.unsubscribeSettings?.();
+    this.loadSheet.close();
     if (this.pgnSyncTimer !== null) {
       clearTimeout(this.pgnSyncTimer);
       this.pgnSyncTimer = null;

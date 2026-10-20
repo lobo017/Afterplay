@@ -11,6 +11,8 @@ async function openAnalysisWithGame(page: Page): Promise<number> {
   await page.goto('/');
   await page.getByTestId('mode-tab-review').click();
   await expect(page.getByTestId('analysis-layout')).toBeVisible();
+  // Engine lines live in Review's Analysis tab
+  await page.getByTestId('review-shell-tab-analysis').click();
   await page.getByTestId('select-multipv').selectOption('5');
 
   const plyCount = await page.evaluate((pgn) => {
@@ -262,7 +264,10 @@ test.describe('Phase 4 — Analysis navigation: zero layout shift & move animati
     expect(jump).toBe(0);
 
     // With the setting off, a single step snaps too.
+    // The move animation setting lives in Settings › Moves
+    await page.getByTestId('btn-settings').click();
     await page.getByTestId('select-nav-animation').selectOption('off');
+    await page.keyboard.press('Escape');
     const off = await page.evaluate(async () => {
       const controller = window.__wizardChessAnalysis!.controller;
       await new Promise((r) => setTimeout(r, 250));

@@ -3303,3 +3303,61 @@ one phone-layout test fixed as above and re-run). Screens looked at: `desktop-pl
 `phone-play-new-game.png`, `phone-play-game.png`. Fixed after looking: "Back to game" showing
 with no game (the `hidden` rule above), the small Play label (`.wc-btn-lg` lost to `.wc-btn`),
 the current-move highlight spanning its whole column, a "Moves" heading repeating the tab.
+
+### Stage 3 result — Review (2026-10-19)
+
+**Plan (written before code, condensed here as built):** the analysis board and the game review
+become one screen. Board column: opening line, eval bar + board, large move-navigation buttons
+(start, back, forward, end, flip). Side panel (the shared panel, as tall as the board column):
+a **free-analysis toolbar** (New board · Edit position · Load FEN / PGN), the status and
+evaluation, then tabs **Review · Analysis · Moves**. The review panel keeps every test id; its
+parts are rearranged around a coach card.
+
+Built:
+- **Free analysis, one click away, no game needed:** *New board* (start position, nothing kept,
+  switches to Analysis), *Edit position* (the editor takes the panel's place, "Done" returns),
+  *Load FEN / PGN* (a sheet showing this game's PGN; Load accepts a FEN, which opens Analysis, or
+  a PGN, which opens Review; a bad paste keeps the sheet open with the error; Copy). The review's
+  annotated export opens the same sheet.
+- **Tabs:** Review (default), Analysis (engine lines, best / threat arrow switches, clear my
+  arrows, FEN with Copy), Moves (tree, variation actions, annotation glyphs, comment). Analyze
+  this position (from Play) and a puzzle's Analyze open Analysis; Review this game and a saved
+  review open Review.
+- **Coach card** (the Review tab after a review): "Key moment k of N", the key moments as a row of
+  chips (badge + move; the sentence kept for screen readers and tests), the move card, **Try it**
+  (Phase 5's Retry This Mistake: "Stop trying" while on), Show refutation, Previous / Next moment
+  (in game order, wrapping; "First moment" before the first). Below: the mistakes navigation, the
+  win% chart, the two accuracy cards, and "All moves by class" (the counts table) as a disclosure.
+  Footer: Review as White / Black / Both and ⋯ (Play vs bot from here, Export annotated PGN).
+- **Before a review:** an intro ("Review this game"), depth, a large **Start review**, Sample game.
+  Afterwards the same controls are one compact row (Start review reads "Review again").
+- **Settings:** "Move animation in Review" moved to Settings › Moves; the Review board follows the
+  board theme, piece set and capture shards from Settings (its two unlabeled selects are gone).
+- **Keyboard:** board shortcuts (arrows, Home/End, F, Space) are ignored while a sheet is open;
+  arrow keys on tabs and choice groups move between them, not through the game.
+
+**Found and fixed while checking**
+- Layout shift on switching perspective: "First moment" / "Next moment" changed the button's width
+  (now fixed and unwrapped).
+- The phone page scrolled sideways after resizing from desktop: each chip's visually hidden
+  sentence was absolutely positioned with no positioned ancestor inside the scrolling chip row, so
+  it escaped the row's clipping (chips are positioned now).
+- A control scrolled into view could sit under the sticky top bar / phone tab bar / the Review
+  footer: `scroll-padding` on the page and on the panel body.
+- The Load sheet showed a lone `*` (an empty game's PGN) and a stale status.
+
+**Tests changed** (the click that reaches a moved control; no assertion removed):
+`phase4`, `phase4-navigation`, `phase2-engine-restart`, `scripts/perf-drag.mjs` (Analysis tab
+before the engine lines; the Load sheet before the PGN box; Settings for the move animation);
+`phase5-review` (the class table's disclosure before clicking counts; ⋯ before Export / Play vs
+bot; Escape to close the PGN sheet the export opened; the chart scrolled into view and clicked
+through its locator; the phone test's "outside" tap on the status banner, as the old panel title
+is gone); `phase5b-games` (the Blunder badge looked for in the class table). Two Phase 5
+assertions on the retry button's label follow the spec's new name: "Retry This Mistake" → "Try
+it", "Stop Retrying" → "Stop trying". New `phase6b-review.spec.ts` (7): tabs (click, arrows),
+New board / Edit position / Load FEN and PGN (and a bad paste), the coach walk-through (every
+moment, wrap both ways, chip marked, board badge, zero layout shift, Try it, Next moment leaving
+the retry), the ⋯ menu and export, Settings' move animation and quiet board keys under a sheet,
+Analyze this position → Analysis, phone.
+
+**Checks:** typecheck, lint, 452 unit tests, build, **101/101 e2e** (10.0 min). Screens looked at: `desktop-analysis-empty.png`, `desktop-review-done.png`, `desktop-review-key-moment.png`, `desktop-review-try-it.png`, `desktop-review-load.png`, `desktop-review-editor.png`, `phone-review-done.png`, `phone-review-key-moment.png`, `phone-review-coach.png`. Fixed after looking: the coach card was below the chart and cut off (now first), the phone coach buttons wrapped badly (2×2 grid), the phone card title was squeezed by the eval column, "Load FEN / PGN" was cut off on phones ("Load").

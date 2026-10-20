@@ -211,7 +211,9 @@ test.describe('Phase 5b — Games list (no extension)', () => {
     expect(opened.perspective).toBe('b');
     expect(opened.blunder).toBe('Blunder');
     expect(opened.openId).toBe('chesscom:live-999000111');
-    await expect(page.locator('.wc-class-badge[data-class="Blunder"]').first()).toBeVisible();
+    // The counts table (under "All moves by class") shows the saved review's classes
+    await page.getByTestId('review-classes').locator('summary').click();
+    await expect(page.getByTestId('review-counts').locator('.wc-class-badge[data-class="Blunder"]')).toBeVisible();
     await page.screenshot({ path: path.join(SCREENSHOT_DIR, 'saved-review-opened.png') });
 
     // Auto-analyze: new games are reviewed on Quick

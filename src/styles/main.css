@@ -25,6 +25,19 @@
   box-sizing: border-box;
 }
 
+/* Scrolling a control into view keeps it clear of the sticky top bar (and, on phones, the
+   bottom tab bar) */
+html {
+  scroll-padding-top: 4.5rem;
+}
+
+@media (max-width: 760px) {
+  html {
+    scroll-padding-top: 3.75rem;
+    scroll-padding-bottom: 5rem;
+  }
+}
+
 /* The hidden attribute always hides, whatever display a component's class sets */
 [hidden] {
   display: none !important;
@@ -1462,7 +1475,7 @@ html.wc-resizing-board * {
   /* The board frame plus the eval bar (2.3rem) and its gap (0.55rem) */
   grid-template-columns: minmax(20rem, calc(var(--wc-board-size, 37.5rem) + 2.85rem)) minmax(22rem, 1fr);
   gap: 1.35rem;
-  align-items: start;
+  align-items: stretch;
   width: 100%;
 }
 
@@ -4350,6 +4363,309 @@ label.wc-setting-row {
   }
 }
 
+/* ==========================================================================
+   Phase 6b: Review — move navigation, free-analysis toolbar, tabs, coach card
+   ========================================================================== */
+
+.wc-transport {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) 3.4rem;
+  gap: 0.5rem;
+}
+
+.wc-transport-btn {
+  min-height: 2.9rem;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+}
+
+.wc-review-toolbar {
+  flex: none;
+  display: flex;
+  gap: 0.45rem;
+  padding: 0.85rem 1.15rem 0;
+}
+
+.wc-tool-btn {
+  flex: 1;
+  min-width: 0;
+  min-height: 2.6rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  font-size: 0.86rem;
+  white-space: nowrap;
+}
+
+.wc-tool-btn > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wc-review-shell .wc-panel-inner > .wc-status-header {
+  margin: 0.75rem 1.15rem 0.2rem;
+}
+
+/* The sticky footer never covers what was scrolled into view */
+.wc-review-shell .wc-panel-body {
+  scroll-padding-bottom: 4.5rem;
+}
+
+.wc-review-tabs-view,
+.wc-review-editor-view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.wc-self-start {
+  align-self: flex-start;
+}
+
+.wc-btn.wc-btn-icon-sm {
+  width: 2.2rem;
+  height: 2.2rem;
+}
+
+.wc-moves-tab .wc-move-tree {
+  max-height: none;
+}
+
+/* The review panel inside its tab: no box of its own */
+.wc-review-shell .wc-review-panel {
+  padding: 0;
+  background: none;
+  border: 0;
+  gap: 0.85rem;
+}
+
+.wc-review-head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.wc-review-intro {
+  padding: 1rem 1.1rem;
+  border-radius: 0.8rem;
+  border: 1px solid rgba(212, 175, 55, 0.35);
+  background: linear-gradient(180deg, rgba(212, 175, 55, 0.09), rgba(22, 26, 38, 0.6));
+}
+
+.wc-review-intro-title {
+  margin: 0 0 0.3rem;
+  font-size: 1.15rem;
+}
+
+.wc-review-intro-text {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.wc-review-panel[data-reviewed='true'] .wc-review-intro,
+.wc-review-panel[data-state='running'] .wc-review-intro {
+  display: none;
+}
+
+.wc-review-shell .wc-review-actions {
+  gap: 0.45rem;
+}
+
+.wc-review-shell .wc-review-actions .wc-btn,
+.wc-review-shell .wc-review-actions .wc-select {
+  min-height: 2.5rem;
+  font-size: 0.88rem;
+}
+
+.wc-review-shell .wc-review-actions .wc-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/* Before a review, Start review is the one big action */
+.wc-review-panel[data-reviewed='false']:not([data-state='running']) .wc-review-start-btn {
+  flex: 1;
+  justify-content: center;
+  min-height: 3rem;
+  font-size: 1rem;
+  background: linear-gradient(180deg, #e2bf4a, #b8902a);
+  border-color: #e7c55a;
+  color: #15110a;
+}
+
+/* Coach card: one key moment at a time */
+.wc-coach {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 0.9rem;
+  border-radius: 0.85rem;
+  border: 1px solid rgba(212, 175, 55, 0.45);
+  background: linear-gradient(180deg, rgba(212, 175, 55, 0.09), rgba(22, 26, 38, 0.92) 50%);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+
+.wc-coach-head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.wc-coach-label {
+  height: 1rem;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #fde68a;
+  white-space: nowrap;
+}
+
+/* The key moments as one row of chips (badge and move; the sentence stays for readers) */
+.wc-coach .wc-review-moments {
+  position: relative;
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.35rem;
+  height: 2.3rem;
+  grid-template-rows: none;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+
+.wc-coach .wc-review-moments > li {
+  flex: none;
+}
+
+/* Positioned: the visually hidden sentence inside stays clipped by the scrolling row */
+.wc-coach .wc-review-moment {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  width: auto;
+  height: 2.1rem;
+  padding: 0 0.65rem 0 0.35rem;
+  border-radius: 999px;
+}
+
+.wc-coach .wc-review-moment[aria-current='step'] {
+  border-color: var(--accent-gold);
+  background: rgba(212, 175, 55, 0.18);
+}
+
+.wc-coach .wc-review-moment-move {
+  font-size: 0.8rem;
+}
+
+.wc-coach .wc-review-moment-text {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.wc-coach .wc-review-card {
+  height: 7.4rem;
+  grid-template-rows: 1.8rem 2.9rem 1.2rem;
+  gap: 0.2rem;
+  padding: 0.55rem 0.75rem;
+  border-radius: 0.6rem;
+}
+
+.wc-coach .wc-review-card-title {
+  font-size: 1.05rem;
+}
+
+.wc-coach .wc-review-card-eval {
+  font-size: 0.8rem;
+}
+
+.wc-coach .wc-review-card-text {
+  font-size: 0.95rem;
+  line-height: 1.45rem;
+}
+
+.wc-coach .wc-review-card-detail {
+  font-size: 0.74rem;
+}
+
+.wc-coach-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.wc-coach-actions .wc-btn-action {
+  flex: none;
+  padding: 0 1rem;
+}
+
+/* Fixed width: "First moment" / "Next moment" never moves its neighbours */
+.wc-coach-actions .wc-coach-next {
+  width: 10.6rem;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.wc-review-shell .wc-review-errnav {
+  grid-template-columns: 2.6rem minmax(0, 1fr) 2.6rem;
+  height: 2.4rem;
+}
+
+.wc-review-shell .wc-review-errnav .wc-btn {
+  height: 100%;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+}
+
+.wc-review-shell .wc-review-errnav-label {
+  font-size: 0.82rem;
+}
+
+.wc-review-classes > summary {
+  font-size: 0.88rem;
+}
+
+/* Footer of the Review tab: who the review is for, and more tools */
+.wc-review-foot {
+  position: sticky;
+  bottom: -1rem;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 -1.15rem -1rem;
+  padding: 0.7rem 1.15rem;
+  background: #10131b;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.wc-review-foot .wc-review-perspective {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Stacked layouts: the Review panel takes its content's height */
+@media (max-width: 960px) {
+  .wc-review-foot {
+    position: static;
+    margin: 0;
+    padding: 0.6rem 0 0;
+    background: none;
+  }
+}
+
 /* Phones: the destinations move to a bottom tab bar; the top bar names the screen */
 @media (max-width: 760px) {
   .wc-topbar {
@@ -4494,5 +4810,69 @@ label.wc-setting-row {
 
   .wc-btn-action {
     font-size: 0.85rem;
+  }
+}
+
+/* Phones: Review */
+@media (max-width: 760px) {
+  .wc-review-toolbar {
+    padding: 0.7rem 0.85rem 0;
+    gap: 0.35rem;
+  }
+
+  .wc-tool-btn {
+    font-size: 0.78rem;
+    gap: 0.25rem;
+    padding: 0 0.3rem;
+  }
+
+  .wc-review-shell .wc-panel-inner > .wc-status-header {
+    margin: 0.6rem 0.85rem 0.2rem;
+  }
+
+  .wc-transport {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) 3rem;
+    gap: 0.35rem;
+  }
+
+  .wc-coach {
+    padding: 0.75rem;
+  }
+
+  .wc-coach-actions {
+    display: grid;
+    grid-template-columns: 2.9rem repeat(3, minmax(0, 1fr));
+    gap: 0.4rem;
+  }
+
+  .wc-coach-actions > .wc-grow {
+    display: none;
+  }
+
+  .wc-coach-actions [data-testid='btn-review-retry'] {
+    grid-column: 1 / span 2;
+  }
+
+  .wc-coach-actions [data-testid='btn-review-refutation'] {
+    grid-column: 3 / span 2;
+  }
+
+  .wc-coach-actions .wc-coach-next {
+    grid-column: 2 / span 3;
+    width: auto;
+    justify-content: center;
+  }
+
+  .wc-coach .wc-review-card-eval {
+    width: 6.6rem;
+    font-size: 0.72rem;
+  }
+
+  .wc-tool-more {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
   }
 }

@@ -465,9 +465,13 @@ export function mountAppShell(container: HTMLElement): {
     devOverlay,
     audio,
     settings: appSettings,
-    onAnalyzeGame: () => setMode('review', true),
+    onAnalyzeGame: () => {
+      setMode('review', true);
+      analysisController.showTab('analysis');
+    },
     onReviewGame: () => {
       setMode('review', true);
+      analysisController.showTab('review');
       void reviewPanel.start();
     },
   });
@@ -478,6 +482,7 @@ export function mountAppShell(container: HTMLElement): {
     threatEngine: botEngine,
     audio,
     initialActive: false,
+    settings: appSettings,
   });
 
   // The review runs on its own engine, so live analysis keeps its worker while a review
@@ -647,6 +652,7 @@ export function mountAppShell(container: HTMLElement): {
         onAnalyze: (pgn, ply) => {
           setMode('review', false);
           if (!analysisController.importPgn(pgn)) return;
+          analysisController.showTab('analysis');
           const node = analysisController.getGameTree().getMainLine()[ply - 1];
           if (node) analysisController.goToNode(node.id);
         },
@@ -726,6 +732,7 @@ export function mountAppShell(container: HTMLElement): {
     openGameId = record.id;
     analysisController.goToNode(analysisController.getGameTree().root.id);
     if (saved) reviewPanel.showSavedReview(saved);
+    analysisController.showTab('review');
     return true;
   };
 
@@ -832,9 +839,9 @@ export function mountAppShell(container: HTMLElement): {
   });
   window.__wizardChessLibraryReady = libraryReady;
 
-  /** Board look, effects and sound follow the settings on every screen (Play follows them itself). */
+  /** Board look, effects and sound follow the settings (Play and Review follow them themselves). */
   const applyAppSettings = (next: AppSettings, prev: AppSettings | null): void => {
-    const boards = [analysisController.getBoard(), puzzleTrainer?.getBoard()];
+    const boards = [puzzleTrainer?.getBoard()];
     for (const board of boards) {
       if (!board) continue;
       if (!prev || next.boardTheme !== prev.boardTheme) board.setBoardTheme(next.boardTheme);
@@ -967,6 +974,7 @@ export function mountAppShell(container: HTMLElement): {
   if (typeof window !== 'undefined') {
     window.addEventListener('keydown', (e) => {
       if (currentMode !== 'play') return;
+      if (document.documentElement.classList.contains('wc-sheet-open')) return;
       const target = e.target as HTMLElement | null;
       if (
         target &&

@@ -41,6 +41,9 @@ import {
 } from './types';
 
 /** Icon and label for each class: the tree, the card and the counts all use these. */
+import { icon } from '../ui/components/icons';
+import { Menu } from '../ui/components/menu';
+
 export const CLASS_BADGE: Record<MoveClassification, { glyph: string; slug: string }> = {
   Brilliant: { glyph: '!!', slug: 'brilliant' },
   Great: { glyph: '!', slug: 'great' },
@@ -273,7 +276,13 @@ export class ReviewPanel {
     refutationBtn: HTMLButtonElement;
     playBtn: HTMLButtonElement;
     exportBtn: HTMLButtonElement;
+    coachLabel: HTMLElement;
+    coachPrev: HTMLButtonElement;
+    coachNext: HTMLButtonElement;
+    coachNextLabel: HTMLElement;
+    startLabel: HTMLElement;
   };
+  private menu!: Menu;
 
   constructor(mount: HTMLElement, options: ReviewPanelOptions) {
     this.options = options;
@@ -321,13 +330,16 @@ export class ReviewPanel {
     ).join('');
 
     this.root.innerHTML = `
-      <div class="wc-panel-section-title">
-        <span>Game Review</span>
+      <div class="wc-review-head">
+        <div class="wc-review-intro" data-testid="review-intro">
+          <h3 class="wc-review-intro-title">Review this game</h3>
+          <p class="wc-review-intro-text">Stockfish checks every move: your accuracy, the key moments, and what to play instead, explained one at a time.</p>
+        </div>
         <div class="wc-review-actions">
-          <select class="wc-select wc-select-sm" data-testid="select-review-preset" aria-label="Review preset">${presetOptions}</select>
-          <button type="button" class="wc-btn wc-btn-primary wc-btn-xs" data-testid="btn-review-start">Review Game</button>
-          <button type="button" class="wc-btn wc-btn-danger wc-btn-xs" data-testid="btn-review-cancel" disabled>Cancel</button>
-          <button type="button" class="wc-btn wc-btn-ghost wc-btn-xs" data-testid="btn-review-sample" title="Morphy vs. Duke Karl / Count Isouard, Paris 1858">Sample Game</button>
+          <select class="wc-select wc-select-sm" data-testid="select-review-preset" aria-label="Review depth">${presetOptions}</select>
+          <button type="button" class="wc-btn wc-btn-primary wc-review-start-btn" data-testid="btn-review-start">${icon('review')}<span data-testid="review-start-label">Start review</span></button>
+          <button type="button" class="wc-btn wc-btn-danger" data-testid="btn-review-cancel" disabled>Cancel</button>
+          <button type="button" class="wc-btn wc-btn-ghost" data-testid="btn-review-sample" title="Morphy vs. Duke Karl / Count Isouard, Paris 1858">Sample game</button>
         </div>
       </div>
       <div class="wc-review-status" data-tip="status" data-has-details="false">
@@ -339,9 +351,32 @@ export class ReviewPanel {
         <div class="wc-review-tooltip wc-review-status-tip" id="wc-review-status-tip" role="tooltip" data-testid="review-status-tooltip"></div>
       </div>
       <div class="wc-review-body" data-testid="review-body" hidden>
-        <div class="wc-review-perspective" role="radiogroup" aria-label="Review as" data-testid="review-perspective">
-          <span class="wc-review-perspective-label">Review as</span>
-          ${perspectiveButtons}
+        <section class="wc-coach" data-testid="review-coach" aria-label="Key moments">
+          <div class="wc-coach-head">
+            <span class="wc-coach-label" data-testid="review-coach-label">Key moments</span>
+            <ol class="wc-review-moments" data-testid="review-key-moments" aria-label="Key moments"></ol>
+          </div>
+          <div class="wc-review-card" data-testid="review-move-card">
+            <div class="wc-review-card-head">
+              <span class="wc-review-card-badge" data-testid="review-card-badge"></span>
+              <span class="wc-review-card-title" data-testid="review-card-title"></span>
+              <span class="wc-review-card-eval" data-testid="review-card-eval"></span>
+            </div>
+            <div class="wc-review-card-text" data-testid="review-card-text"></div>
+            <div class="wc-review-card-detail" data-testid="review-card-detail"></div>
+          </div>
+          <div class="wc-coach-actions">
+            <button type="button" class="wc-btn wc-btn-primary wc-btn-action" data-testid="btn-review-retry">Try it</button>
+            <button type="button" class="wc-btn wc-btn-secondary wc-btn-action" data-testid="btn-review-refutation">Show refutation</button>
+            <span class="wc-grow"></span>
+            <button type="button" class="wc-btn wc-btn-secondary wc-btn-icon" data-testid="btn-coach-prev" aria-label="Previous key moment" title="Previous key moment">${icon('back')}</button>
+            <button type="button" class="wc-btn wc-btn-secondary wc-btn-action wc-coach-next" data-testid="btn-coach-next"><span data-testid="coach-next-label">Next moment</span>${icon('next')}</button>
+          </div>
+        </section>
+        <div class="wc-review-errnav">
+          <button type="button" class="wc-btn wc-btn-ghost wc-btn-sm" data-testid="btn-review-prev-mistake" aria-label="Previous mistake">${icon('back')}</button>
+          <span class="wc-review-errnav-label" data-testid="review-mistake-position">No errors</span>
+          <button type="button" class="wc-btn wc-btn-ghost wc-btn-sm" data-testid="btn-review-next-mistake" aria-label="Next mistake">${icon('next')}</button>
         </div>
         <div class="wc-review-chart-wrap">
           <svg class="wc-review-chart" data-testid="review-chart" viewBox="0 0 ${CHART_W} ${CHART_H}" preserveAspectRatio="none" role="img" aria-label="White's win percentage through the game; click to jump to a move">
@@ -369,7 +404,9 @@ export class ReviewPanel {
             </div>
           </div>
         </div>
-        <div class="wc-review-breakdown">
+        <details class="wc-disclosure wc-review-classes" data-testid="review-classes">
+          <summary>All moves by class${icon('caret')}</summary>
+          <div class="wc-disclosure-body">
           <table class="wc-review-counts" data-testid="review-counts" data-perspective="both">
             <thead>
               <tr>
@@ -380,33 +417,37 @@ export class ReviewPanel {
             </thead>
             <tbody>${countRows}</tbody>
           </table>
-          <div class="wc-review-moments-box">
-            <div class="wc-review-subhead">Key moments</div>
-            <ol class="wc-review-moments" data-testid="review-key-moments" aria-label="Key moments"></ol>
           </div>
-        </div>
-        <div class="wc-review-errnav">
-          <button type="button" class="wc-btn wc-btn-ghost wc-btn-xs" data-testid="btn-review-prev-mistake" aria-label="Previous mistake">◀ Prev</button>
-          <span class="wc-review-errnav-label" data-testid="review-mistake-position">No errors</span>
-          <button type="button" class="wc-btn wc-btn-ghost wc-btn-xs" data-testid="btn-review-next-mistake" aria-label="Next mistake">Next ▶</button>
-        </div>
-        <div class="wc-review-card" data-testid="review-move-card">
-          <div class="wc-review-card-head">
-            <span class="wc-review-card-badge" data-testid="review-card-badge"></span>
-            <span class="wc-review-card-title" data-testid="review-card-title"></span>
-            <span class="wc-review-card-eval" data-testid="review-card-eval"></span>
+        </details>
+        <div class="wc-review-foot" data-testid="review-foot">
+          <div class="wc-review-perspective" role="radiogroup" aria-label="Review as" data-testid="review-perspective">
+            <span class="wc-review-perspective-label">Review as</span>
+            ${perspectiveButtons}
           </div>
-          <div class="wc-review-card-text" data-testid="review-card-text"></div>
-          <div class="wc-review-card-detail" data-testid="review-card-detail"></div>
-        </div>
-        <div class="wc-review-tools">
-          <button type="button" class="wc-btn wc-btn-secondary wc-btn-xs" data-testid="btn-review-retry">Retry This Mistake</button>
-          <button type="button" class="wc-btn wc-btn-secondary wc-btn-xs" data-testid="btn-review-refutation">Show Refutation</button>
-          <button type="button" class="wc-btn wc-btn-secondary wc-btn-xs" data-testid="btn-review-play-bot">Play vs Bot Here</button>
-          <button type="button" class="wc-btn wc-btn-secondary wc-btn-xs" data-testid="btn-review-export">Export Annotated PGN</button>
         </div>
       </div>
     `;
+    // ⋯ on the footer: the review's other tools
+    this.menu = new Menu(
+      this.root.querySelector('[data-testid="review-foot"]') as HTMLElement,
+      [
+        {
+          id: 'play',
+          label: 'Play vs bot from here',
+          testId: 'btn-review-play-bot',
+          icon: 'play',
+          onSelect: () => this.options.onPlayVsBot(this.host.getCurrentNode().fen),
+        },
+        {
+          id: 'export',
+          label: 'Export annotated PGN',
+          testId: 'btn-review-export',
+          icon: 'download',
+          onSelect: () => this.exportAnnotatedPgn(),
+        },
+      ],
+      { testId: 'review-menu', label: 'More review tools' },
+    );
 
     const q = <T extends Element>(id: string) =>
       this.root.querySelector(`[data-testid="${id}"]`) as T;
@@ -453,6 +494,11 @@ export class ReviewPanel {
       refutationBtn: q('btn-review-refutation'),
       playBtn: q('btn-review-play-bot'),
       exportBtn: q('btn-review-export'),
+      coachLabel: q('review-coach-label'),
+      coachPrev: q('btn-coach-prev'),
+      coachNext: q('btn-coach-next'),
+      coachNextLabel: q('coach-next-label'),
+      startLabel: q('review-start-label'),
     };
 
     this.els.preset.addEventListener('change', () => {
@@ -513,12 +559,8 @@ export class ReviewPanel {
     });
     this.els.retryBtn.addEventListener('click', () => this.startRetry());
     this.els.refutationBtn.addEventListener('click', () => this.showRefutation());
-    this.els.playBtn.addEventListener('click', () => {
-      this.options.onPlayVsBot(this.host.getCurrentNode().fen);
-    });
-    this.els.exportBtn.addEventListener('click', () => {
-      this.exportAnnotatedPgn();
-    });
+    this.els.coachPrev.addEventListener('click', () => this.stepMoment(-1));
+    this.els.coachNext.addEventListener('click', () => this.stepMoment(1));
   }
 
   private toggleTip(tip: 'formulas' | 'status'): void {
@@ -698,6 +740,7 @@ export class ReviewPanel {
 
   private reset(): void {
     this.cancel();
+    this.menu.close();
     this.runGeneration++;
     this.exitRetry();
     this.tree = null;
@@ -749,6 +792,8 @@ export class ReviewPanel {
     this.els.preset.disabled = running;
     this.els.cancel.disabled = !running;
     this.root.setAttribute('data-state', this.state);
+    this.root.setAttribute('data-reviewed', String(this.review !== null));
+    this.els.startLabel.textContent = this.review !== null && !running ? 'Review again' : 'Start review';
 
     const review = this.review;
     const total = review?.totalPositions ?? 0;
@@ -761,7 +806,7 @@ export class ReviewPanel {
     let details = '';
     switch (this.state) {
       case 'idle':
-        text = 'Not reviewed. Choose a preset and press Review Game.';
+        text = 'Not reviewed yet. Choose a depth and press Start review.';
         break;
       case 'running':
         text = `Reviewing (${PRESET_LABEL[this.preset]})… ${done} / ${total || '…'} positions`;
@@ -940,7 +985,49 @@ export class ReviewPanel {
   }
 
   /** The perspective's errors and where the current move is among them. */
+  /** The coach card's head: which key moment this is, and where Previous / Next go. */
+  private renderCoach(): void {
+    const review = this.review;
+    const moments = review ? [...perspectiveKeyMoments(review, this.perspective)].sort((a, b) => a.ply - b.ply) : [];
+    const current = this.retry?.move ?? this.retrySolved ?? this.currentReviewedMove();
+    const index = current ? moments.findIndex((k) => k.nodeId === current.nodeId) : -1;
+    const n = moments.length;
+    this.els.coachLabel.textContent =
+      n === 0
+        ? review?.complete === false
+          ? 'Key moments appear as the review runs'
+          : 'No big swings in this game'
+        : index >= 0
+          ? `Key moment ${index + 1} of ${n}`
+          : `${n} key moment${n === 1 ? '' : 's'}`;
+    const curPly = current?.ply ?? this.plyOfNode(this.host.getCurrentNode()) ?? 0;
+    this.els.coachNextLabel.textContent = index < 0 && moments.every((k) => k.ply > curPly) ? 'First moment' : 'Next moment';
+    this.els.coachPrev.disabled = n === 0;
+    this.els.coachNext.disabled = n === 0;
+    for (const el of this.els.moments.querySelectorAll<HTMLElement>('[data-node-id]')) {
+      if (current && el.getAttribute('data-node-id') === current.nodeId) el.setAttribute('aria-current', 'step');
+      else el.removeAttribute('aria-current');
+    }
+  }
+
+  /** The perspective's next (1) or previous (−1) key moment by game order, wrapping around. */
+  private stepMoment(dir: 1 | -1): void {
+    const review = this.review;
+    if (!review) return;
+    const moments = [...perspectiveKeyMoments(review, this.perspective)].sort((a, b) => a.ply - b.ply);
+    if (moments.length === 0) return;
+    const current = this.retry?.move ?? this.retrySolved ?? this.currentReviewedMove();
+    const fromPly = current?.ply ?? this.plyOfNode(this.host.getCurrentNode()) ?? 0;
+    const target =
+      dir === 1
+        ? (moments.find((k) => k.ply > fromPly) ?? moments[0])
+        : ([...moments].reverse().find((k) => k.ply < fromPly) ?? moments[moments.length - 1]);
+    if (this.retry) this.exitRetry();
+    if (target) this.host.goToNode(target.nodeId);
+  }
+
   private renderErrorNav(): void {
+    this.renderCoach();
     const errors = this.review ? perspectiveErrors(this.review.moves, this.perspective) : [];
     const whose = this.perspective === 'both' ? 'All' : SIDE_NAME[this.perspective];
     const current = this.retry?.move ?? this.retrySolved ?? this.currentReviewedMove();
@@ -1059,7 +1146,7 @@ export class ReviewPanel {
       isError && !canRetry && this.perspective !== 'both'
         ? `Reviewing as ${SIDE_NAME[this.perspective]}: retry covers ${SIDE_NAME[this.perspective]}'s moves`
         : '';
-    els.retryBtn.textContent = this.retry ? 'Stop Retrying' : 'Retry This Mistake';
+    els.retryBtn.textContent = this.retry ? 'Stop trying' : 'Try it';
     els.refutationBtn.disabled = !isError || (reviewed?.refutationUci.length ?? 0) === 0;
     let gameOver = false;
     try {

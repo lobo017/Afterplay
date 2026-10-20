@@ -476,6 +476,8 @@ async function scenarioAnalysis(page) {
   }
   await page.getByTestId('mode-tab-review').click();
   await page.getByTestId('analysis-layout').waitFor({ state: 'visible' });
+  // Engine lines live in Review's Analysis tab
+  await page.getByTestId('review-shell-tab-analysis').click();
   await page.getByTestId('select-multipv').selectOption('5');
   await page.evaluate(() => {
     window.__wizardChessAnalysis.controller.setAnalysisDepth('infinite');

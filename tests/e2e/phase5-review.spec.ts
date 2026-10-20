@@ -205,6 +205,8 @@ test.describe('Phase 5 — Game review', () => {
     await page.mouse.move(5, 450);
     await expect(page.getByTestId('review-status-tooltip')).toBeHidden();
     await expect(page.getByTestId('review-accuracy-w')).toHaveText(review.white.accuracy!.toFixed(1));
+    // The counts table is under "All moves by class"
+    await page.getByTestId('review-classes').locator('summary').click();
     await expect(page.getByTestId('review-count-book')).toBeVisible();
     // Neither player is one of my accounts: both sides, White's chart, names from the PGN
     await expect(page.getByTestId('review-panel')).toHaveAttribute('data-perspective', 'both');
@@ -230,9 +232,11 @@ test.describe('Phase 5 — Game review', () => {
     expect((await currentNode(page)).id).toBe(moment.nodeId);
     await expect(page.getByTestId('review-chart-cursor')).toHaveAttribute('data-ply', String(moment.ply));
 
-    // Clicking the chart jumps to that move
+    // Clicking the chart jumps to that move (the chart sits below the coach card)
+    await chart.scrollIntoViewIfNeeded();
     const box = (await chart.boundingBox())!;
-    await page.mouse.click(box.x + (10 / 33) * box.width, box.y + box.height / 2);
+    // A locator click: it fails, rather than misclicks, if anything covers the chart
+    await chart.click({ position: { x: (10 / 33) * box.width, y: box.height / 2 } });
     expect((await currentNode(page)).ply).toBe(10);
     await expect(page.getByTestId('review-card-title')).toContainText('5... dxe5');
 
@@ -310,6 +314,7 @@ test.describe('Phase 5 — Game review', () => {
     await expect(page.getByTestId('eval-bar-score')).toHaveText(/^-/);
     expect(Number(await evalBar.getAttribute('data-white-pct'))).toBeLessThan(25);
     // And the annotated PGN writes it from White's point of view
+    await page.getByTestId('review-menu').click(); // Export is in the review's ⋯ menu
     await page.getByTestId('btn-review-export').click();
     const pgn = await page.getByTestId('textarea-pgn').inputValue();
     expect(pgn).toMatch(/Qxe5\+ \$4 \{ \[%eval -\d+\.\d\d,\d+\]/);
@@ -335,7 +340,8 @@ test.describe('Phase 5 — Game review', () => {
     expect(parent.id).not.toBe(blunder.nodeId);
     expect(parent.ply).toBe(4);
     await expect(page.getByTestId('review-card-title')).toHaveText('Retry: 3. Qxe5+');
-    await expect(page.getByTestId('btn-review-retry')).toHaveText('Stop Retrying');
+    // Phase 6b: the coach card's "Try it" (Phase 5's Retry This Mistake)
+    await expect(page.getByTestId('btn-review-retry')).toHaveText('Stop trying');
 
     // The game move again: refused, and the game itself is untouched
     await page.getByTestId('square-h5').click();
@@ -391,6 +397,7 @@ test.describe('Phase 5 — Game review', () => {
 
     // --- Export Annotated PGN (into the PGN box and as a download)
     const downloadPromise = page.waitForEvent('download');
+    await page.getByTestId('review-menu').click(); // Export is in the review's ⋯ menu
     await page.getByTestId('btn-review-export').click();
     const download = await downloadPromise;
     expect(download.suggestedFilename()).toBe('wizards-chess-review.pgn');
@@ -409,7 +416,9 @@ test.describe('Phase 5 — Game review', () => {
     expect(parsed).toBe(6);
 
     // --- Play vs Bot Here (from the position after 2...Nc6, White to move)
+    await page.keyboard.press('Escape'); // close the PGN sheet the export opened
     await goToNode(page, parent.id);
+    await page.getByTestId('review-menu').click(); // Play vs bot is in the review's ⋯ menu
     await page.getByTestId('btn-review-play-bot').click();
     await expect.poll(() => page.evaluate(() => window.__wizardChessAnalysis!.getMode())).toBe('play');
     const play = await page.evaluate(() => {
@@ -474,6 +483,7 @@ test.describe('Phase 5 — Game review', () => {
     // The export: exactly the app's NAG per move, one eval per move, no Lichess text. It is
     // clicked right after the review ends and read after the board's 400 ms PGN refresh,
     // which used to overwrite the annotated PGN with the plain game
+    await page.getByTestId('review-menu').click(); // Export is in the review's ⋯ menu
     await page.getByTestId('btn-review-export').click();
     await page.waitForTimeout(600);
     const pgn = await page.getByTestId('textarea-pgn').inputValue();
@@ -686,7 +696,7 @@ test.describe('Phase 5 — Review perspective', () => {
     );
     expect((await currentNode(page)).id).toBe(secondParent);
     await page.getByTestId('btn-review-retry').click();
-    await expect(page.getByTestId('btn-review-retry')).toHaveText('Retry This Mistake');
+    await expect(page.getByTestId('btn-review-retry')).toHaveText('Try it');
 
     // A count jumps through those moves, wrapping around; zero counts are dimmed and inert
     const cls = ERROR_CLASSES.find((c) => blackErrors.some((m) => m.classification === c))!;
@@ -694,6 +704,7 @@ test.describe('Phase 5 — Review perspective', () => {
     const slug = cls.toLowerCase();
     await expect(page.getByTestId(`review-count-${slug}-b`)).toHaveText(String(ofClass.length));
     await page.evaluate(() => window.__wizardChessAnalysis!.controller.goToStart());
+    await page.getByTestId('review-classes').locator('summary').click(); // the counts table
     for (const expected of [...ofClass, ofClass[0]!]) {
       await page.getByTestId(`review-count-${slug}-b`).click();
       expect((await currentNode(page)).id).toBe(expected.nodeId);
@@ -847,8 +858,8 @@ test.describe('Phase 5 — Review panel on a phone', () => {
     const statusTip = page.getByTestId('review-status-tooltip');
     const info = page.getByTestId('btn-review-formulas');
     const formulas = page.getByTestId('review-formulas-tooltip');
-    // Outside both tooltips: the panel title (each tooltip opens below its trigger)
-    const outside = page.locator('[data-testid="review-panel"] > .wc-panel-section-title > span');
+    // Outside both tooltips, above them (each opens below its trigger): the status banner
+    const outside = page.getByTestId('analysis-status-banner');
     await status.scrollIntoViewIfNeeded();
 
     // Status details: tap opens, an outside tap closes, tap again opens, Escape closes

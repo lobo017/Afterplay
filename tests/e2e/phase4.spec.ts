@@ -37,6 +37,8 @@ test.describe('Phase 4 — Analysis Board, Eval Bar, MultiPV Ghost Previews, Thr
     await page.getByTestId('mode-tab-review').click();
     await expect(page.getByTestId('analysis-layout')).toBeVisible();
     await expect(page.getByTestId('eval-bar')).toBeVisible();
+    // Engine lines live in Review's Analysis tab
+    await page.getByTestId('review-shell-tab-analysis').click();
     await expect(page.getByTestId('engine-lines-panel')).toBeVisible();
 
     // -------------------------------------------------------------------------
@@ -408,15 +410,19 @@ test.describe('Phase 4 — Analysis Board, Eval Bar, MultiPV Ghost Previews, Thr
       '1. e4 { [%eval +0.25] [%csl Ge4] } 1... e5 (1... c5 2. Nf3) 2. Nf3 Nc6 3. Bb5! { Ruy Lopez } *',
     ].join('\n');
 
+    // The PGN box is in the Load FEN / PGN sheet; a successful load closes it
+    await page.getByTestId('btn-load-pgn').click();
     await page.getByTestId('textarea-pgn').fill(samplePgn);
     await page.getByTestId('btn-import-pgn').click();
     await expect(page.getByTestId('pgn-status')).toHaveText('PGN Loaded');
+    await expect(page.getByTestId('pgn-sheet')).toBeHidden();
     await expect(page.getByTestId('opening-eco')).toHaveText('C60');
     await expect(page.getByTestId('opening-name')).toContainText('Ruy Lopez');
 
     // Navigate to end of mainline (3. Bb5!), add comment and user arrow, then export PGN
     await page.keyboard.press('End');
     await page.getByTestId('square-b5').click({ button: 'right' });
+    await page.getByTestId('btn-load-pgn').click();
     await page.getByTestId('btn-export-pgn').click();
 
     const exportedPgn = await page.getByTestId('textarea-pgn').inputValue();

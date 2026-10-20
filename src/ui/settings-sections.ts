@@ -32,6 +32,16 @@ export function mountAppSettingsSections(panel: SettingsPanel, store: AppSetting
   moves.innerHTML = `
     ${switchRowHtml('toggle-auto-queen', 'Auto-queen', s.autoQueen, 'Promote to a queen without asking')}
     ${switchRowHtml('toggle-confirm-move', 'Confirm each move', s.confirmMove, 'In Play: a move waits for Confirm')}
+    ${selectRowHtml(
+      'select-nav-animation',
+      'Move animation in Review',
+      [
+        { value: 'off', label: 'Off' },
+        { value: 'fast', label: 'Fast' },
+        { value: 'normal', label: 'Normal' },
+      ],
+      s.navigationAnimation,
+    )}
     <label class="wc-setting-row" title="How many premoves you can queue during the opponent's turn. 1 = Lichess-style single premove.">
       <span class="wc-setting-label">Max premoves<span class="wc-setting-hint">Moves you can queue during the opponent's turn</span></span>
       <input type="number" min="1" max="${MAX_PREMOVES_LIMIT}" step="1" value="${s.maxPremoves}" class="wc-select wc-setting-number" data-testid="input-max-premoves" />
@@ -57,6 +67,7 @@ export function mountAppSettingsSections(panel: SettingsPanel, store: AppSetting
   const autoQueen = q<HTMLInputElement>(moves, 'toggle-auto-queen');
   const confirm = q<HTMLInputElement>(moves, 'toggle-confirm-move');
   const premoves = q<HTMLInputElement>(moves, 'input-max-premoves');
+  const navAnimation = q<HTMLSelectElement>(moves, 'select-nav-animation');
   const soundOn = q<HTMLInputElement>(sound, 'toggle-audio-mute');
   const volume = q<HTMLInputElement>(sound, 'slider-audio-volume');
   const volumeLabel = q<HTMLElement>(sound, 'audio-volume-label');
@@ -67,6 +78,9 @@ export function mountAppSettingsSections(panel: SettingsPanel, store: AppSetting
   autoQueen.addEventListener('change', () => store.set({ autoQueen: autoQueen.checked }));
   confirm.addEventListener('change', () => store.set({ confirmMove: confirm.checked }));
   premoves.addEventListener('change', () => store.set({ maxPremoves: Number(premoves.value) }));
+  navAnimation.addEventListener('change', () =>
+    store.set({ navigationAnimation: navAnimation.value as AppSettings['navigationAnimation'] }),
+  );
   soundOn.addEventListener('change', () => store.set({ sound: soundOn.checked }));
   volume.addEventListener('input', () => store.set({ volume: Number(volume.value) }));
   shards.addEventListener('change', () => store.set({ captureEffects: shards.checked }));
@@ -77,6 +91,7 @@ export function mountAppSettingsSections(panel: SettingsPanel, store: AppSetting
     autoQueen.checked = v.autoQueen;
     confirm.checked = v.confirmMove;
     if (document.activeElement !== premoves) premoves.value = String(v.maxPremoves);
+    if (navAnimation.value !== v.navigationAnimation) navAnimation.value = v.navigationAnimation;
     soundOn.checked = v.sound;
     if (Number(volume.value) !== v.volume) volume.value = String(v.volume);
     volumeLabel.textContent = `${v.volume}%`;
