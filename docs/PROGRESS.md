@@ -3402,3 +3402,32 @@ items, Flip, Next puzzle's two states, Retry enabled once the puzzle is over, An
 Analysis tab), phone.
 
 **Checks:** typecheck, lint, 452 unit tests, build, **105/105 e2e** (9.3 min). Screens looked at: `desktop-today.png` (hub), `desktop-train-hub.png`, `desktop-train-session.png`, `phone-train-session.png`, `phone-puzzles.png`, `phase6-screens/puzzle-desktop-solved.png`.
+
+### Stage 5 plan — Games (written before code)
+- Header: the page heading with "N games · M analyzed" and one **Import** menu (Paste PGN…,
+  Open PGN file…; dropping files anywhere still works).
+- A capture card: the extension's status in words (not detected / connected · up to date / N
+  received), what it does, my accounts as the extension sent them, and the auto-analyze switch.
+- Filters stay labelled selects in one bar (they have many uses in tests; restyled, bigger).
+- Rows taller and easier to hit. A floating selection bar appears while games are selected:
+  "N selected · depth · **Analyze N** · ✕".
+- Phone: the bar sits above the tab bar. Tests: the paste helpers open the Import menu first.
+
+### Stage 5 result — Games (2026-10-19)
+
+Built as planned: the page heading with "N games · M analyzed", one **Import** menu (Paste PGN…,
+Open PGN file…; dropping files still works), a capture card (status in words, what it does or
+how to install it, my accounts, the auto-analyze switch), the filters in one bar, taller rows,
+and a floating selection bar ("N selected · depth · **Analyze N** · ✕") while games are
+selected; on phones it sits above the tab bar.
+
+**Found and fixed while checking:** the phone selection bar cut "2 selected" and wrapped "Analyze
+2" (the label is visually hidden on phones; the button says the count).
+
+**Tests:** the paste helpers (`phase5b-games`, `phase6b-screens`) open the Import menu first. New
+`phase6b-games.spec.ts` (3): Import menu and file picker, summary, capture card without the
+extension; the selection bar (appears, counts, clears, analyzes); phone.
+
+**Checks:** typecheck, lint, unit tests, build, **108/108 e2e** (9.5 min). Screens looked at:
+`desktop-games-selected.png`, `phone-games-selected.png`, `desktop-games-list.png`,
+`phone-games-list.png`.

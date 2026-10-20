@@ -50,7 +50,11 @@ async function openGames(page: Page): Promise<string[]> {
 
 async function pastePgn(page: Page, pgn: string): Promise<void> {
   const panel = page.getByTestId('games-paste-panel');
-  if (await panel.isHidden()) await page.getByTestId('btn-games-paste').click();
+  if (await panel.isHidden()) {
+    // Paste PGN is in the Import menu
+    await page.getByTestId('btn-games-import').click();
+    await page.getByTestId('btn-games-paste').click();
+  }
   await page.getByTestId('games-paste-text').fill(pgn);
   await page.getByTestId('btn-games-paste-import').click();
 }

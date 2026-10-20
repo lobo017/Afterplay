@@ -7,6 +7,8 @@ import type { ExtensionStatus } from './bridge-client';
 import { formatTimeControl, myColor, resultFor, type MyResult } from './game-record';
 import type { GameLibrary } from './library';
 import type { ReviewQueue } from './review-queue';
+import { icon } from '../ui/components/icons';
+import { Menu } from '../ui/components/menu';
 
 export interface GamesListOptions {
   container: HTMLElement;
@@ -122,7 +124,11 @@ export class GamesList {
     empty: HTMLElement;
     more: HTMLButtonElement;
     drop: HTMLElement;
+    selbar: HTMLElement;
+    summary: HTMLElement;
+    captureDetail: HTMLElement;
   };
+  private importMenu!: Menu;
 
   constructor(private readonly options: GamesListOptions) {
     this.root = document.createElement('section');
@@ -153,13 +159,22 @@ export class GamesList {
       .join('');
     this.root.innerHTML = `
       <div class="wc-games-head">
-        <h2 class="wc-games-title">Games</h2>
-        <span class="wc-games-ext" data-testid="games-extension-status" data-state="not-detected"></span>
-        <div class="wc-games-head-actions">
-          <button type="button" class="wc-btn wc-btn-secondary wc-btn-sm" data-testid="btn-games-paste" aria-expanded="false">Paste PGN</button>
-          <label class="wc-btn wc-btn-secondary wc-btn-sm wc-games-file">Open PGN file…<input type="file" accept=".pgn,text/plain,application/x-chess-pgn" multiple data-testid="games-file-input" /></label>
-        </div>
+        <h2 class="wc-page-title wc-games-title">Games</h2>
+        <span class="wc-games-summary" data-testid="games-summary"></span>
+        <div class="wc-games-head-actions" data-testid="games-import"></div>
+        <input type="file" class="wc-games-file-input" accept=".pgn,text/plain,application/x-chess-pgn" multiple data-testid="games-file-input" tabindex="-1" aria-hidden="true" />
       </div>
+      <section class="wc-games-capture" data-testid="games-capture" aria-label="Capture extension">
+        <span class="wc-games-capture-dot" aria-hidden="true"></span>
+        <div class="wc-games-capture-text">
+          <span class="wc-games-ext" data-testid="games-extension-status" data-state="not-detected"></span>
+          <span class="wc-games-capture-detail" data-testid="games-capture-detail"></span>
+        </div>
+        <label class="wc-games-auto" title="Reviews each new captured or imported game on the Quick preset">
+          <span>Auto-analyze new games<span class="wc-setting-hint">Quick review of each new game</span></span>
+          <input type="checkbox" role="switch" class="wc-switch-input" data-testid="games-auto-analyze" />
+        </label>
+      </section>
       <div class="wc-games-paste" data-testid="games-paste-panel" hidden>
         <textarea class="wc-games-paste-text" data-testid="games-paste-text" rows="6" spellcheck="false" placeholder="Paste one or more games in PGN" aria-label="PGN to import"></textarea>
         <div class="wc-games-paste-actions">
@@ -183,12 +198,6 @@ export class GamesList {
             <option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="opponent">Opponent A–Z</option><option value="accuracy">Accuracy</option>
           </select></label>
         </div>
-        <div class="wc-games-actions">
-          <span class="wc-games-selection" data-testid="games-selection">0 selected</span>
-          <select class="wc-select wc-select-sm" data-testid="games-analyze-preset" aria-label="Review preset for Analyze">${presetOptions}</select>
-          <button type="button" class="wc-btn wc-btn-primary wc-btn-sm" data-testid="btn-games-analyze" disabled>Analyze</button>
-          <label class="wc-games-auto" title="Reviews each new captured or imported game on the Quick preset"><input type="checkbox" data-testid="games-auto-analyze" /> Auto-analyze new games (Quick)</label>
-        </div>
       </div>
       <div class="wc-games-table" role="table" aria-label="Games" data-testid="games-table">
         <div class="wc-games-row wc-games-row-head" role="row">
@@ -207,8 +216,31 @@ export class GamesList {
         <button type="button" class="wc-btn wc-btn-ghost wc-btn-sm wc-games-more" data-testid="btn-games-more" hidden>Show more</button>
       </div>
       <div class="wc-games-count" data-testid="games-count"></div>
+      <div class="wc-games-selbar" data-testid="games-selbar" role="region" aria-label="Selected games" hidden>
+        <span class="wc-games-selection" data-testid="games-selection">0 selected</span>
+        <select class="wc-select" data-testid="games-analyze-preset" aria-label="Review depth for Analyze">${presetOptions}</select>
+        <button type="button" class="wc-btn wc-btn-primary wc-btn-lg" data-testid="btn-games-analyze" disabled>Analyze</button>
+        <button type="button" class="wc-btn wc-btn-ghost wc-btn-icon" data-testid="btn-games-clear-selection" aria-label="Clear the selection" title="Clear the selection">${icon('close')}</button>
+      </div>
       <div class="wc-games-drop" data-testid="games-drop-overlay" aria-hidden="true">Drop PGN files to import</div>
     `;
+    // Import: paste or open a file (and drop files anywhere on the list)
+    const pasteToggle = (): void => {
+      const open = this.els.pastePanel.hidden;
+      this.els.pastePanel.hidden = !open;
+      if (open) this.els.pasteText.focus();
+    };
+    this.importMenu = new Menu(
+      this.root.querySelector('[data-testid="games-import"]') as HTMLElement,
+      [
+        { id: 'paste', label: 'Paste PGN…', testId: 'btn-games-paste', icon: 'copy', onSelect: pasteToggle },
+        { id: 'file', label: 'Open PGN file…', testId: 'btn-games-file', icon: 'upload', onSelect: () => this.els.fileInput.click() },
+      ],
+      { testId: 'btn-games-import', label: 'Import games', buttonClass: 'wc-btn wc-btn-secondary wc-btn-lg wc-games-import-btn' },
+    );
+    this.importMenu.button.innerHTML = `${icon('plus')}<span>Import</span>${icon('caret')}`;
+    this.importMenu.button.classList.add('wc-btn-inline');
+    this.importMenu.button.parentElement?.querySelector('.wc-menu')?.classList.add('wc-menu-down');
     const q = <T extends Element>(id: string) => this.root.querySelector(`[data-testid="${id}"]`) as T;
     this.els = {
       extStatus: q('games-extension-status'),
@@ -230,27 +262,25 @@ export class GamesList {
       empty: q('games-empty'),
       more: q('btn-games-more'),
       drop: q('games-drop-overlay'),
+      selbar: q('games-selbar'),
+      summary: q('games-summary'),
+      captureDetail: q('games-capture-detail'),
     };
 
-    const pasteBtn = q<HTMLButtonElement>('btn-games-paste');
-    pasteBtn.addEventListener('click', () => {
-      const open = this.els.pastePanel.hidden;
-      this.els.pastePanel.hidden = !open;
-      pasteBtn.setAttribute('aria-expanded', String(open));
-      if (open) this.els.pasteText.focus();
-    });
     q<HTMLButtonElement>('btn-games-paste-cancel').addEventListener('click', () => {
       this.els.pastePanel.hidden = true;
-      pasteBtn.setAttribute('aria-expanded', 'false');
     });
     q<HTMLButtonElement>('btn-games-paste-import').addEventListener('click', () => {
       void this.importText(this.els.pasteText.value).then((ok) => {
         if (ok) {
           this.els.pasteText.value = '';
           this.els.pastePanel.hidden = true;
-          pasteBtn.setAttribute('aria-expanded', 'false');
         }
       });
+    });
+    q<HTMLButtonElement>('btn-games-clear-selection').addEventListener('click', () => {
+      this.selected.clear();
+      this.renderRows();
     });
     this.els.fileInput.addEventListener('change', () => {
       const files = [...(this.els.fileInput.files ?? [])];
@@ -538,6 +568,11 @@ export class GamesList {
         : rows.length === this.records.length
           ? `${rows.length} game${rows.length === 1 ? '' : 's'}`
           : `${rows.length} of ${this.records.length} games`;
+    const analyzedCount = this.records.filter((r) => r.analysis).length;
+    this.els.summary.textContent =
+      this.records.length === 0
+        ? ''
+        : `${this.records.length} game${this.records.length === 1 ? '' : 's'} · ${analyzedCount} analyzed`;
     this.renderSelection(rows);
   }
 
@@ -560,6 +595,7 @@ export class GamesList {
     this.els.selection.textContent = `${visibleSelected} selected`;
     this.els.analyze.disabled = visibleSelected === 0;
     this.els.analyze.textContent = visibleSelected > 0 ? `Analyze ${visibleSelected}` : 'Analyze';
+    this.els.selbar.hidden = visibleSelected === 0;
     this.els.selectAll.checked = rows.length > 0 && visibleSelected === rows.length;
     this.els.selectAll.indeterminate = visibleSelected > 0 && visibleSelected < rows.length;
     for (const row of this.els.body.querySelectorAll<HTMLElement>('[data-game-id]')) {
@@ -570,11 +606,19 @@ export class GamesList {
   private renderExtensionStatus(status: ExtensionStatus): void {
     const el = this.els.extStatus;
     el.setAttribute('data-state', status.state);
+    this.root.setAttribute('data-capture', status.state);
+    const accounts = this.options.library.getUserAccounts();
+    const mine = accounts.length
+      ? `Your accounts: ${accounts.map((a) => `${a.site === 'lichess' ? 'Lichess' : 'Chess.com'} ${a.username}`).join(' · ')}.`
+      : '';
     if (status.state === 'not-detected') {
       el.textContent = 'Capture extension not detected';
       el.title = 'Install the capture extension (see README) to collect your Lichess and Chess.com games here.';
+      this.els.captureDetail.textContent =
+        'Install the capture extension (README: npm run build:ext, then load dist-ext/ unpacked in Chrome) and your Lichess and Chess.com games arrive here by themselves.';
       return;
     }
+    this.els.captureDetail.textContent = `Your Lichess and Chess.com games arrive here as you play; capture settings are in the extension's popup. ${mine}`.trim();
     const last = status.syncing
       ? 'syncing…'
       : status.lastSyncAt === null

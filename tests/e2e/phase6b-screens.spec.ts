@@ -116,6 +116,7 @@ for (const vp of VIEWPORTS) {
       await expect(page.getByTestId('games-list')).toBeVisible();
       await shot(page, vp.name, 'games-empty');
 
+      await page.getByTestId('btn-games-import').click();
       await page.getByTestId('btn-games-paste').click();
       await page.getByTestId('games-paste-text').fill(GAMES_PGN);
       await page.getByTestId('btn-games-paste-import').click();
