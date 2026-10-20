@@ -5,6 +5,8 @@ import type { UciScore } from '../engine/uci-parser';
 import { CathedralAudio } from '../render/audio';
 import { BoardRenderer } from '../render/board-renderer';
 import { DEFAULT_BOARD_THEME, DEFAULT_PIECE_SET } from '../render/themes';
+import { icon } from '../ui/components/icons';
+import { Menu } from '../ui/components/menu';
 import type { StoredPuzzleRecord } from '../storage/db';
 import { PuzzleDatasetClient, type DatasetInfo } from './puzzle-dataset-client';
 import { moveInputToUci, preparePuzzle, type PreparedPuzzle } from './puzzle-format';
@@ -122,7 +124,11 @@ export class PuzzleTrainer {
     emptyText: HTMLElement;
     emptyActions: HTMLElement;
     stats: HTMLElement;
+    todayDue: HTMLElement;
+    todayNew: HTMLElement;
+    todayRated: HTMLElement;
   };
+  private menu!: Menu;
 
   constructor(private readonly options: PuzzleTrainerOptions) {
     this.dataset = options.dataset ?? new PuzzleDatasetClient();
@@ -181,42 +187,59 @@ export class PuzzleTrainer {
       <div class="wc-board-column">
         <div class="wc-board-mount" data-testid="puzzle-board-mount"></div>
       </div>
-      <aside class="wc-side-panel wc-puzzle-panel" aria-label="Puzzles">
-        <div class="wc-puzzle-modes" role="tablist" aria-label="Puzzle session">
-          ${(Object.keys(MODE_LABEL) as PuzzleMode[])
-            .map(
-              (m) =>
-                `<button type="button" role="tab" class="wc-puzzle-mode" data-mode="${m}" data-testid="puzzle-mode-${m}" aria-selected="false">${MODE_LABEL[m]}</button>`,
-            )
-            .join('')}
+      <aside class="wc-panel wc-puzzle-panel" aria-label="Puzzles">
+        <div class="wc-panel-inner">
+          <div class="wc-panel-body">
+            <div class="wc-today-strip" data-testid="puzzle-today" aria-label="Today">
+              <div class="wc-today-strip-item"><span class="wc-today-strip-n" data-testid="puzzle-today-due">–</span><span class="wc-today-strip-l">reviews due</span></div>
+              <div class="wc-today-strip-item"><span class="wc-today-strip-n" data-testid="puzzle-today-new">–</span><span class="wc-today-strip-l">new from my games</span></div>
+              <div class="wc-today-strip-item"><span class="wc-today-strip-n" data-testid="puzzle-today-rated">–</span><span class="wc-today-strip-l">rated today</span></div>
+            </div>
+            <div class="wc-seg wc-puzzle-modes" role="tablist" aria-label="Puzzle session">
+              ${(Object.keys(MODE_LABEL) as PuzzleMode[])
+                .map(
+                  (m) =>
+                    `<button type="button" role="tab" class="wc-seg-item wc-puzzle-mode" data-mode="${m}" data-testid="puzzle-mode-${m}" aria-selected="false">${MODE_LABEL[m]}</button>`,
+                )
+                .join('')}
+            </div>
+            <label class="wc-setting-row wc-puzzle-theme" data-testid="puzzle-theme-wrap"><span class="wc-setting-label">Theme</span>
+              <select class="wc-select wc-setting-select" data-testid="puzzle-theme"><option value="">Mix (all themes)</option></select>
+            </label>
+            <div class="wc-puzzle-card">
+              <div class="wc-status-header">
+                <div class="wc-status-banner" data-testid="puzzle-status" role="status" aria-live="polite" data-state="idle">Loading…</div>
+                <div class="wc-eval-pill wc-puzzle-rating" data-testid="puzzle-rating" title="Puzzle rating (Glicko-2)">1500</div>
+              </div>
+              <p class="wc-puzzle-prompt" data-testid="puzzle-prompt"></p>
+              <p class="wc-puzzle-source" data-testid="puzzle-source"></p>
+            </div>
+            <div class="wc-action-bar" data-testid="puzzle-actions">
+              <button type="button" class="wc-btn wc-btn-secondary wc-btn-action" data-testid="btn-puzzle-hint" title="Highlights the piece to move (a solve with a hint is unrated)">${icon('hint')}Hint</button>
+              <button type="button" class="wc-btn wc-btn-secondary wc-btn-action" data-testid="btn-puzzle-solution">Show solution</button>
+            </div>
+            <p class="wc-puzzle-line" data-testid="puzzle-line"></p>
+            <div class="wc-puzzle-empty" data-testid="puzzle-empty" hidden>
+              <p data-testid="puzzle-empty-text"></p>
+              <div class="wc-puzzle-empty-actions" data-testid="puzzle-empty-actions"></div>
+            </div>
+          </div>
+          <div class="wc-panel-foot wc-action-bar">
+            <dl class="wc-puzzle-stats" data-testid="puzzle-stats"></dl>
+            <button type="button" class="wc-btn wc-btn-secondary wc-btn-lg wc-grow" data-testid="btn-puzzle-next">Next puzzle${icon('next')}</button>
+          </div>
         </div>
-        <label class="wc-puzzle-theme" data-testid="puzzle-theme-wrap">Theme
-          <select class="wc-select wc-select-sm" data-testid="puzzle-theme"><option value="">Mix (all themes)</option></select>
-        </label>
-        <div class="wc-status-header">
-          <div class="wc-status-banner" data-testid="puzzle-status" role="status" aria-live="polite" data-state="idle">Loading…</div>
-          <div class="wc-eval-pill wc-puzzle-rating" data-testid="puzzle-rating" title="Puzzle rating (Glicko-2)">1500</div>
-        </div>
-        <p class="wc-puzzle-prompt" data-testid="puzzle-prompt"></p>
-        <p class="wc-puzzle-source" data-testid="puzzle-source"></p>
-        <div class="wc-action-row">
-          <button type="button" class="wc-btn wc-btn-secondary" data-testid="btn-puzzle-hint" title="Highlights the piece to move (a solve with a hint is unrated)">Hint</button>
-          <button type="button" class="wc-btn wc-btn-secondary" data-testid="btn-puzzle-solution">Show solution</button>
-          <button type="button" class="wc-btn wc-btn-primary" data-testid="btn-puzzle-next">Next</button>
-        </div>
-        <div class="wc-action-row">
-          <button type="button" class="wc-btn wc-btn-ghost" data-testid="btn-puzzle-retry" title="Try this puzzle again (practice, not recorded)">Retry</button>
-          <button type="button" class="wc-btn wc-btn-ghost" data-testid="btn-puzzle-analyze" title="Open this position on the analysis board">Analyze</button>
-          <button type="button" class="wc-btn wc-btn-ghost" data-testid="btn-puzzle-flip">Flip board</button>
-        </div>
-        <p class="wc-puzzle-line" data-testid="puzzle-line"></p>
-        <div class="wc-puzzle-empty" data-testid="puzzle-empty" hidden>
-          <p data-testid="puzzle-empty-text"></p>
-          <div class="wc-puzzle-empty-actions" data-testid="puzzle-empty-actions"></div>
-        </div>
-        <dl class="wc-puzzle-stats" data-testid="puzzle-stats"></dl>
       </aside>
     `;
+    this.menu = new Menu(
+      this.root.querySelector('[data-testid="puzzle-actions"]') as HTMLElement,
+      [
+        { id: 'retry', label: 'Retry this puzzle', testId: 'btn-puzzle-retry', icon: 'undo', onSelect: () => this.retry() },
+        { id: 'analyze', label: 'Analyze the position', testId: 'btn-puzzle-analyze', icon: 'review', onSelect: () => this.analyze() },
+        { id: 'flip', label: 'Flip board', testId: 'btn-puzzle-flip', icon: 'flip', onSelect: () => this.board.setFlipped(!this.board.isFlipped()) },
+      ],
+      { testId: 'puzzle-menu', label: 'More puzzle actions' },
+    );
     const q = <T extends HTMLElement>(id: string) => this.root.querySelector(`[data-testid="${id}"]`) as T;
     this.els = {
       modes: Array.from(this.root.querySelectorAll<HTMLButtonElement>('.wc-puzzle-mode')),
@@ -237,6 +260,9 @@ export class PuzzleTrainer {
       emptyText: q('puzzle-empty-text'),
       emptyActions: q('puzzle-empty-actions'),
       stats: q('puzzle-stats'),
+      todayDue: q('puzzle-today-due'),
+      todayNew: q('puzzle-today-new'),
+      todayRated: q('puzzle-today-rated'),
     };
     for (const btn of this.els.modes) {
       btn.addEventListener('click', () => void this.start(btn.dataset.mode as PuzzleMode));
@@ -248,9 +274,6 @@ export class PuzzleTrainer {
     this.els.hint.addEventListener('click', () => this.showHint());
     this.els.solution.addEventListener('click', () => this.showSolution());
     this.els.next.addEventListener('click', () => void this.next());
-    this.els.retry.addEventListener('click', () => this.retry());
-    this.els.analyze.addEventListener('click', () => this.analyze());
-    this.els.flip.addEventListener('click', () => this.board.setFlipped(!this.board.isFlipped()));
     this.updateButtons();
   }
 
@@ -595,11 +618,12 @@ export class PuzzleTrainer {
     const changeText = change === null ? '' : ` (${change >= 0 ? '+' : '−'}${Math.abs(change)})`;
     const today = await this.options.store.todaySummary();
     const due = today.dueReviews.personal + today.dueReviews.lichess;
+    this.els.todayDue.textContent = String(due);
+    this.els.todayNew.textContent = String(today.newPersonal);
+    this.els.todayRated.textContent = `${today.ratedSolvedToday}/${today.ratedToday}`;
+    this.els.todayNew.parentElement?.setAttribute('title', `${today.totalPersonal} puzzles from my games in all`);
     this.els.stats.innerHTML = `
-      <div><dt>Rating</dt><dd data-testid="puzzle-stat-rating">${Math.round(rating.rating)} ±${Math.round(rating.rd)}${changeText}</dd></div>
-      <div><dt>Rated today</dt><dd>${today.ratedSolvedToday} / ${today.ratedToday} solved</dd></div>
-      <div><dt>Reviews due</dt><dd data-testid="puzzle-stat-due">${due}</dd></div>
-      <div><dt>From my games</dt><dd>${today.newPersonal} new · ${today.totalPersonal} in all</dd></div>
+      <div><dt>My puzzle rating</dt><dd data-testid="puzzle-stat-rating">${Math.round(rating.rating)} ±${Math.round(rating.rd)}${changeText}</dd></div>
     `;
   }
 
@@ -659,6 +683,12 @@ export class PuzzleTrainer {
     this.els.retry.disabled = !s || (status !== 'solved' && status !== 'shown' && !s.outcome);
     this.els.analyze.disabled = !this.loaded;
     this.els.next.disabled = status === 'checking';
+    const over = !s || status === 'solved' || status === 'shown';
+    this.els.next.classList.toggle('wc-btn-primary', over);
+    this.els.next.classList.toggle('wc-btn-secondary', !over);
+    this.els.next.setAttribute('data-ready', String(over));
+    this.menu.setDisabled('retry', this.els.retry.disabled);
+    this.menu.setDisabled('analyze', this.els.analyze.disabled);
   }
 
   private playSound(move: ExecutedMove, check: boolean): void {

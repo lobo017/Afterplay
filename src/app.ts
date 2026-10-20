@@ -421,7 +421,10 @@ export function mountAppShell(container: HTMLElement): {
           <h2 class="wc-page-title">Train</h2>
           <p class="wc-page-sub">Puzzles from your own games, spaced reviews and rated puzzles.</p>
         </div>
-        <button type="button" class="wc-btn wc-btn-primary wc-btn-lg" data-testid="btn-train-start">${icon('train')}Start training</button>
+        <div class="wc-train-start">
+          <button type="button" class="wc-btn wc-btn-primary wc-btn-lg" data-testid="btn-train-start">${icon('train')}Start training</button>
+          <span class="wc-train-start-detail" data-testid="train-start-detail"></span>
+        </div>
       </div>
       <div id="wc-today-root" class="wc-today-root"><p class="wc-games-loading" data-testid="today-loading">Opening your progress…</p></div>
     </section>
@@ -557,6 +560,7 @@ export function mountAppShell(container: HTMLElement): {
   const navButtons = [...container.querySelectorAll<HTMLButtonElement>('.wc-nav-item')];
   const screenTitleEl = container.querySelector('[data-testid="screen-title"]') as HTMLElement;
   const trainCountEl = container.querySelector('[data-testid="nav-train-count"]') as HTMLElement;
+  const trainStartDetailEl = trainRootEl.querySelector('[data-testid="train-start-detail"]') as HTMLElement;
   let gamesList: GamesList | null = null;
   let todayScreen: TodayScreen | null = null;
   let puzzleTrainer: PuzzleTrainer | null = null;
@@ -581,11 +585,19 @@ export function mountAppShell(container: HTMLElement): {
     } catch {
       return;
     }
-    const today = await api.store.todaySummary();
-    const waiting = today.dueReviews.personal + today.dueReviews.lichess + today.newPersonal;
+    const [today, rating] = await Promise.all([api.store.todaySummary(), api.store.getRating()]);
+    const due = today.dueReviews.personal + today.dueReviews.lichess;
+    const waiting = due + today.newPersonal;
     trainCountEl.textContent = waiting === 0 ? '' : waiting > 99 ? '99+' : String(waiting);
     trainCountEl.hidden = waiting === 0;
     trainCountEl.setAttribute('aria-label', `${waiting} waiting`);
+    // What "Start training" will open (the same choice openPuzzles makes)
+    trainStartDetailEl.textContent =
+      due > 0
+        ? `Your ${due} due review${due === 1 ? '' : 's'}`
+        : today.newPersonal > 0
+          ? `${today.newPersonal} new puzzle${today.newPersonal === 1 ? '' : 's'} from your games`
+          : `Rated puzzles near ${Math.round(rating.rating)}`;
   };
 
   const showTrainView = (view: TrainView): void => {
@@ -782,6 +794,8 @@ export function mountAppShell(container: HTMLElement): {
 
     // Puzzles and the Today screen share the library's storage
     const puzzleStore = new PuzzleStore(storage);
+    // Every attempt, review and new puzzle updates what's waiting on the Train tab
+    puzzleStore.onChange(() => void refreshTrainCount());
     const syncPersonal = async (): Promise<void> => {
       await puzzleStore.syncAll(await lib.list(), (id) => lib.getReview(id), lib.getUserAccounts());
     };

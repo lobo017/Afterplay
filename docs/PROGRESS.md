@@ -3361,3 +3361,44 @@ the retry), the ⋯ menu and export, Settings' move animation and quiet board ke
 Analyze this position → Analysis, phone.
 
 **Checks:** typecheck, lint, 452 unit tests, build, **101/101 e2e** (10.0 min). Screens looked at: `desktop-analysis-empty.png`, `desktop-review-done.png`, `desktop-review-key-moment.png`, `desktop-review-try-it.png`, `desktop-review-load.png`, `desktop-review-editor.png`, `phone-review-done.png`, `phone-review-key-moment.png`, `phone-review-coach.png`. Fixed after looking: the coach card was below the chart and cut off (now first), the phone coach buttons wrapped badly (2×2 grid), the phone card title was squeezed by the eval column, "Load FEN / PGN" was cut off on phones ("Load").
+
+### Stage 4 plan — Train (written before code)
+- Hub: the page heading, one primary **Start training** (the session with the most to do) with a
+  line saying what it will start, and the Today cards as the other ways in (their buttons
+  become secondary). The Train tab's count follows every puzzle attempt and review save.
+- Session (`puzzle-trainer.ts`) in the shared panel: a compact Today strip (reviews due, new from
+  my games, rated today), the session switch (Due reviews / My mistakes / Rated) and theme, a
+  status card with the rating, the prompt, Hint and Show solution with ⋯ (Retry, Analyze, Flip),
+  the solution line, my rating, and **Next puzzle** in the footer: the large primary once a
+  puzzle is solved or failed, a plain button (skip) while solving. Board look from Settings.
+- Phone: the board first, then the panel, nothing sideways.
+- Tests: test ids kept (Retry / Analyze / Flip gain the ⋯ click; no test uses them today). New
+  `phase6b-train.spec.ts`: hub (Start training's line, Today cards, count), session panel
+  (strip numbers, the menu, Next puzzle's two states), phone.
+
+### Stage 4 result — Train (2026-10-19)
+
+Built as planned.
+- **Hub:** the heading, one primary **Start training** with a line saying what it opens ("Your 3
+  due reviews", "2 new puzzles from your games", or "Rated puzzles near 1500": the same choice
+  it makes), and the Today cards as the other ways in (their buttons are secondary now). The
+  Train tab's count follows every attempt and review save (`PuzzleStore.onChange`).
+- **Session** in the shared panel: a Today strip (reviews due, new from my games with the total in
+  its tooltip, rated today solved/played), the session switch in the segmented style, theme, the
+  puzzle card (status, rating, prompt, source), Hint and Show solution with ⋯ (Retry this
+  puzzle, Analyze the position, Flip board), the solution line, and the footer: my puzzle rating
+  (with the last change) beside **Next puzzle**, which is the large primary once the puzzle is
+  solved or its solution shown and a plain skip button while solving.
+- The session's board takes the board look and capture shards from Settings.
+
+**Found and fixed while checking:** the rating, "reviews due" and "from my games" were repeated
+below the puzzle and clipped under the footer; the Today strip has the counts and the footer has
+the rating now.
+
+**Tests:** no existing test changed (Retry / Analyze / Flip moved into ⋯; no test used them).
+New `phase6b-train.spec.ts` (4): the hub's single primary and its line, the live Train count and
+"Your 1 due review" after a failed attempt comes due, the session panel (strip numbers, the ⋯
+items, Flip, Next puzzle's two states, Retry enabled once the puzzle is over, Analyze → Review's
+Analysis tab), phone.
+
+**Checks:** typecheck, lint, 452 unit tests, build, **105/105 e2e** (9.3 min). Screens looked at: `desktop-today.png` (hub), `desktop-train-hub.png`, `desktop-train-session.png`, `phone-train-session.png`, `phone-puzzles.png`, `phase6-screens/puzzle-desktop-solved.png`.

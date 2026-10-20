@@ -74,13 +74,13 @@ export class TodayScreen {
           <div class="wc-today-card-label">Puzzle reviews due</div>
           <div class="wc-today-count" data-testid="today-reviews-count">–</div>
           <p class="wc-today-detail" data-testid="today-reviews-detail"></p>
-          <button type="button" class="wc-btn wc-btn-primary" data-testid="btn-today-reviews">Start reviews</button>
+          <button type="button" class="wc-btn wc-btn-secondary" data-testid="btn-today-reviews">Start reviews</button>
         </article>
         <article class="wc-today-card" data-testid="today-mistakes">
           <div class="wc-today-card-label">New puzzles from my mistakes</div>
           <div class="wc-today-count" data-testid="today-mistakes-count">–</div>
           <p class="wc-today-detail" data-testid="today-mistakes-detail"></p>
-          <button type="button" class="wc-btn wc-btn-primary" data-testid="btn-today-mistakes">Solve them</button>
+          <button type="button" class="wc-btn wc-btn-secondary" data-testid="btn-today-mistakes">Solve them</button>
         </article>
         <article class="wc-today-card" data-testid="today-rated">
           <div class="wc-today-card-label">Rated puzzles today</div>
