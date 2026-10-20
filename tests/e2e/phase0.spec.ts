@@ -66,7 +66,8 @@ test.describe('Phase 0 — Application Shell & Offline Isolation', () => {
       });
     }
 
-    // Toggle off via header button
+    // Toggle off via its switch in Settings › About & diagnostics
+    await page.getByTestId('btn-settings').click();
     await page.getByTestId('toggle-dev-overlay').click();
     await expect(devOverlay).toBeHidden();
 

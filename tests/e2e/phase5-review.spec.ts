@@ -45,7 +45,7 @@ interface ReviewSnapshot {
 async function openAnalysis(page: Page): Promise<void> {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/');
-  await page.getByTestId('mode-tab-analysis').click();
+  await page.getByTestId('mode-tab-review').click();
   await expect(page.getByTestId('analysis-layout')).toBeVisible();
   await expect(page.getByTestId('review-panel')).toBeVisible();
 }
@@ -815,7 +815,7 @@ test.describe('Phase 5 — Review panel on a phone', () => {
   test('tooltips open on tap and close on an outside tap or Escape; the header fits', async ({ page }) => {
     test.setTimeout(120_000);
     await page.goto('/');
-    await page.getByTestId('mode-tab-analysis').tap();
+    await page.getByTestId('mode-tab-review').tap();
     await expect(page.getByTestId('review-panel')).toBeVisible();
     // A touch screen: nothing can hover, so taps are the only way in
     expect(await page.evaluate(() => matchMedia('(hover: hover)').matches)).toBe(false);

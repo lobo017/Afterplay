@@ -201,7 +201,7 @@ async function runOne(browser, threads, scenario) {
   page.on('pageerror', (err) => logError('[page error]', err));
   try {
     await page.goto(BASE_URL, { waitUntil: 'domcontentloaded' });
-    await page.locator('[data-testid="mode-tab-analysis"]').click();
+    await page.locator('[data-testid="mode-tab-review"]').click();
     await page.locator('[data-testid="review-panel"]').waitFor({ state: 'visible' });
     await page.evaluate(installSamplers);
     await page.evaluate(

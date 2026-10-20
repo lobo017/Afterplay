@@ -91,7 +91,7 @@ for (const vp of VIEWPORTS) {
       await shot(page, vp.name, 'play-dragging');
       await page.mouse.up();
 
-      await page.getByTestId('mode-tab-analysis').click();
+      await page.getByTestId('mode-tab-review').click();
       await expect(page.getByTestId('analysis-layout')).toBeVisible();
       await shot(page, vp.name, 'analysis-empty');
       await expectNoSideScroll(page);
@@ -123,12 +123,12 @@ for (const vp of VIEWPORTS) {
       await shot(page, vp.name, 'games-list');
       await expectNoSideScroll(page);
 
-      await page.getByTestId('mode-tab-today').click();
+      await page.getByTestId('mode-tab-train').click();
       await expect(page.getByTestId('today-screen')).toBeVisible();
       await shot(page, vp.name, 'today');
       await expectNoSideScroll(page);
 
-      await page.getByTestId('mode-tab-puzzles').click();
+      await page.getByTestId('btn-train-start').click();
       await expect(page.getByTestId('puzzle-trainer')).toBeVisible();
       await expect(page.getByTestId('puzzle-status')).not.toHaveAttribute('data-state', 'idle', { timeout: 30_000 });
       await shot(page, vp.name, 'puzzles');

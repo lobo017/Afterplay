@@ -258,7 +258,7 @@ test.describe('Phase 6b — board feel', () => {
     await page.reload();
     await expect.poll(async () => Math.round((await frame.boundingBox())!.width)).toBe(700);
     // Analysis and Puzzles boards share the size
-    await page.getByTestId('mode-tab-analysis').click();
+    await page.getByTestId('mode-tab-review').click();
     const analysisFrame = page.getByTestId('analysis-layout').getByTestId('chess-board-frame');
     expect(Math.round((await analysisFrame.boundingBox())!.width)).toBe(700);
     await page.screenshot({ path: path.join(SCREENSHOT_DIR, 'desktop-analysis-board-700.png') });
@@ -299,7 +299,7 @@ test.describe('Phase 5 — board badges', () => {
   test('the current move’s class icon sits on its destination square’s corner, every class, both orientations', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.goto('/');
-    await page.getByTestId('mode-tab-analysis').click();
+    await page.getByTestId('mode-tab-review').click();
     await expect(page.getByTestId('analysis-layout')).toBeVisible();
 
     // The sample game, with one class on each of its first ten moves (as a review writes them)
@@ -366,7 +366,7 @@ test.describe('Phase 5 — board badges', () => {
     test.setTimeout(150_000);
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.goto('/');
-    await page.getByTestId('mode-tab-analysis').click();
+    await page.getByTestId('mode-tab-review').click();
     await page.getByTestId('select-review-preset').selectOption('quick');
     await page.getByTestId('btn-review-sample').click();
     await expect(page.getByTestId('review-panel')).toHaveAttribute('data-state', 'done', { timeout: 120_000 });

@@ -470,7 +470,7 @@ async function scenarioAnalysis(page) {
       ENGINE_THREADS,
     );
   }
-  await page.getByTestId('mode-tab-analysis').click();
+  await page.getByTestId('mode-tab-review').click();
   await page.getByTestId('analysis-layout').waitFor({ state: 'visible' });
   await page.getByTestId('select-multipv').selectOption('5');
   await page.evaluate(() => {

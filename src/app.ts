@@ -1,4 +1,6 @@
 import { DevOverlayController } from './ui/dev-overlay';
+import { SettingsPanel } from './ui/settings-panel';
+import { icon, type IconName } from './ui/components/icons';
 import { initBoardSize } from './render/board-size';
 import { boardFeel, type BoardFeelStore } from './render/board-feel';
 import {
@@ -116,7 +118,41 @@ import { PuzzleStore } from './trainers/puzzle-store';
 import { TodayScreen, type PuzzleMode } from './trainers/today-screen';
 import type { PuzzleTrainer } from './trainers/puzzle-trainer';
 
-export type AppWorkspaceMode = 'play' | 'analysis' | 'games' | 'today' | 'puzzles';
+/** The four destinations. Review holds the analysis board; Train holds Today and the puzzles. */
+export type AppWorkspaceMode = 'play' | 'train' | 'review' | 'games';
+
+/** Where Train is: its hub (what's due) or a puzzle session. */
+export type TrainView = 'hub' | 'session';
+
+const NAV_ITEMS: ReadonlyArray<{ mode: AppWorkspaceMode; label: string; icon: IconName }> = [
+  { mode: 'play', label: 'Play', icon: 'play' },
+  { mode: 'train', label: 'Train', icon: 'train' },
+  { mode: 'review', label: 'Review', icon: 'review' },
+  { mode: 'games', label: 'Games', icon: 'games' },
+];
+
+/**
+ * The destination a URL asks for (`#review`, `?mode=review`). Links from before the four
+ * destinations still work: analysis → review, today and puzzles → train.
+ */
+export function modeFromLocation(search: string, hash: string): AppWorkspaceMode | null {
+  const name = new URLSearchParams(search).get('mode') ?? hash.replace(/^#/, '');
+  switch (name) {
+    case 'play':
+      return 'play';
+    case 'review':
+    case 'analysis':
+      return 'review';
+    case 'train':
+    case 'today':
+    case 'puzzles':
+      return 'train';
+    case 'games':
+      return 'games';
+    default:
+      return null;
+  }
+}
 
 export interface AppShellEnvironment {
   crossOriginIsolated: boolean;
@@ -192,6 +228,7 @@ export interface WizardChessPlayApi {
 
 export interface WizardChessAnalysisApi {
   controller: AnalysisController;
+  /** Opens Review (the analysis board), optionally with the Play game on it. */
   switchToAnalysis: (copyPlayGame?: boolean) => void;
   switchToPlay: () => void;
   getMode: () => AppWorkspaceMode;
@@ -250,6 +287,8 @@ export interface WizardChessLibraryApi {
 export interface WizardChessPuzzlesApi {
   store: PuzzleStore;
   today: TodayScreen;
+  /** Train's current view: the hub (Today) or a puzzle session. */
+  getTrainView: () => TrainView;
   /** Opens the Puzzles tab on a session (loads the trainer and its dataset worker on first use). */
   open: (mode: PuzzleMode) => Promise<PuzzleTrainer>;
   /** The trainer once loaded (null before Puzzles was first opened). */
@@ -298,99 +337,27 @@ export function mountAppShell(container: HTMLElement): {
 } {
   const env = detectEnvironment();
   initBoardSize();
-  const threadModeLabel = env.crossOriginIsolated
-    ? `Multi-threaded Capable (${env.hardwareConcurrency} cores)`
-    : 'Single-threaded Fallback';
-
   container.innerHTML = `
-    <div class="wc-shell" data-testid="app-shell">
-      <header class="wc-header">
+    <div class="wc-shell" data-testid="app-shell" data-mode="play">
+      <header class="wc-topbar">
         <div class="wc-brand">
-          <div class="wc-brand-mark" aria-hidden="true">♛</div>
-          <div>
-            <h1 class="wc-brand-title">Wizard's Chess</h1>
-            <div class="wc-brand-subtitle">Cathedral Marble &amp; Obsidian · Offline Stockfish Training</div>
-          </div>
+          <div class="wc-brand-mark" aria-hidden="true">${icon('crest')}</div>
+          <h1 class="wc-brand-title">Wizard's Chess</h1>
+          <span class="wc-screen-title" data-testid="screen-title" aria-hidden="true">Play</span>
         </div>
-
-        <nav class="wc-mode-nav" aria-label="Workspace Mode">
-          <button
-            type="button"
-            class="wc-mode-tab wc-mode-tab-active"
-            data-testid="mode-tab-play"
-            aria-selected="true"
-          >
-            ⚔ Play Board
-          </button>
-          <button
-            type="button"
-            class="wc-mode-tab"
-            data-testid="mode-tab-analysis"
-            aria-selected="false"
-          >
-            🔍 Analysis Board
-          </button>
-          <button
-            type="button"
-            class="wc-mode-tab"
-            data-testid="mode-tab-games"
-            aria-selected="false"
-          >
-            📚 Games
-          </button>
-          <button
-            type="button"
-            class="wc-mode-tab"
-            data-testid="mode-tab-today"
-            aria-selected="false"
-          >
-            ☀ Today
-          </button>
-          <button
-            type="button"
-            class="wc-mode-tab"
-            data-testid="mode-tab-puzzles"
-            aria-selected="false"
-          >
-            🧩 Puzzles
-          </button>
-          <button
-            type="button"
-            class="wc-mode-tab wc-mode-tab-action"
-            data-testid="btn-analyze-game"
-            title="Send the current Play game tree to the Analysis Board"
-          >
-            Analyze Game →
-          </button>
+        <nav class="wc-nav" aria-label="Main" data-testid="main-nav">
+          ${NAV_ITEMS.map(
+            (item) => `<button type="button" class="wc-nav-item" data-mode="${item.mode}" data-testid="mode-tab-${item.mode}"${
+              item.mode === 'play' ? ' aria-current="page"' : ''
+            }>${icon(item.icon)}<span class="wc-nav-label">${item.label}</span>${
+              item.mode === 'train'
+                ? '<span class="wc-nav-count" data-testid="nav-train-count" hidden></span>'
+                : ''
+            }</button>`,
+          ).join('')}
         </nav>
-
-        <div class="wc-status-bar">
-          <span class="wc-badge" data-testid="isolation-badge">
-            <span class="wc-dot ${env.crossOriginIsolated ? '' : 'wc-dot-warn'}"></span>
-            <span>${env.crossOriginIsolated ? 'COOP/COEP Isolated' : 'Single-Thread Mode'}</span>
-          </span>
-          <span class="wc-badge" data-testid="network-badge">
-            <span class="wc-dot"></span>
-            <span>Zero-Network Offline Shell</span>
-          </span>
-          <span class="wc-badge" data-testid="core-badge">
-            <span class="wc-dot"></span>
-            <span>Core Rules · PGN · IDB v${LATEST_SCHEMA_VERSION}</span>
-          </span>
-          <span class="wc-badge" data-testid="engine-badge">
-            <span class="wc-dot"></span>
-            <span>Stockfish 17.1 WASM · Bot 400–2400</span>
-          </span>
-          <button
-            type="button"
-            class="wc-badge wc-badge-button"
-            data-testid="toggle-dev-overlay"
-            aria-pressed="false"
-            title="Toggle Developer Performance Overlay (Backtick key)"
-          >
-            <span>Dev Overlay</span>
-            <span class="wc-kbd">\`</span>
-          </button>
+        <div class="wc-topbar-actions">
+          <button type="button" class="wc-icon-btn" data-testid="btn-settings" aria-label="Settings" aria-haspopup="dialog" title="Settings">${icon('settings')}</button>
         </div>
       </header>
 
@@ -398,48 +365,23 @@ export function mountAppShell(container: HTMLElement): {
         <div id="wc-workspace-host" class="wc-workspace-host">
           <div id="wc-play-root" class="wc-play-root"></div>
         </div>
-
-        <!-- System Architecture & Diagnostics Footer Bar (preserves Phase 0-2 telemetry selectors) -->
-        <section class="wc-diagnostics-strip" aria-label="Architecture Diagnostics">
-          <div class="wc-stat">
-            <div class="wc-stat-label">Engine Threading</div>
-            <div class="wc-stat-value" data-testid="stat-threading">${threadModeLabel}</div>
-          </div>
-          <div class="wc-stat">
-            <div class="wc-stat-label">Runtime Network</div>
-            <div class="wc-stat-value" data-testid="stat-network">0 External Requests</div>
-          </div>
-          <div class="wc-stat">
-            <div class="wc-stat-label">Bundled Datasets</div>
-            <div class="wc-stat-value" data-testid="stat-datasets">Openings · 20k Puzzles · Endgames</div>
-          </div>
-          <div class="wc-stat">
-            <div class="wc-stat-label">Rules &amp; Variants</div>
-            <div class="wc-stat-value" data-testid="stat-rules">Standard + Chess960 (Perft Verified)</div>
-          </div>
-          <div class="wc-stat">
-            <div class="wc-stat-label">PGN &amp; GameTree</div>
-            <div class="wc-stat-value" data-testid="stat-pgn">RAVs · NAGs · [%eval/%cal/%csl]</div>
-          </div>
-          <div class="wc-stat">
-            <div class="wc-stat-label">Local Storage</div>
-            <div class="wc-stat-value" data-testid="stat-storage">IndexedDB Schema v${LATEST_SCHEMA_VERSION}</div>
-          </div>
-          <div class="wc-stat">
-            <div class="wc-stat-label">Stockfish Engine</div>
-            <div class="wc-stat-value" data-testid="stat-engine">Stockfish 17.1 Lite NNUE (MultiPV 1–5)</div>
-          </div>
-          <div class="wc-stat">
-            <div class="wc-stat-label">Playing Bot</div>
-            <div class="wc-stat-value" data-testid="stat-bot">400–2400 Elo · Aggressive / Solid / Gambiteer</div>
-          </div>
-        </section>
       </main>
     </div>
   `;
 
   const shellEl = container.querySelector('.wc-shell') as HTMLElement;
   const devOverlay = new DevOverlayController(shellEl);
+  const settings = new SettingsPanel({
+    parent: shellEl,
+    devOverlay,
+    about: {
+      crossOriginIsolated: env.crossOriginIsolated,
+      hardwareConcurrency: env.hardwareConcurrency,
+      schemaVersion: LATEST_SCHEMA_VERSION,
+    },
+  });
+  const settingsBtn = container.querySelector('[data-testid="btn-settings"]') as HTMLButtonElement;
+  settingsBtn.addEventListener('click', () => settings.open());
 
   const createConnectedEngine = (options?: EngineClientOptions) =>
     new EngineClient({
@@ -465,14 +407,32 @@ export function mountAppShell(container: HTMLElement): {
   gamesRootEl.id = 'wc-games-root';
   gamesRootEl.className = 'wc-games-root';
   gamesRootEl.innerHTML = '<p class="wc-games-loading" data-testid="games-loading">Opening the game library…</p>';
-  const todayRootEl = document.createElement('div');
-  todayRootEl.id = 'wc-today-root';
-  todayRootEl.className = 'wc-today-root';
-  todayRootEl.innerHTML = '<p class="wc-games-loading" data-testid="today-loading">Opening your progress…</p>';
-  const puzzlesRootEl = document.createElement('div');
-  puzzlesRootEl.id = 'wc-puzzles-root';
-  puzzlesRootEl.className = 'wc-puzzles-root';
-  puzzlesRootEl.innerHTML = '<p class="wc-games-loading" data-testid="puzzles-loading">Loading puzzles…</p>';
+  // Train: a hub (Today: what's due) and a session view (the puzzle trainer)
+  const trainRootEl = document.createElement('div');
+  trainRootEl.id = 'wc-train-root';
+  trainRootEl.className = 'wc-train-root';
+  trainRootEl.setAttribute('data-testid', 'train-root');
+  trainRootEl.innerHTML = `
+    <section class="wc-train-hub" data-testid="train-hub" aria-label="Train">
+      <div class="wc-train-hub-head">
+        <div>
+          <h2 class="wc-page-title">Train</h2>
+          <p class="wc-page-sub">Puzzles from your own games, spaced reviews and rated puzzles.</p>
+        </div>
+        <button type="button" class="wc-btn wc-btn-primary wc-btn-lg" data-testid="btn-train-start">${icon('train')}Start training</button>
+      </div>
+      <div id="wc-today-root" class="wc-today-root"><p class="wc-games-loading" data-testid="today-loading">Opening your progress…</p></div>
+    </section>
+    <section class="wc-train-session" data-testid="train-session" hidden>
+      <div class="wc-train-session-bar">
+        <button type="button" class="wc-btn wc-btn-ghost wc-btn-sm" data-testid="btn-train-hub">${icon('back')}Train</button>
+      </div>
+      <div id="wc-puzzles-root" class="wc-puzzles-root"><p class="wc-games-loading" data-testid="puzzles-loading">Loading puzzles…</p></div>
+    </section>`;
+  const trainHubEl = trainRootEl.querySelector('[data-testid="train-hub"]') as HTMLElement;
+  const trainSessionEl = trainRootEl.querySelector('[data-testid="train-session"]') as HTMLElement;
+  const todayRootEl = trainRootEl.querySelector('#wc-today-root') as HTMLElement;
+  const puzzlesRootEl = trainRootEl.querySelector('#wc-puzzles-root') as HTMLElement;
 
   // The Games list's library opens in the background; the board doesn't wait for it
   let library: GameLibrary | null = null;
@@ -573,25 +533,14 @@ export function mountAppShell(container: HTMLElement): {
   }
 
   let currentMode: AppWorkspaceMode = 'play';
-  const modeTabPlayBtn = container.querySelector(
-    '[data-testid="mode-tab-play"]',
-  ) as HTMLButtonElement;
-  const modeTabAnalysisBtn = container.querySelector(
-    '[data-testid="mode-tab-analysis"]',
-  ) as HTMLButtonElement;
-  const modeTabGamesBtn = container.querySelector(
-    '[data-testid="mode-tab-games"]',
-  ) as HTMLButtonElement;
+  let trainView: TrainView = 'hub';
+  const navButtons = [...container.querySelectorAll<HTMLButtonElement>('.wc-nav-item')];
+  const screenTitleEl = container.querySelector('[data-testid="screen-title"]') as HTMLElement;
+  const trainCountEl = container.querySelector('[data-testid="nav-train-count"]') as HTMLElement;
   let gamesList: GamesList | null = null;
-  const modeTabTodayBtn = container.querySelector(
-    '[data-testid="mode-tab-today"]',
-  ) as HTMLButtonElement;
-  const modeTabPuzzlesBtn = container.querySelector(
-    '[data-testid="mode-tab-puzzles"]',
-  ) as HTMLButtonElement;
   let todayScreen: TodayScreen | null = null;
   let puzzleTrainer: PuzzleTrainer | null = null;
-  /** Puzzle storage opens with the game library; Today and Puzzles wait for it. */
+  /** Puzzle storage opens with the game library; Train waits for it. */
   let resolvePuzzles!: (api: WizardChessPuzzlesApi) => void;
   let rejectPuzzles!: (err: unknown) => void;
   const puzzlesReady = new Promise<WizardChessPuzzlesApi>((resolve, reject) => {
@@ -599,13 +548,35 @@ export function mountAppShell(container: HTMLElement): {
     rejectPuzzles = reject;
   });
   puzzlesReady.catch(() => undefined);
-  /** The trainer chunk, imported the first time Puzzles opens. */
+  /** The trainer chunk, imported the first time a puzzle session starts. */
   let trainerLoading: Promise<PuzzleTrainer> | null = null;
   /** Serializes session starts, so the latest request wins and none interleave. */
   let puzzleStart: Promise<unknown> = Promise.resolve();
-  const analyzeGameBtn = container.querySelector(
-    '[data-testid="btn-analyze-game"]',
-  ) as HTMLButtonElement;
+
+  /** How much Train has waiting (reviews due and new puzzles from my mistakes), on its tab. */
+  const refreshTrainCount = async (): Promise<void> => {
+    let api: WizardChessPuzzlesApi;
+    try {
+      api = await puzzlesReady;
+    } catch {
+      return;
+    }
+    const today = await api.store.todaySummary();
+    const waiting = today.dueReviews.personal + today.dueReviews.lichess + today.newPersonal;
+    trainCountEl.textContent = waiting === 0 ? '' : waiting > 99 ? '99+' : String(waiting);
+    trainCountEl.hidden = waiting === 0;
+    trainCountEl.setAttribute('aria-label', `${waiting} waiting`);
+  };
+
+  const showTrainView = (view: TrainView): void => {
+    trainView = view;
+    trainHubEl.hidden = view !== 'hub';
+    trainSessionEl.hidden = view !== 'session';
+    if (view === 'hub') {
+      void todayScreen?.refresh();
+      void refreshTrainCount();
+    }
+  };
 
   const setMode = (mode: AppWorkspaceMode, copyPlayGame = false): void => {
     if (copyPlayGame) {
@@ -618,39 +589,36 @@ export function mountAppShell(container: HTMLElement): {
       return;
     }
     currentMode = mode;
+    shellEl.setAttribute('data-mode', mode);
 
-    const tabs: Array<[HTMLButtonElement, AppWorkspaceMode]> = [
-      [modeTabPlayBtn, 'play'],
-      [modeTabAnalysisBtn, 'analysis'],
-      [modeTabGamesBtn, 'games'],
-      [modeTabTodayBtn, 'today'],
-      [modeTabPuzzlesBtn, 'puzzles'],
-    ];
-    for (const [btn, m] of tabs) {
-      btn.classList.toggle('wc-mode-tab-active', m === mode);
-      btn.setAttribute('aria-selected', String(m === mode));
+    for (const btn of navButtons) {
+      if (btn.dataset.mode === mode) btn.setAttribute('aria-current', 'page');
+      else btn.removeAttribute('aria-current');
     }
+    screenTitleEl.textContent = NAV_ITEMS.find((n) => n.mode === mode)?.label ?? '';
 
-    if (mode === 'analysis') {
+    if (mode === 'review') {
       workspaceHostEl.replaceChildren(analysisRootEl);
       analysisController.setActive(true);
     } else {
       analysisController.setActive(false);
-      const roots: Record<Exclude<AppWorkspaceMode, 'analysis'>, HTMLElement> = {
+      const roots: Record<Exclude<AppWorkspaceMode, 'review'>, HTMLElement> = {
         play: playRootEl,
         games: gamesRootEl,
-        today: todayRootEl,
-        puzzles: puzzlesRootEl,
+        train: trainRootEl,
       };
       workspaceHostEl.replaceChildren(roots[mode]);
       if (mode === 'games') void gamesList?.refresh();
-      if (mode === 'today') void todayScreen?.refresh();
+      if (mode === 'train' && trainView === 'hub') {
+        void todayScreen?.refresh();
+        void refreshTrainCount();
+      }
     }
   };
 
   /**
-   * The puzzle trainer is its own chunk, imported the first time Puzzles opens; its dataset
-   * worker (the 20,000 bundled puzzles) starts then too. Neither is in the main bundle.
+   * The puzzle trainer is its own chunk, imported the first time a session starts; its
+   * dataset worker (the 20,000 bundled puzzles) starts then too. Neither is in the main bundle.
    */
   const loadTrainer = (): Promise<PuzzleTrainer> => {
     trainerLoading ??= Promise.all([puzzlesReady, import('./trainers/puzzle-trainer')]).then(([api, mod]) => {
@@ -662,7 +630,7 @@ export function mountAppShell(container: HTMLElement): {
         audio,
         syncPersonal: api.syncPersonal,
         onAnalyze: (pgn, ply) => {
-          setMode('analysis', false);
+          setMode('review', false);
           if (!analysisController.importPgn(pgn)) return;
           const node = analysisController.getGameTree().getMainLine()[ply - 1];
           if (node) analysisController.goToNode(node.id);
@@ -683,17 +651,17 @@ export function mountAppShell(container: HTMLElement): {
   };
 
   /**
-   * Shows Puzzles on a session; with no session given, the first open picks the one with
-   * the most to do (due reviews, then my mistakes, then rated puzzles).
+   * Starts a puzzle session in Train. With no session given, the one with the most to do
+   * (due reviews, then my mistakes, then rated puzzles).
    */
   const openPuzzles = (mode: PuzzleMode | null): Promise<PuzzleTrainer> => {
-    setMode('puzzles', false);
+    setMode('train', false);
+    showTrainView('session');
     const run = puzzleStart.then(async () => {
-      const firstOpen = puzzleTrainer === null;
       const trainer = await loadTrainer();
       if (mode) {
         await trainer.start(mode);
-      } else if (firstOpen) {
+      } else {
         const today = await (await puzzlesReady).store.todaySummary();
         const due = today.dueReviews.personal + today.dueReviews.lichess;
         await trainer.start(due > 0 ? 'review' : today.newPersonal > 0 ? 'mistakes' : 'rated');
@@ -704,25 +672,27 @@ export function mountAppShell(container: HTMLElement): {
     return run;
   };
 
-  modeTabPlayBtn.addEventListener('click', () => {
-    setMode('play', false);
-  });
-
-  modeTabAnalysisBtn.addEventListener('click', () => {
-    setMode('analysis', false);
-  });
-
-  modeTabGamesBtn.addEventListener('click', () => {
-    setMode('games', false);
-  });
-
-  modeTabTodayBtn.addEventListener('click', () => {
-    setMode('today', false);
-  });
-
-  modeTabPuzzlesBtn.addEventListener('click', () => {
-    void openPuzzles(null);
-  });
+  for (const btn of navButtons) {
+    btn.addEventListener('click', () => {
+      const mode = btn.dataset.mode as AppWorkspaceMode;
+      // Train again while in a session goes back to its hub
+      if (mode === 'train' && currentMode === 'train' && trainView === 'session') {
+        showTrainView('hub');
+        return;
+      }
+      setMode(mode, false);
+      // Keep the address in step, so a reload or a shared link opens the same place
+      if (modeFromLocation('', window.location.hash) !== mode) {
+        history.replaceState(history.state, '', `${window.location.pathname}${window.location.search}#${mode}`);
+      }
+    });
+  }
+  trainRootEl
+    .querySelector('[data-testid="btn-train-start"]')
+    ?.addEventListener('click', () => void openPuzzles(null));
+  trainRootEl
+    .querySelector('[data-testid="btn-train-hub"]')
+    ?.addEventListener('click', () => showTrainView('hub'));
 
   analysisController.onTreeReplaced(() => {
     if (!openingGame) openGameId = null;
@@ -732,7 +702,7 @@ export function mountAppShell(container: HTMLElement): {
   const openLibraryGame = async (record: StoredGameRecord): Promise<boolean> => {
     if (!library) return false;
     const saved = record.analysis ? await library.getReview(record.id) : undefined;
-    setMode('analysis', false);
+    setMode('review', false);
     openingGame = true;
     const ok = analysisController.importPgn(record.pgn);
     openingGame = false;
@@ -799,7 +769,8 @@ export function mountAppShell(container: HTMLElement): {
           const record = await lib.get(id);
           if (!record?.analysis) return;
           await puzzleStore.syncReviewedGame(record, await lib.getReview(id), lib.getUserAccounts());
-          if (currentMode === 'today') await todayScreen?.refresh();
+          if (currentMode === 'train' && trainView === 'hub') await todayScreen?.refresh();
+          void refreshTrainCount();
         })();
       }
     });
@@ -816,13 +787,15 @@ export function mountAppShell(container: HTMLElement): {
     const puzzlesApi: WizardChessPuzzlesApi = {
       store: puzzleStore,
       today,
+      getTrainView: () => trainView,
       open: (mode) => openPuzzles(mode),
       getTrainer: () => puzzleTrainer,
       syncPersonal,
     };
     window.__wizardChessPuzzles = puzzlesApi;
     resolvePuzzles(puzzlesApi);
-    if (currentMode === 'today') void today.refresh();
+    if (currentMode === 'train' && trainView === 'hub') void today.refresh();
+    void refreshTrainCount();
     return api;
   });
   window.__wizardChessPuzzlesReady = puzzlesReady;
@@ -843,24 +816,25 @@ export function mountAppShell(container: HTMLElement): {
   });
   window.__wizardChessLibraryReady = libraryReady;
 
+  const analyzeGameBtn = document.createElement('button');
+  analyzeGameBtn.type = 'button';
+  analyzeGameBtn.className = 'wc-btn wc-btn-secondary';
+  analyzeGameBtn.setAttribute('data-testid', 'btn-analyze-game');
+  analyzeGameBtn.title = 'Open this game in Review';
+  analyzeGameBtn.textContent = 'Analyze game';
+  playRootEl.querySelector('.wc-action-row')?.appendChild(analyzeGameBtn);
   analyzeGameBtn.addEventListener('click', () => {
-    setMode('analysis', true);
+    setMode('review', true);
   });
 
   if (typeof window !== 'undefined') {
-    const params = new URLSearchParams(window.location.search);
-    if (
-      params.get('mode') === 'analysis' ||
-      window.location.hash === '#analysis'
-    ) {
-      setMode('analysis', false);
-    } else if (params.get('mode') === 'games' || window.location.hash === '#games') {
-      setMode('games', false);
-    } else if (params.get('mode') === 'today' || window.location.hash === '#today') {
-      setMode('today', false);
-    } else if (params.get('mode') === 'puzzles' || window.location.hash === '#puzzles') {
-      void openPuzzles(null);
-    }
+    const requested = modeFromLocation(window.location.search, window.location.hash);
+    if (requested) setMode(requested, false);
+    // A typed or followed #link switches destination without a reload
+    window.addEventListener('hashchange', () => {
+      const mode = modeFromLocation('', window.location.hash);
+      if (mode) setMode(mode, false);
+    });
   }
 
   if (typeof window !== 'undefined') {
@@ -945,7 +919,7 @@ export function mountAppShell(container: HTMLElement): {
     window.__wizardChessAnalysis = {
       controller: analysisController,
       switchToAnalysis: (copyPlayGame = false) =>
-        setMode('analysis', copyPlayGame),
+        setMode('review', copyPlayGame),
       switchToPlay: () => setMode('play', false),
       getMode: () => currentMode,
       AnalysisController,
@@ -967,19 +941,6 @@ export function mountAppShell(container: HTMLElement): {
       buildNullMoveFen,
       detectOpponentThreat,
     };
-  }
-
-  const toggleBtn = container.querySelector(
-    '[data-testid="toggle-dev-overlay"]',
-  ) as HTMLButtonElement | null;
-
-  if (toggleBtn) {
-    toggleBtn.addEventListener('click', () => {
-      devOverlay.toggle();
-    });
-    devOverlay.onToggle((visible) => {
-      toggleBtn.setAttribute('aria-pressed', String(visible));
-    });
   }
 
   // Global keyboard shortcut for Play Mode: 'f' / 'F' flips the play board when not typing in an input

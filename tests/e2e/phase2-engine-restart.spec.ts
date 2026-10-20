@@ -14,7 +14,7 @@ test.describe('Phase 2 — changing engine threads restarts the worker', () => {
 
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('/');
-    await page.getByTestId('mode-tab-analysis').click();
+    await page.getByTestId('mode-tab-review').click();
     await page.getByTestId('select-multipv').selectOption('5');
     await page.evaluate(() =>
       window.__wizardChessAnalysis!.controller.setAnalysisDepth('infinite'),

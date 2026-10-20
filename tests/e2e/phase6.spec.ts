@@ -84,13 +84,14 @@ test.describe('Phase 6 — puzzles', () => {
     const t = track(page);
     await page.goto('/');
     await page.evaluate(() => window.__wizardChessPuzzlesReady);
-    await page.getByTestId('mode-tab-today').click();
+    await page.getByTestId('mode-tab-train').click();
     await expect(page.getByTestId('today-screen')).toHaveAttribute('data-state', 'ready');
     await page.waitForTimeout(300);
     expect(t.requests.some((p) => p.includes('puzzle-dataset.worker'))).toBe(false);
     expect(t.requests.some((p) => p.includes('puzzle-trainer'))).toBe(false);
 
-    await page.getByTestId('mode-tab-puzzles').click();
+    // A session starts from Train's hub ("Start training" picks the one with the most to do)
+    await page.getByTestId('btn-train-start').click();
     await expect(page.getByTestId('puzzle-trainer')).toHaveAttribute('data-puzzle-state', 'playing', { timeout: 15_000 });
     expect(t.requests.some((p) => p.includes('puzzle-dataset.worker'))).toBe(true);
     expect(t.requests.some((p) => p.includes('puzzle-trainer'))).toBe(true);
@@ -171,7 +172,7 @@ test.describe('Phase 6 — puzzles', () => {
     expect(inMinutes).toBeGreaterThan(8);
     expect(inMinutes).toBeLessThanOrEqual(10);
 
-    await page.getByTestId('mode-tab-today').click();
+    await page.getByTestId('mode-tab-train').click();
     await expect(page.getByTestId('today-screen')).toHaveAttribute('data-state', 'ready');
     await expect(page.getByTestId('today-reviews-detail')).toHaveText('All caught up. Next review in 10 min.');
     await expect(page.getByTestId('today-rated-count')).toHaveText('1');
@@ -200,7 +201,7 @@ test.describe('Phase 6 — puzzles', () => {
       { mine: MY_GAME, notMine: NOT_MINE },
     );
 
-    await page.getByTestId('mode-tab-today').click();
+    await page.getByTestId('mode-tab-train').click();
     await expect(page.getByTestId('today-screen')).toHaveAttribute('data-state', 'ready');
     const personal = await page.evaluate(() => window.__wizardChessPuzzles!.store.listPuzzles('personal'));
     expect(personal.length).toBeGreaterThan(0);
@@ -255,7 +256,7 @@ test.describe('Phase 6 — puzzles', () => {
     await page.screenshot({ path: path.join(SCREENSHOT_DIR, 'puzzle-phone.png'), fullPage: true });
     const overflow = () => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(await overflow()).toBeLessThanOrEqual(0);
-    await page.getByTestId('mode-tab-today').click();
+    await page.getByTestId('mode-tab-train').click();
     await expect(page.getByTestId('today-screen')).toHaveAttribute('data-state', 'ready');
     await page.screenshot({ path: path.join(SCREENSHOT_DIR, 'today-phone.png'), fullPage: true });
     expect(await overflow()).toBeLessThanOrEqual(0);
@@ -273,6 +274,6 @@ test.describe('npm run serve — one origin', () => {
   test('a page opened at localhost ends up on 127.0.0.1 with its #fragment', async ({ page }) => {
     await page.goto('http://localhost:4173/#today');
     expect(page.url()).toBe('http://127.0.0.1:4173/#today');
-    await expect(page.getByTestId('mode-tab-today')).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByTestId('mode-tab-train')).toHaveAttribute('aria-current', 'page');
   });
 });

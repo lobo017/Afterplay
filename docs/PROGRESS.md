@@ -3138,3 +3138,84 @@ tabs and walking key moments, phone screenshots of every screen.
 3. Move the technical badges and diagnostics into Settings › About?
 4. New game settings apply on "Play" instead of restarting at once?
 5. Remember all Settings on this device?
+
+### Proposal approved (2026-10-19), with these decisions
+1. Analysis merges into **Review**, but free analysis stays one click away inside Review: a
+   new empty board (start position), the position editor, and Load FEN / PGN, with no game
+   needed.
+2. Today folds into the trainers and the destination is called **Train** now (Phase 7 adds its
+   trainers there).
+3. The badges and diagnostics move into Settings › About; the backtick overlay stays for
+   performance numbers.
+4. New-game choices apply only when Play is pressed; changing an option never ends a game in
+   progress.
+5. Every setting is remembered on this device and included in the JSON backup and restore.
+
+Build stages, each with checks, desktop and phone screenshots looked at, and a commit:
+app frame and navigation → Play → Review → Train → Games → Settings. `docs/SPEC.md` gets the
+navigation and settings changes. `npm run perf:drag` runs at the end, once memory is freed.
+
+### Stage 1 plan — app frame and navigation (written before code)
+- `src/ui/components/icons.ts`: the original line icons (crossed swords, star, chart line, card
+  stack, a generated 8-tooth gear, and the action icons).
+- `src/ui/components/sheet.ts`: `Sheet`, a side dialog (full screen on phones): `role=dialog`,
+  `aria-modal`, Escape / backdrop / close button, focus moves in and returns to the opener.
+- `src/ui/settings-panel.ts`: the Settings sheet's sections; this stage has **About &
+  diagnostics** (the five former header badges and the eight diagnostics cards, same test ids
+  and text, plus the dev overlay switch `toggle-dev-overlay`). Later stages add their sections.
+- `src/app.ts`: new shell: top bar (crest, title, nav, Settings), nav `mode-tab-play`,
+  `mode-tab-train`, `mode-tab-review`, `mode-tab-games` with `aria-current`. Modes become
+  `play | train | review | games` (`getMode()` returns them). Routes `#play #train #review #games`
+  (and `?mode=`); old links still work: `#analysis → review`, `#today` and `#puzzles → train`.
+  Train opens on its **hub** (the Today screen plus one primary "Start training", which picks
+  the session with the most to do, as Puzzles did); a session shows the puzzle trainer with a
+  "‹ Train" button back to the hub. The puzzle chunk and dataset worker still load only when a
+  session starts. "Analyze Game →" leaves the header: until stage 2 it sits in Play's action row.
+- Phone (≤ 760 px): the nav becomes a fixed bottom tab bar; the top bar shows the screen name.
+- CSS for all of the above; the diagnostics strip and header badge row go.
+- Tests: every e2e test that clicked an old tab clicks the new one (`mode-tab-analysis →
+  mode-tab-review`, `mode-tab-today / mode-tab-puzzles → mode-tab-train`, plus "Start
+  training" where a session was opened); `phase0` opens Settings before the dev overlay switch.
+  No assertion removed. New `phase6b-shell.spec.ts`: nav and `aria-current`, every route and old
+  alias, Settings open/close (button, Escape, backdrop) with focus return, About content, phone
+  bottom nav, no sideways scroll.
+- Risk: the review panel and puzzle tests reach screens through the tabs; all of them change
+  in the same commit.
+
+### Stage 1 result — app frame and navigation (2026-10-19)
+
+Built as planned. Top bar with the crest, **Play · Train · Review · Games** (original line icons,
+`aria-current="page"`, a count of what's waiting on Train) and a Settings button; on phones
+(≤ 760 px) the destinations are a fixed bottom tab bar (each ≥ 44 px tall) and the top bar shows
+the screen name. The Settings sheet (`Sheet`: dialog, Escape / backdrop / close, focus kept
+inside and returned to the opener; full screen on phones) has **About & diagnostics**: the five
+former header badges, the eight diagnostics cards (same test ids and text) and the performance
+overlay switch. The backtick key still toggles the overlay.
+
+Routes `#play #train #review #games` and `?mode=`; the old links `#analysis`, `#today`,
+`#puzzles` still land in the right place. New: the address follows the destination (a reload or
+a shared link reopens it) and a typed `#link` switches without a reload.
+
+Train opens on its hub (Today plus **Start training**, which picks the session with the most to
+do, as the old Puzzles tab did). A session shows the trainer with "‹ Train" back to the hub; the
+Train tab while in a session also goes back to the hub, and from elsewhere it returns to the
+session. The puzzle chunk and dataset worker still load only when a session starts.
+
+**Found and fixed while checking:** `backdrop-filter` on the sticky top bar made it the
+containing block of the phone tab bar (the bar sat at the top); the performance overlay
+(z-index 1000) covered the sheet's switch (the sheet is now above it); the hidden Train count
+put a "0" into the button's text; the phone padding under the tab bar lost to the base `.wc-main`
+rule (moved to the end of the stylesheet).
+
+**Tests:** e2e tests that clicked old tabs click the new ones (`mode-tab-analysis →
+mode-tab-review` in 9 files; `mode-tab-today → mode-tab-train`; `mode-tab-puzzles →
+mode-tab-train` + "Start training"; `aria-selected → aria-current`); `phase0` opens Settings
+before the overlay switch. No assertion removed. New `phase6b-shell.spec.ts` (5): destinations,
+routes and old links, Train hub/session, Settings (open/close three ways, focus, About content,
+overlay switch, Tab trap), phone tab bar (bottom, touch-size, screen name, nothing hidden under
+it, full-screen Settings, no sideways scroll).
+
+**Checks:** typecheck, lint, 452 unit tests, build, build:ext, **87/87 e2e** (8.4 min). Screens
+looked at: `desktop-today.png` (Train hub), `desktop-settings-about.png`, `phone-shell-play.png`,
+`phone-today.png`, `phone-settings-about.png`, plus every screen in `phase6b-screens`.
+"Analyze game" sits in Play's action row until stage 2.

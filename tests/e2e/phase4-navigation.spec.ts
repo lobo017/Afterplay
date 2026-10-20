@@ -9,7 +9,7 @@ import {
 async function openAnalysisWithGame(page: Page): Promise<number> {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/');
-  await page.getByTestId('mode-tab-analysis').click();
+  await page.getByTestId('mode-tab-review').click();
   await expect(page.getByTestId('analysis-layout')).toBeVisible();
   await page.getByTestId('select-multipv').selectOption('5');
 

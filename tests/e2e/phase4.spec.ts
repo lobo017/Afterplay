@@ -34,7 +34,7 @@ test.describe('Phase 4 — Analysis Board, Eval Bar, MultiPV Ghost Previews, Thr
     expect(response?.status()).toBe(200);
 
     // Switch from Play Mode to Analysis Mode via the top mode tab
-    await page.getByTestId('mode-tab-analysis').click();
+    await page.getByTestId('mode-tab-review').click();
     await expect(page.getByTestId('analysis-layout')).toBeVisible();
     await expect(page.getByTestId('eval-bar')).toBeVisible();
     await expect(page.getByTestId('engine-lines-panel')).toBeVisible();
