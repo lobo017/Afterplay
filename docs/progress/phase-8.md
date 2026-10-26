@@ -91,7 +91,10 @@ Stages: 1 offline PWA (the gate), 2 library, 3 insights, 4 accessibility, 5 left
   cached responses are the parts Workbox's generated worker could not give.
 - Insights are a tab in Games, not a fifth destination (Phase 6b decided four).
 - Keyboard mode is entered by Tab, not by any focus: a click must not change what the arrow keys do.
-- `vitest.config.ts`: `testTimeout` 30 s and at most 4 test processes (see Known issues).
+- `vitest.config.ts`: `testTimeout` 30 s and at most 4 test processes (see Known issues); the DTM oracle in `tests/helpers`
+  solves in slices (`ensureOracle()`), because a 60 s silence from a busy test worker fails the whole run.
+- Playwright config blocks service workers for every test except the offline spec and the extension specs (the latter need
+  the extension's own worker).
 
 ## Tests
 
@@ -106,4 +109,6 @@ Stages: 1 offline PWA (the gate), 2 library, 3 insights, 4 accessibility, 5 left
 ## Measurements
 
 - Precache: 30 files, 20.9 MB. Bulk import of 400 games: 1.2–1.9 s end to end, worker reads them in ~0.6 s, no long task.
-- Main bundle and `perf:drag` after Phase 8: see PROGRESS.md.
+- Main bundle 1,483.20 kB (1,449.47 kB at Phase 7). `perf:drag` after Phase 8 (battery, one run): scenarios 1 and 2 drag pass,
+  the navigation sweep fails (p95 33.4 ms); no A/B possible; details and the Phase 9 follow-up in PROGRESS.md.
+- Full runs: 581 unit (179 s), 155 e2e (14.1 min, one worker; one threshold fixed and re-run).

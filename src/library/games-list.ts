@@ -41,7 +41,7 @@ export const AUTO_ANALYZE_PRESET: ReviewPreset = 'quick';
 /** History imports aren't "new games": auto-analyze skips them. */
 const BACKFILL_METHODS = new Set(['lichess-history', 'chesscom-archive-history']);
 /** Rows drawn at once; "Show more" draws the next page. */
-const PAGE_SIZE = 200;
+const PAGE_SIZE = 100;
 
 const SOURCE_META: Record<StoredGameSource, { label: string; glyph: string }> = {
   play: { label: 'Played here', glyph: '♞' },

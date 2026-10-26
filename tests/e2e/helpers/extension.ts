@@ -92,6 +92,9 @@ export async function launchWithExtension(options: LaunchOptions = {}): Promise<
     channel: 'chrome',
     headless: true,
     viewport: { width: 1440, height: 900 },
+    // The extension's own service worker has to run, so service workers are allowed here even though
+    // the config blocks them for every other test (the site's worker then caches the build quietly)
+    serviceWorkers: 'allow',
     args: ['--enable-unsafe-extension-debugging'],
     ignoreDefaultArgs: ['--disable-extensions'],
     ...(options.timezoneId ? { timezoneId: options.timezoneId } : {}),

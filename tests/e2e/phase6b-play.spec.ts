@@ -200,7 +200,9 @@ test.describe('Phase 6b — Play', () => {
       'Board',
       'Board feel',
       'Moves',
+      'Analysis & review',
       'Sound & effects',
+      'Your games',
       'Your data',
       'About & diagnostics',
     ]);
