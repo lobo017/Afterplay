@@ -1,7 +1,7 @@
 import path from 'node:path';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import endgamesJson from '../../data/endgames.json';
 import type { EndgamePositionEntry } from '../../src/core/datasets';
 import { RulesAdapter } from '../../src/core/rules';
@@ -41,15 +41,42 @@ interface Score {
   value: number;
 }
 
+/**
+ * Hard limits, so a hung or dead engine fails the test in about a minute instead of waiting out the
+ * per-test timeout (and leaving the shared engine mid-search for the next test to misread). A healthy
+ * run is 80 s for the whole file: the longest search is ~25 s and the longest gap between two lines of
+ * engine output (reported at the end of the run) a few seconds.
+ */
+/** No output at all from the engine for this long: it is hung (the deepest searches print a line per depth). */
+const ENGINE_SILENCE_MS = 45_000;
+/** One question (a whole search) must be answered within this. */
+const ENGINE_CALL_MS = 120_000;
+
 /** One Stockfish process, asked one question at a time. */
 class Engine {
   private readonly proc: ChildProcessWithoutNullStreams;
   private buffer = '';
   private lines: string[] = [];
   private waiter: (() => void) | null = null;
+  /** Why the engine was stopped (hung, crashed or finished): once set, every later question fails at once. */
+  private stopped: string | null = null;
+  /** The longest wait between two lines of output while a question was pending. */
+  public maxGapMs = 0;
+  private readonly killOnExit = () => this.proc.kill();
 
   constructor() {
     this.proc = spawn(process.execPath, [stockfishJsPath], { stdio: 'pipe' });
+    // The engine must not outlive this test process, whatever ends it
+    process.once('exit', this.killOnExit);
+    this.proc.stdin.on('error', () => undefined); // writing to a dead engine is reported by the next question
+    this.proc.on('exit', (code, signal) => {
+      this.stopped ??= `the engine process exited (${signal ?? `code ${code}`})`;
+      this.waiter?.();
+    });
+    this.proc.on('error', (err) => {
+      this.stopped ??= `the engine process failed: ${err.message}`;
+      this.waiter?.();
+    });
     const feed = (chunk: Buffer) => {
       this.buffer += chunk.toString('utf8');
       let i: number;
@@ -63,22 +90,52 @@ class Engine {
     this.proc.stderr.on('data', feed);
   }
 
+  private stop(reason: string): void {
+    this.stopped ??= reason;
+    this.proc.kill();
+  }
+
   public send(command: string): void {
+    if (this.stopped) throw new Error(`cannot send "${command}": ${this.stopped}`);
     this.proc.stdin.write(`${command}\n`);
   }
 
-  private async until(predicate: (line: string) => boolean): Promise<string[]> {
+  /** Output lines up to and including the first that satisfies `predicate`; fails fast when the engine is silent, too slow or gone. */
+  private async until(predicate: (line: string) => boolean, what: string): Promise<string[]> {
     const seen: string[] = [];
+    const startedAt = performance.now();
+    let lastAt = startedAt;
     for (;;) {
       while (this.lines.length > 0) {
         const line = this.lines.shift()!;
+        const now = performance.now();
+        this.maxGapMs = Math.max(this.maxGapMs, now - lastAt);
+        lastAt = now;
         seen.push(line);
         if (predicate(line)) return seen;
       }
+      if (this.stopped) throw new Error(`${what}: ${this.stopped}`);
+      const budgetLeft = ENGINE_CALL_MS - (performance.now() - startedAt);
+      if (budgetLeft <= 0) {
+        this.stop(`no answer within ${ENGINE_CALL_MS / 1000} s, so the engine was stopped`);
+        continue;
+      }
       await new Promise<void>((resolve) => {
-        this.waiter = resolve;
+        const silence = Math.min(ENGINE_SILENCE_MS, budgetLeft);
+        const timer = setTimeout(() => {
+          this.stop(
+            silence < ENGINE_SILENCE_MS
+              ? `no answer within ${ENGINE_CALL_MS / 1000} s, so the engine was stopped`
+              : `no output for ${ENGINE_SILENCE_MS / 1000} s (hung?), so the engine was stopped`,
+          );
+          resolve();
+        }, silence);
+        this.waiter = () => {
+          clearTimeout(timer);
+          resolve();
+        };
         // lines may have arrived between the check and the assignment
-        if (this.lines.length > 0) resolve();
+        if (this.lines.length > 0 || this.stopped) this.waiter();
       });
       this.waiter = null;
     }
@@ -86,20 +143,20 @@ class Engine {
 
   public async ready(): Promise<void> {
     this.send('uci');
-    await this.until((l) => l === 'uciok');
+    await this.until((l) => l === 'uciok', 'waiting for uciok');
     this.send('setoption name Hash value 128');
     this.send('isready');
-    await this.until((l) => l === 'readyok');
+    await this.until((l) => l === 'readyok', 'waiting for readyok');
   }
 
   /** The side to move's score at the end of a fixed-depth search, with the best move. */
   public async search(fen: string, depth: number, searchMoves?: string): Promise<{ score: Score; bestMove: string; depth: number }> {
     this.send('ucinewgame');
     this.send('isready');
-    await this.until((l) => l === 'readyok');
+    await this.until((l) => l === 'readyok', `readyok before searching ${fen}`);
     this.send(`position fen ${fen}`);
     this.send(`go depth ${depth}${searchMoves ? ` searchmoves ${searchMoves}` : ''}`);
-    const out = await this.until((l) => l.startsWith('bestmove'));
+    const out = await this.until((l) => l.startsWith('bestmove'), `search to depth ${depth} of ${fen}`);
     let last: { score: Score; depth: number } | null = null;
     for (const line of out) {
       const m = /^info depth (\d+) .*?score (cp|mate) (-?\d+)(?: (?:lowerbound|upperbound))? .* pv /.exec(line);
@@ -109,15 +166,31 @@ class Engine {
     return { ...last, bestMove: out[out.length - 1]!.split(' ')[1]! };
   }
 
+  /** Stops the engine for good; the tests after it fail at once instead of misreading its output. */
+  public abort(reason: string): void {
+    this.stop(reason);
+  }
+
   public quit(): void {
+    process.off('exit', this.killOnExit);
+    this.stopped ??= 'the engine was quit';
     this.proc.kill();
   }
 }
 
 const engine = new Engine();
-afterAll(() => engine.quit());
+afterAll(() => {
+  console.log(`[endgame-data] longest wait between two lines of engine output: ${(engine.maxGapMs / 1000).toFixed(1)} s (limit ${ENGINE_SILENCE_MS / 1000} s)`);
+  engine.quit();
+});
 
 describe('the endgame positions (checked with the engine)', () => {
+  // A test that timed out leaves the engine mid-search; the next test would read its stale output.
+  // (The engine's own failures, hung or dead, already stop it; a wrong answer leaves it healthy.)
+  afterEach(({ task }) => {
+    if (task.result?.errors?.some((e) => /timed out/i.test(e.message))) engine.abort('an earlier test timed out while the engine was busy');
+  });
+
   it('has the six positions of the spec, each a legal position with the player to move', () => {
     expect(ENDGAMES.map((e) => e.category)).toEqual(['K+Q v K', 'K+R v K', 'K+P opposition', 'Lucena', 'Philidor', 'R+P v R']);
     expect(new Set(ENDGAMES.map((e) => e.id)).size).toBe(ENDGAMES.length);
@@ -162,7 +235,7 @@ describe('the endgame positions (checked with the engine)', () => {
           // The target result is achievable, and for the side with the move
           expect(e.targetResult === '1-0' ? e.sideToMove === 'w' : e.sideToMove === 'b').toBe(true);
         },
-        240_000,
+        150_000,
       );
       it(`${e.title}: optimalMoves is also the exact distance to mate (retrograde analysis)`, async () => {
         await ensureOracle();
@@ -176,7 +249,7 @@ describe('the endgame positions (checked with the engine)', () => {
           const cp = r.score.type === 'mate' ? Math.sign(r.score.value) * 100_000 : r.score.value;
           expect(cp, `${e.id}: ${r.score.type} ${r.score.value}`).toBeGreaterThanOrEqual(WON_CP);
         },
-        240_000,
+        90_000,
       );
     } else {
       it(
@@ -186,7 +259,7 @@ describe('the endgame positions (checked with the engine)', () => {
           expect(r.score.type, e.id).toBe('cp');
           expect(Math.abs(r.score.value), `${e.id}: ${r.score.value}`).toBeLessThanOrEqual(DRAW_CP);
         },
-        240_000,
+        90_000,
       );
     }
   }
