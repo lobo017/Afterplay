@@ -41,6 +41,7 @@ import {
 import { PositionEditor } from './position-editor';
 import { classBadgeHtml, type ReviewTreeEntry } from '../review/review-panel';
 import { stripEngineAnnotations } from '../review/annotations';
+import { announce } from '../ui/announcer';
 import type { AppSettings, AppSettingsStore } from '../ui/app-settings';
 import { switchRowHtml } from '../ui/components/controls';
 import { icon } from '../ui/components/icons';
@@ -1295,6 +1296,9 @@ export class AnalysisController {
     this.adapter = new RulesAdapter(node.fen, {
       chess960: this.gameTree.isChess960(),
     });
+    if (this.isActive) {
+      announce(node.ply === 0 ? 'Start position' : `Move ${node.moveNumber}, ${node.moveColor === 'b' ? 'Black' : 'White'}: ${node.san}`);
+    }
 
     const animationMs = opts.animationMs ?? 0;
     const lastMove = this.getLastMoveCoords(node);

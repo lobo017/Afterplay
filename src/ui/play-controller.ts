@@ -1,5 +1,6 @@
 import { GameTree, type GameTermination } from '../core/game-tree';
 import { writePgn } from '../core/pgn';
+import { announce } from './announcer';
 import {
   DEFAULT_POSITION,
   RulesAdapter,
@@ -953,6 +954,7 @@ export class PlayController {
         : this.clock.switchTurn(executed.color);
 
     this.gameTree.addMove(executed.uci);
+    announce(`${executed.color === 'w' ? 'White' : 'Black'} plays ${executed.san}`);
 
     this.plyHistory.push({
       executedMove: executed,
@@ -1358,6 +1360,7 @@ export class PlayController {
 
   /** Hands the finished game, with its headers, to the library (a game with no move is not kept). */
   private notifyGameFinished(): void {
+    announce(this.gameStatusText);
     if (!this.onGameFinished || this.gameTree.getMainLine().length === 0) return;
     const config = TIME_CONTROL_PRESETS[this.timeControlId];
     const bot = `Stockfish ${getTierForRating(this.botRating)}`;

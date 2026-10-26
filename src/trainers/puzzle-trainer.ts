@@ -1,3 +1,4 @@
+import { announce } from '../ui/announcer';
 import type { PuzzleEntry } from '../core/datasets';
 import { RulesAdapter, type Color, type ExecutedMove, type MoveInput } from '../core/rules';
 import type { EngineClient } from '../engine/engine-client';
@@ -693,6 +694,7 @@ export class PuzzleTrainer {
 
   private playSound(move: ExecutedMove, check: boolean): void {
     const audio = this.options.audio;
+    announce(`${move.color === 'w' ? 'White' : 'Black'} plays ${move.san}`);
     if (check) audio.playCheck();
     else if (move.isCapture) audio.playShatter();
     else audio.playSlide(CathedralAudio.shouldPieceLevitate(move.piece));

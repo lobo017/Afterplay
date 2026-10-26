@@ -21,6 +21,7 @@ import {
   type OverlayCircle,
   type OverlayLegalTarget,
 } from './overlay';
+import { announce } from '../ui/announcer';
 import { CaptureParticleSystem } from './particles';
 import { boardFeel, resolveDropSquare, type BoardFeel } from './board-feel';
 import { attachBoardResizeHandle } from './board-size';
@@ -545,7 +546,8 @@ export class BoardRenderer {
     this.boardEl.setAttribute('data-testid', 'chess-board');
     this.boardEl.setAttribute('data-flipped', String(this.flipped));
     this.boardEl.setAttribute('role', 'application');
-    this.boardEl.setAttribute('aria-label', 'Chessboard');
+    this.boardEl.setAttribute('aria-label', 'Chessboard. Arrow keys move the cursor; Enter or Space picks a piece up and puts it down.');
+    this.boardEl.tabIndex = 0;
     this.boardEl.tabIndex = 0;
 
     // 64 static squares grid
@@ -657,6 +659,7 @@ export class BoardRenderer {
       }
     }
     this.gridEl.innerHTML = parts.join('');
+    if (this.kbSquare) this.gridEl.querySelector(`[data-square="${this.kbSquare}"]`)?.classList.add('wc-kb-focus');
   }
 
   private renderCoordinates(): void {
@@ -685,6 +688,9 @@ export class BoardRenderer {
 
   private bindEvents(): void {
     this.boardEl.addEventListener('pointerdown', this.handlePointerDown);
+    this.boardEl.addEventListener('keydown', this.handleBoardKeyDown);
+    this.boardEl.addEventListener('focus', this.handleBoardFocus);
+    this.boardEl.addEventListener('blur', this.handleBoardBlur);
     this.boardEl.addEventListener('pointermove', this.handleHoverMove, { passive: true });
     this.boardEl.addEventListener('pointerleave', this.handleHoverLeave, { passive: true });
     // Scrolling moves the board on screen: the cached rect is stale after it
@@ -1247,6 +1253,10 @@ export class BoardRenderer {
   }
 
   private readonly handlePointerDown = (event: PointerEvent): void => {
+    if (this.kbActive) {
+      this.kbActive = false;
+      this.setKeyboardCursor(null, false);
+    }
     // Refresh cached board rect once on pointerdown (never inside pointermove!)
     this.cachedBoardRect = this.measureBoardRect();
 
@@ -1287,37 +1297,10 @@ export class BoardRenderer {
       this.emitAnnotationsChange();
     }
 
-    const turn = this.adapter.turn();
     const clickedPiece = this.pieceAt(sq);
 
     // 1. If a square is already selected, check if clicking `sq` completes a move or premove
-    if (this.selectedSquare && this.selectedSquare !== sq) {
-      const selectedPiece = this.pieceAt(this.selectedSquare);
-      if (selectedPiece && this.canInteractWithColor(selectedPiece.color)) {
-        if (selectedPiece.color === turn) {
-          const legalTargets = this.getLegalMovesForSelectedSquare();
-          if (legalTargets.some((t) => t.to === sq)) {
-            this.initiateMoveOrPromotion(
-              this.selectedSquare,
-              sq,
-              selectedPiece,
-              false,
-              false,
-            );
-            return;
-          }
-        } else if (this.premoveTargets.includes(sq)) {
-          this.initiateMoveOrPromotion(
-            this.selectedSquare,
-            sq,
-            selectedPiece,
-            true,
-            false,
-          );
-          return;
-        }
-      }
-    }
+    if (this.tryCompleteSelectedMove(sq)) return;
 
     // 2. Otherwise, check if the clicked square has an interactive piece to select / drag
     if (clickedPiece && this.canInteractWithColor(clickedPiece.color)) {
@@ -1355,6 +1338,132 @@ export class BoardRenderer {
     this.selectedSquare = null;
     this.premoveTargets = [];
     this.syncOverlay();
+  };
+
+  /** With a piece selected, plays (or premoves) it to `sq` when that is one of its targets. */
+  private tryCompleteSelectedMove(sq: Square): boolean {
+    const turn = this.adapter.turn();
+    if (this.selectedSquare && this.selectedSquare !== sq) {
+      const selectedPiece = this.pieceAt(this.selectedSquare);
+      if (selectedPiece && this.canInteractWithColor(selectedPiece.color)) {
+        if (selectedPiece.color === turn) {
+          const legalTargets = this.getLegalMovesForSelectedSquare();
+          if (legalTargets.some((t) => t.to === sq)) {
+            this.initiateMoveOrPromotion(this.selectedSquare, sq, selectedPiece, false, false);
+            return true;
+          }
+        } else if (this.premoveTargets.includes(sq)) {
+          this.initiateMoveOrPromotion(this.selectedSquare, sq, selectedPiece, true, false);
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  // ------------------------------------------------------------------ keyboard
+
+  /** The square the keyboard cursor is on (null until the board is used from the keyboard). */
+  private kbSquare: Square | null = null;
+
+  private moveKeyboardCursor(dFile: number, dRank: number): void {
+    const from = this.kbSquare ?? (this.flipped ? 'e7' : 'e2');
+    // Arrow keys follow the screen: Right is towards the right edge whichever side is at the bottom
+    const sign = this.flipped ? -1 : 1;
+    const file = Math.min(7, Math.max(0, FILES.indexOf(from[0]!) + dFile * sign));
+    const rank = Math.min(8, Math.max(1, Number(from[1]) + dRank * sign));
+    this.setKeyboardCursor(`${FILES[file]}${rank}` as Square, true);
+  }
+
+  private setKeyboardCursor(sq: Square | null, speak: boolean): void {
+    this.gridEl.querySelector('.wc-kb-focus')?.classList.remove('wc-kb-focus');
+    this.kbSquare = sq;
+    if (!sq) return;
+    this.gridEl.querySelector(`[data-square="${sq}"]`)?.classList.add('wc-kb-focus');
+    if (speak) announce(this.describeSquare(sq));
+  }
+
+  private describeSquare(sq: Square): string {
+    const piece = this.pieceAt(sq);
+    const names: Record<string, string> = { p: 'pawn', n: 'knight', b: 'bishop', r: 'rook', q: 'queen', k: 'king' };
+    const what = piece ? `${piece.color === 'w' ? 'white' : 'black'} ${names[piece.type] ?? piece.type}` : 'empty';
+    let text = `${sq}, ${what}`;
+    if (this.selectedSquare === sq) {
+      text += `, picked up, ${this.getLegalMovesForSelectedSquare().length} moves`;
+    } else if (this.selectedSquare) {
+      const target = this.getLegalMovesForSelectedSquare().some((t) => t.to === sq);
+      if (target) text += ', legal move';
+    }
+    return text;
+  }
+
+  private keyboardActivate(sq: Square): void {
+    if (this.pendingPromotion || this.pendingConfirm || this.dragState) return;
+    if (this.onSquareEditCallback && this.onSquareEditCallback(sq)) return;
+    if (this.tryCompleteSelectedMove(sq)) return;
+    const piece = this.pieceAt(sq);
+    if (piece && this.canInteractWithColor(piece.color) && this.selectedSquare !== sq) {
+      this.selectedSquare = sq;
+      this.premoveTargets = this.selectionPremoveTargets(sq, piece);
+      this.onSelectSquareCallback?.(sq, piece);
+      this.syncOverlay();
+      announce(this.describeSquare(sq));
+      return;
+    }
+    if (this.selectedSquare) {
+      this.selectedSquare = null;
+      this.premoveTargets = [];
+      this.syncOverlay();
+      announce(`${sq}, put down`);
+    }
+  }
+
+  private readonly handleBoardKeyDown = (event: KeyboardEvent): void => {
+    if (event.target !== this.boardEl || event.altKey || event.ctrlKey || event.metaKey) return;
+    // Only when the board was reached from the keyboard: after a click the arrow keys keep their
+    // old job (stepping through moves on the analysis board, Space for the engine)
+    if (!this.kbActive) return;
+    const arrows: Record<string, [number, number]> = {
+      ArrowLeft: [-1, 0],
+      ArrowRight: [1, 0],
+      ArrowUp: [0, 1],
+      ArrowDown: [0, -1],
+    };
+    const step = arrows[event.key];
+    if (step) {
+      event.preventDefault();
+      event.stopPropagation(); // the analysis board's own arrows step through moves
+      this.moveKeyboardCursor(step[0], step[1]);
+      return;
+    }
+    if (event.key === 'Enter' || event.key === ' ') {
+      if (this.pendingConfirm) return; // Enter accepts it (the window handler)
+      event.preventDefault();
+      event.stopPropagation();
+      this.keyboardActivate(this.kbSquare ?? (this.flipped ? 'e7' : 'e2'));
+      if (!this.kbSquare) this.setKeyboardCursor(this.flipped ? 'e7' : 'e2', false);
+      return;
+    }
+    // The promotion picker: the piece's letter chooses it
+    if (this.pendingPromotion && 'qrbn'.includes(event.key.toLowerCase()) && event.key.length === 1) {
+      event.preventDefault();
+      this.resolvePromotionPicker(event.key.toLowerCase() as PieceSymbol);
+    }
+  };
+
+  /** The board was reached with the keyboard (Tab), not by a click: its arrow keys move the cursor. */
+  private kbActive = false;
+
+  private readonly handleBoardFocus = (): void => {
+    this.kbActive = this.boardEl.matches(':focus-visible');
+    if (this.kbActive) {
+      this.setKeyboardCursor(this.kbSquare ?? (this.flipped ? 'e7' : 'e2'), true);
+    }
+  };
+
+  private readonly handleBoardBlur = (): void => {
+    this.kbActive = false;
+    this.setKeyboardCursor(null, false);
   };
 
   /**
@@ -2343,6 +2452,9 @@ export class BoardRenderer {
 
   public destroy(): void {
     this.boardEl.removeEventListener('pointerdown', this.handlePointerDown);
+    this.boardEl.removeEventListener('keydown', this.handleBoardKeyDown);
+    this.boardEl.removeEventListener('focus', this.handleBoardFocus);
+    this.boardEl.removeEventListener('blur', this.handleBoardBlur);
     this.boardEl.removeEventListener('pointermove', this.handleHoverMove);
     this.boardEl.removeEventListener('pointerleave', this.handleHoverLeave);
     window.removeEventListener('scroll', this.invalidateBoardRect, true);

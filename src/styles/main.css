@@ -6029,3 +6029,13 @@ label.wc-setting-row {
     grid-template-columns: 6.5rem minmax(0, 1fr) 1.6rem;
   }
 }
+
+/* Keyboard cursor on a board */
+.wc-board-surface:focus-visible {
+  outline: 2px solid var(--accent-arcane);
+  outline-offset: 3px;
+}
+
+.wc-square.wc-kb-focus {
+  box-shadow: inset 0 0 0 3px var(--accent-arcane);
+}

@@ -4,6 +4,7 @@ import { EngineCancelledError, type EngineClient } from '../engine/engine-client
 import type { UciScore } from '../engine/uci-parser';
 import { CathedralAudio } from '../render/audio';
 import type { BoardRenderer } from '../render/board-renderer';
+import { announce } from '../ui/announcer';
 import { icon } from '../ui/components/icons';
 import { Menu } from '../ui/components/menu';
 import { EndgameSession, type EndgameEnd } from './endgame-session';
@@ -265,6 +266,7 @@ export class EndgameTrainer {
     const s = this.session!;
     this.board.setPosition(s.fen, { lastMove: move, ...(dragged ? { wasDragged: true } : { animate: true }) });
     playMoveSound(this.options.audio, fromExecuted(move), /[+#]$/.test(move.san));
+    announce(`${move.color === 'w' ? 'White' : 'Black'} plays ${move.san}`);
     this.els.pill.textContent = plural(s.moves, 'move');
   }
 

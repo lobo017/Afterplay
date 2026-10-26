@@ -1,5 +1,6 @@
 import { OPENINGS_BY_EPD } from '../analysis/opening-lookup';
 import type { GameTree } from '../core/game-tree';
+import { announce } from '../ui/announcer';
 import { parsePgn } from '../core/pgn';
 import { RulesAdapter, type Color, type ExecutedMove, type MoveInput, type Piece, type Square } from '../core/rules';
 import { SAMPLE_GAME_PGN } from '../review/sample-game';
@@ -790,6 +791,7 @@ export class VisualizationTrainer {
       played = adapter.move(pos.uci);
       this.board.setPosition(adapter, { lastMove: played, ...(verdict === 'played' && guess ? { wasDragged: true } : { animate: true }) });
       playMoveSound(this.options.audio, fromExecuted(played), /[+#]$/.test(played.san));
+      announce(`${played.color === 'w' ? 'White' : 'Black'} plays ${played.san}`);
     } catch {
       played = null;
     }
