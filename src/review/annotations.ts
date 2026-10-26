@@ -56,10 +56,18 @@ export function withReviewComment(human: string, review: string): string {
 }
 
 export interface StripResult {
+  /** What came from an imported PGN (another site's analysis): these are what a review says it replaced. */
   evals: number;
   nags: number;
   comments: number;
   variations: number;
+  /** The app's own earlier evals and review text that went too; not counted as "replaced". */
+  own: number;
+}
+
+/** Whether a comment carries another site's engine text (Lichess's advice), as opposed to this app's own review text. */
+export function hasImportedEngineText(comment: string): boolean {
+  return new RegExp(LICHESS_ADVICE.source).test(comment);
 }
 
 /**
@@ -68,18 +76,21 @@ export interface StripResult {
  * removed variation, in which case the tree moves to that variation's parent.
  */
 export function stripEngineAnnotations(tree: GameTree): StripResult {
-  const result: StripResult = { evals: 0, nags: 0, comments: 0, variations: 0 };
+  const result: StripResult = { evals: 0, nags: 0, comments: 0, variations: 0, own: 0 };
   const root = tree.root;
   const rootStripped = stripEngineComment(root.comment);
   if (rootStripped.human !== root.comment.trim()) {
     tree.setComment(root.id, rootStripped.human);
-    result.comments++;
+    if (hasImportedEngineText(root.comment)) result.comments++;
+    else result.own++;
   }
 
   for (const node of tree.getMainLine()) {
     if (node.eval) {
+      // An eval the app's own engine wrote (live analysis, an earlier review) is not an imported one
+      if (node.eval.app) result.own++;
+      else result.evals++;
       tree.setEval(node.id, undefined);
-      result.evals++;
     }
     const keptNags = node.nags.filter((n) => !MOVE_QUALITY_NAGS.has(n));
     if (keptNags.length !== node.nags.length) {
@@ -89,12 +100,16 @@ export function stripEngineAnnotations(tree: GameTree): StripResult {
     if (node.classification) tree.setClassification(node.id, undefined);
 
     const stripped = stripEngineComment(node.comment);
+    const imported = hasImportedEngineText(node.comment);
     if (stripped.human !== node.comment.trim()) {
       tree.setComment(node.id, stripped.human);
-      result.comments++;
+      if (imported) result.comments++;
+      else result.own++;
     }
     if (stripped.bestMoves.length > 0 && node.parentId) {
-      result.variations += removeBestMoveVariations(tree, node, stripped.bestMoves);
+      const removed = removeBestMoveVariations(tree, node, stripped.bestMoves);
+      if (imported) result.variations += removed;
+      else result.own += removed;
     }
   }
   return result;

@@ -77,7 +77,7 @@ describe('Phase 5 — earlier engine annotations never mix with a review', () =>
   it('strips evals, quality NAGs, engine comments and their variations from the main line', () => {
     const tree = parsePgn(LICHESS_ANNOTATED);
     const result = stripEngineAnnotations(tree);
-    expect(result).toEqual({ evals: 6, nags: 2, comments: 2, variations: 2 });
+    expect(result).toEqual({ evals: 6, nags: 2, comments: 2, variations: 2, own: 0 });
     const main = tree.getMainLine();
     expect(main.every((n) => n.eval === undefined && n.nags.length === 0)).toBe(true);
     expect(main.map((n) => n.comment)).toEqual([
@@ -90,6 +90,20 @@ describe('Phase 5 — earlier engine annotations never mix with a review', () =>
     ]);
     // Only the main line is left: Lichess's "best" variations are gone
     expect(main.every((n) => tree.getNode(n.parentId!)!.children.length === 1)).toBe(true);
+  });
+
+  it('counts only what an imported PGN brought: the app’s own evals and review text go uncounted', () => {
+    const tree = parsePgn('1. e4 e5 2. Nf3 Nc6 *');
+    const [m1, m2, m3] = tree.getMainLine();
+    // What live analysis and an earlier review leave behind
+    tree.setEval(m1!.id, { cp: 20, depth: 18, app: true });
+    tree.setEval(m2!.id, { cp: -15, depth: 18, app: true });
+    tree.setComment(m3!.id, withReviewComment('', 'Good move.'));
+    expect(stripEngineAnnotations(tree)).toEqual({ evals: 0, nags: 0, comments: 0, variations: 0, own: 3 });
+    expect(tree.getMainLine().every((n) => n.eval === undefined && n.comment === '')).toBe(true);
+    // A plain eval from a PGN is imported
+    const imported = parsePgn('1. e4 { [%eval 0.2] } e5 { [%eval 0.1] } *');
+    expect(stripEngineAnnotations(imported)).toMatchObject({ evals: 2, own: 0 });
   });
 
   it('a reviewed Lichess PGN exports with exactly one consistent annotation per move', () => {

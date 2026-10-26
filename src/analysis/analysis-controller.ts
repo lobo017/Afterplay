@@ -1767,11 +1767,13 @@ export class AnalysisController {
           this.gameTree.setEval(nodeId, {
             mate: topLine.scoreWhite.value,
             depth: topLine.depth,
+            app: true,
           });
         } else {
           this.gameTree.setEval(nodeId, {
             cp: topLine.scoreWhite.value,
             depth: topLine.depth,
+            app: true,
           });
         }
       }
@@ -1891,7 +1893,7 @@ export class AnalysisController {
       if (!node) continue;
       this.gameTree.setClassification(node.id, entry.classification);
       if (entry.eval && (!node.eval || (node.eval.depth ?? 0) < (entry.eval.depth ?? 0))) {
-        this.gameTree.setEval(node.id, entry.eval);
+        this.gameTree.setEval(node.id, { ...entry.eval, app: true });
       }
       if (!rerender) {
         const el = this.treeNodeEls.get(node.id);
@@ -1920,7 +1922,7 @@ export class AnalysisController {
     const currentBefore = this.gameTree.currentNodeId;
     const r = stripEngineAnnotations(this.gameTree);
     const total = r.evals + r.nags + r.comments + r.variations;
-    if (total > 0) {
+    if (total + r.own > 0) {
       if (this.gameTree.currentNodeId !== currentBefore) {
         this.syncAllFromCurrentNode({ treeChanged: true });
       } else {

@@ -27,6 +27,8 @@ export interface PgnEvalAnnotation {
   mate?: number;
   /** Optional search depth if included in [%eval +1.25,24]. */
   depth?: number;
+  /** Written by this app's own engine (live analysis or a review), not read from a PGN. */
+  app?: true;
 }
 
 export type MoveClassification =
