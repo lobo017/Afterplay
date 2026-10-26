@@ -115,6 +115,8 @@ import { DEFAULT_USER_ACCOUNTS } from './review/perspective';
 import { GameLibrary } from './library/library';
 import { myColor } from './library/game-record';
 import { GamesList } from './library/games-list';
+import { InsightsView } from './library/insights-view';
+import { Tabs, tabListHtml, tabPanelAttrs } from './ui/components/tabs';
 import { ReviewQueue } from './library/review-queue';
 import { ExtensionBridgeClient } from './library/bridge-client';
 import { toSavedReview } from './library/saved-review';
@@ -621,6 +623,8 @@ export function mountAppShell(container: HTMLElement): {
   const trainCountEl = container.querySelector('[data-testid="nav-train-count"]') as HTMLElement;
   const trainStartDetailEl = trainRootEl.querySelector('[data-testid="train-start-detail"]') as HTMLElement;
   let gamesList: GamesList | null = null;
+  let insightsView: InsightsView | null = null;
+  let gamesTabs: Tabs | null = null;
   let todayScreen: TodayScreen | null = null;
   let trainerTiles: TrainerTiles | null = null;
   let drills: DrillStore | null = null;
@@ -758,7 +762,10 @@ export function mountAppShell(container: HTMLElement): {
         train: trainRootEl,
       };
       workspaceHostEl.replaceChildren(roots[mode]);
-      if (mode === 'games') void gamesList?.refresh();
+      if (mode === 'games') {
+        void gamesList?.refresh();
+        if (gamesTabs?.getSelected() === 'insights') void insightsView?.refresh();
+      }
       if (mode === 'train' && trainView === 'hub') {
         void todayScreen?.refresh();
         void trainerTiles?.refresh();
@@ -1018,9 +1025,17 @@ export function mountAppShell(container: HTMLElement): {
       saveGames: (games) => lib.saveBridgeGames(games),
       setAccounts: (accounts) => lib.setMyAccounts(accounts),
     });
-    gamesRootEl.replaceChildren();
+    gamesRootEl.innerHTML = `
+      <div class="wc-games-tabs">${tabListHtml('games', [{ id: 'library', label: 'Library' }, { id: 'insights', label: 'Insights' }], 'library', 'Games views')}</div>
+      <div class="wc-games-pane" ${tabPanelAttrs('games', 'library', 'library')}></div>
+      <div class="wc-games-pane" ${tabPanelAttrs('games', 'insights', 'library')}></div>`;
+    const libraryPane = gamesRootEl.querySelector('[data-tab-panel="library"]') as HTMLElement;
+    const insightsPane = gamesRootEl.querySelector('[data-tab-panel="insights"]') as HTMLElement;
+    gamesTabs = new Tabs(gamesRootEl, (id) => {
+      if (id === 'insights') void insightsView?.refresh();
+    });
     const list = new GamesList({
-      container: gamesRootEl,
+      container: libraryPane,
       library: lib,
       queue,
       onOpen: (record) => void openLibraryGame(record),
@@ -1028,6 +1043,29 @@ export function mountAppShell(container: HTMLElement): {
       onExtensionStatus: (listener) => bridge.onStatus(listener),
     });
     gamesList = list;
+    const insightPuzzleStore = new PuzzleStore(storage);
+    insightsView = new InsightsView({
+      container: insightsPane,
+      library: lib,
+      getPuzzleRating: () => insightPuzzleStore.getRating(),
+      onOpenPosition: (gameId, ply) => {
+        void lib.get(gameId).then(async (record) => {
+          if (!record || !(await openLibraryGame(record))) return;
+          const node = analysisController.getGameTree().getMainLine()[ply - 1];
+          if (node) analysisController.goToNode(node.id);
+        });
+      },
+      onOpenGames: (filter) => {
+        gamesTabs?.select('library');
+        list.setFilter(filter);
+      },
+      onOpenPuzzle: (id) => {
+        void openPuzzles('rated').then((trainer) => trainer.openPuzzle(id, 'lichess'));
+      },
+    });
+    lib.onChange(() => {
+      if (currentMode === 'games' && gamesTabs?.getSelected() === 'insights') void insightsView?.refresh();
+    });
     mountGamesSettings(settings, lib, list);
     if (currentMode === 'games') await list.refresh();
     // Sync with the capture extension now, on focus and when the tab becomes visible
@@ -1129,6 +1167,7 @@ export function mountAppShell(container: HTMLElement): {
       await lib.reloadAccounts();
       await list.syncAutoAnalyze();
       await list.refresh();
+      void insightsView?.refresh();
       // The repertoires and drill cards may have come from the backup
       drillStore.repertoire.reload();
       await syncPersonal();

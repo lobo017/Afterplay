@@ -5653,3 +5653,379 @@ label.wc-setting-row {
     flex-wrap: wrap;
   }
 }
+
+/* Games: Library | Insights */
+.wc-games-tabs {
+  max-width: 1280px;
+  margin: 0 auto 0.75rem;
+}
+
+.wc-games-pane[hidden] {
+  display: none;
+}
+
+.wc-insights {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+.wc-insights-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.9rem;
+  flex-wrap: wrap;
+}
+
+.wc-insights-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.wc-insight-card {
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--border-carved);
+  border-radius: 14px;
+  background: var(--bg-panel);
+  min-width: 0;
+}
+
+.wc-insight-wide {
+  grid-column: 1 / -1;
+}
+
+.wc-insight-card h3 {
+  margin: 0 0 0.2rem;
+  font-size: 1rem;
+}
+
+.wc-insight-hint,
+.wc-insight-empty {
+  margin: 0 0 0.8rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.wc-insight-bars {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.wc-insight-bar {
+  display: grid;
+  grid-template-rows: auto 9rem auto auto;
+  justify-items: center;
+  gap: 0.3rem;
+  padding: 0.5rem;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-marble);
+  cursor: pointer;
+  font: inherit;
+}
+
+.wc-insight-bar:hover,
+.wc-insight-bar:focus-visible {
+  border-color: var(--accent-gold);
+}
+
+.wc-insight-bar:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.wc-insight-bar-value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.wc-insight-bar-track {
+  position: relative;
+  width: 2.2rem;
+  height: 100%;
+  border-radius: 6px 6px 0 0;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+
+.wc-insight-bar-fill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--accent-gold);
+  border-radius: 4px 4px 0 0;
+}
+
+.wc-insight-bar-sub {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.wc-insight-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.wc-insight-row {
+  display: grid;
+  grid-template-columns: 9rem minmax(0, 1fr) 2rem;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.3rem 0.4rem;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-marble);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.wc-insight-row:hover,
+.wc-insight-row:focus-visible {
+  border-color: var(--accent-gold);
+}
+
+.wc-insight-row-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.88rem;
+}
+
+.wc-insight-row-track {
+  height: 0.7rem;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.wc-insight-row-fill {
+  display: block;
+  height: 100%;
+  background: var(--accent-gold);
+  border-radius: 0 4px 4px 0;
+}
+
+.wc-insight-row-value {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  font-size: 0.88rem;
+}
+
+.wc-insight-opening {
+  display: grid;
+  grid-template-columns: 9rem minmax(0, 1fr) 2rem;
+  align-items: center;
+  gap: 0.15rem 0.6rem;
+  padding: 0.3rem 0.4rem;
+}
+
+.wc-insight-opening-text {
+  grid-column: 2;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.wc-insight-stack {
+  display: flex;
+  gap: 2px;
+  height: 1.5rem;
+}
+
+.wc-insight-seg {
+  min-width: 1.4rem;
+  border: 0;
+  border-radius: 4px;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #0b0d12;
+  cursor: pointer;
+}
+
+.wc-insight-seg:focus-visible,
+.wc-insight-seg:hover {
+  outline: 2px solid var(--text-marble);
+  outline-offset: 1px;
+}
+
+.wc-insight-seg-win {
+  background: #4ade80;
+}
+
+.wc-insight-seg-draw {
+  background: #94a3b8;
+}
+
+.wc-insight-seg-loss {
+  background: #f87171;
+}
+
+.wc-chart {
+  width: 100%;
+  max-width: 760px;
+  height: auto;
+  display: block;
+}
+
+.wc-chart-grid {
+  stroke: rgba(255, 255, 255, 0.08);
+}
+
+.wc-chart-axis {
+  fill: var(--text-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.wc-chart-line {
+  fill: none;
+  stroke: var(--accent-gold);
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+
+.wc-chart-dot {
+  fill: var(--accent-gold);
+  stroke: #0b0d12;
+  stroke-width: 2;
+}
+
+.wc-chart-hit {
+  fill: transparent;
+}
+
+.wc-chart-point {
+  cursor: pointer;
+  outline: none;
+}
+
+.wc-chart-point:hover .wc-chart-dot,
+.wc-chart-point:focus-visible .wc-chart-dot {
+  r: 6;
+  stroke: var(--text-marble);
+}
+
+.wc-insight-detail {
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--accent-gold-dim);
+  border-radius: 14px;
+  background: var(--bg-elevated);
+}
+
+.wc-insight-detail-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.6rem;
+}
+
+.wc-insight-detail-head h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.wc-insight-detail-head span {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  flex: 1;
+}
+
+.wc-insight-positions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+  gap: 0.6rem;
+}
+
+.wc-insight-position-btn {
+  display: flex;
+  gap: 0.7rem;
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid var(--border-carved);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-marble);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.wc-insight-position-btn:hover,
+.wc-insight-position-btn:focus-visible {
+  border-color: var(--accent-gold);
+}
+
+.wc-insight-position-text {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+  font-size: 0.85rem;
+}
+
+.wc-insight-class {
+  font-size: 0.75rem;
+  color: var(--accent-amber);
+}
+
+.wc-insight-position-game,
+.wc-insight-position-note {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.wc-mini-board {
+  width: 5.5rem;
+  height: 5.5rem;
+  flex: none;
+  border-radius: 4px;
+}
+
+.wc-mini-sq-l {
+  fill: #e8e2d0;
+}
+
+.wc-mini-sq-d {
+  fill: #3b3466;
+}
+
+.wc-mini-piece {
+  font-size: 9px;
+  text-anchor: middle;
+}
+
+.wc-mini-w {
+  fill: #fff;
+  stroke: #111;
+  stroke-width: 0.5px;
+}
+
+.wc-mini-b {
+  fill: #111;
+}
+
+@media (max-width: 760px) {
+  .wc-insights-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .wc-insight-row,
+  .wc-insight-opening {
+    grid-template-columns: 6.5rem minmax(0, 1fr) 1.6rem;
+  }
+}
