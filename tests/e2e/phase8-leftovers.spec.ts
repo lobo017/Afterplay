@@ -92,4 +92,34 @@ test.describe('Phase 8 — leftovers', () => {
     });
     expect(clipped).toEqual([]);
   });
+
+  test('Settings holds the analysis lines and the review depth, in step with the panels and remembered', async ({ page }) => {
+    await openReview(page, 1440, 900);
+    await page.getByTestId('review-shell-tab-analysis').click();
+    await expect(page.getByTestId('select-multipv')).toHaveValue('3');
+    await page.getByTestId('review-shell-tab-review').click();
+    await expect(page.getByTestId('select-review-preset')).toHaveValue('quick');
+    await page.getByTestId('btn-settings').click();
+    await page.getByTestId('select-analysis-lines').selectOption('5');
+    await page.getByTestId('select-review-default').selectOption('deep');
+    await page.keyboard.press('Escape');
+    await expect(page.getByTestId('select-review-preset')).toHaveValue('deep');
+    await page.getByTestId('review-shell-tab-analysis').click();
+    await expect(page.getByTestId('select-multipv')).toHaveValue('5');
+    // And the other way round: the panels' own selects update Settings
+    await page.getByTestId('select-multipv').selectOption('2');
+    await page.getByTestId('review-shell-tab-review').click();
+    await page.getByTestId('select-review-preset').selectOption('standard');
+    await page.getByTestId('btn-settings').click();
+    await expect(page.getByTestId('select-analysis-lines')).toHaveValue('2');
+    await expect(page.getByTestId('select-review-default')).toHaveValue('standard');
+    await page.keyboard.press('Escape');
+    // Remembered
+    await page.waitForTimeout(500);
+    await page.reload();
+    await expect(page.getByTestId('analysis-layout')).toBeVisible();
+    await expect(page.getByTestId('select-review-preset')).toHaveValue('standard');
+    await page.getByTestId('review-shell-tab-analysis').click();
+    await expect(page.getByTestId('select-multipv')).toHaveValue('2');
+  });
 });

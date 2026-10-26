@@ -31,7 +31,21 @@ Opening `dist/index.html` directly via the `file://` protocol is **not supported
    - `Cross-Origin-Embedder-Policy: require-corp`
 4. **Service Worker & PWA Offline Caching:** Service Workers and IndexedDB origin storage require `http://localhost` (or `https://`).
 
-Always run `npm run serve` (or install the app as a PWA from `localhost`, which includes a service-worker COOP/COEP isolation shim and falls back cleanly to single-threaded Stockfish if cross-origin isolation is unavailable).
+Always run `npm run serve` (or install the app as a PWA from `localhost`).
+
+### Offline and installing
+
+The production build registers one service worker (`src/sw.ts`). On the first load it caches every
+file of the build (about 20 MB: the app, both Stockfish builds, the puzzle set); after that the
+app starts and works with no network and no server: play, analysis, review, all four trainers and
+the Games list. It also serves the pages with the COOP/COEP headers, so the multi-threaded engine
+still works offline and in the installed app, and the page falls back to single-threaded Stockfish
+only if isolation is unavailable. Settings › About & diagnostics shows whether the cache is
+complete. A newer build is downloaded in the background and waits behind an "A new version is
+ready" banner, so a game in progress is never reloaded; **Reload** takes it. Chrome offers to
+install the app (the manifest has PNG icons; `npm run build:icons` redraws them from
+`public/favicon.svg`). `tests/e2e/phase8-offline.spec.ts` stops the server, switches the browser
+offline and checks all of this.
 
 ## Verification & Testing Scripts
 
@@ -63,9 +77,15 @@ The end-to-end tests run against the built site and extension: run `npm run buil
 
 ## Games list and the capture extension
 
-The **📚 Games** tab lists every game you capture or import: source, date, your color,
-opponent and ratings, result, time control, opening, and whether it has been analyzed.
-Filter by source, result and analysis; sort by date, opponent or accuracy. Select games and
+The **📚 Games** tab is the library: every game you play here (a finished game against the bot
+is saved by itself), capture or import: source, date, your color, opponent and ratings, result,
+time control, opening, and whether it has been analyzed. Filter by source, result, colour,
+analysis, opening, date and accuracy; sort by date, opponent or accuracy. Your usernames (Settings ›
+Your games) tell the library which side is yours. Selected games can be deleted (it asks first).
+Bulk imports of any size are read in a worker. The **Insights** tab beside **Library** charts your
+reviewed games: accuracy by game phase, blunders per 10 moves over time, the motifs behind your
+mistakes, results by opening and your puzzle rating; clicking any point shows the positions (or
+games, or the puzzle) behind it. Select games and
 press **Analyze** to review them in the background (the preset defaults to **Standard**);
 **Auto-analyze new games** reviews each newly captured or imported game on **Quick** (history
 imports are not reviewed automatically). Opening an analyzed game shows its saved review
@@ -183,8 +203,9 @@ All three live in the Train hub, beside the puzzles.
   that reaches it. When a reviewed game of yours (matched to your side by your usernames)
   leaves your repertoire, the review says where, and whether it was you or your opponent.
 - **Endgames**: K+Q v K, K+R v K, K+P (opposition), Lucena, Philidor and R+P v R, each played
-  out against the engine from the side to move. Mate drills count your moves against the best
-  possible (the engine's mate distance, checked in `tests/unit/endgame-data.test.ts`); Lucena
+  out from the side to move. In the three mate drills the opponent plays the exact best defence
+  from solved tables (`src/trainers/endgame-tables.ts`), so your moves are counted against the
+  true best possible; the others are played against the engine; Lucena
   and R+P v R end when you promote (or win the rook) and the engine agrees it is decided;
   Philidor ends in a draw by the rules, or by agreement after ten moves of holding it.
 - **Visualization**: a 30-second *coordinate* round (click the named square), *blindfold*
@@ -193,6 +214,14 @@ All three live in the Train hub, beside the puzzles.
   the move played, or with the review's best move, counts).
 
 Everything stays on this device and is included in the JSON backup.
+
+## Keyboard and screen readers
+
+Every board can be played from the keyboard: Tab to the board, arrow keys move the cursor,
+Enter or Space picks a piece up and puts it down, Escape cancels, and in the promotion picker the
+piece's letter (Q, R, B, N) chooses. Moves, results and the cursor's square are announced through
+one live region. On the analysis board the arrow keys still step through the game after a click.
+Move classifications are an icon plus a name, never colour alone.
 
 ## Dataset Generation (`scripts/` -> `data/`)
 

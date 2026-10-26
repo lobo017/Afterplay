@@ -107,6 +107,8 @@ export interface ReviewPanelOptions {
   isBookPosition: (fen: string) => boolean;
   onPlayVsBot: (fen: string) => void;
   initialPreset?: ReviewPreset;
+  /** The depth select was changed by the user. */
+  onPresetChange?: (preset: ReviewPreset) => void;
   /** My accounts, for the default "Review as" side (the built-in default when absent). */
   getAccounts?: () => readonly UserAccount[];
   /** Called when a review run finishes (not when it is cancelled or fails). */
@@ -527,6 +529,7 @@ export class ReviewPanel {
 
     this.els.preset.addEventListener('change', () => {
       this.preset = this.els.preset.value as ReviewPreset;
+      this.options.onPresetChange?.(this.preset);
     });
     this.els.start.addEventListener('click', () => {
       void this.start();

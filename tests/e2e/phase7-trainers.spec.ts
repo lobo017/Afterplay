@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page, type Request } from '@playwright/test';
 import { Chess } from 'chess.js';
-import { exactMateDistance } from '../helpers/dtm-oracle';
+import { ensureOracle, exactMateDistance } from '../helpers/dtm-oracle';
 import { bestAttackerMove, blackToMoveValue } from '../helpers/dtm-play';
 
 // Phase 7: the repertoire, endgame and visualization trainers in the Train hub. One drill of
@@ -429,6 +429,7 @@ test.describe('Phase 7 — endgame trainer', () => {
   for (const [id, label] of [['kq-vs-k', 'K+Q v K'], ['kr-vs-k', 'K+R v K'], ['kp-opposition', 'K+P v K']] as const) {
     test(`${label}: the opponent always plays the DTM-optimal defence, so best play mates in the stored count`, async ({ page }) => {
       test.setTimeout(180_000);
+      await ensureOracle();
       const external = trackNetwork(page);
       await openTrain(page);
       await page.getByTestId('btn-trainer-endgames').click();

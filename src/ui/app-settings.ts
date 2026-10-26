@@ -36,6 +36,10 @@ export interface AppSettings {
   playLiveEval: boolean;
   /** Stepping through moves on the Review board. */
   navigationAnimation: NavigationAnimation;
+  /** Engine lines shown on the analysis board (1–5). */
+  analysisLines: number;
+  /** The depth a review starts with. */
+  reviewPreset: 'quick' | 'standard' | 'deep';
   newGame: NewGameOptions;
 }
 
@@ -62,6 +66,8 @@ export const DEFAULT_APP_SETTINGS: Readonly<AppSettings> = Object.freeze({
   volume: 75,
   playLiveEval: false,
   navigationAnimation: 'normal',
+  analysisLines: 3,
+  reviewPreset: 'quick',
   newGame: DEFAULT_NEW_GAME,
 });
 
@@ -89,6 +95,8 @@ export function sanitizeAppSettings(input: unknown): AppSettings {
     volume: Math.round(num(src.volume, d.volume, 0, 100)),
     playLiveEval: bool(src.playLiveEval, d.playLiveEval),
     navigationAnimation: oneOf(src.navigationAnimation, ['off', 'fast', 'normal'] as const, d.navigationAnimation),
+    analysisLines: Math.floor(num(src.analysisLines, d.analysisLines, 1, 5)),
+    reviewPreset: oneOf(src.reviewPreset, ['quick', 'standard', 'deep'] as const, d.reviewPreset),
     newGame: {
       color: oneOf(ng.color, ['w', 'b', 'random'] as const, dn.color),
       timeControlId: oneOf(

@@ -7,7 +7,7 @@ import type { EndgamePositionEntry } from '../../src/core/datasets';
 import { RulesAdapter } from '../../src/core/rules';
 import { SINGLE_THREADED_STOCKFISH_FILE } from '../../src/engine/engine-client';
 import { endgameGoal } from '../../src/trainers/endgames';
-import { exactMateDistance, longestMate } from '../helpers/dtm-oracle';
+import { ensureOracle, exactMateDistance, longestMate } from '../helpers/dtm-oracle';
 
 /**
  * Every endgame position is checked with Stockfish 17.1 (the same single-threaded lite build
@@ -136,7 +136,8 @@ describe('the endgame positions (checked with the engine)', () => {
     expect(ENDGAMES.filter((e) => e.optimalMoves === null).map((e) => e.category)).toEqual(['Lucena', 'Philidor', 'R+P v R']);
   });
 
-  it('the retrograde solver is right: the longest mates are the known ones (10, 16 and 28 moves)', () => {
+  it('the retrograde solver is right: the longest mates are the known ones (10, 16 and 28 moves)', async () => {
+    await ensureOracle();
     expect(longestMate('q')).toBe(10);
     expect(longestMate('r')).toBe(16);
     expect(longestMate('p')).toBe(28);
@@ -163,7 +164,8 @@ describe('the endgame positions (checked with the engine)', () => {
         },
         240_000,
       );
-      it(`${e.title}: optimalMoves is also the exact distance to mate (retrograde analysis)`, () => {
+      it(`${e.title}: optimalMoves is also the exact distance to mate (retrograde analysis)`, async () => {
+        await ensureOracle();
         expect(exactMateDistance(e.fen), e.id).toBe(e.optimalMoves);
       });
     } else if (goal === 'convert') {

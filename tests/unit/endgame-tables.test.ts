@@ -1,8 +1,8 @@
 import { Chess } from 'chess.js';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { EndgameTables, type TableKind } from '../../src/trainers/endgame-tables';
 import { ENDGAMES } from '../../src/trainers/endgames';
-import { exactMateDistance, longestMate } from '../helpers/dtm-oracle';
+import { ensureOracle, exactMateDistance, longestMate } from '../helpers/dtm-oracle';
 import { bestAttackerMove, mateAfterReply } from '../helpers/dtm-play';
 
 /**
@@ -83,7 +83,8 @@ describe('endgame tables: the solver', () => {
     expect(tables.longestMate('p')).toBe(28);
   }, 60_000);
 
-  it('agrees with the independent solver on every kind', () => {
+  it('agrees with the independent solver on every kind', async () => {
+    await ensureOracle();
     expect(longestMate('q')).toBe(10);
     for (const kind of KINDS) {
       for (const fen of samples(kind, 'w', 2500, kind.charCodeAt(0))) {
@@ -110,6 +111,8 @@ describe('endgame tables: the solver', () => {
 });
 
 describe('endgame tables: the defender is DTM-optimal', () => {
+  beforeAll(() => ensureOracle(), 120_000);
+
   for (const kind of KINDS) {
     it(`K+${PIECE[kind]} v K: every reply is legal and keeps the mate as far away as any legal reply`, () => {
       for (const fen of samples(kind, 'b', 1500, 7 + kind.charCodeAt(0))) {

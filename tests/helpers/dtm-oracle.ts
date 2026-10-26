@@ -55,7 +55,10 @@ interface Table {
 
 const index = (wk: number, bk: number, x: number) => (wk * 64 + bk) * 64 + x;
 
-function solve(type: Extra, promotions: Partial<Record<'q' | 'r', Table>> = {}): Table {
+/** Lets the event loop run (a test worker must keep reporting to the runner during a long solve). */
+const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
+
+async function solve(type: Extra, promotions: Partial<Record<'q' | 'r', Table>> = {}): Promise<Table> {
   const white = new Int16Array(64 * 64 * 64).fill(-1);
   const black = new Int16Array(64 * 64 * 64).fill(-1);
   const positions: Array<[number, number, number]> = [];
@@ -112,6 +115,7 @@ function solve(type: Extra, promotions: Partial<Record<'q' | 'r', Table>> = {}):
     if (attacks(wk, bk, x, bk, false) && blackReplies(wk, bk, x).length === 0) black[index(wk, bk, x)] = 0;
   }
   for (let n = 1; n < 80; n++) {
+    await tick();
     let changed = 0;
     for (const [wk, bk, x] of positions) {
       const i = index(wk, bk, x);
@@ -150,13 +154,20 @@ function solve(type: Extra, promotions: Partial<Record<'q' | 'r', Table>> = {}):
 }
 
 let tables: Record<Extra, Table> | null = null;
+let preparing: Promise<void> | null = null;
+
+/** Solves the three endings (about 10-20 s of work, in slices); await it before using the functions below. */
+export function ensureOracle(): Promise<void> {
+  preparing ??= (async () => {
+    const q = await solve('q');
+    const r = await solve('r');
+    tables = { q, r, p: await solve('p', { q, r }) };
+  })();
+  return preparing;
+}
 
 function getTables(): Record<Extra, Table> {
-  if (!tables) {
-    const q = solve('q');
-    const r = solve('r');
-    tables = { q, r, p: solve('p', { q, r }) };
-  }
+  if (!tables) throw new Error('dtm-oracle: await ensureOracle() first');
   return tables;
 }
 

@@ -557,6 +557,8 @@ export function mountAppShell(container: HTMLElement): {
   };
 
   const reviewPanel = new ReviewPanel(analysisController.getReviewMount(), {
+    initialPreset: appSettings.get().reviewPreset,
+    onPresetChange: (preset) => appSettings.set({ reviewPreset: preset }),
     host: {
       getGameTree: () => analysisController.getGameTree(),
       getCurrentNode: () => analysisController.getGameTree().currentNode,
@@ -1218,6 +1220,8 @@ export function mountAppShell(container: HTMLElement): {
     }
     if (!prev || next.sound !== prev.sound) audio.setEnabled(next.sound);
     if (!prev || next.volume !== prev.volume) audio.setVolume(next.volume / 100);
+    if (prev && next.analysisLines !== prev.analysisLines) analysisController.setMultiPv(next.analysisLines);
+    if (prev && next.reviewPreset !== prev.reviewPreset && reviewPanel.getPreset() !== next.reviewPreset) reviewPanel.setPreset(next.reviewPreset);
   };
   applyAppSettings(appSettings.get(), null);
   appSettings.subscribe(applyAppSettings);

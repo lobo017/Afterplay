@@ -194,7 +194,7 @@ export class AnalysisController {
     this.threatEngine = options.threatEngine ?? options.engine;
     this.isActive = options.initialActive ?? true;
     this.engineEnabled = options.engineEnabled ?? true;
-    this.multipv = Math.max(1, Math.min(5, options.initialMultiPv ?? 3));
+    this.multipv = Math.max(1, Math.min(5, options.initialMultiPv ?? options.settings?.get().analysisLines ?? 3));
     this.analysisDepth = options.analysisDepth ?? 16;
     this.threatSearchDepth = options.threatSearchDepth ?? 8;
     this.showBestMoveArrow = options.showBestMoveArrow ?? true;
@@ -457,6 +457,7 @@ export class AnalysisController {
       },
       onChangeMultiPv: (mpv) => {
         this.setMultiPv(mpv);
+        this.settings?.set({ analysisLines: mpv });
       },
       onHoverLine: (preview) => {
         this.handleHoverEngineLine(preview);

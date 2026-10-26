@@ -4,7 +4,7 @@ import { selectRowHtml, sliderRowHtml, switchRowHtml } from './components/contro
 import type { SettingsPanel } from './settings-panel';
 
 /** Section order in the Settings sheet (About & diagnostics is 1000). */
-export const SETTINGS_ORDER = { board: 10, boardFeel: 20, moves: 30, sound: 40, data: 900 } as const;
+export const SETTINGS_ORDER = { board: 10, boardFeel: 20, moves: 30, engine: 35, sound: 40, data: 900 } as const;
 
 /**
  * The Board, Moves and Sound & effects sections, bound both ways to the app settings: a change
@@ -47,6 +47,25 @@ export function mountAppSettingsSections(panel: SettingsPanel, store: AppSetting
       <input type="number" min="1" max="${MAX_PREMOVES_LIMIT}" step="1" value="${s.maxPremoves}" class="wc-select wc-setting-number" data-testid="input-max-premoves" />
     </label>`;
 
+  const engine = panel.addSection('engine', 'Analysis &amp; review', SETTINGS_ORDER.engine);
+  engine.innerHTML = `
+    ${selectRowHtml(
+      'select-analysis-lines',
+      'Engine lines',
+      [1, 2, 3, 4, 5].map((n) => ({ value: String(n), label: n === 1 ? '1 line' : `${n} lines` })),
+      String(s.analysisLines),
+    )}
+    ${selectRowHtml(
+      'select-review-default',
+      'Review depth',
+      [
+        { value: 'quick', label: 'Quick · 0.2 s a position' },
+        { value: 'standard', label: 'Standard · 0.6 s' },
+        { value: 'deep', label: 'Deep · 1.5 s' },
+      ],
+      s.reviewPreset,
+    )}`;
+
   const sound = panel.addSection('sound', 'Sound &amp; effects', SETTINGS_ORDER.sound);
   sound.innerHTML = `
     ${switchRowHtml('toggle-audio-mute', 'Sound', s.sound)}
@@ -68,6 +87,8 @@ export function mountAppSettingsSections(panel: SettingsPanel, store: AppSetting
   const confirm = q<HTMLInputElement>(moves, 'toggle-confirm-move');
   const premoves = q<HTMLInputElement>(moves, 'input-max-premoves');
   const navAnimation = q<HTMLSelectElement>(moves, 'select-nav-animation');
+  const lines = q<HTMLSelectElement>(engine, 'select-analysis-lines');
+  const reviewDepth = q<HTMLSelectElement>(engine, 'select-review-default');
   const soundOn = q<HTMLInputElement>(sound, 'toggle-audio-mute');
   const volume = q<HTMLInputElement>(sound, 'slider-audio-volume');
   const volumeLabel = q<HTMLElement>(sound, 'audio-volume-label');
@@ -81,6 +102,8 @@ export function mountAppSettingsSections(panel: SettingsPanel, store: AppSetting
   navAnimation.addEventListener('change', () =>
     store.set({ navigationAnimation: navAnimation.value as AppSettings['navigationAnimation'] }),
   );
+  lines.addEventListener('change', () => store.set({ analysisLines: Number(lines.value) }));
+  reviewDepth.addEventListener('change', () => store.set({ reviewPreset: reviewDepth.value as AppSettings['reviewPreset'] }));
   soundOn.addEventListener('change', () => store.set({ sound: soundOn.checked }));
   volume.addEventListener('input', () => store.set({ volume: Number(volume.value) }));
   shards.addEventListener('change', () => store.set({ captureEffects: shards.checked }));
@@ -92,6 +115,8 @@ export function mountAppSettingsSections(panel: SettingsPanel, store: AppSetting
     confirm.checked = v.confirmMove;
     if (document.activeElement !== premoves) premoves.value = String(v.maxPremoves);
     if (navAnimation.value !== v.navigationAnimation) navAnimation.value = v.navigationAnimation;
+    if (lines.value !== String(v.analysisLines)) lines.value = String(v.analysisLines);
+    if (reviewDepth.value !== v.reviewPreset) reviewDepth.value = v.reviewPreset;
     soundOn.checked = v.sound;
     if (Number(volume.value) !== v.volume) volume.value = String(v.volume);
     volumeLabel.textContent = `${v.volume}%`;
