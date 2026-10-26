@@ -1,8 +1,13 @@
 # Working rules for this repo
 
 - docs/SPEC.md is the source of truth. Read it at the start of every task.
+- Read docs/PROGRESS.md at the start of every session; it is kept short (under about 300
+  lines). Open an archive file in docs/progress/phase-N.md only when the work needs that
+  history; never read them all.
 - Track progress in docs/PROGRESS.md: phase status, decisions, deviations from the spec
-  (with reasons), known issues, and measured performance numbers.
+  (with reasons), known issues, and measured performance numbers. When a phase is done, move
+  its detailed log verbatim to docs/progress/phase-N.md and keep only a summary, its open
+  items, and key measurements in PROGRESS.md.
 - Work one phase at a time. Before writing code, add a short plan to PROGRESS.md (files to
   add or change, risks).
 - A phase is done only when all of these pass, run by you:
