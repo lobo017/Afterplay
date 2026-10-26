@@ -5615,3 +5615,41 @@ label.wc-setting-row {
     justify-content: space-between;
   }
 }
+
+/* Library: the extra filters, delete confirmation, usernames in Settings */
+.wc-games-opening-input {
+  width: 11rem;
+}
+
+.wc-games-acc-input {
+  width: 4.5rem;
+}
+
+.wc-games-delete-confirm {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.wc-setting-text {
+  width: 11rem;
+  max-width: 55%;
+  min-height: 2.3rem;
+  font-size: 0.88rem;
+}
+
+@media (max-width: 760px) {
+  .wc-games-opening-input,
+  .wc-games-acc-input {
+    width: 100%;
+  }
+
+  .wc-games-filters label {
+    flex: 1 1 8.5rem;
+  }
+
+  .wc-games-selbar {
+    flex-wrap: wrap;
+  }
+}

@@ -166,6 +166,15 @@ export interface PlayControllerOptions {
   onAnalyzeGame?: () => void;
   /** Game over › Review this game. */
   onReviewGame?: () => void;
+  /** A game ended (mate, draw, resignation or flag): its PGN, for the game library. */
+  onGameFinished?: (game: FinishedPlayGame) => void;
+}
+
+export interface FinishedPlayGame {
+  /** When the game started (ms since the epoch). */
+  startedAt: number;
+  pgn: string;
+  playerColor: Color;
 }
 
 export const DEFAULT_MAX_PREMOVES = 10;
@@ -219,6 +228,8 @@ export class PlayController {
   private maxPremoves: number;
 
   private gameOver = false;
+  private gameStartedAt = Date.now();
+  private readonly onGameFinished: ((game: FinishedPlayGame) => void) | undefined;
   private gameResult: GameTermination = '*';
   private gameStatusText = 'White to move';
   private isBotThinking = false;
@@ -251,6 +262,7 @@ export class PlayController {
     this.settings = options.settings ?? new AppSettingsStore();
     this.onAnalyzeGame = options.onAnalyzeGame;
     this.onReviewGame = options.onReviewGame;
+    this.onGameFinished = options.onGameFinished;
     if (options.botEngine) {
       this.botEngine = options.botEngine;
       this.ownsBotEngine = false;
@@ -875,6 +887,7 @@ export class PlayController {
 
     this.hintsRemaining = this.maxHintsPerGame;
     this.gameOver = false;
+    this.gameStartedAt = Date.now();
     this.gameResult = '*';
     this.gameStatusText = `${this.adapter.turn() === 'w' ? 'White' : 'Black'} to move`;
     this.setEvalImmediate('+0.00', 0);
@@ -1259,6 +1272,7 @@ export class PlayController {
     } resigned · ${this.gameResult}`;
     this.audio.playGameOver(false);
     this.updateAllHud();
+    this.notifyGameFinished();
   }
 
   public async offerDraw(forceAccept = false): Promise<boolean> {
@@ -1285,6 +1299,7 @@ export class PlayController {
       this.gameStatusText = 'Game drawn by agreement · 1/2-1/2';
       this.audio.playGameOver(false);
       this.updateAllHud();
+      this.notifyGameFinished();
       return true;
     }
 
@@ -1307,6 +1322,7 @@ export class PlayController {
     this.gameStatusText = `${winner} wins on time · ${this.gameResult}`;
     this.audio.playGameOver(flaggedColor !== this.playerColor);
     this.updateAllHud();
+    this.notifyGameFinished();
   }
 
   private finalizeGameOverFromRules(): void {
@@ -1337,6 +1353,28 @@ export class PlayController {
     }
 
     this.gameTree.setResult(this.gameResult);
+    this.notifyGameFinished();
+  }
+
+  /** Hands the finished game, with its headers, to the library (a game with no move is not kept). */
+  private notifyGameFinished(): void {
+    if (!this.onGameFinished || this.gameTree.getMainLine().length === 0) return;
+    const config = TIME_CONTROL_PRESETS[this.timeControlId];
+    const bot = `Stockfish ${getTierForRating(this.botRating)}`;
+    const me = this.playerColor;
+    const now = new Date(this.gameStartedAt);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const tree = this.gameTree;
+    tree.setHeader('Event', `Casual game vs ${bot} (${this.botRating})`);
+    tree.setHeader('Site', "Wizard's Chess");
+    tree.setHeader('Date', `${now.getFullYear()}.${pad(now.getMonth() + 1)}.${pad(now.getDate())}`);
+    tree.setHeader('UTCDate', `${now.getUTCFullYear()}.${pad(now.getUTCMonth() + 1)}.${pad(now.getUTCDate())}`);
+    tree.setHeader('UTCTime', `${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}:${pad(now.getUTCSeconds())}`);
+    tree.setHeader('White', me === 'w' ? 'You' : bot);
+    tree.setHeader('Black', me === 'b' ? 'You' : bot);
+    tree.setHeader(me === 'w' ? 'BlackElo' : 'WhiteElo', String(this.botRating));
+    tree.setHeader('TimeControl', config.unlimited ? '-' : `${Math.round(config.initialMs / 1000)}${config.incrementMs ? `+${Math.round(config.incrementMs / 1000)}` : ''}`);
+    this.onGameFinished({ startedAt: this.gameStartedAt, pgn: writePgn(tree), playerColor: me });
   }
 
   private renderClockSnapshot(snap: ClockSnapshot): void {

@@ -1,9 +1,12 @@
+import { playKey } from '../capture/game-id';
 import { checkPgnText, describeImportProblem, importProblemOf } from '../capture/pgn-games';
 import type { BridgeGame, MyAccounts } from '../capture/protocol';
 import type { UserAccount } from '../review/perspective';
 import type { StoredGameRecord, WizardChessStorage } from '../storage/db';
 import type { SaveOutcome } from './bridge-client';
+import type { Color } from '../core/rules';
 import { accountsFromSettings, buildGameRecord, myColor } from './game-record';
+import { PgnImportClient } from './pgn-import-client';
 import type { SavedReview } from './saved-review';
 
 const ACCOUNTS_SETTING = 'library.myAccounts';
@@ -13,6 +16,21 @@ export interface ImportOutcome {
   saved: string[];
   duplicates: string[];
   errors: string[];
+}
+
+export interface ImportProgress {
+  /** Games read so far. */
+  done: number;
+  total: number;
+}
+
+/** A game finished against the bot here, ready for the library. */
+export interface PlayedGame {
+  /** When the game started (ms since the epoch): its identity. */
+  startedAt: number;
+  pgn: string;
+  /** My side. */
+  playerColor: Color;
 }
 
 export interface LibraryChange {
@@ -34,8 +52,12 @@ const yieldToEventLoop = () => new Promise<void>((resolve) => setTimeout(resolve
 export class GameLibrary {
   private readonly listeners = new Set<(change: LibraryChange) => void>();
   private accounts: MyAccounts | null = null;
+  private readonly accountListeners = new Set<() => void>();
 
-  constructor(private readonly storage: WizardChessStorage) {}
+  constructor(
+    private readonly storage: WizardChessStorage,
+    private readonly importer: PgnImportClient = new PgnImportClient(),
+  ) {}
 
   public async init(): Promise<void> {
     this.accounts = (await this.storage.getSetting<MyAccounts>(ACCOUNTS_SETTING)) ?? null;
@@ -64,7 +86,21 @@ export class GameLibrary {
   public async setMyAccounts(accounts: MyAccounts): Promise<void> {
     const same = this.accounts?.lichess === accounts.lichess && this.accounts?.chesscom === accounts.chesscom;
     this.accounts = { lichess: accounts.lichess, chesscom: accounts.chesscom };
-    if (!same) await this.storage.setSetting(ACCOUNTS_SETTING, this.accounts);
+    if (same) return;
+    await this.storage.setSetting(ACCOUNTS_SETTING, this.accounts);
+    for (const l of this.accountListeners) l();
+  }
+
+  /** Called when my usernames change (from Settings, the extension, or a restored backup). */
+  public onAccountsChange(listener: () => void): () => void {
+    this.accountListeners.add(listener);
+    return () => this.accountListeners.delete(listener);
+  }
+
+  /** Reads my usernames again from storage (after a restore). */
+  public async reloadAccounts(): Promise<void> {
+    this.accounts = (await this.storage.getSetting<MyAccounts>(ACCOUNTS_SETTING)) ?? null;
+    for (const l of this.accountListeners) l();
   }
 
   public async getAutoAnalyze(): Promise<boolean> {
@@ -83,22 +119,56 @@ export class GameLibrary {
     return this.storage.getGame(id);
   }
 
-  /** Stores the games of a pasted or dropped PGN text; known games are skipped. */
-  public async importPgnText(text: string): Promise<ImportOutcome> {
-    const { games, errors } = checkPgnText(text);
-    const saved: string[] = [];
-    const duplicates: string[] = [];
-    for (const game of games) {
-      if (saved.includes(game.key) || duplicates.includes(game.key) || (await this.storage.getGame(game.key))) {
-        duplicates.push(game.key);
-        continue;
-      }
-      await this.storage.saveGame(buildGameRecord(game));
-      saved.push(game.key);
-      await yieldToEventLoop();
+  /**
+   * Stores the games of a pasted, dropped or opened PGN text; known games are skipped. The
+   * reading (parsing, checking every move, the opening lookup) happens in a worker, a group of
+   * games at a time, so any number of games can come in without freezing the page.
+   */
+  public async importPgnText(text: string, onProgress?: (progress: ImportProgress) => void): Promise<ImportOutcome> {
+    const known = new Set(await this.storage.listGameIds());
+    const outcome: ImportOutcome = { saved: [], duplicates: [], errors: [] };
+    await this.importer.run(text, known, async (batch) => {
+      const stored = await this.storage.saveNewGames(batch.records);
+      outcome.saved.push(...stored);
+      const storedSet = new Set(stored);
+      // A game that turned up in the store meanwhile counts as a duplicate too
+      outcome.duplicates.push(...batch.duplicates, ...batch.records.filter((r) => !storedSet.has(r.id)).map((r) => r.id));
+      outcome.errors.push(...batch.errors);
+      onProgress?.({ done: batch.gamesRead, total: batch.totalGames });
+    });
+    this.emit({ added: outcome.saved, methods: Object.fromEntries(outcome.saved.map((id) => [id, null])), updated: [] });
+    return outcome;
+  }
+
+  /**
+   * Keeps a game played here. The same game saved again (it went on after a takeback) replaces
+   * the entry and drops its review, which no longer matches the moves.
+   */
+  public async savePlayedGame(game: PlayedGame): Promise<string | null> {
+    const { games } = checkPgnText(game.pgn);
+    const checked = games[0];
+    if (!checked) return null;
+    const id = playKey(game.startedAt);
+    const existing = await this.storage.getGame(id);
+    const record = buildGameRecord({ ...checked, key: id, source: 'paste' });
+    await this.storage.saveGame({
+      ...record,
+      source: 'play',
+      playerColor: game.playerColor,
+      ...(existing ? { createdAt: existing.createdAt } : {}),
+    });
+    if (existing) await this.storage.deleteReview(id);
+    this.emit({ added: existing ? [] : [id], methods: existing ? {} : { [id]: null }, updated: existing ? [id] : [] });
+    return id;
+  }
+
+  /** Removes games from the library, with their saved reviews. */
+  public async deleteGames(ids: readonly string[]): Promise<void> {
+    for (const id of ids) {
+      await this.storage.deleteGame(id);
+      await this.storage.deleteReview(id);
     }
-    this.emit({ added: saved, methods: Object.fromEntries(saved.map((id) => [id, null])), updated: [] });
-    return { saved, duplicates, errors };
+    this.emit({ added: [], methods: {}, updated: [...ids] });
   }
 
   /** Stores games from the extension: each PGN is checked, known games are reported as duplicates. */

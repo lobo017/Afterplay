@@ -1,6 +1,6 @@
 import { lookupGameOpening } from '../analysis/opening-lookup';
 import type { Color } from '../core/rules';
-import type { GameSource } from '../capture/game-id';
+import type { StoredGameSource } from '../capture/game-id';
 import { gameUrl } from '../capture/game-id';
 import type { ValidGame } from '../capture/pgn-games';
 import { playedAtFromHeaders } from '../capture/pgn-time';
@@ -78,10 +78,12 @@ export function accountsFromSettings(accounts: MyAccounts | null | undefined): U
 
 /** My color in a stored game: when exactly one player is one of my accounts on its site. */
 export function myColor(
-  record: Pick<StoredGameRecord, 'white' | 'black' | 'source'>,
+  record: Pick<StoredGameRecord, 'white' | 'black' | 'source'> & Partial<Pick<StoredGameRecord, 'playerColor'>>,
   accounts: readonly UserAccount[],
 ): Color | null {
-  const source: GameSource = record.source ?? 'paste';
+  const source: StoredGameSource = record.source ?? 'paste';
+  // A game played here: my side was chosen on the New game card
+  if (source === 'play') return record.playerColor ?? null;
   const names = accounts
     .filter((a) => source === 'paste' || a.site === source)
     .map((a) => a.username.toLowerCase());

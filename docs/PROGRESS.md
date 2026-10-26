@@ -38,6 +38,8 @@ Findings that shape it
 - Games played against the bot are never stored; the Games list only has captured and imported games.
 - Puzzle rating history already exists (`puzzles.rating` setting, with `puzzleId` per point).
 
+Status at the usage limit (2026-10-26): stage 1 is done and committed (`23cc01e`). Stage 2 is half written and uncommitted: `game-rows.ts` (filters), `pgn-import-*` (worker), `library.ts` (savePlayedGame, deleteGames), `playKey`, `saveNewGames`. Not done: the Games list UI for the new filters, delete and import progress; the PlayController hook that saves finished games; accounts in Settings; unit tests for the above. Stages 3-6 not started.
+
 Stages (each ends green on typecheck/lint/unit and its own e2e, and is committed):
 1. **Offline PWA** (the gate). `src/sw.ts` (vite-plugin-pwa `injectManifest`, no new dependency: plain Cache API, no
    Workbox imports): precache with revisions, cache-first, navigation fallback, COI headers, `skipWaiting` + `claim`.

@@ -1,10 +1,24 @@
-import type { Color } from '../core/rules';
-import type { GameSource } from '../capture/game-id';
-import { formatPlayedAt, localDateTime, playedAtDetail, readPgnHeaders, type PlayedAt } from '../capture/pgn-time';
+import type { StoredGameSource } from '../capture/game-id';
+import { formatPlayedAt, localDateTime } from '../capture/pgn-time';
 import { REVIEW_PRESET_MOVETIME_MS, type ReviewPreset } from '../review/types';
 import type { StoredGameRecord } from '../storage/db';
 import type { ExtensionStatus } from './bridge-client';
-import { formatTimeControl, myColor, resultFor, type MyResult } from './game-record';
+import { formatTimeControl, type MyResult } from './game-record';
+import {
+  NO_FILTER,
+  activeFilters,
+  matchesFilter,
+  openingChoices,
+  openingLabel,
+  playedOf,
+  sortRows,
+  toRow,
+  type AnalyzedFilter,
+  type GameFilter,
+  type GameRow as Row,
+  type ResultFilter,
+  type SortKey,
+} from './game-rows';
 import type { GameLibrary } from './library';
 import type { ReviewQueue } from './review-queue';
 import { icon } from '../ui/components/icons';
@@ -20,11 +34,6 @@ export interface GamesListOptions {
   onExtensionStatus: (listener: (status: ExtensionStatus) => void) => void;
 }
 
-type SourceFilter = 'all' | GameSource;
-type ResultFilter = 'all' | 'win' | 'loss' | 'draw';
-type AnalyzedFilter = 'all' | 'analyzed' | 'not-analyzed';
-type SortKey = 'newest' | 'oldest' | 'opponent' | 'accuracy';
-
 /** Games analyzed from the list use this preset unless another is picked. */
 export const DEFAULT_LIST_PRESET: ReviewPreset = 'standard';
 /** "Auto-analyze new games" reviews on this preset. */
@@ -34,7 +43,8 @@ const BACKFILL_METHODS = new Set(['lichess-history', 'chesscom-archive-history']
 /** Rows drawn at once; "Show more" draws the next page. */
 const PAGE_SIZE = 200;
 
-const SOURCE_META: Record<GameSource, { label: string; glyph: string }> = {
+const SOURCE_META: Record<StoredGameSource, { label: string; glyph: string }> = {
+  play: { label: 'Played here', glyph: '♞' },
   lichess: { label: 'Lichess', glyph: 'L' },
   chesscom: { label: 'Chess.com', glyph: 'C' },
   paste: { label: 'Pasted / file', glyph: 'P' },
@@ -53,14 +63,6 @@ function escapeHtml(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-/** When each stored game was played, from its PGN's UTC headers (parsed once per record). */
-const playedCache = new WeakMap<StoredGameRecord, PlayedAt | null>();
-
-function playedOf(record: StoredGameRecord): PlayedAt | null {
-  if (!playedCache.has(record)) playedCache.set(record, playedAtDetail(readPgnHeaders(record.pgn)));
-  return playedCache.get(record) ?? null;
-}
-
 /** The date cell: date and time in my time zone (converted from the PGN's UTC date and time). */
 function dateCell(record: StoredGameRecord): string {
   const played = playedOf(record);
@@ -71,20 +73,6 @@ function dateCell(record: StoredGameRecord): string {
   return `<span class="wc-games-date" title="${escapeHtml(title)}">${local.date}</span> <span class="wc-games-time">${local.time}</span>`;
 }
 
-function sortTime(record: StoredGameRecord): number {
-  return record.playedAt ?? record.capturedAt ?? record.createdAt;
-}
-
-interface Row {
-  record: StoredGameRecord;
-  color: Color | null;
-  result: MyResult;
-  opponent: string;
-  opponentElo: number | null;
-  myElo: number | null;
-  accuracy: number | null;
-}
-
 /**
  * The Games list: every captured, pasted and dropped game, with filters, sorting, a
  * multi-select "Analyze" that queues background reviews, and the auto-analyze toggle.
@@ -93,9 +81,7 @@ export class GamesList {
   private readonly root: HTMLElement;
   private records: StoredGameRecord[] = [];
   private readonly selected = new Set<string>();
-  private source: SourceFilter = 'all';
-  private resultFilter: ResultFilter = 'all';
-  private analyzed: AnalyzedFilter = 'all';
+  private filter: GameFilter = { ...NO_FILTER };
   private sort: SortKey = 'newest';
   private shown = PAGE_SIZE;
   private autoAnalyze = false;
@@ -103,6 +89,7 @@ export class GamesList {
   /** Last analysis-cell markup per game, so queue progress only touches cells that changed. */
   private readonly renderedCells = new Map<string, string>();
   private loaded = false;
+  private readonly autoListeners = new Set<(on: boolean) => void>();
 
   private els!: {
     extStatus: HTMLElement;
@@ -112,8 +99,18 @@ export class GamesList {
     fileInput: HTMLInputElement;
     source: HTMLSelectElement;
     result: HTMLSelectElement;
+    color: HTMLSelectElement;
     analyzed: HTMLSelectElement;
+    opening: HTMLInputElement;
+    openings: HTMLDataListElement;
+    from: HTMLInputElement;
+    to: HTMLInputElement;
+    minAccuracy: HTMLInputElement;
+    clear: HTMLButtonElement;
+    filterCount: HTMLElement;
     sort: HTMLSelectElement;
+    del: HTMLButtonElement;
+    delConfirm: HTMLElement;
     selectAll: HTMLInputElement;
     selection: HTMLElement;
     preset: HTMLSelectElement;
@@ -186,7 +183,10 @@ export class GamesList {
       <div class="wc-games-toolbar">
         <div class="wc-games-filters">
           <label>Source <select class="wc-select wc-select-sm" data-testid="games-filter-source">
-            <option value="all">All</option><option value="lichess">Lichess</option><option value="chesscom">Chess.com</option><option value="paste">Pasted / file</option>
+            <option value="all">All</option><option value="lichess">Lichess</option><option value="chesscom">Chess.com</option><option value="paste">Pasted / file</option><option value="play">Played here</option>
+          </select></label>
+          <label>Colour <select class="wc-select wc-select-sm" data-testid="games-filter-color">
+            <option value="all">Any</option><option value="w">White</option><option value="b">Black</option>
           </select></label>
           <label>Result <select class="wc-select wc-select-sm" data-testid="games-filter-result">
             <option value="all">All</option><option value="win">Wins</option><option value="loss">Losses</option><option value="draw">Draws</option>
@@ -194,10 +194,15 @@ export class GamesList {
           <label>Analysis <select class="wc-select wc-select-sm" data-testid="games-filter-analyzed">
             <option value="all">All</option><option value="analyzed">Analyzed</option><option value="not-analyzed">Not analyzed</option>
           </select></label>
+          <label>Opening <input type="search" class="wc-select wc-select-sm wc-games-opening-input" list="wc-games-openings" placeholder="Any" data-testid="games-filter-opening" /><datalist id="wc-games-openings" data-testid="games-openings-list"></datalist></label>
+          <label>From <input type="date" class="wc-select wc-select-sm" data-testid="games-filter-from" /></label>
+          <label>To <input type="date" class="wc-select wc-select-sm" data-testid="games-filter-to" /></label>
+          <label>Accuracy ≥ <input type="number" min="0" max="100" step="1" class="wc-select wc-select-sm wc-games-acc-input" placeholder="Any" data-testid="games-filter-accuracy" /></label>
           <label>Sort <select class="wc-select wc-select-sm" data-testid="games-sort">
             <option value="newest">Newest first</option><option value="oldest">Oldest first</option><option value="opponent">Opponent A–Z</option><option value="accuracy">Accuracy</option>
           </select></label>
         </div>
+        <button type="button" class="wc-btn wc-btn-ghost wc-btn-sm" data-testid="btn-games-clear-filters" hidden>Clear filters <span data-testid="games-filter-count"></span></button>
       </div>
       <div class="wc-games-table" role="table" aria-label="Games" data-testid="games-table">
         <div class="wc-games-row wc-games-row-head" role="row">
@@ -220,6 +225,12 @@ export class GamesList {
         <span class="wc-games-selection" data-testid="games-selection">0 selected</span>
         <select class="wc-select" data-testid="games-analyze-preset" aria-label="Review depth for Analyze">${presetOptions}</select>
         <button type="button" class="wc-btn wc-btn-primary wc-btn-lg" data-testid="btn-games-analyze" disabled>Analyze</button>
+        <button type="button" class="wc-btn wc-btn-secondary wc-btn-lg" data-testid="btn-games-delete">Delete</button>
+        <span class="wc-games-delete-confirm" data-testid="games-delete-confirm" hidden>
+          <span data-testid="games-delete-question"></span>
+          <button type="button" class="wc-btn wc-btn-secondary wc-btn-sm" data-testid="btn-games-delete-yes">Delete</button>
+          <button type="button" class="wc-btn wc-btn-ghost wc-btn-sm" data-testid="btn-games-delete-no">Keep</button>
+        </span>
         <button type="button" class="wc-btn wc-btn-ghost wc-btn-icon" data-testid="btn-games-clear-selection" aria-label="Clear the selection" title="Clear the selection">${icon('close')}</button>
       </div>
       <div class="wc-games-drop" data-testid="games-drop-overlay" aria-hidden="true">Drop PGN files to import</div>
@@ -250,8 +261,18 @@ export class GamesList {
       fileInput: q('games-file-input'),
       source: q('games-filter-source'),
       result: q('games-filter-result'),
+      color: q('games-filter-color'),
       analyzed: q('games-filter-analyzed'),
+      opening: q('games-filter-opening'),
+      openings: q('games-openings-list'),
+      from: q('games-filter-from'),
+      to: q('games-filter-to'),
+      minAccuracy: q('games-filter-accuracy'),
+      clear: q('btn-games-clear-filters'),
+      filterCount: q('games-filter-count'),
       sort: q('games-sort'),
+      del: q('btn-games-delete'),
+      delConfirm: q('games-delete-confirm'),
       selectAll: q('games-select-all'),
       selection: q('games-selection'),
       preset: q('games-analyze-preset'),
@@ -289,14 +310,44 @@ export class GamesList {
     });
 
     const onFilter = () => {
-      this.source = this.els.source.value as SourceFilter;
-      this.resultFilter = this.els.result.value as ResultFilter;
-      this.analyzed = this.els.analyzed.value as AnalyzedFilter;
+      const acc = this.els.minAccuracy.value.trim();
+      this.filter = {
+        source: this.els.source.value as GameFilter['source'],
+        result: this.els.result.value as ResultFilter,
+        color: this.els.color.value as GameFilter['color'],
+        analyzed: this.els.analyzed.value as AnalyzedFilter,
+        opening: this.els.opening.value,
+        from: this.els.from.value,
+        to: this.els.to.value,
+        minAccuracy: acc === '' || !Number.isFinite(Number(acc)) ? null : Math.min(100, Math.max(0, Number(acc))),
+      };
       this.sort = this.els.sort.value as SortKey;
       this.shown = PAGE_SIZE;
       this.renderRows();
     };
-    for (const el of [this.els.source, this.els.result, this.els.analyzed, this.els.sort]) el.addEventListener('change', onFilter);
+    for (const el of [this.els.source, this.els.result, this.els.color, this.els.analyzed, this.els.sort, this.els.from, this.els.to]) {
+      el.addEventListener('change', onFilter);
+    }
+    for (const el of [this.els.opening, this.els.minAccuracy]) el.addEventListener('input', onFilter);
+    this.els.clear.addEventListener('click', () => this.clearFilters());
+    this.els.del.addEventListener('click', () => {
+      const n = this.selectedVisibleIds().length;
+      if (n === 0) return;
+      this.els.delConfirm.hidden = false;
+      this.els.del.hidden = true;
+      q('games-delete-question').textContent = `Delete ${n} game${n === 1 ? '' : 's'} and their reviews?`;
+    });
+    q<HTMLButtonElement>('btn-games-delete-no').addEventListener('click', () => this.endDeleteConfirm());
+    q<HTMLButtonElement>('btn-games-delete-yes').addEventListener('click', () => {
+      const ids = this.selectedVisibleIds();
+      this.endDeleteConfirm();
+      if (ids.length === 0) return;
+      for (const id of ids) {
+        this.options.queue.cancel(id);
+        this.selected.delete(id);
+      }
+      void this.options.library.deleteGames(ids).then(() => this.setMessage(`Deleted ${ids.length} game${ids.length === 1 ? '' : 's'}.`, 'ok'));
+    });
 
     this.els.selectAll.addEventListener('change', () => {
       const visible = this.visibleRows().map((r) => r.record.id);
@@ -316,6 +367,7 @@ export class GamesList {
     this.els.auto.addEventListener('change', () => {
       this.autoAnalyze = this.els.auto.checked;
       void this.options.library.setAutoAnalyze(this.autoAnalyze);
+      for (const l of this.autoListeners) l(this.autoAnalyze);
     });
     this.els.more.addEventListener('click', () => {
       this.shown += PAGE_SIZE;
@@ -375,6 +427,41 @@ export class GamesList {
     });
   }
 
+  private selectedVisibleIds(): string[] {
+    return this.visibleRows()
+      .map((r) => r.record.id)
+      .filter((id) => this.selected.has(id));
+  }
+
+  private endDeleteConfirm(): void {
+    this.els.delConfirm.hidden = true;
+    this.els.del.hidden = false;
+  }
+
+  /** Sets the filters from outside (an insight's data point opens the games behind it). */
+  public setFilter(patch: Partial<GameFilter>): void {
+    this.filter = { ...NO_FILTER, ...patch };
+    this.syncFilterControls();
+    this.shown = PAGE_SIZE;
+    this.renderRows();
+  }
+
+  public clearFilters(): void {
+    this.setFilter({});
+  }
+
+  private syncFilterControls(): void {
+    const f = this.filter;
+    this.els.source.value = f.source;
+    this.els.result.value = f.result;
+    this.els.color.value = f.color;
+    this.els.analyzed.value = f.analyzed;
+    this.els.opening.value = f.opening;
+    this.els.from.value = f.from;
+    this.els.to.value = f.to;
+    this.els.minAccuracy.value = f.minAccuracy === null ? '' : String(f.minAccuracy);
+  }
+
   // ------------------------------------------------------------------ data
 
   /** Loads the list (first call) or reloads it. */
@@ -405,6 +492,11 @@ export class GamesList {
     if (fresh.length > 0) this.options.queue.enqueue(fresh, AUTO_ANALYZE_PRESET);
   }
 
+  /** Called when the auto-analyze switch changes here (Settings has the same switch). */
+  public onAutoAnalyzeChange(listener: (on: boolean) => void): void {
+    this.autoListeners.add(listener);
+  }
+
   public isAutoAnalyzeOn(): boolean {
     return this.autoAnalyze;
   }
@@ -419,7 +511,9 @@ export class GamesList {
       this.setMessage('Paste a PGN first.', 'bad');
       return false;
     }
-    const outcome = await this.options.library.importPgnText(text);
+    const outcome = await this.options.library.importPgnText(text, (p) => {
+      if (p.total > 25) this.setMessage(`Importing… ${p.done} of ${p.total} games`, 'info');
+    });
     const parts: string[] = [];
     if (outcome.saved.length > 0) parts.push(`Imported ${outcome.saved.length} game${outcome.saved.length === 1 ? '' : 's'}`);
     if (outcome.duplicates.length > 0) parts.push(`${outcome.duplicates.length} already in the list`);
@@ -438,58 +532,12 @@ export class GamesList {
   // ------------------------------------------------------------------ rendering
 
   private toRow(record: StoredGameRecord): Row {
-    const color = myColor(record, this.options.library.getUserAccounts());
-    const opponentIsBlack = color !== 'b';
-    const accuracy =
-      color === 'w'
-        ? (record.analysis?.whiteAccuracy ?? null)
-        : color === 'b'
-          ? (record.analysis?.blackAccuracy ?? null)
-          : null;
-    return {
-      record,
-      color,
-      result: resultFor(record.result, color),
-      opponent: color === null ? `${record.white} vs ${record.black}` : opponentIsBlack ? record.black : record.white,
-      opponentElo: color === null ? null : opponentIsBlack ? (record.blackElo ?? null) : (record.whiteElo ?? null),
-      myElo: color === 'w' ? (record.whiteElo ?? null) : color === 'b' ? (record.blackElo ?? null) : null,
-      accuracy,
-    };
+    return toRow(record, this.options.library.getUserAccounts());
   }
 
   private visibleRows(): Row[] {
-    const rows = this.records.map((r) => this.toRow(r)).filter((row) => {
-      const source = row.record.source ?? 'paste';
-      if (this.source !== 'all' && source !== this.source) return false;
-      if (this.resultFilter === 'draw' && row.result !== 'draw') return false;
-      // Wins and losses are mine: a game I'm not in has neither
-      if ((this.resultFilter === 'win' || this.resultFilter === 'loss') && (row.color === null || row.result !== this.resultFilter)) {
-        return false;
-      }
-      const isAnalyzed = Boolean(row.record.analysis);
-      if (this.analyzed === 'analyzed' && !isAnalyzed) return false;
-      if (this.analyzed === 'not-analyzed' && isAnalyzed) return false;
-      return true;
-    });
-    const byTime = (a: Row, b: Row) => sortTime(b.record) - sortTime(a.record);
-    switch (this.sort) {
-      case 'newest':
-        rows.sort(byTime);
-        break;
-      case 'oldest':
-        rows.sort((a, b) => -byTime(a, b));
-        break;
-      case 'opponent':
-        rows.sort((a, b) => a.opponent.localeCompare(b.opponent, undefined, { sensitivity: 'base' }) || byTime(a, b));
-        break;
-      case 'accuracy': {
-        const acc = (r: Row) =>
-          r.accuracy ?? (r.record.analysis ? Math.max(r.record.analysis.whiteAccuracy ?? -1, r.record.analysis.blackAccuracy ?? -1) : -2);
-        rows.sort((a, b) => acc(b) - acc(a) || byTime(a, b));
-        break;
-      }
-    }
-    return rows;
+    const rows = this.records.map((r) => this.toRow(r)).filter((row) => matchesFilter(row, this.filter));
+    return sortRows(rows, this.sort);
   }
 
   private analysisCell(row: Row): string {
@@ -533,7 +581,7 @@ export class GamesList {
         : row.opponentElo !== null
           ? `${row.opponentElo}${row.myElo !== null ? ` · me ${row.myElo}` : ''}`
           : '';
-    const opening = r.openingName ? `${r.openingEco ? `${r.openingEco} ` : ''}${r.openingName}` : '—';
+    const opening = openingLabel(r) || '—';
     return `
       <div class="wc-games-row" role="row" tabindex="0" data-testid="games-row" data-game-id="${escapeHtml(r.id)}" data-source="${source}" data-result="${row.result}" aria-selected="${this.selected.has(r.id)}">
         <span role="cell" class="wc-games-c-check"><input type="checkbox" data-select="${escapeHtml(r.id)}" aria-label="Select game" ${this.selected.has(r.id) ? 'checked' : ''} /></span>
@@ -562,6 +610,13 @@ export class GamesList {
         'No games yet. Paste a PGN, drop .pgn files here, or capture games with the browser extension.';
     }
     this.els.more.hidden = rows.length <= page.length;
+    const active = activeFilters(this.filter);
+    this.els.clear.hidden = active === 0;
+    this.els.filterCount.textContent = active > 0 ? `(${active})` : '';
+    this.els.openings.innerHTML = openingChoices(this.records)
+      .slice(0, 100)
+      .map((o) => `<option value="${escapeHtml(o)}"></option>`)
+      .join('');
     this.els.count.textContent =
       this.records.length === 0
         ? ''
@@ -607,6 +662,7 @@ export class GamesList {
   public async syncAutoAnalyze(): Promise<void> {
     this.autoAnalyze = await this.options.library.getAutoAnalyze();
     this.els.auto.checked = this.autoAnalyze;
+    for (const l of this.autoListeners) l(this.autoAnalyze);
   }
 
   private renderExtensionStatus(status: ExtensionStatus): void {

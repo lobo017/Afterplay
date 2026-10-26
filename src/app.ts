@@ -131,6 +131,7 @@ import type { EndgameTrainer } from './trainers/endgame-trainer';
 import type { GuessGame, VisualizationTrainer } from './trainers/visualization-trainer';
 import { describeOffline, watchOffline } from './pwa';
 import { mountUpdateBanner } from './ui/update-banner';
+import { mountGamesSettings } from './ui/settings-games-section';
 
 /** The four destinations. Review holds the analysis board; Train holds Today and the puzzles. */
 export type AppWorkspaceMode = 'play' | 'train' | 'review' | 'games';
@@ -524,6 +525,10 @@ export function mountAppShell(container: HTMLElement): {
       setMode('review', true);
       analysisController.showTab('review');
       void reviewPanel.start();
+    },
+    // Every finished game joins the library (waits for it to open)
+    onGameFinished: (game) => {
+      void libraryReady.then((api) => api.library.savePlayedGame(game)).catch(() => undefined);
     },
   });
 
@@ -1023,6 +1028,7 @@ export function mountAppShell(container: HTMLElement): {
       onExtensionStatus: (listener) => bridge.onStatus(listener),
     });
     gamesList = list;
+    mountGamesSettings(settings, lib, list);
     if (currentMode === 'games') await list.refresh();
     // Sync with the capture extension now, on focus and when the tab becomes visible
     bridge.start((wake) => {
@@ -1120,6 +1126,7 @@ export function mountAppShell(container: HTMLElement): {
     resolvePuzzles(puzzlesApi);
     afterRestore = async () => {
       await lib.init();
+      await lib.reloadAccounts();
       await list.syncAutoAnalyze();
       await list.refresh();
       // The repertoires and drill cards may have come from the backup

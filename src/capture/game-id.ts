@@ -7,6 +7,8 @@
 export type CaptureSite = 'lichess' | 'chesscom';
 /** Where a stored game came from: a site, or a PGN pasted / dropped without a site ID. */
 export type GameSource = CaptureSite | 'paste';
+/** Where a game in the library came from: also the games played against the bot here. */
+export type StoredGameSource = GameSource | 'play';
 
 export interface SiteGameRef {
   site: CaptureSite;
@@ -115,6 +117,11 @@ export function gameUrl(ref: SiteGameRef): string {
 export function chessComParts(ref: SiteGameRef): { type: ChessComGameType; id: string } {
   const [type, id] = ref.gameId.split('-') as [ChessComGameType, string];
   return { type, id };
+}
+
+/** The library key of a game played here: when it started, so a game that goes on after a takeback keeps one entry. */
+export function playKey(startedAt: number): string {
+  return `play:${Math.floor(startedAt)}`;
 }
 
 export function gameKey(ref: SiteGameRef): string {

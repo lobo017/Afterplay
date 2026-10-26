@@ -8,7 +8,7 @@ import {
 } from 'idb';
 import type { Color } from '../core/rules';
 import type { GameTermination, SerializedGameTree } from '../core/game-tree';
-import type { GameSource } from '../capture/game-id';
+import type { StoredGameSource } from '../capture/game-id';
 import type { SavedReview } from '../library/saved-review';
 
 export const DEFAULT_DB_NAME = 'wizards-chess-db';
@@ -33,7 +33,7 @@ export interface StoredGameRecord {
   updatedAt: number;
   // Games list fields (Phase 5b). Optional, so records written before them stay valid;
   // the id (`lichess:<id>`, `chesscom:<id>`, `paste:<hash>`) keeps a site game unique.
-  source?: GameSource;
+  source?: StoredGameSource;
   /** The game's page on its site. */
   url?: string | null;
   whiteElo?: number | null;
@@ -482,6 +482,30 @@ export class WizardChessStorage {
     };
     await this.db.put('games', fullRecord);
     return fullRecord;
+  }
+
+  /**
+   * Stores many games in one transaction (a bulk import); games whose id is already stored are
+   * left alone. Returns the ids saved.
+   */
+  public async saveNewGames(
+    records: ReadonlyArray<Omit<StoredGameRecord, 'schemaVersion' | 'createdAt' | 'updatedAt'>>,
+  ): Promise<string[]> {
+    const now = Date.now();
+    const tx = this.db.transaction('games', 'readwrite');
+    const saved: string[] = [];
+    for (const record of records) {
+      if (await tx.store.getKey(record.id)) continue;
+      await tx.store.put({ ...record, schemaVersion: this.db.version, createdAt: now, updatedAt: now });
+      saved.push(record.id);
+    }
+    await tx.done;
+    return saved;
+  }
+
+  /** The ids of every stored game (no records read). */
+  public async listGameIds(): Promise<string[]> {
+    return (await this.db.getAllKeys('games')) as string[];
   }
 
   public async getGame(id: string): Promise<StoredGameRecord | undefined> {
