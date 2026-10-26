@@ -50,6 +50,13 @@ Performance
   2026-10-19/25 entry below. Drops are single frames with no long task: probably render/composite
   (ghost layer + overlay + dragged piece) competing with 4 engine threads; needs a trace-level
   profile.
+- **perf:drag scenario 2, 2026-10-19 session (recorded 2026-10-26 from the user, who saw the
+  output; that session hit its usage limit before logging it).** In full runs scenario 2's drag
+  failed with p95 up to ~50 ms and ~15% dropped frames; run alone it passed (p95 16.73 ms). The
+  same failure appeared on the commit before Phase 6b and on 6b18a4c (which passed 3/3 on
+  2026-10-17), so it points to machine state, not to 6b. Not yet re-measured: on 2026-10-26 the
+  script's 3 GB free-memory guard aborted every attempt (2.4–3.05 GB free). A temporary worktree
+  left by that session (`wt-pre6b`, at 6b18a4c, clean) was removed.
 - **[P9]** Premove burst still shows 0–2 isolated dropped frames per ~70-frame window (p99 up to 50
   ms) around bot moves; p95 unaffected.
 - **[P9]** Occasional unattributed 50–76 ms long tasks with live MultiPV 5 plus a review under
