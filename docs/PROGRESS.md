@@ -18,14 +18,14 @@ log to `docs/progress/phase-N.md` and keep only a summary here.
 | 5 | Game review | Done | MultiPV 2 review pipeline on its own 1-thread engine, Lichess-matched formulas, 10 move classes, 8 motif detectors, explanations in a worker, review panel, perspective + summary | [phase-5](progress/phase-5.md) |
 | 5b | Capture extension + Games list | Done | Chrome MV3 extension (Lichess, Chess.com), localhost bridge, Games list with background review queue, IndexedDB v4, live capture fixes, delivery outcomes; `npm run serve` redirects to one origin | [phase-5b](progress/phase-5b.md) |
 | 6 | Puzzles & spaced repetition | Done | Personal mistake puzzles, bundled 20k Lichess puzzles, Glicko-2, FSRS, Today screen | [phase-6](progress/phase-6.md) |
-| 6b | UX redesign | In progress | Board feel + badges; app frame (Play / Train / Review / Games + Settings sheet); all six stages committed (last `23f5d47`) | [phase-6b](progress/phase-6b.md) |
+| 6b | UX redesign | Done | Board feel + badges; app frame (Play / Train / Review / Games + Settings sheet); all six stages committed (last `23f5d47`) | [phase-6b](progress/phase-6b.md) |
 | 7 | Repertoire, endgame & visualization | Pending | White/Black repertoire trees, 6 curated endgame drills, coordinate/blindfold/guess-the-move | — |
 | 8 | Library, insights, settings, offline | Pending | Auto-save library, worker bulk PGN import, insights charts, a11y, full offline PWA | — |
 | 9 | Performance pass & final audit | Pending | Frame-time/memory/startup profiling against budgets and full spec verification | — |
 
 ## Current phase and next step
 
-Phase 6b: all six stages committed; closing it needs `npm run perf:drag` (see Known issues).
+Phase 6b is done (all six stages committed, last `23f5d47`; `perf:drag` passed 3/3 on 2026-10-26). Next: Phase 7 (repertoire, endgame & visualization). Write its plan here before any code.
 
 ## Open decisions
 
@@ -54,8 +54,8 @@ Performance
   output; that session hit its usage limit before logging it).** In full runs scenario 2's drag
   failed with p95 up to ~50 ms and ~15% dropped frames; run alone it passed (p95 16.73 ms). The
   same failure appeared on the commit before Phase 6b and on 6b18a4c (which passed 3/3 on
-  2026-10-17), so it points to machine state, not to 6b. Not yet re-measured: on 2026-10-26 the
-  script's 3 GB free-memory guard aborted every attempt (2.4–3.05 GB free). A temporary worktree
+  2026-10-17), so it points to machine state, not to 6b. Re-measured 2026-10-26: see below. (Earlier that day the
+  script's 3 GB free-memory guard aborted attempts at 2.4–3.3 GB free.) A temporary worktree
   left by that session (`wt-pre6b`, at 6b18a4c, clean) was removed.
 - **[P9]** Premove burst still shows 0–2 isolated dropped frames per ~70-frame window (p99 up to 50
   ms) around bot moves; p95 unaffected.
@@ -129,3 +129,18 @@ frame, 0 long tasks). Last clean baseline, 6b18a4c (2026-10-17):
 - Bundle: main 1,420.22 kB (260.77 kB gzip) at 6b Stage 6; extension background 247 kB.
 - Tests at last full run (Phase 6b Stage 6): 461 unit (41 files), 113/113 e2e (10.3 min, one worker).
 
+
+### Phase 6b close-out: `perf:drag` on 23f5d47+docs (2026-10-26)
+
+3 full runs (both scenarios), machine plugged in, best performance, 5.4–6.3 GB free, all exit 0:
+
+| Run | S1 drag p95 | S1 burst p95 | S2 drag p95 | S2 sweep p95 | Dropped (S1 drag / burst / S2 drag / sweep) | Long tasks |
+|-----|-------------|--------------|-------------|--------------|----------------------------------------------|------------|
+| 1 | 16.73 | 16.77 | 16.69 | 16.80 | 0 / 1 / 0 / 8 | 0 |
+| 2 | 16.70 | 16.77 | 16.73 | 16.90 | 0 / 1 / 3 / 10 | 0 |
+| 3 | 16.70 | 16.82 | 16.71 | 16.83 | 0 / 2 / 7 / 11 | 0 |
+
+(Window order per run as printed by the script; limit 17.2 ms.) Result: pass 3/3 on the current
+commit, so the Oct 19 scenario 2 failures were machine state (consistent with Oct 17's finding), not
+a 6b regression; the 6b18a4c comparison was not needed. Earlier attempts the same day were aborted by
+the 3 GB free-memory guard (2.4–3.3 GB free, other apps open) and measured nothing.
