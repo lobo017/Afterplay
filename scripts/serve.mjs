@@ -10,7 +10,8 @@ import { CANONICAL_HOST, canonicalRedirect } from './lib/canonical-origin.mjs';
 exitWithParent(Number(process.env.WC_EXIT_WITH_PARENT_PID) || 0);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const distDir = path.resolve(__dirname, '..', 'dist');
+// WC_DIST_DIR serves another copy of the build (the update test edits one)
+const distDir = process.env.WC_DIST_DIR ? path.resolve(process.env.WC_DIST_DIR) : path.resolve(__dirname, '..', 'dist');
 
 const args = process.argv.slice(2);
 let port = Number(process.env.PORT) || 4173;

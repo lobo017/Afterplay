@@ -26,6 +26,12 @@ export class SettingsPanel {
     this.mountAbout();
   }
 
+  /** What the service worker says about offline use (shown in About & diagnostics). */
+  public setOfflineStatus(text: string): void {
+    const el = this.sheet.body.querySelector('[data-testid="stat-offline"]');
+    if (el) el.textContent = text;
+  }
+
   public open(): void {
     this.sheet.open();
   }
@@ -88,6 +94,7 @@ export class SettingsPanel {
         ${[
           ['threading', 'Engine threading', threadMode],
           ['network', 'Runtime network', '0 External Requests'],
+          ['offline', 'Offline use', 'Checking…'],
           ['datasets', 'Bundled datasets', 'Openings · 20k Puzzles · Endgames'],
           ['rules', 'Rules &amp; variants', 'Standard + Chess960 (Perft Verified)'],
           ['pgn', 'PGN &amp; game tree', 'RAVs · NAGs · [%eval/%cal/%csl]'],

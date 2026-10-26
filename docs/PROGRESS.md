@@ -20,12 +20,45 @@ log to `docs/progress/phase-N.md` and keep only a summary here.
 | 6 | Puzzles & spaced repetition | Done | Personal mistake puzzles, bundled 20k Lichess puzzles, Glicko-2, FSRS, Today screen | [phase-6](progress/phase-6.md) |
 | 6b | UX redesign | Done | Board feel + badges; app frame (Play / Train / Review / Games + Settings sheet); all six stages committed (last `23f5d47`) | [phase-6b](progress/phase-6b.md) |
 | 7 | Repertoire, endgame & visualization | Done | White/Black repertoire trees (build, import, drill, review flag), 6 engine-verified endgame drills, coordinate/blindfold/guess-the-move; all feed Today with the puzzles | [phase-7](progress/phase-7.md) |
-| 8 | Library, insights, settings, offline | Pending | Auto-save library, worker bulk PGN import, insights charts, a11y, full offline PWA | — |
+| 8 | Library, insights, settings, offline | In progress | Auto-save library, worker bulk PGN import, insights charts, a11y, full offline PWA | — |
 | 9 | Performance pass & final audit | Pending | Frame-time/memory/startup profiling against budgets and full spec verification | — |
 
 ## Current phase and next step
 
-Phase 7 is done (committed as "Phase 7: …"). Next: Phase 8 (library, insights, settings, offline). Write its plan here before any code.
+Phase 7 is done (committed as "Phase 7: …", plus the follow-ups "Phase 7: exact endgame defender, practise anyway"). Phase 8 is in progress; its plan is below.
+
+### Phase 8 plan (written 2026-10-26, before code)
+
+Findings that shape it
+- **Offline does not work today.** `vite-plugin-pwa` generates a Workbox `sw.js`, but `main.ts` never registers it
+  (`injectRegister: false`); it only registers the COI shim `coi-serviceworker.js`, and only when the page is not
+  cross-origin isolated (so never under `npm run serve`). No test covers offline. So: one service worker that
+  precaches the build *and* adds the COOP/COEP headers to what it serves (offline pages stay isolated, so the
+  multi-threaded engine still works), registered always in production.
+- Games played against the bot are never stored; the Games list only has captured and imported games.
+- Puzzle rating history already exists (`puzzles.rating` setting, with `puzzleId` per point).
+
+Stages (each ends green on typecheck/lint/unit and its own e2e, and is committed):
+1. **Offline PWA** (the gate). `src/sw.ts` (vite-plugin-pwa `injectManifest`, no new dependency: plain Cache API, no
+   Workbox imports): precache with revisions, cache-first, navigation fallback, COI headers, `skipWaiting` + `claim`.
+   Register in `main.ts` always (production). PNG icons (script renders `favicon.svg` with Playwright) and a full
+   manifest. Playwright default `serviceWorkers: 'block'` so existing tests are unchanged; new `phase8-offline.spec.ts`
+   starts its own server, loads the app, kills the server, goes offline and checks play (vs bot), review, train and the Games
+   list, plus installability errors from CDP. Risks: SW and perf scripts (blocked there too), stale caches on update,
+   COEP on worker scripts.
+2. **Library**: finished Play games saved (`play:` ids), filters by colour / opening / date / accuracy next to the existing
+   ones, delete, "my usernames" in Settings, bulk PGN import in a worker with progress. IndexedDB: no schema bump
+   (optional fields only).
+3. **Insights** (tab inside Games, so the four destinations stay four): accuracy by phase, blunders per 10 moves over
+   time, common motifs, results by opening, puzzle rating over time. Hand-written SVG; every point is a button that opens
+   the positions behind it (list with mini board, each opens the game at that move). Pure aggregation module with unit tests.
+4. **Accessibility**: one `aria-live` announcer for moves (Play, Review, trainers), keyboard play on every board (arrow
+   keys, Enter/Space, Escape) and a typed-move field, focus handling for sheets and menus, classification icons with
+   labels everywhere. E2E keyboard-only test.
+5. **Leftovers**: "replaced N earlier engine annotations" counts only what came from an imported PGN (evals written by
+   the app are marked and not counted); key-moment text not cut off at phone width. **Settings**: add what is still
+   configured elsewhere (engine threads/hash, my usernames, review preset, auto-analyze).
+6. Docs, full checks (`typecheck`, `lint`, `npm test`, `npm run build`, all e2e on one worker), desktop + phone screenshots.
 
 ## Open decisions
 

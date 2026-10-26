@@ -14,6 +14,9 @@ export default defineConfig({
   use: {
     baseURL: 'http://127.0.0.1:4173',
     trace: 'on-first-retry',
+    // The app's service worker caches the whole build on first load; tests run without it
+    // (a fresh profile each, nothing to reuse) except phase8-offline.spec.ts, which turns it on.
+    serviceWorkers: 'block',
   },
   projects: [
     {

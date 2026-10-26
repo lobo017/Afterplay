@@ -1,5 +1,6 @@
 import './styles/main.css';
 import { mountAppShell } from './app';
+import { registerServiceWorker } from './pwa';
 
 const root = document.getElementById('app');
 if (!root) {
@@ -7,13 +8,4 @@ if (!root) {
 }
 
 mountAppShell(root);
-
-if ('serviceWorker' in navigator && import.meta.env.PROD) {
-  window.addEventListener('load', () => {
-    if (!window.crossOriginIsolated) {
-      navigator.serviceWorker.register('/coi-serviceworker.js').catch(() => {
-        // Fallback to single-threaded Stockfish when SW registration is unavailable
-      });
-    }
-  });
-}
+registerServiceWorker();

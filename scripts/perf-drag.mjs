@@ -622,6 +622,8 @@ ${formatProcesses(killed)}`,
 
     const context = await browser.newContext({
       viewport: { width: 1440, height: 900 },
+      // The app's service worker would cache the build in the background during a measurement
+      serviceWorkers: 'block',
     });
     const page = await context.newPage();
     page.on('pageerror', (err) => logError('[page error]', err));

@@ -5587,3 +5587,31 @@ label.wc-setting-row {
     max-height: 14rem;
   }
 }
+
+/* "A new version is ready" (the service worker has a newer build waiting) */
+.wc-update-banner {
+  position: fixed;
+  left: 50%;
+  bottom: 1.25rem;
+  transform: translateX(-50%);
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.9rem;
+  border: 1px solid var(--border-carved);
+  border-radius: 12px;
+  background: var(--bg-panel);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  color: var(--text-marble);
+  font-size: 0.9rem;
+}
+
+@media (max-width: 760px) {
+  .wc-update-banner {
+    bottom: 5rem;
+    width: calc(100% - 1.5rem);
+    justify-content: space-between;
+  }
+}

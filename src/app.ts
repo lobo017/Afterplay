@@ -129,6 +129,8 @@ import { findDeparture } from './trainers/repertoire';
 import type { RepertoireTrainer } from './trainers/repertoire-trainer';
 import type { EndgameTrainer } from './trainers/endgame-trainer';
 import type { GuessGame, VisualizationTrainer } from './trainers/visualization-trainer';
+import { describeOffline, watchOffline } from './pwa';
+import { mountUpdateBanner } from './ui/update-banner';
 
 /** The four destinations. Review holds the analysis board; Train holds Today and the puzzles. */
 export type AppWorkspaceMode = 'play' | 'train' | 'review' | 'games';
@@ -414,6 +416,8 @@ export function mountAppShell(container: HTMLElement): {
   });
   const settingsBtn = container.querySelector('[data-testid="btn-settings"]') as HTMLButtonElement;
   settingsBtn.addEventListener('click', () => settings.open());
+  watchOffline((state) => settings.setOfflineStatus(describeOffline(state)));
+  mountUpdateBanner(shellEl);
 
   const createConnectedEngine = (options?: EngineClientOptions) =>
     new EngineClient({

@@ -196,7 +196,7 @@ function installSamplers() {
 }
 
 async function runOne(browser, threads, scenario) {
-  const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, serviceWorkers: 'block' });
   const page = await context.newPage();
   page.on('pageerror', (err) => logError('[page error]', err));
   try {

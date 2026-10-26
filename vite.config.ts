@@ -89,27 +89,37 @@ export default defineConfig({
   plugins: [
     stockfishAssetsPlugin(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // One service worker of our own (src/sw.ts): precache + the isolation headers; see there
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
+      registerType: 'prompt',
       injectRegister: false,
       manifest: {
+        id: '/',
         name: "Wizard's Chess",
         short_name: 'WizardChess',
         description: 'Fully offline chess learning and Stockfish analysis tool',
+        start_url: '/',
+        scope: '/',
+        display: 'standalone',
+        orientation: 'any',
+        categories: ['games', 'education'],
         theme_color: '#0b0d12',
         background_color: '#0b0d12',
-        display: 'standalone',
         icons: [
-          {
-            src: '/favicon.svg',
-            sizes: 'any',
-            type: 'image/svg+xml',
-            purpose: 'any maskable',
-          },
+          { src: '/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+          { src: '/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+          { src: '/favicon.svg', sizes: 'any', type: 'image/svg+xml', purpose: 'any' },
         ],
       },
-      workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,json,wasm,nnue,webmanifest}'],
+      injectManifest: {
+        globPatterns: ['**/*.{js,css,html,svg,json,wasm,nnue,webmanifest,png}'],
+        // Source maps are not part of the offline app
+        globIgnores: ['**/*.map'],
         maximumFileSizeToCacheInBytes: 30 * 1024 * 1024,
+        rollupFormat: 'iife',
       },
     }),
   ],
