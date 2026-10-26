@@ -201,3 +201,31 @@ three keys. Unit test added (fails without the fix).
 - Blindfold lines longer than about 16 plies come only from the sample game and my games.
 - Today and the tiles refresh when a drill is recorded or the hub is shown; a puzzle solved while
   the hub is on screen updates them on the next visit (as before).
+
+## Follow-ups (2026-10-26): exact endgame defender, practise anyway
+
+Committed as "Phase 7: exact endgame defender, practise anyway".
+
+- **Exact defender.** `src/trainers/endgame-tables.ts` is a retrograde solver for K+Q v K, K+R v K and K+P v K
+  (White has the piece): the White-to-move and Black-to-move distance-to-mate tables as `Int8Array`s (64³ each),
+  with attack tables precomputed and work lists that shrink every sweep. All three solve in ~1.4 s in Node
+  (the slow independent oracle in `tests/helpers/dtm-oracle.ts` takes ~8 s). `EndgameTables.defend(fen)` returns
+  Black's reply: take the piece when it is unprotected (a draw), else keep the position unwon, else put the mate
+  as far away as possible; `stillWon` / `mateIn` come with it. The solver runs in `endgame-tables.worker.ts`
+  behind `EndgameTablesClient` (inline where there is no `Worker`); the trainer warms it in the constructor.
+  No data file: the tables are computed once per page, nothing is stored.
+- **Where it applies.** Only mate drills (`kq-vs-k`, `kr-vs-k`, `kp-opposition`), and only while the position is
+  exactly K + one of Q/R/P v K (so after a queen or rook promotion it carries on in K+Q / K+R tables; a knight
+  or bishop promotion falls back to the engine and is a draw anyway). Everything else keeps the engine at 200 ms.
+  The "slipping" warning in these drills is exact too: "the win is gone with best play".
+- **Tests.** `tests/unit/endgame-tables.test.ts` (10): longest mates 10 / 16 / 28; the solver agrees with the
+  independent oracle on 7,500 random positions; the three drill positions give 7 / 14 / 11; for 4,500 random
+  Black-to-move positions the defender's move is legal (chess.js) and its mate distance (oracle) equals the
+  best over all legal replies, capture and unwon counted as escapes; best attacker play (chess.js moves +
+  oracle) against the defender mates in exactly 7 / 14 / 11 moves. E2E (`phase7-trainers.spec.ts`, 3 tests): the
+  same attacker drives each drill through the UI, every reply the app plays is checked against the oracle, and
+  the drill ends in exactly the stored count with `bestMoves` recorded.
+- **Practise anyway.** In the repertoire Drill tab, when nothing is due (and the repertoire has positions of
+  mine), "Start drill" gives way to a primary "Practise anyway": a drill over every position of mine, in the
+  same line walk. Nothing is graded and no card changes (the e2e test compares every card's state, reps and due
+  date before and after); the end says "Practice line complete" and offers "Practise another line".

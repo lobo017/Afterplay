@@ -73,6 +73,8 @@ export class RepertoireTrainer {
   private right = 0;
   private wrongs = 0;
   private hinted = false;
+  /** The drill under way (or just finished) is practice: every position is asked and no card is graded. */
+  private practising = false;
   /** Bumped when a drill starts or stops, so a late timer or grade for an old one is dropped. */
   private seq = 0;
   /** The load of the current colour; every handler waits for it. */
@@ -106,6 +108,7 @@ export class RepertoireTrainer {
     hint: HTMLButtonElement;
     reveal: HTMLButtonElement;
     start: HTMLButtonElement;
+    practise: HTMLButtonElement;
   };
 
   constructor(private readonly options: RepertoireTrainerOptions) {
@@ -169,6 +172,7 @@ export class RepertoireTrainer {
         </div>
         <div class="wc-rep-foot wc-action-bar wc-grow" data-testid="rep-foot-drill" hidden>
           <button type="button" class="wc-btn wc-btn-primary wc-btn-lg wc-grow" data-testid="btn-rep-start">Start drill</button>
+          <button type="button" class="wc-btn wc-btn-secondary wc-btn-lg wc-grow" data-testid="btn-rep-practise" title="Asks every position of this repertoire. Nothing is graded, so your schedule stays as it is." hidden>Practise anyway</button>
         </div>`,
     });
     const mount = this.root.querySelector('[data-testid="rep-board-mount"]') as HTMLElement;
@@ -208,6 +212,7 @@ export class RepertoireTrainer {
       hint: q('btn-rep-hint'),
       reveal: q('btn-rep-reveal'),
       start: q('btn-rep-start'),
+      practise: q('btn-rep-practise'),
     };
     this.tabs = new Tabs(this.root, (id) => void this.onTab(id as RepertoireTab));
     this.els.colors.addEventListener('click', (e) => {
@@ -238,6 +243,7 @@ export class RepertoireTrainer {
     this.els.hint.addEventListener('click', () => this.showHint());
     this.els.reveal.addEventListener('click', () => this.reveal());
     this.els.start.addEventListener('click', () => void this.startDrill());
+    this.els.practise.addEventListener('click', () => void this.startDrill(true));
     options.store.onChange(() => void this.refreshDue());
     // A restored backup replaces the repertoires: read them again
     options.store.onReload(() => {
@@ -566,7 +572,7 @@ export class RepertoireTrainer {
       this.els.prompt.textContent = `The ${COLOR_LABEL[this.color]} repertoire is empty. Add moves in Build, or import a PGN.`;
     } else if (due && due.ordered.length === 0) {
       this.setDrillStatus('Nothing due right now', 'empty');
-      this.els.prompt.textContent = due.nextDueAt !== null ? `All caught up. The next position comes due ${formatDueIn(due.nextDueAt, Date.now())}.` : 'All caught up.';
+      this.els.prompt.textContent = `${due.nextDueAt !== null ? `All caught up. The next position comes due ${formatDueIn(due.nextDueAt, Date.now())}.` : 'All caught up.'} You can still practise: nothing is graded.`;
     } else {
       this.setDrillStatus('Ready to drill', 'idle');
       this.els.prompt.textContent = due ? `${plural(due.reviews + due.fresh, 'position')} to answer.` : '';
@@ -580,11 +586,18 @@ export class RepertoireTrainer {
     this.els.reveal.disabled = !asking;
     const hasWork = !!this.due && this.due.ordered.length > 0 && !!this.index && repertoireStats(this.index).moves > 0;
     const running = this.drillState === 'playing' || this.drillState === 'asking';
+    // With nothing due, "Practise anyway" takes the place of "Start drill"
+    const canPractise = !running && !hasWork && !!this.index && repertoireStats(this.index).myPositions > 0;
+    this.els.start.hidden = canPractise;
     this.els.start.disabled = running || !hasWork;
+    this.els.practise.hidden = !canPractise;
     // The one primary button is the one that starts something
     this.els.start.classList.toggle('wc-btn-primary', !running);
     this.els.start.classList.toggle('wc-btn-secondary', running);
     this.els.start.textContent = this.drillState === 'done' ? 'Next line' : 'Start drill';
+    this.els.practise.classList.toggle('wc-btn-primary', canPractise);
+    this.els.practise.classList.toggle('wc-btn-secondary', !canPractise);
+    this.els.practise.textContent = this.drillState === 'done' && this.practising ? 'Practise another line' : 'Practise anyway';
   }
 
   /** The trainer's screen went away: a drill under way is dropped (answers already given stay graded). */
@@ -596,7 +609,8 @@ export class RepertoireTrainer {
     this.renderDrillIdle();
   }
 
-  public async startDrill(): Promise<void> {
+  /** Starts a drill on what is due, or with `practise` on every position, ungraded (for when nothing is due). */
+  public async startDrill(practise = false): Promise<void> {
     await this.loading;
     const index = this.index;
     if (!index) return;
@@ -604,11 +618,14 @@ export class RepertoireTrainer {
     const due = this.due;
     this.timers.clear();
     const seq = ++this.seq;
-    if (!due || due.ordered.length === 0 || !RepertoireDrill.hasWork(index, new Set(due.ordered))) {
+    const keys = practise ? index.myKeys : (due?.ordered ?? []);
+    if (!due || keys.length === 0 || !RepertoireDrill.hasWork(index, new Set(keys))) {
+      this.practising = false;
       this.renderDrillIdle();
       return;
     }
-    this.drill = new RepertoireDrill(index, new Set(due.ordered));
+    this.practising = practise;
+    this.drill = new RepertoireDrill(index, new Set(keys));
     this.asked = 0;
     this.right = 0;
     this.wrongs = 0;
@@ -625,6 +642,7 @@ export class RepertoireTrainer {
     ++this.seq;
     this.timers.clear();
     this.drill = null;
+    this.practising = false;
     this.board.setInteractiveColor(this.tab === 'build' ? 'both' : 'none');
     if (this.drillState !== 'idle') this.setDrillState('idle');
   }
@@ -687,7 +705,7 @@ export class RepertoireTrainer {
     soundForNode(this.options.audio, res.node);
     this.board.setInteractiveColor('none');
     this.setDrillState('playing');
-    this.setDrillStatus(grade === 3 ? 'Correct!' : 'Correct, but it will come back.', 'correct');
+    this.setDrillStatus(grade === 3 ? 'Correct!' : this.practising ? 'Correct, but not first time.' : 'Correct, but it will come back.', 'correct');
     this.timers.later(() => this.step(seq), AFTER_ANSWER_MS);
   }
 
@@ -695,6 +713,7 @@ export class RepertoireTrainer {
   private settle(key: string, grade: 1 | 2 | 3, seq: number): void {
     this.asked++;
     if (grade === 3) this.right++;
+    if (this.practising) return; // practice never touches the schedule
     void this.options.store.grade(this.color, key, grade).catch((err: unknown) => {
       if (seq === this.seq) this.els.result.textContent = `Progress could not be saved: ${err instanceof Error ? err.message : String(err)}`;
     });
@@ -730,7 +749,7 @@ export class RepertoireTrainer {
     this.board.setInteractiveColor('none');
     this.board.clearUserAnnotations();
     this.setDrillState('done');
-    this.setDrillStatus('Line complete', 'done');
+    this.setDrillStatus(this.practising ? 'Practice line complete' : 'Line complete', 'done');
     this.els.prompt.textContent = '';
     this.els.line.textContent = '';
     this.els.result.textContent =

@@ -1,6 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page, type Request } from '@playwright/test';
+import { Chess } from 'chess.js';
+import { exactMateDistance } from '../helpers/dtm-oracle';
+import { bestAttackerMove, blackToMoveValue } from '../helpers/dtm-play';
 
 // Phase 7: the repertoire, endgame and visualization trainers in the Train hub. One drill of
 // each is completed through the UI; they feed the same Today schedule as puzzles; the review
@@ -210,6 +213,46 @@ test.describe('Phase 7 — repertoire trainer', () => {
     await expect(page.getByTestId('rep-status')).toHaveText('Nothing due right now');
     await shot(page, 'desktop-repertoire-done.png');
     await expect(page.getByTestId('nav-train-count')).toBeHidden();
+
+    // Nothing is due, so "Practise anyway" stands in for "Start drill": it asks every position of a
+    // line, and grades nothing (the schedule stays as it was)
+    await expect(page.getByTestId('btn-rep-start')).toBeHidden();
+    await expect(page.getByTestId('btn-rep-practise')).toBeVisible();
+    await expect(page.getByTestId('btn-rep-practise')).toHaveClass(/wc-btn-primary/);
+    await expect(page.getByTestId('rep-prompt')).toContainText('nothing is graded');
+    await shot(page, 'desktop-repertoire-practise.png');
+    const schedule = () =>
+      page.evaluate(async () => {
+        const api = await window.__wizardChessDrillsReady!;
+        return (await api.store.repertoire.cards('w')).map((c) => ({ id: c.id, state: c.state, reps: c.reps, dueDate: c.dueDate })).sort((a, b) => a.id.localeCompare(b.id));
+      });
+    const before = await schedule();
+    await page.getByTestId('btn-rep-practise').click();
+    let asked = 0;
+    let missed = false;
+    for (;;) {
+      await expect.poll(() => trainer.getAttribute('data-rep-state'), { timeout: 20_000 }).toMatch(/asking|done/);
+      if ((await trainer.getAttribute('data-rep-state')) === 'done') break;
+      const move = await page.evaluate(() => {
+        const m = window.__wizardChessDrills!.getRepertoire()!.getDrill()!.expected()[0]!;
+        return { from: m.uci.slice(0, 2), to: m.uci.slice(2, 4) };
+      });
+      if (!missed) {
+        missed = true;
+        await clickMove(page, 'repertoire-trainer', move.from === 'a2' ? 'h2' : 'a2', move.from === 'a2' ? 'h3' : 'a3');
+        await expect(page.getByTestId('rep-status')).toContainText('Not a move from your repertoire');
+      }
+      await clickMove(page, 'repertoire-trainer', move.from, move.to);
+      asked++;
+      await expect(trainer).not.toHaveAttribute('data-rep-state', 'asking');
+    }
+    expect(asked).toBeGreaterThanOrEqual(2);
+    await expect(page.getByTestId('rep-status')).toHaveText('Practice line complete');
+    await expect(page.getByTestId('rep-result')).toContainText(`of ${asked} position${asked === 1 ? '' : 's'} right first time.`);
+    await expect(page.getByTestId('btn-rep-practise')).toHaveText('Practise another line');
+    await page.waitForTimeout(400);
+    expect(await schedule()).toEqual(before);
+    expect(await remaining()).toBe(0);
     expect(external).toEqual([]);
   });
 
@@ -311,6 +354,8 @@ test.describe('Phase 7 — repertoire trainer', () => {
   });
 });
 
+const ENDGAME_OPTIMAL: Record<string, number> = { 'kq-vs-k': 7, 'kr-vs-k': 14, 'kp-opposition': 11 };
+
 test.describe('Phase 7 — endgame trainer', () => {
   /** Plays the drill with the engine's own moves (the Hint) until it ends. */
   async function playOut(page: Page, moves = 40): Promise<string> {
@@ -377,6 +422,48 @@ test.describe('Phase 7 — endgame trainer', () => {
     await page.getByTestId('btn-endgame-next').click();
     await expect(trainer).toHaveAttribute('data-endgame-id', 'kr-vs-k');
   });
+
+  // The three mate drills are answered from exact tables, not the engine: whatever the player
+  // does, the opponent's reply keeps the mate as far away as it can be, so playing the best
+  // moves mates in exactly the stored "best possible" count.
+  for (const [id, label] of [['kq-vs-k', 'K+Q v K'], ['kr-vs-k', 'K+R v K'], ['kp-opposition', 'K+P v K']] as const) {
+    test(`${label}: the opponent always plays the DTM-optimal defence, so best play mates in the stored count`, async ({ page }) => {
+      test.setTimeout(180_000);
+      const external = trackNetwork(page);
+      await openTrain(page);
+      await page.getByTestId('btn-trainer-endgames').click();
+      await page.getByTestId(`endgame-item-${id}`).click();
+      const trainer = page.getByTestId('endgame-trainer');
+      await expect(trainer).toHaveAttribute('data-endgame-id', id);
+      await expect(trainer).toHaveAttribute('data-endgame-state', 'playing');
+      const optimal = ENDGAME_OPTIMAL[id]!;
+      const sessionFen = () => page.evaluate(() => window.__wizardChessDrills!.getEndgames()!.getSession()!.fen);
+      let played = 0;
+      for (;;) {
+        const fen = await sessionFen();
+        const pick = bestAttackerMove(fen);
+        expect(pick.moves, `distance from ${fen}`).toBe(optimal - played);
+        const after = new Chess(fen);
+        after.move(pick.san);
+        const expected = blackToMoveValue(after.fen());
+        await clickMove(page, 'endgame-trainer', pick.from, pick.to);
+        if (pick.promotion) await page.getByTestId(`promote-${pick.promotion}`).click();
+        played++;
+        if (pick.moves === 1) break;
+        // The reply arrives: it must be the one the exact solver rates as the longest resistance
+        await expect.poll(async () => (await sessionFen()) !== after.fen(), { timeout: 20_000 }).toBe(true);
+        await expect(trainer).toHaveAttribute('data-endgame-state', 'playing');
+        const replied = await sessionFen();
+        expect(exactMateDistance(replied), `reply to ${after.fen()}: ${replied}`).toBe(expected);
+      }
+      await expect(trainer).toHaveAttribute('data-endgame-state', 'reached');
+      await expect(page.getByTestId('endgame-result')).toContainText(`Mate in ${optimal} moves; best possible is ${optimal}.`);
+      await expect
+        .poll(() => page.evaluate(async (endgameId) => (await (await window.__wizardChessDrillsReady!).store.endgames.getProgress(endgameId)) ?? null, id))
+        .toMatchObject({ completed: 1, bestMoves: optimal, optimalMoves: optimal, lastMoves: optimal });
+      expect(external).toEqual([]);
+    });
+  }
 
   test('giving up, restarting and offering a draw too early', async ({ page }) => {
     await openTrain(page);

@@ -45,11 +45,14 @@ Phase 7 (details in [phase-7](progress/phase-7.md))
 - `data/endgames.json` was wrong (K+Q v K 10 → 7, K+R v K 16 → 14, R+P v R was a draw: position replaced);
   `tests/unit/endgame-data.test.ts` now checks every position with the engine (~90 s) and mate counts also
   against an exact solver. Re-run it after any change to the positions.
-- The endgame opponent is the engine at 200 ms a move, not a tablebase, so a mate drill can end faster than
-  the ideal count. The "win is slipping" warning uses the same short search; it never ends a drill.
-- The repertoire drill has no "practise anyway" when nothing is due; the builder shows no PGN comments and
-  has no clear-all (delete branch by branch). Blindfold lines over ~16 plies come only from the sample game
-  and my games.
+- Follow-ups done ("Phase 7: exact endgame defender, practise anyway"): K+Q / K+R / K+P v K are now defended
+  from exact tables (`endgame-tables.ts`, solved in a worker in ~1.4 s), so the opponent always prolongs the
+  mate and "moves vs best" is honest; every other position (and Hint, and the Lucena / R+P v R / Philidor
+  drills) still uses the engine at 200 ms. The repertoire drill has "Practise anyway" when nothing is due
+  (every position asked, nothing graded). Details in [phase-7](progress/phase-7.md).
+- The repertoire builder shows no PGN comments and has no clear-all (delete branch by branch). Blindfold lines
+  over ~16 plies come only from the sample game and my games. Hint in a mate drill is still the engine's move
+  (300 ms), not always the shortest mate, which is why a hinted drill is graded Hard at best.
 - Fixed on the way: a reload right after tuning the board feel could bring back the older mirrored record
   (`Preferences.attach`); this made the 6b board-feel e2e test flaky (failed 2 of 3 alone).
 

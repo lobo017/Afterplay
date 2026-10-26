@@ -873,9 +873,15 @@ export function mountAppShell(container: HTMLElement): {
     }),
   );
   const loadEndgames = lazyTrainer('endgames', 'The endgame trainer', () =>
-    import('./trainers/endgame-trainer').then((mod) => {
+    Promise.all([import('./trainers/endgame-trainer'), import('./trainers/endgame-tables-client')]).then(([mod, tables]) => {
       trainerRoots.endgames.replaceChildren();
-      endgameTrainer = new mod.EndgameTrainer({ container: trainerRoots.endgames, store: drills!.endgames, engine: sharedEngine, audio });
+      endgameTrainer = new mod.EndgameTrainer({
+        container: trainerRoots.endgames,
+        store: drills!.endgames,
+        engine: sharedEngine,
+        defender: new tables.EndgameTablesClient(),
+        audio,
+      });
       return endgameTrainer;
     }),
   );

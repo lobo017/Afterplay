@@ -7,6 +7,8 @@ import type { BoardRenderer } from '../render/board-renderer';
 import { icon } from '../ui/components/icons';
 import { Menu } from '../ui/components/menu';
 import { EndgameSession, type EndgameEnd } from './endgame-session';
+import type { Defence } from './endgame-tables';
+import type { EndgameDefender } from './endgame-tables-client';
 import type { EndgameRecordResult, EndgameStore } from './endgame-store';
 import { ENDGAMES, GOAL_LABEL, endgameGoal, getEndgame, goalText } from './endgames';
 import {
@@ -32,6 +34,8 @@ export interface EndgameTrainerOptions {
   container: HTMLElement;
   store: EndgameStore;
   engine: Pick<EngineClient, 'analyze'>;
+  /** The exact defender for K+Q, K+R and K+P v K; every other position is answered by the engine. */
+  defender: EndgameDefender;
   audio: CathedralAudio;
 }
 
@@ -141,6 +145,7 @@ export class EndgameTrainer {
     this.root.setAttribute('data-endgame-state', this.state);
     this.updateButtons();
     void this.renderList();
+    options.defender.warm();
   }
 
   public getBoard(): BoardRenderer {
@@ -310,33 +315,53 @@ export class EndgameTrainer {
     this.setState('thinking');
     this.setStatus('The engine is thinking…', 'thinking');
     this.updateButtons();
-    let res: { bestMove: string | null; score: UciScore | null } | null;
-    try {
-      res = await this.analyze(s.fen, OPPONENT_MOVETIME_MS);
-    } catch (err) {
-      if (seq === this.seq) this.fail(err);
-      return;
-    }
-    if (seq !== this.seq || !res) return;
-    // The engine scores the side to move, the opponent: the player's view is the negation
-    const forPlayer = res.score ? negateScore(res.score) : null;
-    if (check) {
-      const end = s.judgeConversion(forPlayer);
-      if (end) {
-        this.finish(end);
+    // Mate drills against K+Q, K+R or K+P alone are answered from the exact tables: the opponent
+    // always prolongs the mate as far as it can, so "moves against the best possible" is honest.
+    let exact: Defence | null = null;
+    if (s.goal === 'mate') {
+      try {
+        exact = await this.options.defender.defend(s.fen);
+      } catch (err) {
+        if (seq === this.seq) this.fail(err);
         return;
       }
+      if (seq !== this.seq) return;
     }
-    const best = res.bestMove;
+    let best: string | null;
+    let slipping: boolean;
+    if (exact) {
+      best = exact.move;
+      slipping = !exact.stillWon;
+    } else {
+      let res: { bestMove: string | null; score: UciScore | null } | null;
+      try {
+        res = await this.analyze(s.fen, OPPONENT_MOVETIME_MS);
+      } catch (err) {
+        if (seq === this.seq) this.fail(err);
+        return;
+      }
+      if (seq !== this.seq || !res) return;
+      // The engine scores the side to move, the opponent: the player's view is the negation
+      const forPlayer = res.score ? negateScore(res.score) : null;
+      if (check) {
+        const end = s.judgeConversion(forPlayer);
+        if (end) {
+          this.finish(end);
+          return;
+        }
+      }
+      best = res.bestMove;
+      slipping = s.slipping(forPlayer);
+    }
     if (!best) {
-      this.fail(new Error('the engine gave no move'));
+      this.fail(new Error('the opponent gave no move'));
       return;
     }
     this.timers.later(() => {
       if (seq !== this.seq) return;
       const r = s.opponentMove(best);
       if (r.kind === 'illegal') {
-        this.fail(new Error(`the engine's move ${best} is not legal`));
+        this.fail(new Error(`the opponent's move ${best} is not legal`));
         return;
       }
       this.showMove(r.move, false);
@@ -347,8 +372,11 @@ export class EndgameTrainer {
       this.busy = false;
       this.board.setInteractiveColor(s.player);
       this.setState('playing');
-      if (s.slipping(forPlayer)) {
-        this.setStatus(s.goal === 'hold' ? 'Careful: the engine is pressing. Find the defence.' : 'Careful: the engine sees only equality now.', 'warn');
+      if (slipping) {
+        this.setStatus(
+          exact ? 'Careful: the win is gone with best play.' : s.goal === 'hold' ? 'Careful: the engine is pressing. Find the defence.' : 'Careful: the engine sees only equality now.',
+          'warn',
+        );
       } else {
         this.setStatus(`Your move as ${s.player === 'w' ? 'White' : 'Black'}`, 'playing');
       }
@@ -504,5 +532,6 @@ export class EndgameTrainer {
     ++this.seq;
     this.menu.destroy();
     this.board.destroy();
+    this.options.defender.terminate();
   }
 }
