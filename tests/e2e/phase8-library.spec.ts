@@ -125,6 +125,11 @@ test.describe('Phase 8 — library', () => {
   test('a bulk import is read in a worker: 400 games, progress, no long task on the page', async ({ page }) => {
     test.setTimeout(120_000);
     await openGames(page);
+    // The first pointer movement on a page makes the app build its AudioContext, and the browser's
+    // audio stack starts cold: one 60-340 ms task that has nothing to do with the import. Let it
+    // happen (as it does before a user's first click) so the window below measures the import only.
+    await page.mouse.move(20, 20);
+    await page.waitForTimeout(1500);
     await page.evaluate(() => {
       (window as unknown as { __longTasks: number[] }).__longTasks = [];
       new PerformanceObserver((list) => {
@@ -142,9 +147,8 @@ test.describe('Phase 8 — library', () => {
     const longTasks = await page.evaluate(() => (window as unknown as { __longTasks: number[] }).__longTasks);
     console.log(`[library] bulk import of 400 games: long tasks ${JSON.stringify(longTasks.map((d) => Math.round(d)))}`);
     // The worker did the reading (on the page it is ~600 ms of work for these 400 games): the page only
-    // stores and lists them. Headless timing is indicative; the longest task seen is 30-80 ms, so 120 ms
-    // still tells the two apart
-    expect(Math.max(0, ...longTasks)).toBeLessThan(120);
+    // stores and lists them (its biggest step is the ~20 ms list render). The spec's limit: no task over 50 ms
+    expect(Math.max(0, ...longTasks)).toBeLessThan(50);
     // Importing the same text again adds nothing
     await paste(page, games);
     await expect(page.getByTestId('games-message')).toContainText('400 already in the list');
