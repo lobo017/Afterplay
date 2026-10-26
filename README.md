@@ -167,7 +167,32 @@ checked by the engine and accepted when it mates, keeps a forced mate, or (in pu
 aren't about mate) keeps a decisive advantage or is as good as the solution.
 
 **☀ Today** shows what's due: puzzle reviews, new puzzles from your games, rated puzzles
-played today, and games not analyzed yet, each with a button to start.
+played today, repertoire positions, endgame and visualization drills, and games not
+analyzed yet, each with a button to start. The trainers below keep their cards in the same
+FSRS schedule as the puzzles, so "Start training" opens whichever has the most due.
+
+## Repertoire, endgames and visualization
+
+All three live in the Train hub, beside the puzzles.
+
+- **Repertoire**: a White and a Black repertoire, each a tree of moves. *Build* it by playing
+  your moves and the replies you expect on the board, or by importing a PGN (every game and
+  variation goes in; a game that starts from another position is left out). *Drill* it: the
+  opponent's moves are played for you, and in each position that is due you play a move of
+  your repertoire. Each position is one spaced-repetition card, shared by every move order
+  that reaches it. When a reviewed game of yours (matched to your side by your usernames)
+  leaves your repertoire, the review says where, and whether it was you or your opponent.
+- **Endgames**: K+Q v K, K+R v K, K+P (opposition), Lucena, Philidor and R+P v R, each played
+  out against the engine from the side to move. Mate drills count your moves against the best
+  possible (the engine's mate distance, checked in `tests/unit/endgame-data.test.ts`); Lucena
+  and R+P v R end when you promote (or win the rook) and the engine agrees it is decided;
+  Philidor ends in a draw by the rules, or by agreement after ten moves of holding it.
+- **Visualization**: a 30-second *coordinate* round (click the named square), *blindfold*
+  drills (the moves are read out on an empty board, then you find pieces; the length grows
+  as you answer everything right) and *guess the move* through your own games (a match with
+  the move played, or with the review's best move, counts).
+
+Everything stays on this device and is included in the JSON backup.
 
 ## Dataset Generation (`scripts/` -> `data/`)
 

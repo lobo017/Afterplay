@@ -1,5 +1,5 @@
-import { boardFeel as sharedBoardFeel, sanitizeBoardFeel, type BoardFeel, type BoardFeelStore, type FeelStorage } from '../render/board-feel';
-import { applyBoardSize, loadBoardSize, saveBoardSize } from '../render/board-size';
+import { BOARD_FEEL_STORAGE_KEY, boardFeel as sharedBoardFeel, sanitizeBoardFeel, type BoardFeel, type BoardFeelStore, type FeelStorage } from '../render/board-feel';
+import { BOARD_SIZE_STORAGE_KEY, applyBoardSize, loadBoardSize, saveBoardSize } from '../render/board-size';
 import { AppSettingsStore, sanitizeAppSettings, type AppSettings } from './app-settings';
 
 /** Where the app settings live on this device (read synchronously at start-up). */
@@ -119,7 +119,9 @@ export class Preferences {
     this.backend = backend;
     let hadLocal = false;
     try {
-      hadLocal = Boolean(this.storage?.getItem(APP_SETTINGS_STORAGE_KEY));
+      // Any preference kept on this device is newer than the mirrored record (which lags by the
+      // mirror delay): a reload right after tuning the board feel must not bring the old one back
+      hadLocal = [APP_SETTINGS_STORAGE_KEY, BOARD_FEEL_STORAGE_KEY, BOARD_SIZE_STORAGE_KEY].some((key) => Boolean(this.storage?.getItem(key)));
     } catch {
       hadLocal = false;
     }

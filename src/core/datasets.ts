@@ -24,7 +24,12 @@ export interface EndgamePositionEntry {
   fen: string;
   sideToMove: 'w' | 'b';
   targetResult: '1-0' | '0-1' | '1/2-1/2';
-  optimalMoves: number;
+  /**
+   * The engine's mate distance: the player's moves to checkmate against the best defence.
+   * Null where the drill doesn't end in a forced mate (Lucena, Philidor, R+P v R): only the
+   * result is tracked there.
+   */
+  optimalMoves: number | null;
   description: string;
 }
 

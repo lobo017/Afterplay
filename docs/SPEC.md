@@ -566,17 +566,29 @@ Chess.com's branding, icon designs, or assets.
 - Phone-width screenshots have been checked.
 
 ### Phase 7 — Repertoire, endgame, and visualization trainers
+- All three trainers live in the Train hub and use the shared Phase 6b components. Repertoire,
+  endgame, and visualization drills feed the same Today schedule as puzzles.
 - **Repertoire trainer:**
   - Build White and Black repertoire trees by playing moves or importing PGN.
   - Drill them with spaced repetition.
-  - Flag in the review when a game leaves the repertoire.
+  - Flag in the review when a game leaves the repertoire. Only my own games are flagged:
+    the game is matched to my side by my usernames.
 - **Endgame trainer:**
   - Positions: K+Q v K, K+R v K, K+P opposition, Lucena, Philidor, R+P v R.
   - Each has a target result. Track completions and moves needed versus best possible.
+  - `data/endgames.json` was hand-written in Phase 0. Verify every position with the engine
+    in a test: the target result must be achievable, and `optimalMoves` must match the
+    engine's mate distance at sufficient depth, or be corrected. For positions without a
+    forced mate (Philidor, Lucena, R+P v R), track only whether the target result was
+    reached, not move counts.
 - **Visualization drills:**
   - coordinate trainer
   - blindfold mode
   - "guess the move" through my own games
+
+**Done when:** unit tests cover repertoire tree building, PGN import, and the endgame data
+check; end-to-end tests complete one drill of each trainer; desktop and phone screenshots
+have been checked; all earlier tests pass.
 
 ### Phase 8 — Library, insights, settings, offline
 - **Library:** extend the Phase 5b Games list into the full library.

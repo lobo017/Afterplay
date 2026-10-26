@@ -105,7 +105,7 @@ export interface StoredPuzzleRecord {
 
 export interface StoredSrsCardRecord {
   id: string;
-  deck: 'puzzle' | 'repertoire' | 'endgame';
+  deck: 'puzzle' | 'repertoire' | 'endgame' | 'visualization';
   targetId: string;
   state: 'new' | 'learning' | 'review' | 'relearning';
   stability: number;
@@ -129,11 +129,20 @@ export interface StoredRepertoireRecord {
 export interface StoredEndgameProgressRecord {
   id: string;
   category: string;
-  completed: number; // 0 or 1 for IndexedDB key indexing
+  completed: number; // 0 or 1 for IndexedDB key indexing: ever reached the target result
   attempts: number;
+  /** Fewest moves of a drill that reached the target without hints (null: none yet, or not tracked). */
   bestMoves: number | null;
-  optimalMoves: number;
+  /** The engine's mate distance, null where the drill doesn't end in a forced mate. */
+  optimalMoves: number | null;
   updatedAt: number;
+  // Phase 7 (optional, so earlier records stay valid)
+  /** Drills that reached the target result. */
+  completions?: number;
+  lastAttemptAt?: number;
+  lastReached?: boolean;
+  /** Moves the last drill took (the player's), when it reached the target. */
+  lastMoves?: number | null;
 }
 
 export interface MigrationHistoryEntry {

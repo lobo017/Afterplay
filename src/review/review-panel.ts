@@ -1,5 +1,6 @@
 import type { GameNode, GameTree, MoveClassification } from '../core/game-tree';
-import { RulesAdapter } from '../core/rules';
+import { RulesAdapter, type Color } from '../core/rules';
+import { describeDeparture, type RepertoireDeparture } from '../trainers/repertoire';
 import { EngineCancelledError, type EngineClient } from '../engine/engine-client';
 import type { UciScore } from '../engine/uci-parser';
 import { formatEvalBarScore } from '../analysis/eval-bar';
@@ -110,6 +111,11 @@ export interface ReviewPanelOptions {
   getAccounts?: () => readonly UserAccount[];
   /** Called when a review run finishes (not when it is cancelled or fails). */
   onReviewFinished?: (result: ReviewRunResult, tree: GameTree) => void;
+  /**
+   * Where the reviewed game leaves my repertoire (null: it doesn't, or there is none). Asked
+   * only for my own games: `color` is my side, from my usernames.
+   */
+  findRepertoireDeparture?: (tree: GameTree, color: Color) => Promise<RepertoireDeparture | null>;
 }
 
 type PanelState = 'idle' | 'running' | 'done' | 'cancelled' | 'error';
@@ -229,6 +235,10 @@ export class ReviewPanel {
   private strippedAnnotations = 0;
   /** When the review shown was loaded from storage instead of run now. */
   private savedAt: number | null = null;
+  /** Bumped for each repertoire check, so a late answer for an earlier game is dropped. */
+  private noteSeq = 0;
+  /** The move of the game the repertoire note points at. */
+  private noteNodeId: string | null = null;
   /** Classifies and explains moves in a worker, shared by every review. */
   private readonly analysisClient = new ReviewAnalysisClient();
 
@@ -281,6 +291,9 @@ export class ReviewPanel {
     coachNext: HTMLButtonElement;
     coachNextLabel: HTMLElement;
     startLabel: HTMLElement;
+    repertoire: HTMLElement;
+    repertoireText: HTMLElement;
+    repertoireJump: HTMLButtonElement;
   };
   private menu!: Menu;
 
@@ -351,6 +364,11 @@ export class ReviewPanel {
         <div class="wc-review-tooltip wc-review-status-tip" id="wc-review-status-tip" role="tooltip" data-testid="review-status-tooltip"></div>
       </div>
       <div class="wc-review-body" data-testid="review-body" hidden>
+        <div class="wc-review-repertoire" data-testid="review-repertoire" data-kind="" role="status" hidden>
+          <span class="wc-review-repertoire-icon" aria-hidden="true">${icon('book')}</span>
+          <span class="wc-review-repertoire-text" data-testid="review-repertoire-text"></span>
+          <button type="button" class="wc-btn wc-btn-ghost wc-btn-sm" data-testid="btn-review-repertoire-jump" hidden>Show move</button>
+        </div>
         <section class="wc-coach" data-testid="review-coach" aria-label="Key moments">
           <div class="wc-coach-head">
             <span class="wc-coach-label" data-testid="review-coach-label">Key moments</span>
@@ -499,7 +517,13 @@ export class ReviewPanel {
       coachNext: q('btn-coach-next'),
       coachNextLabel: q('coach-next-label'),
       startLabel: q('review-start-label'),
+      repertoire: q('review-repertoire'),
+      repertoireText: q('review-repertoire-text'),
+      repertoireJump: q('btn-review-repertoire-jump'),
     };
+    this.els.repertoireJump.addEventListener('click', () => {
+      if (this.noteNodeId) this.host.goToNode(this.noteNodeId);
+    });
 
     this.els.preset.addEventListener('change', () => {
       this.preset = this.els.preset.value as ReviewPreset;
@@ -753,6 +777,9 @@ export class ReviewPanel {
     this.savedAt = null;
     this.state = 'idle';
     this.perspective = 'both';
+    this.noteSeq++;
+    this.noteNodeId = null;
+    this.els.repertoire.hidden = true;
     this.els.body.hidden = true;
     this.renderPerspective();
     this.renderState();
@@ -781,6 +808,48 @@ export class ReviewPanel {
     this.renderChart(review);
     this.renderErrorNav();
     this.renderMoveCard(this.host.getCurrentNode());
+    if (final) void this.renderRepertoireNote();
+  }
+
+  /**
+   * One line when this is my game and it leaves my repertoire (or follows it to the end): where
+   * it happened, with a button to the move. Nothing for games that aren't mine (matched by my
+   * usernames), or when I have no repertoire for my side.
+   */
+  private async renderRepertoireNote(): Promise<void> {
+    const seq = ++this.noteSeq;
+    const tree = this.tree;
+    const find = this.options.findRepertoireDeparture;
+    const hide = () => {
+      this.noteNodeId = null;
+      this.els.repertoire.hidden = true;
+      this.els.repertoire.setAttribute('data-kind', '');
+    };
+    if (!find || !tree) {
+      hide();
+      return;
+    }
+    const mine = defaultPerspective(tree.getHeaders(), this.accounts());
+    if (mine === 'both') {
+      hide();
+      return;
+    }
+    let departure: RepertoireDeparture | null = null;
+    try {
+      departure = await find(tree, mine);
+    } catch {
+      departure = null;
+    }
+    if (seq !== this.noteSeq || this.tree !== tree) return;
+    if (!departure) {
+      hide();
+      return;
+    }
+    this.noteNodeId = departure.kind === 'followed' ? null : departure.nodeId;
+    this.els.repertoireText.textContent = describeDeparture(departure, mine);
+    this.els.repertoire.setAttribute('data-kind', departure.kind);
+    this.els.repertoireJump.hidden = this.noteNodeId === null;
+    this.els.repertoire.hidden = false;
   }
 
   // ------------------------------------------------------------------ rendering

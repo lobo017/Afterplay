@@ -19,13 +19,13 @@ log to `docs/progress/phase-N.md` and keep only a summary here.
 | 5b | Capture extension + Games list | Done | Chrome MV3 extension (Lichess, Chess.com), localhost bridge, Games list with background review queue, IndexedDB v4, live capture fixes, delivery outcomes; `npm run serve` redirects to one origin | [phase-5b](progress/phase-5b.md) |
 | 6 | Puzzles & spaced repetition | Done | Personal mistake puzzles, bundled 20k Lichess puzzles, Glicko-2, FSRS, Today screen | [phase-6](progress/phase-6.md) |
 | 6b | UX redesign | Done | Board feel + badges; app frame (Play / Train / Review / Games + Settings sheet); all six stages committed (last `23f5d47`) | [phase-6b](progress/phase-6b.md) |
-| 7 | Repertoire, endgame & visualization | Pending | White/Black repertoire trees, 6 curated endgame drills, coordinate/blindfold/guess-the-move | — |
+| 7 | Repertoire, endgame & visualization | Done | White/Black repertoire trees (build, import, drill, review flag), 6 engine-verified endgame drills, coordinate/blindfold/guess-the-move; all feed Today with the puzzles | [phase-7](progress/phase-7.md) |
 | 8 | Library, insights, settings, offline | Pending | Auto-save library, worker bulk PGN import, insights charts, a11y, full offline PWA | — |
 | 9 | Performance pass & final audit | Pending | Frame-time/memory/startup profiling against budgets and full spec verification | — |
 
 ## Current phase and next step
 
-Phase 6b is done (all six stages committed, last `23f5d47`; `perf:drag` passed 3/3 on 2026-10-26). Next: Phase 7 (repertoire, endgame & visualization). Write its plan here before any code.
+Phase 7 is done (committed as "Phase 7: …"). Next: Phase 8 (library, insights, settings, offline). Write its plan here before any code.
 
 ## Open decisions
 
@@ -40,6 +40,18 @@ Phase 6b is done (all six stages committed, last `23f5d47`; `perf:drag` passed 3
   `.prettierrc.json`'s 100). Not a required check; left alone.
 
 ## Known issues
+
+Phase 7 (details in [phase-7](progress/phase-7.md))
+- `data/endgames.json` was wrong (K+Q v K 10 → 7, K+R v K 16 → 14, R+P v R was a draw: position replaced);
+  `tests/unit/endgame-data.test.ts` now checks every position with the engine (~90 s) and mate counts also
+  against an exact solver. Re-run it after any change to the positions.
+- The endgame opponent is the engine at 200 ms a move, not a tablebase, so a mate drill can end faster than
+  the ideal count. The "win is slipping" warning uses the same short search; it never ends a drill.
+- The repertoire drill has no "practise anyway" when nothing is due; the builder shows no PGN comments and
+  has no clear-all (delete branch by branch). Blindfold lines over ~16 plies come only from the sample game
+  and my games.
+- Fixed on the way: a reload right after tuning the board feel could bring back the older mirrored record
+  (`Preferences.attach`); this made the 6b board-feel e2e test flaky (failed 2 of 3 alone).
 
 Everything marked **[P9]** is deferred to the Phase 9 profiling pass.
 
@@ -126,8 +138,8 @@ frame, 0 long tasks). Last clean baseline, 6b18a4c (2026-10-17):
 - Phase 1: perft start depth 4 (197,281 nodes) ≈ 737 ms in Vitest; Kiwipete depth 3 ≈ 303 ms.
 - Bot move selection (worker): Node average 15.9 ms, max 112 ms over 560 positions; was main-thread
   15–40 ms in the browser.
-- Bundle: main 1,420.22 kB (260.77 kB gzip) at 6b Stage 6; extension background 247 kB.
-- Tests at last full run (Phase 6b Stage 6): 461 unit (41 files), 113/113 e2e (10.3 min, one worker).
+- Bundle: main 1,449.47 kB (269.71 kB gzip) at Phase 7 (+29 kB); trainer chunks 19.1 / 14.1 / 22.4 kB (repertoire / endgames / visualization), loaded on first use; extension background 247 kB.
+- Tests at last full run (Phase 7): 555 unit (46 files, 89 s, the engine data check is ~88 s of it), 134/134 e2e (11.2 min, one worker). `perf:drag` not re-run in Phase 7 (no board, engine or input code changed).
 
 
 ### Phase 6b close-out: `perf:drag` on 23f5d47+docs (2026-10-26)

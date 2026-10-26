@@ -15,6 +15,16 @@ const outPath = path.join(dataDir, 'endgames.json');
  * - Lucena
  * - Philidor
  * - R+P v R
+ *
+ * The player always has the move. `optimalMoves` is the engine's mate distance (the player's
+ * moves against the best defence) and is only set where the drill ends in checkmate; positions
+ * without a move count (null) track only whether the target result was reached.
+ * tests/unit/endgame-data.test.ts checks every entry with Stockfish, and the three mate counts also
+ * against exact distances from a retrograde solver. The first draft of this file had K+Q v K as
+ * 10 and K+R v K as 16 (the worst cases over all positions, not these ones) and an R+P v R
+ * position that is a draw. The engine's mate distance only settles deep (K+Q v K reads 8 at
+ * depth 44 and 7 from 50; K+P v K 12 at depth 50-80 and 11 from 100), so re-run that test after
+ * changing anything here.
  */
 const ENDGAME_POSITIONS = [
   {
@@ -24,7 +34,7 @@ const ENDGAME_POSITIONS = [
     fen: '8/8/8/4k3/8/8/8/3QK3 w - - 0 1',
     sideToMove: 'w',
     targetResult: '1-0',
-    optimalMoves: 10,
+    optimalMoves: 7,
     description:
       'Drive the lone Black king to the edge of the board using the queen and king in tandem, avoiding stalemate traps.',
   },
@@ -35,7 +45,7 @@ const ENDGAME_POSITIONS = [
     fen: '8/8/8/4k3/8/8/8/3RK3 w - - 0 1',
     sideToMove: 'w',
     targetResult: '1-0',
-    optimalMoves: 16,
+    optimalMoves: 14,
     description:
       'Use the rook to cut off ranks or files and combine with the king opposition to force checkmate on the edge.',
   },
@@ -48,7 +58,7 @@ const ENDGAME_POSITIONS = [
     targetResult: '1-0',
     optimalMoves: 11,
     description:
-      'With the White king already on the 6th rank in front of the pawn, outflank the Black king to escort the e-pawn to promotion.',
+      'With the White king already on the 6th rank in front of the pawn, outflank the Black king to escort the e-pawn to promotion, then mate.',
   },
   {
     id: 'lucena-position',
@@ -57,9 +67,9 @@ const ENDGAME_POSITIONS = [
     fen: '1K1k4/1P6/8/8/8/8/r7/2R5 w - - 0 1',
     sideToMove: 'w',
     targetResult: '1-0',
-    optimalMoves: 14,
+    optimalMoves: null,
     description:
-      'Force promotion by placing the White rook on the 4th rank (1.Rc4) to shield the king from vertical checks when stepping out.',
+      'Build the bridge: bring the rook to the 4th rank (Rc4, or Rd1+ and Rd4) to shield the king from the checks, step out and promote the b-pawn.',
   },
   {
     id: 'philidor-position',
@@ -68,20 +78,20 @@ const ENDGAME_POSITIONS = [
     fen: '4k3/8/8/4PK2/8/r7/8/4R3 b - - 0 1',
     sideToMove: 'b',
     targetResult: '1/2-1/2',
-    optimalMoves: 15,
+    optimalMoves: null,
     description:
       'Hold the draw as Black by patrolling the 6th rank (1...Ra6!) until the pawn advances to e6, then switch to rear checks from the 1st rank.',
   },
   {
     id: 'rp-vs-r',
-    title: 'Rook & Pawn vs Rook — Practical Endgame',
+    title: 'Rook & Pawn vs Rook — Cut-off King',
     category: 'R+P v R',
-    fen: '3k4/8/3KP3/8/8/8/r7/4R3 w - - 0 1',
+    fen: '7k/8/4P3/3K4/8/8/r7/5R2 w - - 0 1',
     sideToMove: 'w',
     targetResult: '1-0',
-    optimalMoves: 16,
+    optimalMoves: null,
     description:
-      'Cut off the Black king and transition into a winning Lucena setup to convert the extra passed e-pawn.',
+      "White's rook cuts the Black king off on the f-file. Push the supported e-pawn to e7 and use the rook's checks to promote it or win Black's rook.",
   },
 ];
 

@@ -113,6 +113,7 @@ import { SAMPLE_GAME_PGN } from './review/sample-game';
 import { mainLinePlies } from './review/review-game';
 import { DEFAULT_USER_ACCOUNTS } from './review/perspective';
 import { GameLibrary } from './library/library';
+import { myColor } from './library/game-record';
 import { GamesList } from './library/games-list';
 import { ReviewQueue } from './library/review-queue';
 import { ExtensionBridgeClient } from './library/bridge-client';
@@ -122,12 +123,20 @@ import type { MessageWindow } from './capture/protocol';
 import { PuzzleStore } from './trainers/puzzle-store';
 import { TodayScreen, type PuzzleMode } from './trainers/today-screen';
 import type { PuzzleTrainer } from './trainers/puzzle-trainer';
+import { DrillStore, type DrillKind } from './trainers/drill-store';
+import { TrainerTiles, type TrainerKind } from './trainers/trainer-tiles';
+import { findDeparture } from './trainers/repertoire';
+import type { RepertoireTrainer } from './trainers/repertoire-trainer';
+import type { EndgameTrainer } from './trainers/endgame-trainer';
+import type { GuessGame, VisualizationTrainer } from './trainers/visualization-trainer';
 
 /** The four destinations. Review holds the analysis board; Train holds Today and the puzzles. */
 export type AppWorkspaceMode = 'play' | 'train' | 'review' | 'games';
 
-/** Where Train is: its hub (what's due) or a puzzle session. */
+/** Where Train is: its hub (what's due, and the trainers) or a trainer's session. */
 export type TrainView = 'hub' | 'session';
+
+export type { TrainerKind };
 
 const NAV_ITEMS: ReadonlyArray<{ mode: AppWorkspaceMode; label: string; icon: IconName }> = [
   { mode: 'play', label: 'Play', icon: 'play' },
@@ -302,8 +311,26 @@ export interface WizardChessPuzzlesApi {
   syncPersonal: () => Promise<void>;
 }
 
+export interface WizardChessDrillsApi {
+  /** The repertoire, endgame and visualization stores (their cards feed Today with the puzzles'). */
+  store: DrillStore;
+  tiles: TrainerTiles;
+  /** The trainer Train's session view shows (null at the hub). */
+  getTrainSession: () => TrainerKind | null;
+  openRepertoire: () => Promise<RepertoireTrainer>;
+  openEndgames: () => Promise<EndgameTrainer>;
+  openVisualization: () => Promise<VisualizationTrainer>;
+  /** Each trainer once loaded (null before it was first opened). */
+  getRepertoire: () => RepertoireTrainer | null;
+  getEndgames: () => EndgameTrainer | null;
+  getVisualization: () => VisualizationTrainer | null;
+}
+
 declare global {
   interface Window {
+    __wizardChessDrills?: WizardChessDrillsApi;
+    /** Resolves once the trainers' storage is open (it shares the game library's database). */
+    __wizardChessDrillsReady?: Promise<WizardChessDrillsApi>;
     __wizardChessPuzzles?: WizardChessPuzzlesApi;
     /** Resolves once puzzle storage is open (it shares the game library's database). */
     __wizardChessPuzzlesReady?: Promise<WizardChessPuzzlesApi>;
@@ -429,6 +456,7 @@ export function mountAppShell(container: HTMLElement): {
           <span class="wc-train-start-detail" data-testid="train-start-detail"></span>
         </div>
       </div>
+      <div id="wc-trainer-tiles-root" class="wc-trainer-tiles-root"></div>
       <div id="wc-today-root" class="wc-today-root"><p class="wc-games-loading" data-testid="today-loading">Opening your progress…</p></div>
     </section>
     <section class="wc-train-session" data-testid="train-session" hidden>
@@ -436,11 +464,21 @@ export function mountAppShell(container: HTMLElement): {
         <button type="button" class="wc-btn wc-btn-ghost wc-btn-sm" data-testid="btn-train-hub">${icon('back')}Train</button>
       </div>
       <div id="wc-puzzles-root" class="wc-puzzles-root"><p class="wc-games-loading" data-testid="puzzles-loading">Loading puzzles…</p></div>
+      <div id="wc-repertoire-root" class="wc-trainer-root" data-testid="repertoire-root" hidden><p class="wc-games-loading" data-testid="repertoire-loading">Opening the repertoire trainer…</p></div>
+      <div id="wc-endgames-root" class="wc-trainer-root" data-testid="endgames-root" hidden><p class="wc-games-loading" data-testid="endgames-loading">Opening the endgame trainer…</p></div>
+      <div id="wc-visualization-root" class="wc-trainer-root" data-testid="visualization-root" hidden><p class="wc-games-loading" data-testid="visualization-loading">Opening the visualization drills…</p></div>
     </section>`;
   const trainHubEl = trainRootEl.querySelector('[data-testid="train-hub"]') as HTMLElement;
   const trainSessionEl = trainRootEl.querySelector('[data-testid="train-session"]') as HTMLElement;
   const todayRootEl = trainRootEl.querySelector('#wc-today-root') as HTMLElement;
   const puzzlesRootEl = trainRootEl.querySelector('#wc-puzzles-root') as HTMLElement;
+  const tilesRootEl = trainRootEl.querySelector('#wc-trainer-tiles-root') as HTMLElement;
+  const trainerRoots: Record<TrainerKind, HTMLElement> = {
+    puzzles: puzzlesRootEl,
+    repertoire: trainRootEl.querySelector('#wc-repertoire-root') as HTMLElement,
+    endgames: trainRootEl.querySelector('#wc-endgames-root') as HTMLElement,
+    visualization: trainRootEl.querySelector('#wc-visualization-root') as HTMLElement,
+  };
 
   // The Games list's library opens in the background; the board doesn't wait for it
   let library: GameLibrary | null = null;
@@ -529,6 +567,11 @@ export function mountAppShell(container: HTMLElement): {
     getEngine: getReviewEngine,
     isBookPosition: (fen) => lookupOpeningByFen(fen) !== null,
     getAccounts: () => library?.getUserAccounts() ?? DEFAULT_USER_ACCOUNTS,
+    // The repertoire the game was played from, to say where it was left
+    findRepertoireDeparture: async (tree, color) => {
+      const store = (await drillsReady).store;
+      return findDeparture(await store.repertoire.load(color), tree);
+    },
     onReviewFinished: (result) => {
       const id = openGameId;
       const lib = library;
@@ -563,13 +606,19 @@ export function mountAppShell(container: HTMLElement): {
 
   let currentMode: AppWorkspaceMode = 'play';
   let trainView: TrainView = 'hub';
+  let trainSession: TrainerKind | null = null;
   const navButtons = [...container.querySelectorAll<HTMLButtonElement>('.wc-nav-item')];
   const screenTitleEl = container.querySelector('[data-testid="screen-title"]') as HTMLElement;
   const trainCountEl = container.querySelector('[data-testid="nav-train-count"]') as HTMLElement;
   const trainStartDetailEl = trainRootEl.querySelector('[data-testid="train-start-detail"]') as HTMLElement;
   let gamesList: GamesList | null = null;
   let todayScreen: TodayScreen | null = null;
+  let trainerTiles: TrainerTiles | null = null;
+  let drills: DrillStore | null = null;
   let puzzleTrainer: PuzzleTrainer | null = null;
+  let repertoireTrainer: RepertoireTrainer | null = null;
+  let endgameTrainer: EndgameTrainer | null = null;
+  let visualizationTrainer: VisualizationTrainer | null = null;
   /** Puzzle storage opens with the game library; Train waits for it. */
   let resolvePuzzles!: (api: WizardChessPuzzlesApi) => void;
   let rejectPuzzles!: (err: unknown) => void;
@@ -578,40 +627,93 @@ export function mountAppShell(container: HTMLElement): {
     rejectPuzzles = reject;
   });
   puzzlesReady.catch(() => undefined);
+  /** The trainers' storage opens with the game library too. */
+  let resolveDrills!: (api: WizardChessDrillsApi) => void;
+  let rejectDrills!: (err: unknown) => void;
+  const drillsReady = new Promise<WizardChessDrillsApi>((resolve, reject) => {
+    resolveDrills = resolve;
+    rejectDrills = reject;
+  });
+  drillsReady.catch(() => undefined);
   /** The trainer chunk, imported the first time a puzzle session starts. */
   let trainerLoading: Promise<PuzzleTrainer> | null = null;
   /** Serializes session starts, so the latest request wins and none interleave. */
   let puzzleStart: Promise<unknown> = Promise.resolve();
 
-  /** How much Train has waiting (reviews due and new puzzles from my mistakes), on its tab. */
-  const refreshTrainCount = async (): Promise<void> => {
+  /** Where "Start training" goes: what has the most to do, puzzles first, then the other trainers' due cards. */
+  type StartTarget = { trainer: 'puzzles'; mode: PuzzleMode } | { trainer: Exclude<TrainerKind, 'puzzles'> };
+  interface TrainingPlan {
+    target: StartTarget;
+    /** What the button says it will open. */
+    detail: string;
+    /** Everything waiting across the trainers (the count on the Train tab). */
+    waiting: number;
+  }
+  const planTraining = async (): Promise<TrainingPlan | null> => {
     let api: WizardChessPuzzlesApi;
     try {
       api = await puzzlesReady;
     } catch {
-      return;
+      return null;
     }
-    const [today, rating] = await Promise.all([api.store.todaySummary(), api.store.getRating()]);
+    if (!drills) return null;
+    const [today, rating, summary] = await Promise.all([api.store.todaySummary(), api.store.getRating(), drills.summary()]);
     const due = today.dueReviews.personal + today.dueReviews.lichess;
-    const waiting = due + today.newPersonal;
+    const repertoire = summary.repertoire.due + summary.repertoire.fresh;
+    const waiting = due + today.newPersonal + repertoire + summary.endgame.due + summary.visualization.due;
+    const s = (n: number) => (n === 1 ? '' : 's');
+    if (due > 0) return { target: { trainer: 'puzzles', mode: 'review' }, detail: `Your ${due} due review${s(due)}`, waiting };
+    if (repertoire > 0) {
+      return { target: { trainer: 'repertoire' }, detail: `Your ${repertoire} repertoire position${s(repertoire)}`, waiting };
+    }
+    if (summary.endgame.due > 0) {
+      return { target: { trainer: 'endgames' }, detail: `Your ${summary.endgame.due} due endgame drill${s(summary.endgame.due)}`, waiting };
+    }
+    if (summary.visualization.due > 0) {
+      return {
+        target: { trainer: 'visualization' },
+        detail: `Your ${summary.visualization.due} due visualization drill${s(summary.visualization.due)}`,
+        waiting,
+      };
+    }
+    if (today.newPersonal > 0) {
+      return {
+        target: { trainer: 'puzzles', mode: 'mistakes' },
+        detail: `${today.newPersonal} new puzzle${s(today.newPersonal)} from your games`,
+        waiting,
+      };
+    }
+    return { target: { trainer: 'puzzles', mode: 'rated' }, detail: `Rated puzzles near ${Math.round(rating.rating)}`, waiting };
+  };
+
+  /** How much Train has waiting (reviews due, new puzzles and positions, due drills), on its tab. */
+  const refreshTrainCount = async (): Promise<void> => {
+    const plan = await planTraining();
+    if (!plan) return;
+    const waiting = plan.waiting;
     trainCountEl.textContent = waiting === 0 ? '' : waiting > 99 ? '99+' : String(waiting);
     trainCountEl.hidden = waiting === 0;
     trainCountEl.setAttribute('aria-label', `${waiting} waiting`);
-    // What "Start training" will open (the same choice openPuzzles makes)
-    trainStartDetailEl.textContent =
-      due > 0
-        ? `Your ${due} due review${due === 1 ? '' : 's'}`
-        : today.newPersonal > 0
-          ? `${today.newPersonal} new puzzle${today.newPersonal === 1 ? '' : 's'} from your games`
-          : `Rated puzzles near ${Math.round(rating.rating)}`;
+    trainStartDetailEl.textContent = plan.detail;
   };
 
-  const showTrainView = (view: TrainView): void => {
+  /** Stops whatever a trainer is doing when its screen goes away (a drill started and left is not recorded). */
+  const suspendTrainers = (): void => {
+    repertoireTrainer?.suspend();
+    endgameTrainer?.suspend();
+    visualizationTrainer?.suspend();
+  };
+
+  const showTrainView = (view: TrainView, kind: TrainerKind | null = null): void => {
     trainView = view;
+    trainSession = view === 'session' ? kind : null;
     trainHubEl.hidden = view !== 'hub';
     trainSessionEl.hidden = view !== 'session';
+    for (const [k, el] of Object.entries(trainerRoots)) el.hidden = view !== 'session' || k !== kind;
     if (view === 'hub') {
+      suspendTrainers();
       void todayScreen?.refresh();
+      void trainerTiles?.refresh();
       void refreshTrainCount();
     }
   };
@@ -628,6 +730,7 @@ export function mountAppShell(container: HTMLElement): {
     }
     currentMode = mode;
     shellEl.setAttribute('data-mode', mode);
+    if (mode !== 'train') suspendTrainers();
 
     for (const btn of navButtons) {
       if (btn.dataset.mode === mode) btn.setAttribute('aria-current', 'page');
@@ -649,6 +752,7 @@ export function mountAppShell(container: HTMLElement): {
       if (mode === 'games') void gamesList?.refresh();
       if (mode === 'train' && trainView === 'hub') {
         void todayScreen?.refresh();
+        void trainerTiles?.refresh();
         void refreshTrainCount();
       }
     }
@@ -696,7 +800,7 @@ export function mountAppShell(container: HTMLElement): {
    */
   const openPuzzles = (mode: PuzzleMode | null): Promise<PuzzleTrainer> => {
     setMode('train', false);
-    showTrainView('session');
+    showTrainView('session', 'puzzles');
     const run = puzzleStart.then(async () => {
       const trainer = await loadTrainer();
       if (mode) {
@@ -710,6 +814,121 @@ export function mountAppShell(container: HTMLElement): {
     });
     puzzleStart = run.catch(() => undefined);
     return run;
+  };
+
+  /** My games for guess the move: each with my side, and its review's best moves read only when it is chosen. */
+  const getGuessGames = async (): Promise<GuessGame[]> => {
+    const lib = library;
+    if (!lib) return [];
+    const accounts = lib.getUserAccounts();
+    const out: GuessGame[] = [];
+    for (const record of await lib.list()) {
+      const color = myColor(record, accounts);
+      if (!color) continue;
+      const opponent = color === 'w' ? record.black : record.white;
+      const me = color === 'w' ? record.white : record.black;
+      out.push({
+        id: record.id,
+        label: [`${me} vs ${opponent}`, record.date ? record.date.replace(/\./g, '-') : null].filter(Boolean).join(' · '),
+        pgn: record.pgn,
+        color,
+        loadBestMoves: async () => {
+          const best = new Map<number, string>();
+          const saved = record.analysis ? await lib.getReview(record.id) : undefined;
+          for (const m of saved?.review.moves ?? []) if (m.bestMoveUci) best.set(m.ply, m.bestMoveUci);
+          return best;
+        },
+      });
+    }
+    return out;
+  };
+
+  /** Creates a trainer in its own chunk the first time it is opened; its loading line stands in until then. */
+  function lazyTrainer<T>(kind: Exclude<TrainerKind, 'puzzles'>, label: string, make: () => Promise<T>): () => Promise<T> {
+    let loading: Promise<T> | null = null;
+    return () => {
+      if (!loading) {
+        loading = Promise.all([puzzlesReady, make()]).then(([, trainer]) => {
+          trainerRoots[kind].querySelector('.wc-games-loading')?.remove();
+          applyAppSettings(appSettings.get(), null);
+          return trainer;
+        });
+        loading.catch((err: unknown) => {
+          loading = null;
+          const msg = document.createElement('p');
+          msg.className = 'wc-games-loading';
+          msg.setAttribute('data-testid', `${kind}-loading`);
+          msg.textContent = `${label} could not be opened: ${err instanceof Error ? err.message : String(err)}`;
+          trainerRoots[kind].replaceChildren(msg);
+        });
+      }
+      return loading;
+    };
+  }
+  const loadRepertoire = lazyTrainer('repertoire', 'The repertoire trainer', () =>
+    import('./trainers/repertoire-trainer').then((mod) => {
+      trainerRoots.repertoire.replaceChildren();
+      repertoireTrainer = new mod.RepertoireTrainer({ container: trainerRoots.repertoire, store: drills!.repertoire, audio });
+      return repertoireTrainer;
+    }),
+  );
+  const loadEndgames = lazyTrainer('endgames', 'The endgame trainer', () =>
+    import('./trainers/endgame-trainer').then((mod) => {
+      trainerRoots.endgames.replaceChildren();
+      endgameTrainer = new mod.EndgameTrainer({ container: trainerRoots.endgames, store: drills!.endgames, engine: sharedEngine, audio });
+      return endgameTrainer;
+    }),
+  );
+  const loadVisualization = lazyTrainer('visualization', 'The visualization drills', () =>
+    import('./trainers/visualization-trainer').then((mod) => {
+      trainerRoots.visualization.replaceChildren();
+      visualizationTrainer = new mod.VisualizationTrainer({
+        container: trainerRoots.visualization,
+        store: drills!.visualization,
+        audio,
+        getGames: getGuessGames,
+        onOpenGames: () => setMode('games', false),
+      });
+      return visualizationTrainer;
+    }),
+  );
+  const openRepertoire = async (): Promise<RepertoireTrainer> => {
+    setMode('train', false);
+    showTrainView('session', 'repertoire');
+    const trainer = await loadRepertoire();
+    await trainer.ready();
+    return trainer;
+  };
+  const openEndgames = async (): Promise<EndgameTrainer> => {
+    setMode('train', false);
+    showTrainView('session', 'endgames');
+    const trainer = await loadEndgames();
+    if (!trainer.getEntry()) await trainer.start();
+    return trainer;
+  };
+  const openVisualization = async (): Promise<VisualizationTrainer> => {
+    setMode('train', false);
+    showTrainView('session', 'visualization');
+    return loadVisualization();
+  };
+  /** A Today card or Start training: the trainer opens on what is due in it. */
+  const startDrill = async (kind: DrillKind): Promise<void> => {
+    if (kind === 'repertoire') await (await openRepertoire()).openDue();
+    else if (kind === 'endgame') await (await openEndgames()).openDue();
+    else await (await openVisualization()).openDue();
+  };
+  const startTraining = async (): Promise<void> => {
+    const plan = await planTraining();
+    if (!plan) return;
+    const target = plan.target;
+    if (target.trainer === 'puzzles') await openPuzzles(target.mode);
+    else await startDrill(target.trainer === 'endgames' ? 'endgame' : target.trainer);
+  };
+  const openTrainer = async (kind: TrainerKind): Promise<void> => {
+    if (kind === 'puzzles') await openPuzzles(null);
+    else if (kind === 'repertoire') await openRepertoire();
+    else if (kind === 'endgames') await openEndgames();
+    else await openVisualization();
   };
 
   for (const btn of navButtons) {
@@ -729,7 +948,7 @@ export function mountAppShell(container: HTMLElement): {
   }
   trainRootEl
     .querySelector('[data-testid="btn-train-start"]')
-    ?.addEventListener('click', () => void openPuzzles(null));
+    ?.addEventListener('click', () => void startTraining());
   trainRootEl
     .querySelector('[data-testid="btn-train-hub"]')
     ?.addEventListener('click', () => showTrainView('hub'));
@@ -819,6 +1038,10 @@ export function mountAppShell(container: HTMLElement): {
     const puzzleStore = new PuzzleStore(storage);
     // Every attempt, review and new puzzle updates what's waiting on the Train tab
     puzzleStore.onChange(() => void refreshTrainCount());
+    // The repertoire, endgame and visualization trainers keep their cards in the same database
+    const drillStore = new DrillStore(storage);
+    drills = drillStore;
+    drillStore.onChange(() => void refreshTrainCount());
     const syncPersonal = async (): Promise<void> => {
       await puzzleStore.syncAll(await lib.list(), (id) => lib.getReview(id), lib.getUserAccounts());
     };
@@ -840,10 +1063,28 @@ export function mountAppShell(container: HTMLElement): {
       store: puzzleStore,
       syncPersonal,
       countUnanalyzed: async () => (await lib.list()).filter((g) => !g.analysis).length,
+      drills: drillStore,
       onStartPuzzles: (mode) => void openPuzzles(mode),
+      onStartDrill: (kind) => void startDrill(kind),
       onOpenGames: () => setMode('games', false),
     });
     todayScreen = today;
+    tilesRootEl.replaceChildren();
+    const tiles = new TrainerTiles({
+      container: tilesRootEl,
+      puzzles: puzzleStore,
+      drills: drillStore,
+      onOpen: (kind) => void openTrainer(kind),
+    });
+    trainerTiles = tiles;
+    // The tiles and Today follow what the trainers record while the hub is showing
+    const refreshHub = () => {
+      if (currentMode === 'train' && trainView === 'hub') {
+        void tiles.refresh();
+        void today.refresh();
+      }
+    };
+    drillStore.onChange(refreshHub);
     const puzzlesApi: WizardChessPuzzlesApi = {
       store: puzzleStore,
       today,
@@ -853,22 +1094,43 @@ export function mountAppShell(container: HTMLElement): {
       syncPersonal,
     };
     window.__wizardChessPuzzles = puzzlesApi;
+    const drillsApi: WizardChessDrillsApi = {
+      store: drillStore,
+      tiles,
+      getTrainSession: () => trainSession,
+      openRepertoire,
+      openEndgames,
+      openVisualization,
+      getRepertoire: () => repertoireTrainer,
+      getEndgames: () => endgameTrainer,
+      getVisualization: () => visualizationTrainer,
+    };
+    window.__wizardChessDrills = drillsApi;
+    resolveDrills(drillsApi);
     resolvePuzzles(puzzlesApi);
     afterRestore = async () => {
       await lib.init();
       await list.syncAutoAnalyze();
       await list.refresh();
+      // The repertoires and drill cards may have come from the backup
+      drillStore.repertoire.reload();
       await syncPersonal();
       await today.refresh();
+      await tiles.refresh();
       await refreshTrainCount();
     };
-    if (currentMode === 'train' && trainView === 'hub') void today.refresh();
+    if (currentMode === 'train' && trainView === 'hub') {
+      void today.refresh();
+      void tiles.refresh();
+    }
     void refreshTrainCount();
     return api;
   });
   window.__wizardChessPuzzlesReady = puzzlesReady;
+  window.__wizardChessDrillsReady = drillsReady;
   libraryReady.catch((err: unknown) => {
     rejectPuzzles(err);
+    rejectDrills(err);
     todayRootEl.replaceChildren();
     const todayMsg = document.createElement('p');
     todayMsg.className = 'wc-games-loading';
@@ -886,7 +1148,12 @@ export function mountAppShell(container: HTMLElement): {
 
   /** Board look, effects and sound follow the settings (Play and Review follow them themselves). */
   const applyAppSettings = (next: AppSettings, prev: AppSettings | null): void => {
-    const boards = [puzzleTrainer?.getBoard()];
+    const boards = [
+      puzzleTrainer?.getBoard(),
+      repertoireTrainer?.getBoard(),
+      endgameTrainer?.getBoard(),
+      visualizationTrainer?.getBoard(),
+    ];
     for (const board of boards) {
       if (!board) continue;
       if (!prev || next.boardTheme !== prev.boardTheme) board.setBoardTheme(next.boardTheme);

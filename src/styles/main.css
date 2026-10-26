@@ -5153,3 +5153,437 @@ label.wc-setting-row {
     justify-content: space-between;
   }
 }
+
+/* ==========================================================================
+   Phase 7: Train hub tiles, and the repertoire, endgame and visualization trainers
+   ========================================================================== */
+
+.wc-trainer-root {
+  width: 100%;
+}
+
+.wc-trainer-root[hidden] {
+  display: none;
+}
+
+/* Hub: one tile per trainer */
+.wc-trainer-tiles {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.wc-trainer-tiles-title {
+  margin: 0;
+  font-size: 1.05rem;
+  color: var(--accent-gold);
+  letter-spacing: 0.02em;
+}
+
+.wc-trainer-tiles-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16.5rem, 1fr));
+  gap: 0.75rem;
+}
+
+.wc-trainer-tile {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.85rem 0.95rem;
+  border-radius: 0.8rem;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-carved);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.wc-trainer-tile-icon {
+  display: grid;
+  place-items: center;
+  width: 2.6rem;
+  height: 2.6rem;
+  border-radius: 0.7rem;
+  background: var(--bg-elevated);
+  border: 1px solid var(--accent-gold-dim);
+  color: var(--accent-gold);
+}
+
+.wc-trainer-tile-icon .wc-icon {
+  width: 22px;
+  height: 22px;
+}
+
+.wc-trainer-tile-title {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.wc-trainer-tile-detail {
+  margin: 0.15rem 0 0;
+  min-height: 2.5em;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  color: var(--text-muted);
+}
+
+.wc-trainer-tile .wc-btn {
+  min-height: 2.6rem;
+  padding: 0 1rem;
+}
+
+/* The three trainers share the puzzle session's layout; their text and cards */
+.wc-trainer-panel {
+  gap: 0;
+}
+
+.wc-trainer-panel .wc-tab {
+  white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .wc-trainer-panel .wc-tabs {
+    padding: 0 0.4rem;
+  }
+
+  .wc-trainer-panel .wc-tab {
+    padding-left: 0.7rem;
+    padding-right: 0.7rem;
+  }
+}
+
+.wc-trainer-text {
+  margin: 0;
+  font-size: 0.84rem;
+  line-height: 1.45;
+  color: var(--text-marble);
+}
+
+.wc-trainer-text:empty {
+  display: none;
+}
+
+.wc-trainer-muted {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.wc-trainer-card {
+  gap: 0.55rem;
+}
+
+.wc-trainer-panel .wc-status-banner[data-state='correct'],
+.wc-trainer-panel .wc-status-banner[data-state='solved'],
+.wc-trainer-panel .wc-status-banner[data-state='done'] {
+  color: #86efac;
+}
+
+.wc-trainer-panel .wc-status-banner[data-state='wrong'],
+.wc-trainer-panel .wc-status-banner[data-state='error'] {
+  color: #fca5a5;
+}
+
+.wc-trainer-panel .wc-status-banner[data-state='warn'],
+.wc-trainer-panel .wc-status-banner[data-state='thinking'] {
+  color: #fde68a;
+}
+
+.wc-trainer-panel .wc-status-banner[data-state='empty'] {
+  color: var(--text-muted);
+}
+
+.wc-trainer-panel .wc-panel-foot .wc-puzzle-stats {
+  max-width: 40%;
+}
+
+/* Endgames: the six positions */
+.wc-endgame-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.35rem;
+}
+
+.wc-endgame-item {
+  display: grid;
+  grid-template-columns: 1.3rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  min-height: 2.9rem;
+  padding: 0.35rem 0.55rem;
+  border-radius: 0.65rem;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-elevated);
+  color: var(--text-marble);
+  font-family: var(--font-sans);
+  text-align: left;
+  cursor: pointer;
+}
+
+.wc-endgame-item:hover {
+  border-color: var(--border-carved);
+}
+
+.wc-endgame-item[aria-checked='true'] {
+  border-color: rgba(212, 175, 55, 0.55);
+  background: rgba(212, 175, 55, 0.12);
+}
+
+.wc-endgame-item:focus-visible {
+  outline: 2px solid var(--accent-arcane);
+  outline-offset: 2px;
+}
+
+.wc-endgame-item-mark {
+  display: grid;
+  place-items: center;
+  width: 1.3rem;
+  height: 1.3rem;
+  border-radius: 50%;
+  border: 1px solid var(--border-carved);
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: transparent;
+}
+
+.wc-endgame-item[data-completed='true'] .wc-endgame-item-mark {
+  background: rgba(34, 197, 94, 0.18);
+  border-color: rgba(34, 197, 94, 0.6);
+  color: #86efac;
+}
+
+.wc-endgame-item-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.wc-endgame-item-title {
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.wc-endgame-item-meta {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Repertoire: the move list */
+.wc-repertoire-panel .wc-seg {
+  flex: none;
+}
+
+.wc-rep-moves {
+  flex: 1 1 8rem;
+  min-height: 8rem;
+  max-height: 22rem;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  padding: 0.6rem 0.7rem;
+  border-radius: 0.6rem;
+  background: #090b10;
+  border: 1px solid var(--border-subtle);
+  font-size: 0.86rem;
+  line-height: 1.9;
+  position: relative;
+}
+
+.wc-rep-moves[hidden] {
+  display: none;
+}
+
+.wc-rep-no {
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 0.76rem;
+  margin-right: 0.15rem;
+}
+
+.wc-rep-move {
+  padding: 0.05rem 0.35rem;
+  margin: 0 0.05rem;
+  border: 0;
+  border-radius: 0.35rem;
+  background: none;
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.wc-rep-move.wc-rep-mine {
+  color: var(--text-marble);
+}
+
+.wc-rep-move:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.wc-rep-move[aria-current='true'] {
+  background: rgba(212, 175, 55, 0.22);
+  box-shadow: inset 0 0 0 1px rgba(212, 175, 55, 0.6);
+  color: #fde68a;
+}
+
+.wc-rep-move:focus-visible {
+  outline: 2px solid var(--accent-arcane);
+  outline-offset: 1px;
+}
+
+.wc-rep-var {
+  color: var(--text-muted);
+  margin: 0 0.1rem;
+}
+
+.wc-rep-nav .wc-btn-action {
+  flex: none;
+  padding: 0 0.9rem;
+}
+
+.wc-rep-import {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.wc-rep-import[hidden] {
+  display: none;
+}
+
+.wc-rep-import-text {
+  width: 100%;
+  min-height: 7rem;
+  resize: vertical;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+}
+
+.wc-rep-file {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.wc-rep-foot[hidden] {
+  display: none;
+}
+
+.wc-repertoire-panel .wc-today-strip {
+  flex: none;
+}
+
+/* Visualization */
+.wc-viz-target {
+  min-height: 4.2rem;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-mono);
+  font-size: 3.2rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: var(--accent-gold);
+  font-variant-numeric: tabular-nums;
+}
+
+.wc-viz-target.wc-viz-spoken {
+  min-height: 4.2rem;
+  font-family: var(--font-sans);
+  font-size: 1.5rem;
+  letter-spacing: 0;
+  text-align: center;
+  line-height: 1.2;
+}
+
+.wc-viz-question {
+  min-height: 1.4em;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+/* Squares are named by the board's own labels in the coordinate and blindfold drills: hide them */
+.wc-viz-nocoords .wc-board-coords {
+  display: none;
+}
+
+.wc-visualization-panel .wc-tab-panel {
+  gap: 0.75rem;
+}
+
+/* Review: where the game left my repertoire */
+.wc-review-repertoire {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 0.65rem;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  font-size: 0.84rem;
+  line-height: 1.4;
+}
+
+.wc-review-repertoire[hidden] {
+  display: none;
+}
+
+.wc-review-repertoire-icon {
+  flex: none;
+  color: var(--accent-gold);
+}
+
+.wc-review-repertoire-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.wc-review-repertoire[data-kind='left'] {
+  border-color: rgba(245, 158, 11, 0.55);
+  background: rgba(245, 158, 11, 0.1);
+}
+
+.wc-review-repertoire[data-kind='left'] .wc-review-repertoire-icon {
+  color: var(--accent-amber);
+}
+
+.wc-review-repertoire[data-kind='opponent-left'] {
+  border-color: rgba(56, 189, 248, 0.45);
+}
+
+.wc-review-repertoire[data-kind='opponent-left'] .wc-review-repertoire-icon {
+  color: var(--accent-arcane);
+}
+
+.wc-review-repertoire[data-kind='followed'] {
+  border-color: rgba(34, 197, 94, 0.5);
+}
+
+.wc-review-repertoire[data-kind='followed'] .wc-review-repertoire-icon {
+  color: var(--status-ok);
+}
+
+@media (max-width: 760px) {
+  .wc-trainer-tiles-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .wc-trainer-tile-detail {
+    min-height: 0;
+  }
+
+  .wc-viz-target {
+    font-size: 2.6rem;
+    min-height: 3.4rem;
+  }
+
+  .wc-viz-target.wc-viz-spoken {
+    font-size: 1.25rem;
+  }
+
+  .wc-rep-moves {
+    max-height: 14rem;
+  }
+}

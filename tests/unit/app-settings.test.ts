@@ -5,7 +5,7 @@ import {
   DEFAULT_NEW_GAME,
   sanitizeAppSettings,
 } from '../../src/ui/app-settings';
-import { BoardFeelStore, DEFAULT_BOARD_FEEL, type FeelStorage } from '../../src/render/board-feel';
+import { BOARD_FEEL_STORAGE_KEY, BoardFeelStore, DEFAULT_BOARD_FEEL, type FeelStorage } from '../../src/render/board-feel';
 import { BOARD_SIZE_STORAGE_KEY } from '../../src/render/board-size';
 import {
   APP_SETTINGS_STORAGE_KEY,
@@ -137,6 +137,21 @@ describe('Phase 6b — remembering settings and the backup record', () => {
     expect(feel.get().snapMs).toBe(60);
     expect(storage.getItem(BOARD_SIZE_STORAGE_KEY)).toBe('640');
     expect(loadStoredAppSettings(storage)?.pieceSet).toBe('staunton');
+  });
+
+  it('a board feel tuned on this device is not replaced by an older database record (a reload right after tuning)', async () => {
+    const storage = new MemoryStorage();
+    // Tuned just now: kept on the device, and the database mirror (300 ms behind) still has the defaults
+    storage.setItem(BOARD_FEEL_STORAGE_KEY, JSON.stringify({ ...DEFAULT_BOARD_FEEL, liftScale: 1.25 }));
+    const app = new AppSettingsStore();
+    const feel = new BoardFeelStore(storage);
+    const prefs = new Preferences({ appSettings: app, boardFeel: feel, storage, mirrorDelayMs: 0 });
+    const backend = new MemoryBackend();
+    backend.settings.set(PREFERENCES_SETTING_KEY, { version: 1, app: DEFAULT_APP_SETTINGS, boardFeel: DEFAULT_BOARD_FEEL, boardSize: null });
+    await prefs.attach(backend);
+    expect(feel.get().liftScale).toBe(1.25);
+    // And the record catches up with the device
+    expect(parsePreferences(backend.settings.get(PREFERENCES_SETTING_KEY))!.boardFeel.liftScale).toBe(1.25);
   });
 
   it('parses a preferences record defensively', () => {
