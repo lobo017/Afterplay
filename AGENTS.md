@@ -37,3 +37,5 @@
 - Run every command non-interactively and with a timeout. Never use npx for a package that isn't in package.json, since it can stall on an install prompt; ask me to add the dependency instead.
 - Only kill processes you started: ones you hold a handle to, or descendants of your own process found by parent PID. Re-check each process's parent PID and command line immediately before killing it. Never find processes by name or command-line text matching. For anything else, list it and ask me to stop it.
 - Never send personal information (email, name, tokens, file paths) to any external service without asking me first.
+- Never link node_modules (junction or symlink) into a git worktree, and never use git worktree remove --force. If a comparison needs an older commit, give its worktree its own npm ci, or ask me.
+- Before perf runs or the full e2e suite, check whether the laptop is on battery. If it is, tell me and wait for me to plug in, since battery throttling invalidates the results.
