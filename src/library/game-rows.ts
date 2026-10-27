@@ -22,7 +22,11 @@ export function toRow(record: StoredGameRecord, accounts: readonly UserAccount[]
   const color = myColor(record, accounts);
   const opponentIsBlack = color !== 'b';
   const accuracy =
-    color === 'w' ? (record.analysis?.whiteAccuracy ?? null) : color === 'b' ? (record.analysis?.blackAccuracy ?? null) : null;
+    color === 'w'
+      ? (record.analysis?.whiteAccuracy ?? null)
+      : color === 'b'
+        ? (record.analysis?.blackAccuracy ?? null)
+        : null;
   return {
     record,
     color,
@@ -118,7 +122,8 @@ export function matchesFilter(row: GameRow, filter: GameFilter): boolean {
   if (filter.source !== 'all' && (r.source ?? 'paste') !== filter.source) return false;
   if (filter.result === 'draw' && row.result !== 'draw') return false;
   // Wins and losses are mine: a game I'm not in has neither
-  if ((filter.result === 'win' || filter.result === 'loss') && (row.color === null || row.result !== filter.result)) return false;
+  if ((filter.result === 'win' || filter.result === 'loss') && (row.color === null || row.result !== filter.result))
+    return false;
   if (filter.color !== 'all' && row.color !== filter.color) return false;
   const analyzed = Boolean(r.analysis);
   if (filter.analyzed === 'analyzed' && !analyzed) return false;
@@ -146,7 +151,9 @@ export function sortRows(rows: GameRow[], sort: SortKey): GameRow[] {
     case 'oldest':
       return rows.sort((a, b) => -byTime(a, b));
     case 'opponent':
-      return rows.sort((a, b) => a.opponent.localeCompare(b.opponent, undefined, { sensitivity: 'base' }) || byTime(a, b));
+      return rows.sort(
+        (a, b) => a.opponent.localeCompare(b.opponent, undefined, { sensitivity: 'base' }) || byTime(a, b),
+      );
     case 'accuracy':
       return rows.sort((a, b) => (gameAccuracy(b) ?? -2) - (gameAccuracy(a) ?? -2) || byTime(a, b));
   }

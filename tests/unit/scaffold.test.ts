@@ -17,9 +17,7 @@ const dataDir = path.join(rootDir, 'data');
 describe('Phase 0 — Scaffold, Licensing & Datasets', () => {
   it('normalizes 6-field FEN into 4-field EPD', () => {
     const startFen = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1';
-    expect(normalizeFenToEpd(startFen)).toBe(
-      'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3',
-    );
+    expect(normalizeFenToEpd(startFen)).toBe('rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3');
   });
 
   it('includes GPL-3.0-or-later LICENSE and LICENSES inventory', () => {
@@ -64,19 +62,10 @@ describe('Phase 0 — Scaffold, Licensing & Datasets', () => {
     const endgamesPath = path.join(dataDir, 'endgames.json');
     expect(fs.existsSync(endgamesPath)).toBe(true);
 
-    const endgames = JSON.parse(
-      fs.readFileSync(endgamesPath, 'utf8'),
-    ) as EndgamePositionEntry[];
+    const endgames = JSON.parse(fs.readFileSync(endgamesPath, 'utf8')) as EndgamePositionEntry[];
     expect(endgames.length).toBeGreaterThanOrEqual(6);
 
-    const requiredCategories = [
-      'K+Q v K',
-      'K+R v K',
-      'K+P opposition',
-      'Lucena',
-      'Philidor',
-      'R+P v R',
-    ];
+    const requiredCategories = ['K+Q v K', 'K+R v K', 'K+P opposition', 'Lucena', 'Philidor', 'R+P v R'];
     for (const cat of requiredCategories) {
       expect(endgames.some((e) => e.category === cat)).toBe(true);
     }

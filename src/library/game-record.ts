@@ -84,9 +84,7 @@ export function myColor(
   const source: StoredGameSource = record.source ?? 'paste';
   // A game played here: my side was chosen on the New game card
   if (source === 'play') return record.playerColor ?? null;
-  const names = accounts
-    .filter((a) => source === 'paste' || a.site === source)
-    .map((a) => a.username.toLowerCase());
+  const names = accounts.filter((a) => source === 'paste' || a.site === source).map((a) => a.username.toLowerCase());
   const white = names.includes(record.white.toLowerCase());
   const black = names.includes(record.black.toLowerCase());
   if (white === black) return null;

@@ -17,7 +17,12 @@ async function openPlay(page: Page): Promise<void> {
 }
 
 const mainLine = (page: Page) =>
-  page.evaluate(() => window.__wizardChessPlay!.controller.getGameTree().getMainLine().map((n) => n.san));
+  page.evaluate(() =>
+    window
+      .__wizardChessPlay!.controller.getGameTree()
+      .getMainLine()
+      .map((n) => n.san),
+  );
 
 test.describe('Phase 8 — accessibility', () => {
   test('a game is played from the keyboard, and every move is announced', async ({ page }) => {
@@ -65,12 +70,16 @@ test.describe('Phase 8 — accessibility', () => {
     await expect.poll(() => mainLine(page), { timeout: 15_000 }).toContain('a8=N');
   });
 
-  test('analysis: stepping through moves is announced; the board works from the keyboard there too', async ({ page }) => {
+  test('analysis: stepping through moves is announced; the board works from the keyboard there too', async ({
+    page,
+  }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('/');
     await page.getByTestId('mode-tab-review').click();
     await page.evaluate(() => window.__wizardChessAnalysis!.controller.importPgn('1. e4 e5 2. Nf3 Nc6 *'));
-    await page.evaluate(() => window.__wizardChessAnalysis!.controller.goToNode(window.__wizardChessAnalysis!.controller.getGameTree().root.id));
+    await page.evaluate(() =>
+      window.__wizardChessAnalysis!.controller.goToNode(window.__wizardChessAnalysis!.controller.getGameTree().root.id),
+    );
     await page.keyboard.press('Home');
     await page.keyboard.press('ArrowRight');
     await expect.poll(() => announced(page)).toBe('Move 1, White: e4');
@@ -80,7 +89,9 @@ test.describe('Phase 8 — accessibility', () => {
     await expect.poll(() => announced(page)).toBe('Start position');
   });
 
-  test('keyboard only: the four destinations, Settings and the Games list open and close without a trap', async ({ page }) => {
+  test('keyboard only: the four destinations, Settings and the Games list open and close without a trap', async ({
+    page,
+  }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('/');
     await expect(page.getByTestId('play-layout')).toBeVisible();
@@ -116,7 +127,10 @@ test.describe('Phase 8 — accessibility', () => {
     await page.goto('/');
     await page.getByTestId('mode-tab-review').click();
     // The review's own legend: every class in the summary table has a glyph and a label
-    await page.evaluate((pgn) => window.__wizardChessAnalysis!.controller.importPgn(pgn), '[White "Me"]\n[Black "Them"]\n\n1. e4 e5 2. Qh5 Nc6 3. Qxe5+ Nxe5 0-1');
+    await page.evaluate(
+      (pgn) => window.__wizardChessAnalysis!.controller.importPgn(pgn),
+      '[White "Me"]\n[Black "Them"]\n\n1. e4 e5 2. Qh5 Nc6 3. Qxe5+ Nxe5 0-1',
+    );
     await page.getByTestId('btn-review-start').click();
     await expect(page.getByTestId('review-panel')).toHaveAttribute('data-state', 'done', { timeout: 90_000 });
     const classBadges = page.locator('.wc-class-badge[data-class]');

@@ -3,7 +3,16 @@ import { installIndexedDBPolyfill } from './helpers/indexeddb-polyfill';
 installIndexedDBPolyfill();
 
 import { buildGameRecord, myColor } from '../../src/library/game-record';
-import { NO_FILTER, activeFilters, gameAccuracy, gameDay, matchesFilter, openingChoices, sortRows, toRow } from '../../src/library/game-rows';
+import {
+  NO_FILTER,
+  activeFilters,
+  gameAccuracy,
+  gameDay,
+  matchesFilter,
+  openingChoices,
+  sortRows,
+  toRow,
+} from '../../src/library/game-rows';
 import { GameLibrary } from '../../src/library/library';
 import { readPgnBatches } from '../../src/library/pgn-import-core';
 import { checkPgnText } from '../../src/capture/pgn-games';
@@ -29,9 +38,21 @@ beforeEach(async () => {
 
 describe('Phase 8 — library filters', () => {
   const rows = () => [
-    toRow(record(game('Me', 'Bob', '1-0', '2026.01.02', SICILIAN), { source: 'paste', analysis: { preset: 'quick', savedAt: 1, whiteAccuracy: 90, blackAccuracy: 70 } }), ACCOUNTS),
+    toRow(
+      record(game('Me', 'Bob', '1-0', '2026.01.02', SICILIAN), {
+        source: 'paste',
+        analysis: { preset: 'quick', savedAt: 1, whiteAccuracy: 90, blackAccuracy: 70 },
+      }),
+      ACCOUNTS,
+    ),
     toRow(record(game('Al', 'Me', '1-0', '2026.02.10', SCHOLAR), { source: 'paste' }), ACCOUNTS),
-    toRow(record(game('X', 'Y', '1/2-1/2', '2026.03.05', SICILIAN), { source: 'paste', analysis: { preset: 'quick', savedAt: 1, whiteAccuracy: 80, blackAccuracy: 60 } }), ACCOUNTS),
+    toRow(
+      record(game('X', 'Y', '1/2-1/2', '2026.03.05', SICILIAN), {
+        source: 'paste',
+        analysis: { preset: 'quick', savedAt: 1, whiteAccuracy: 80, blackAccuracy: 60 },
+      }),
+      ACCOUNTS,
+    ),
   ];
 
   it('filters by result, colour, opening, date and accuracy', () => {
@@ -54,7 +75,9 @@ describe('Phase 8 — library filters', () => {
 
   it('counts the filters that are set and offers the openings that occur', () => {
     expect(activeFilters(NO_FILTER)).toBe(0);
-    expect(activeFilters({ ...NO_FILTER, from: '2026-01-01', to: '2026-02-01', result: 'win', minAccuracy: 50 })).toBe(3);
+    expect(activeFilters({ ...NO_FILTER, from: '2026-01-01', to: '2026-02-01', result: 'win', minAccuracy: 50 })).toBe(
+      3,
+    );
     expect(openingChoices(rows().map((x) => x.record))[0]).toMatch(/Sicilian/);
   });
 
@@ -110,12 +133,17 @@ describe('Phase 8 — bulk import and played games', () => {
   it('keeps a game played here once; finishing it again replaces it and drops its review', async () => {
     const storage = await WizardChessStorage.create({ dbName: DB });
     const library = new GameLibrary(storage);
-    const pgn = (moves: string, result: string) => `[White "You"]\n[Black "Stockfish Club"]\n[Result "${result}"]\n[Date "2026.10.20"]\n\n${moves} ${result}`;
+    const pgn = (moves: string, result: string) =>
+      `[White "You"]\n[Black "Stockfish Club"]\n[Result "${result}"]\n[Date "2026.10.20"]\n\n${moves} ${result}`;
     const id = await library.savePlayedGame({ startedAt: 1_000_000, pgn: pgn(SCHOLAR, '1-0'), playerColor: 'w' });
     expect(id).toBe('play:1000000');
     expect(await library.get(id!)).toMatchObject({ source: 'play', playerColor: 'w', white: 'You' });
     await storage.saveReview(id!, {} as never);
-    await library.savePlayedGame({ startedAt: 1_000_000, pgn: pgn('1. e4 e5 2. Qh5 Nc6 3. Bc4 Nf6 4. Qxf7#', '1-0'), playerColor: 'w' });
+    await library.savePlayedGame({
+      startedAt: 1_000_000,
+      pgn: pgn('1. e4 e5 2. Qh5 Nc6 3. Bc4 Nf6 4. Qxf7#', '1-0'),
+      playerColor: 'w',
+    });
     expect((await library.list()).length).toBe(1);
     expect(await library.getReview(id!)).toBeUndefined();
     await library.deleteGames([id!]);

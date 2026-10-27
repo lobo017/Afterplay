@@ -19,11 +19,7 @@ export class CathedralAudio {
   private volume = 0.75;
   private readonly contextFactory: (() => AudioContext | null) | undefined;
 
-  constructor(options?: {
-    enabled?: boolean;
-    volume?: number;
-    contextFactory?: () => AudioContext | null;
-  }) {
+  constructor(options?: { enabled?: boolean; volume?: number; contextFactory?: () => AudioContext | null }) {
     if (typeof options?.enabled === 'boolean') {
       this.enabled = options.enabled;
     }
@@ -62,9 +58,7 @@ export class CathedralAudio {
         if (this.contextFactory) {
           this.ctx = this.contextFactory();
         } else if (typeof window !== 'undefined') {
-          const AudioCtx =
-            window.AudioContext ||
-            (window as unknown as WebkitWindow).webkitAudioContext;
+          const AudioCtx = window.AudioContext || (window as unknown as WebkitWindow).webkitAudioContext;
           if (AudioCtx) {
             this.ctx = new AudioCtx();
           }
@@ -114,10 +108,7 @@ export class CathedralAudio {
   public setEnabled(enabled: boolean): void {
     this.enabled = enabled;
     if (this.masterGain && this.ctx) {
-      this.masterGain.gain.setValueAtTime(
-        this.enabled ? this.volume : 0,
-        this.ctx.currentTime,
-      );
+      this.masterGain.gain.setValueAtTime(this.enabled ? this.volume : 0, this.ctx.currentTime);
     }
   }
 
@@ -129,10 +120,7 @@ export class CathedralAudio {
     if (Number.isNaN(volume)) return;
     this.volume = Math.max(0, Math.min(1, volume));
     if (this.masterGain && this.ctx) {
-      this.masterGain.gain.setValueAtTime(
-        this.enabled ? this.volume : 0,
-        this.ctx.currentTime,
-      );
+      this.masterGain.gain.setValueAtTime(this.enabled ? this.volume : 0, this.ctx.currentTime);
     }
   }
 
@@ -261,10 +249,7 @@ export class CathedralAudio {
       osc.type = i % 2 === 0 ? 'triangle' : 'sine';
       const baseFreq = 700 + Math.random() * 1900;
       osc.frequency.setValueAtTime(baseFreq, now + delay);
-      osc.frequency.exponentialRampToValueAtTime(
-        baseFreq * 0.45,
-        now + delay + 0.14,
-      );
+      osc.frequency.exponentialRampToValueAtTime(baseFreq * 0.45, now + delay + 0.14);
 
       g.gain.setValueAtTime(0.14 / (1 + i * 0.25), now + delay);
       g.gain.exponentialRampToValueAtTime(0.001, now + delay + 0.15);
@@ -309,9 +294,7 @@ export class CathedralAudio {
     if (!out || !this.ctx) return;
 
     const now = this.ctx.currentTime;
-    const chord = victory
-      ? [261.63, 329.63, 392.0, 523.25]
-      : [220.0, 261.63, 329.63, 415.3];
+    const chord = victory ? [261.63, 329.63, 392.0, 523.25] : [220.0, 261.63, 329.63, 415.3];
     chord.forEach((freq, i) => {
       if (!this.ctx) return;
       const osc = this.ctx.createOscillator();

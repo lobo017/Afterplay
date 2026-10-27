@@ -1,10 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  formatScore,
-  parseUciLine,
-  scoreForWhite,
-  scoreToCentipawns,
-} from '../../src/engine/uci-parser';
+import { formatScore, parseUciLine, scoreForWhite, scoreToCentipawns } from '../../src/engine/uci-parser';
 
 describe('Phase 2 — UCI Output Parser', () => {
   it('parses id, uciok, readyok, and option lines accurately', () => {
@@ -12,25 +7,19 @@ describe('Phase 2 — UCI Output Parser', () => {
     expect(parseUciLine('uciok')).toEqual({ type: 'uciok' });
     expect(parseUciLine('readyok')).toEqual({ type: 'readyok' });
 
-    expect(
-      parseUciLine('id name Stockfish 17.1 Lite WASM Multithreaded'),
-    ).toEqual({
+    expect(parseUciLine('id name Stockfish 17.1 Lite WASM Multithreaded')).toEqual({
       type: 'id',
       field: 'name',
       value: 'Stockfish 17.1 Lite WASM Multithreaded',
     });
 
-    expect(
-      parseUciLine('id author the Stockfish developers (see AUTHORS file)'),
-    ).toEqual({
+    expect(parseUciLine('id author the Stockfish developers (see AUTHORS file)')).toEqual({
       type: 'id',
       field: 'author',
       value: 'the Stockfish developers (see AUTHORS file)',
     });
 
-    expect(
-      parseUciLine('option name Threads type spin default 1 min 1 max 32'),
-    ).toEqual({
+    expect(parseUciLine('option name Threads type spin default 1 min 1 max 32')).toEqual({
       type: 'option',
       name: 'Threads',
       optionType: 'spin',
@@ -39,9 +28,7 @@ describe('Phase 2 — UCI Output Parser', () => {
       max: 32,
     });
 
-    expect(
-      parseUciLine('option name UCI_Chess960 type check default false'),
-    ).toEqual({
+    expect(parseUciLine('option name UCI_Chess960 type check default false')).toEqual({
       type: 'option',
       name: 'UCI_Chess960',
       optionType: 'check',
@@ -54,31 +41,21 @@ describe('Phase 2 — UCI Output Parser', () => {
       optionType: 'button',
     });
 
-    expect(
-      parseUciLine(
-        'option name EvalFile type string default nn-9067e33176e8.nnue',
-      ),
-    ).toEqual({
+    expect(parseUciLine('option name EvalFile type string default nn-9067e33176e8.nnue')).toEqual({
       type: 'option',
       name: 'EvalFile',
       optionType: 'string',
       defaultValue: 'nn-9067e33176e8.nnue',
     });
 
-    expect(
-      parseUciLine('option name EvalFileSmall type string default <empty>'),
-    ).toEqual({
+    expect(parseUciLine('option name EvalFileSmall type string default <empty>')).toEqual({
       type: 'option',
       name: 'EvalFileSmall',
       optionType: 'string',
       defaultValue: '',
     });
 
-    expect(
-      parseUciLine(
-        'option name Style type combo default Normal var Solid var Normal var Risky',
-      ),
-    ).toEqual({
+    expect(parseUciLine('option name Style type combo default Normal var Solid var Normal var Risky')).toEqual({
       type: 'option',
       name: 'Style',
       optionType: 'combo',
@@ -123,9 +100,7 @@ describe('Phase 2 — UCI Output Parser', () => {
       pv: ['f7f6', 'd1h5', 'g7g6'],
     });
 
-    const infoStr = parseUciLine(
-      'info string NNUE evaluation using nn-9067e33176e8.nnue',
-    );
+    const infoStr = parseUciLine('info string NNUE evaluation using nn-9067e33176e8.nnue');
     expect(infoStr).toEqual({
       type: 'info_string',
       message: 'NNUE evaluation using nn-9067e33176e8.nnue',
@@ -168,9 +143,7 @@ describe('Phase 2 — UCI Output Parser', () => {
       type: 'cp',
       value: 45,
     });
-    expect(
-      scoreForWhite({ type: 'cp', value: 45, bound: 'lowerbound' }, 'b'),
-    ).toEqual({
+    expect(scoreForWhite({ type: 'cp', value: 45, bound: 'lowerbound' }, 'b')).toEqual({
       type: 'cp',
       value: -45,
       bound: 'upperbound',
@@ -181,12 +154,10 @@ describe('Phase 2 — UCI Output Parser', () => {
     });
 
     expect(scoreToCentipawns({ type: 'cp', value: 120 })).toBe(120);
-    expect(
-      scoreToCentipawns({ type: 'mate', value: 1 }),
-    ).toBeGreaterThan(scoreToCentipawns({ type: 'mate', value: 2 }));
-    expect(
-      scoreToCentipawns({ type: 'mate', value: -1 }),
-    ).toBeLessThan(scoreToCentipawns({ type: 'mate', value: -2 }));
+    expect(scoreToCentipawns({ type: 'mate', value: 1 })).toBeGreaterThan(
+      scoreToCentipawns({ type: 'mate', value: 2 }),
+    );
+    expect(scoreToCentipawns({ type: 'mate', value: -1 })).toBeLessThan(scoreToCentipawns({ type: 'mate', value: -2 }));
 
     expect(formatScore({ type: 'cp', value: 35 })).toBe('+0.35');
     expect(formatScore({ type: 'cp', value: -120 })).toBe('-1.20');

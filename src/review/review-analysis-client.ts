@@ -6,8 +6,7 @@ export interface ReviewAnalysisRequestMessage {
 }
 
 export type ReviewAnalysisResponseMessage =
-  | { id: number; kind: 'ok'; result: MoveAnalysis }
-  | { id: number; kind: 'error'; message: string };
+  { id: number; kind: 'ok'; result: MoveAnalysis } | { id: number; kind: 'error'; message: string };
 
 class WorkerUnavailableError extends Error {}
 

@@ -43,10 +43,7 @@ export interface CacheStats {
  */
 export function normalizeFenForCache(fen: string): string {
   const trimmed = fen.trim();
-  const resolved =
-    trimmed === '' || trimmed.toLowerCase() === 'startpos'
-      ? DEFAULT_POSITION
-      : trimmed;
+  const resolved = trimmed === '' || trimmed.toLowerCase() === 'startpos' ? DEFAULT_POSITION : trimmed;
   const parts = resolved.split(/\s+/);
   if (parts.length >= 4) {
     return `${parts[0]} ${parts[1]} ${parts[2]} ${parts[3]}`;
@@ -57,19 +54,12 @@ export function normalizeFenForCache(fen: string): string {
 /**
  * Builds the canonical cache key for (normalized FEN, depth, multipv).
  */
-export function buildAnalysisCacheKey(
-  fen: string,
-  depth: number,
-  multipv: number,
-): string {
+export function buildAnalysisCacheKey(fen: string, depth: number, multipv: number): string {
   const normFen = normalizeFenForCache(fen);
   return `${normFen}|d:${depth}|mpv:${multipv}`;
 }
 
-function cloneResult(
-  res: EngineAnalysisResult,
-  cached: boolean,
-): EngineAnalysisResult {
+function cloneResult(res: EngineAnalysisResult, cached: boolean): EngineAnalysisResult {
   return {
     ...res,
     cached,
@@ -93,19 +83,12 @@ export class AnalysisCache {
   private misses = 0;
   private readonly onLookup?: (hit: boolean) => void;
 
-  constructor(options?: {
-    maxEntries?: number;
-    onLookup?: (hit: boolean) => void;
-  }) {
+  constructor(options?: { maxEntries?: number; onLookup?: (hit: boolean) => void }) {
     this.maxEntries = Math.max(16, options?.maxEntries ?? 2000);
     this.onLookup = options?.onLookup;
   }
 
-  public get(
-    fen: string,
-    depth: number,
-    multipv: number,
-  ): EngineAnalysisResult | null {
+  public get(fen: string, depth: number, multipv: number): EngineAnalysisResult | null {
     const key = buildAnalysisCacheKey(fen, depth, multipv);
     const existing = this.store.get(key);
     if (existing) {
@@ -127,12 +110,7 @@ export class AnalysisCache {
     return this.store.has(key);
   }
 
-  public set(
-    fen: string,
-    depth: number,
-    multipv: number,
-    result: EngineAnalysisResult,
-  ): void {
+  public set(fen: string, depth: number, multipv: number, result: EngineAnalysisResult): void {
     const key = buildAnalysisCacheKey(fen, depth, multipv);
     if (this.store.has(key)) {
       this.store.delete(key);
@@ -156,10 +134,7 @@ export class AnalysisCache {
 
   public getStats(): CacheStats {
     const totalLookups = this.hits + this.misses;
-    const hitRate =
-      totalLookups > 0
-        ? Number(((this.hits / totalLookups) * 100).toFixed(1))
-        : 0;
+    const hitRate = totalLookups > 0 ? Number(((this.hits / totalLookups) * 100).toFixed(1)) : 0;
     return {
       size: this.store.size,
       maxEntries: this.maxEntries,

@@ -131,8 +131,14 @@ export function validateChessFen(fen: string): FenValidationResult {
     };
   }
 
-  const [boardPart, turnPart, castlingPart, epPart, halfMovePart, fullMovePart] =
-    tokens as [string, string, string, string, string, string];
+  const [boardPart, turnPart, castlingPart, epPart, halfMovePart, fullMovePart] = tokens as [
+    string,
+    string,
+    string,
+    string,
+    string,
+    string,
+  ];
 
   if (turnPart !== 'w' && turnPart !== 'b') {
     return { ok: false, error: 'Invalid FEN: side-to-move must be w or b' };
@@ -280,11 +286,7 @@ export function validateChessFen(fen: string): FenValidationResult {
   return { ok: true, isChess960 };
 }
 
-function parseCastlingConfig(
-  boardPart: string,
-  castlingPart: string,
-  forceChess960 = false,
-): Chess960CastlingState {
+function parseCastlingConfig(boardPart: string, castlingPart: string, forceChess960 = false): Chess960CastlingState {
   const rows = boardPart.split('/');
   const whiteRow = expandFenRank(rows[7]!) ?? [];
   const blackRow = expandFenRank(rows[0]!) ?? [];
@@ -411,31 +413,13 @@ export class RulesAdapter {
       throw new Error(validation.error ?? `Invalid FEN: ${fen}`);
     }
 
-    const tokens = normalized.split(/\s+/) as [
-      string,
-      string,
-      string,
-      string,
-      string,
-      string,
-    ];
-    this.c960 = parseCastlingConfig(
-      tokens[0],
-      tokens[2],
-      Boolean(options?.chess960) || Boolean(validation.isChess960),
-    );
+    const tokens = normalized.split(/\s+/) as [string, string, string, string, string, string];
+    this.c960 = parseCastlingConfig(tokens[0], tokens[2], Boolean(options?.chess960) || Boolean(validation.isChess960));
 
     if (this.c960.enabled) {
       // Load into chess.js with '-' castling so chess.js does not reject Shredder-FEN
       // or misapply standard e1/e8 castling rules.
-      const internalFen = [
-        tokens[0],
-        tokens[1],
-        '-',
-        tokens[3],
-        tokens[4],
-        tokens[5],
-      ].join(' ');
+      const internalFen = [tokens[0], tokens[1], '-', tokens[3], tokens[4], tokens[5]].join(' ');
       this.chess.load(internalFen);
     } else {
       this.chess.load(normalized);
@@ -540,10 +524,7 @@ export class RulesAdapter {
 
   public isDraw(): boolean {
     return (
-      this.isDrawByFiftyMoves() ||
-      this.isStalemate() ||
-      this.isInsufficientMaterial() ||
-      this.isThreefoldRepetition()
+      this.isDrawByFiftyMoves() || this.isStalemate() || this.isInsufficientMaterial() || this.isThreefoldRepetition()
     );
   }
 
@@ -571,10 +552,7 @@ export class RulesAdapter {
   /**
    * Returns all legal verbose moves in the current position, including Chess960 castling.
    */
-  public verboseMoves(options?: {
-    square?: Square;
-    piece?: PieceSymbol;
-  }): ExecutedMove[] {
+  public verboseMoves(options?: { square?: Square; piece?: PieceSymbol }): ExecutedMove[] {
     const currentFen = this.fen();
     const rawMoves = this.chess.moves({
       verbose: true,
@@ -591,8 +569,7 @@ export class RulesAdapter {
       if (sideState.kingFile !== null) {
         const kingSq = `${fileCharFromIndex(sideState.kingFile)}${rankChar}` as Square;
         const includeKing =
-          (!options?.square || options.square === kingSq) &&
-          (!options?.piece || options.piece === 'k');
+          (!options?.square || options.square === kingSq) && (!options?.piece || options.piece === 'k');
         if (includeKing) {
           const kCastle = this.buildChess960CastleMove(us, 'k', currentFen);
           if (kCastle) result.push(kCastle);
@@ -615,19 +592,13 @@ export class RulesAdapter {
     const positionCountsBefore = new Map(this.positionCounts);
 
     // 1. Handle null moves ('--', 'Z0', '0000', null)
-    if (
-      moveInput === null ||
-      (typeof moveInput === 'string' &&
-        /^(?:--|Z0|0000)$/i.test(moveInput.trim()))
-    ) {
+    if (moveInput === null || (typeof moveInput === 'string' && /^(?:--|Z0|0000)$/i.test(moveInput.trim()))) {
       if (this.inCheck()) {
         throw new Error('Null move not allowed when in check');
       }
       const us = this.turn();
       const rawMove = this.chess.move('--');
-      const kingSq =
-        this.chess.findPiece({ type: 'k', color: us })[0] ??
-        (us === 'w' ? 'e1' : 'e8');
+      const kingSq = this.chess.findPiece({ type: 'k', color: us })[0] ?? (us === 'w' ? 'e1' : 'e8');
       const fenAfter = this.fen();
       const executed: ExecutedMove = {
         color: us,
@@ -759,13 +730,7 @@ export class RulesAdapter {
    */
   public perft(depth: number): number {
     if (depth <= 0) return 1;
-    if (
-      !this.c960.enabled ||
-      (!this.c960.w.kSide &&
-        !this.c960.w.qSide &&
-        !this.c960.b.kSide &&
-        !this.c960.b.qSide)
-    ) {
+    if (!this.c960.enabled || (!this.c960.w.kSide && !this.c960.w.qSide && !this.c960.b.kSide && !this.c960.b.qSide)) {
       return this.chess.perft(depth);
     }
 
@@ -799,13 +764,7 @@ export class RulesAdapter {
           const rookFromSq = `${fileCharFromIndex(right.rookFile)}${rankChar}` as Square;
           const kingToSq = (side === 'k' ? `g${rankChar}` : `c${rankChar}`) as Square;
           const rookToSq = (side === 'k' ? `f${rankChar}` : `d${rankChar}`) as Square;
-          const nextInternalFen = this.computePostCastleInternalFen(
-            us,
-            kingFromSq,
-            rookFromSq,
-            kingToSq,
-            rookToSq,
-          );
+          const nextInternalFen = this.computePostCastleInternalFen(us, kingFromSq, rookFromSq, kingToSq, rookToSq);
           const childState = cloneC960State(this.c960);
           childState[us].kingFile = null;
           childState[us].kSide = null;
@@ -827,11 +786,7 @@ export class RulesAdapter {
     this.positionCounts.set(key, (this.positionCounts.get(key) ?? 0) + 1);
   }
 
-  private mapChessJsMove(
-    m: Move,
-    fenBefore: string,
-    c960StateAfter?: Chess960CastlingState,
-  ): ExecutedMove {
+  private mapChessJsMove(m: Move, fenBefore: string, c960StateAfter?: Chess960CastlingState): ExecutedMove {
     const isKingsideCastle = m.isKingsideCastle();
     const isQueensideCastle = m.isQueensideCastle();
     const isCastle = isKingsideCastle || isQueensideCastle;
@@ -841,8 +796,7 @@ export class RulesAdapter {
     const uci = `${m.from}${m.to}${m.promotion ?? ''}`;
     let fenAfter = m.after;
     if (this.c960.enabled) {
-      const nextState =
-        c960StateAfter ?? this.computeC960StateAfterRegularMove(this.c960, m);
+      const nextState = c960StateAfter ?? this.computeC960StateAfterRegularMove(this.c960, m);
       const parts = m.after.split(' ');
       parts[2] = serializeCastlingConfig(nextState);
       fenAfter = parts.join(' ');
@@ -945,11 +899,7 @@ export class RulesAdapter {
     return true;
   }
 
-  private buildChess960CastleMove(
-    us: Color,
-    side: 'k' | 'q',
-    fenBefore: string,
-  ): ExecutedMove | null {
+  private buildChess960CastleMove(us: Color, side: 'k' | 'q', fenBefore: string): ExecutedMove | null {
     if (!this.canChess960Castle(us, side)) {
       return null;
     }
@@ -967,13 +917,7 @@ export class RulesAdapter {
     const kingToSq = `${fileCharFromIndex(kingToFile)}${rankChar}` as Square;
     const rookToSq = `${fileCharFromIndex(rookToFile)}${rankChar}` as Square;
 
-    const simFenAfter = this.computePostCastleInternalFen(
-      us,
-      kingFromSq,
-      rookFromSq,
-      kingToSq,
-      rookToSq,
-    );
+    const simFenAfter = this.computePostCastleInternalFen(us, kingFromSq, rookFromSq, kingToSq, rookToSq);
     const simChess = new Chess(simFenAfter);
 
     const simState = cloneC960State(this.c960);
@@ -1031,20 +975,10 @@ export class RulesAdapter {
     const nextHalfMoves = Number(origParts[4] ?? 0) + 1;
     const nextFullMoves = Number(origParts[5] ?? 1) + (us === 'b' ? 1 : 0);
 
-    return [
-      parts[0],
-      them,
-      '-',
-      '-',
-      String(nextHalfMoves),
-      String(nextFullMoves),
-    ].join(' ');
+    return [parts[0], them, '-', '-', String(nextHalfMoves), String(nextFullMoves)].join(' ');
   }
 
-  private matchChess960CastleInput(
-    moveInput: string | MoveInput,
-    fenBefore: string,
-  ): ExecutedMove | null {
+  private matchChess960CastleInput(moveInput: string | MoveInput, fenBefore: string): ExecutedMove | null {
     const us = this.turn();
     const sideState = this.c960[us];
     if (sideState.kingFile === null) return null;
@@ -1061,10 +995,7 @@ export class RulesAdapter {
       }
       // Also support UCI king-to-rook or 2+ square king-to-target string if passed as string
       if (/^[a-h][18][a-h][18]$/.test(clean)) {
-        return this.matchChess960CastleInput(
-          { from: clean.slice(0, 2), to: clean.slice(2, 4) },
-          fenBefore,
-        );
+        return this.matchChess960CastleInput({ from: clean.slice(0, 2), to: clean.slice(2, 4) }, fenBefore);
       }
       return null;
     }
@@ -1077,19 +1008,13 @@ export class RulesAdapter {
 
     if (sideState.kSide) {
       const kRookSq = `${fileCharFromIndex(sideState.kSide.rookFile)}${rankChar}`;
-      if (
-        to === kRookSq ||
-        (to === `g${rankChar}` && Math.abs(6 - sideState.kingFile) > 1)
-      ) {
+      if (to === kRookSq || (to === `g${rankChar}` && Math.abs(6 - sideState.kingFile) > 1)) {
         return this.buildChess960CastleMove(us, 'k', fenBefore);
       }
     }
     if (sideState.qSide) {
       const qRookSq = `${fileCharFromIndex(sideState.qSide.rookFile)}${rankChar}`;
-      if (
-        to === qRookSq ||
-        (to === `c${rankChar}` && Math.abs(2 - sideState.kingFile) > 1)
-      ) {
+      if (to === qRookSq || (to === `c${rankChar}` && Math.abs(2 - sideState.kingFile) > 1)) {
         return this.buildChess960CastleMove(us, 'q', fenBefore);
       }
     }
@@ -1110,23 +1035,14 @@ export class RulesAdapter {
     const kingToSq = (castleMove.isKingsideCastle ? `g${rankChar}` : `c${rankChar}`) as Square;
     const rookToSq = (castleMove.isKingsideCastle ? `f${rankChar}` : `d${rankChar}`) as Square;
 
-    const nextInternalFen = this.computePostCastleInternalFen(
-      us,
-      kingFromSq,
-      rookFromSq,
-      kingToSq,
-      rookToSq,
-    );
+    const nextInternalFen = this.computePostCastleInternalFen(us, kingFromSq, rookFromSq, kingToSq, rookToSq);
     sideState.kingFile = null;
     sideState.kSide = null;
     sideState.qSide = null;
     this.chess.load(nextInternalFen);
   }
 
-  private computeC960StateAfterRegularMove(
-    current: Chess960CastlingState,
-    m: Move,
-  ): Chess960CastlingState {
+  private computeC960StateAfterRegularMove(current: Chess960CastlingState, m: Move): Chess960CastlingState {
     const next = cloneC960State(current);
     const us = m.color;
     const them: Color = us === 'w' ? 'b' : 'w';
@@ -1166,7 +1082,6 @@ export class RulesAdapter {
     this.c960 = this.computeC960StateAfterRegularMove(this.c960, m);
   }
 
-
   /**
    * Normalizes real-world PGN SAN quirks before passing to chess.js.
    */
@@ -1190,8 +1105,7 @@ export class RulesAdapter {
     s = s.replace(/=([qrbn])/g, (_, p: string) => `=${p.toUpperCase()}`);
     s = s.replace(
       /^([a-h](?:[x:][a-h])?[18])([QRBNqrbn])([+#]?)$/,
-      (_, prefix: string, promo: string, chk: string) =>
-        `${prefix}=${promo.toUpperCase()}${chk}`,
+      (_, prefix: string, promo: string, chk: string) => `${prefix}=${promo.toUpperCase()}${chk}`,
     );
     // Normalize ':' capture separator to 'x'
     s = s.replace(/:/g, 'x');
@@ -1211,20 +1125,13 @@ export class RulesAdapter {
     if (uciMatch) {
       const [, from, to, promo] = uciMatch;
       const pLower = promo?.toLowerCase();
-      const hit = legal.find(
-        (m) =>
-          m.from === from &&
-          m.to === to &&
-          (!pLower || m.promotion === pLower),
-      );
+      const hit = legal.find((m) => m.from === from && m.to === to && (!pLower || m.promotion === pLower));
       if (hit) return hit;
     }
 
     // 2. General piece/pawn move with optional file and/or rank disambiguation:
     //    e.g. Nge7, Ng1f3, Qh4xe1, R1a3, e4xd5, exd8=Q
-    const sanMatch = core.match(
-      /^([PNBRQK])?([a-h])?([1-8])?[x-]?([a-h][1-8])(?:=([QRBN]))?$/,
-    );
+    const sanMatch = core.match(/^([PNBRQK])?([a-h])?([1-8])?[x-]?([a-h][1-8])(?:=([QRBN]))?$/);
     if (sanMatch) {
       const [, pieceUpper, fromFile, fromRank, targetSq, promoUpper] = sanMatch;
       const pieceType = (pieceUpper ? pieceUpper.toLowerCase() : 'p') as PieceSymbol;

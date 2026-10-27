@@ -245,9 +245,19 @@ export class GamesList {
       this.root.querySelector('[data-testid="games-import"]') as HTMLElement,
       [
         { id: 'paste', label: 'Paste PGN…', testId: 'btn-games-paste', icon: 'copy', onSelect: pasteToggle },
-        { id: 'file', label: 'Open PGN file…', testId: 'btn-games-file', icon: 'upload', onSelect: () => this.els.fileInput.click() },
+        {
+          id: 'file',
+          label: 'Open PGN file…',
+          testId: 'btn-games-file',
+          icon: 'upload',
+          onSelect: () => this.els.fileInput.click(),
+        },
       ],
-      { testId: 'btn-games-import', label: 'Import games', buttonClass: 'wc-btn wc-btn-secondary wc-btn-lg wc-games-import-btn' },
+      {
+        testId: 'btn-games-import',
+        label: 'Import games',
+        buttonClass: 'wc-btn wc-btn-secondary wc-btn-lg wc-games-import-btn',
+      },
     );
     this.importMenu.button.innerHTML = `${icon('plus')}<span>Import</span>${icon('caret')}`;
     this.importMenu.button.classList.add('wc-btn-inline');
@@ -325,7 +335,15 @@ export class GamesList {
       this.shown = PAGE_SIZE;
       this.renderRows();
     };
-    for (const el of [this.els.source, this.els.result, this.els.color, this.els.analyzed, this.els.sort, this.els.from, this.els.to]) {
+    for (const el of [
+      this.els.source,
+      this.els.result,
+      this.els.color,
+      this.els.analyzed,
+      this.els.sort,
+      this.els.from,
+      this.els.to,
+    ]) {
       el.addEventListener('change', onFilter);
     }
     for (const el of [this.els.opening, this.els.minAccuracy]) el.addEventListener('input', onFilter);
@@ -346,7 +364,9 @@ export class GamesList {
         this.options.queue.cancel(id);
         this.selected.delete(id);
       }
-      void this.options.library.deleteGames(ids).then(() => this.setMessage(`Deleted ${ids.length} game${ids.length === 1 ? '' : 's'}.`, 'ok'));
+      void this.options.library
+        .deleteGames(ids)
+        .then(() => this.setMessage(`Deleted ${ids.length} game${ids.length === 1 ? '' : 's'}.`, 'ok'));
     });
 
     this.els.selectAll.addEventListener('change', () => {
@@ -515,7 +535,8 @@ export class GamesList {
       if (p.total > 25) this.setMessage(`Importing… ${p.done} of ${p.total} games`, 'info');
     });
     const parts: string[] = [];
-    if (outcome.saved.length > 0) parts.push(`Imported ${outcome.saved.length} game${outcome.saved.length === 1 ? '' : 's'}`);
+    if (outcome.saved.length > 0)
+      parts.push(`Imported ${outcome.saved.length} game${outcome.saved.length === 1 ? '' : 's'}`);
     if (outcome.duplicates.length > 0) parts.push(`${outcome.duplicates.length} already in the list`);
     parts.push(...outcome.errors);
     const ok = outcome.saved.length > 0 || outcome.duplicates.length > 0;
@@ -566,7 +587,8 @@ export class GamesList {
     const meta = SOURCE_META[source];
     const res = RESULT_META[row.result];
     // A game I'm not in shows its result as played, not as a win or loss
-    const resultText = row.color === null ? (r.result === '1/2-1/2' ? '½' : r.result === '*' ? '*' : r.result) : res.short;
+    const resultText =
+      row.color === null ? (r.result === '1/2-1/2' ? '½' : r.result === '*' ? '*' : r.result) : res.short;
     const resultClass = row.color === null ? 'neutral' : row.result;
     const resultTitle = row.color === null ? r.result : `${res.label} (${r.result})`;
     const colorCell =
@@ -680,7 +702,8 @@ export class GamesList {
         'Install the capture extension (README: npm run build:ext, then load dist-ext/ unpacked in Chrome) and your Lichess and Chess.com games arrive here by themselves.';
       return;
     }
-    this.els.captureDetail.textContent = `Your Lichess and Chess.com games arrive here as you play; capture settings are in the extension's popup. ${mine}`.trim();
+    this.els.captureDetail.textContent =
+      `Your Lichess and Chess.com games arrive here as you play; capture settings are in the extension's popup. ${mine}`.trim();
     const last = status.syncing
       ? 'syncing…'
       : status.lastSyncAt === null
@@ -689,6 +712,7 @@ export class GamesList {
           ? 'up to date'
           : `${status.lastDelivered} game${status.lastDelivered === 1 ? '' : 's'} received`;
     el.textContent = `Capture extension v${status.extensionVersion} · ${last}`;
-    el.title = 'Games captured by the extension arrive here as soon as they are captured while this page is open, and when it opens.';
+    el.title =
+      'Games captured by the extension arrive here as soon as they are captured while this page is open, and when it opens.';
   }
 }

@@ -23,7 +23,8 @@ interface Table {
 const file = (s: number) => s & 7;
 const rank = (s: number) => s >> 3;
 const index = (wk: number, bk: number, x: number) => (wk * 64 + bk) * 64 + x;
-const adjacent = (a: number, b: number) => a !== b && Math.abs(file(a) - file(b)) <= 1 && Math.abs(rank(a) - rank(b)) <= 1;
+const adjacent = (a: number, b: number) =>
+  a !== b && Math.abs(file(a) - file(b)) <= 1 && Math.abs(rank(a) - rank(b)) <= 1;
 
 const KING_STEPS: number[][] = Array.from({ length: 64 }, (_, s) => {
   const out: number[] = [];
@@ -37,7 +38,12 @@ const KING_STEPS: number[][] = Array.from({ length: 64 }, (_, s) => {
   return out;
 });
 
-const ROOK_DIRS: ReadonlyArray<readonly [number, number]> = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+const ROOK_DIRS: ReadonlyArray<readonly [number, number]> = [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+];
 const QUEEN_DIRS: ReadonlyArray<readonly [number, number]> = [...ROOK_DIRS, [1, 1], [1, -1], [-1, 1], [-1, -1]];
 
 /** For each square, its rays (nearest square first) in the given directions. */
@@ -315,7 +321,8 @@ export class EndgameTables {
     for (const to of KING_STEPS[bk]!) {
       if (to === wk || adjacent(to, wk)) continue;
       let value: number;
-      if (to === x) value = 1000; // takes the piece
+      if (to === x)
+        value = 1000; // takes the piece
       else if (attacks[(wk * 64 + x) * 64 + to] === 1) continue;
       else {
         const v = table.white[index(wk, to, x)]!;

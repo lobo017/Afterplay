@@ -41,9 +41,7 @@ export async function startLayoutShiftRecorder(page: Page): Promise<void> {
       if (!(node instanceof Element)) return node.nodeName.toLowerCase();
       const testId = node.getAttribute('data-testid');
       const cls =
-        typeof node.className === 'string' && node.className
-          ? `.${node.className.trim().split(/\s+/).join('.')}`
-          : '';
+        typeof node.className === 'string' && node.className ? `.${node.className.trim().split(/\s+/).join('.')}` : '';
       return `${node.tagName.toLowerCase()}${testId ? `[data-testid="${testId}"]` : ''}${cls}`;
     };
     const toRect = (r: DOMRectReadOnly) => ({
@@ -86,9 +84,7 @@ export async function startLayoutShiftRecorder(page: Page): Promise<void> {
   });
 }
 
-export async function stopLayoutShiftRecorder(
-  page: Page,
-): Promise<LayoutShiftRecord[]> {
+export async function stopLayoutShiftRecorder(page: Page): Promise<LayoutShiftRecord[]> {
   return page.evaluate(async () => {
     // Let the last frame's entries flush before disconnecting.
     await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 50)));
@@ -118,10 +114,7 @@ export async function stopLayoutShiftRecorder(
 export function summarizeShiftSources(
   shifts: LayoutShiftRecord[],
 ): Array<{ node: string; count: number; example: LayoutShiftSourceRecord }> {
-  const byNode = new Map<
-    string,
-    { node: string; count: number; example: LayoutShiftSourceRecord }
-  >();
+  const byNode = new Map<string, { node: string; count: number; example: LayoutShiftSourceRecord }>();
   for (const shift of shifts) {
     for (const source of shift.sources) {
       const existing = byNode.get(source.node);

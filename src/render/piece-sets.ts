@@ -173,11 +173,7 @@ function renderBishopBody(p: PiecePalette, setId: PieceSetId): string {
       fill="${ornate ? p.trimFill : p.bodyShade}" stroke="${p.stroke}" stroke-width="${p.strokeWidth * 0.8}" />
     <path d="M 44 33 L 56 33 M 50 27 L 50 39"
       stroke="${ornate ? p.trimFill : p.stroke}" stroke-width="3" stroke-linecap="round" />
-    ${
-      ornate
-        ? `<circle cx="50" cy="33" r="2.6" fill="${p.gemFill}" />`
-        : ''
-    }
+    ${ornate ? `<circle cx="50" cy="33" r="2.6" fill="${p.gemFill}" />` : ''}
   `;
 }
 
@@ -238,11 +234,7 @@ const SVG_CACHE = new Map<string, string>();
  * Returns the complete SVG markup for a chess piece in the specified piece set.
  * Cached by (pieceSet, color, pieceSymbol) so repeated renders never re-concatenate strings.
  */
-export function getPieceSvgMarkup(
-  setId: PieceSetId,
-  color: Color,
-  piece: PieceSymbol,
-): string {
+export function getPieceSvgMarkup(setId: PieceSetId, color: Color, piece: PieceSymbol): string {
   const cacheKey = `${setId}:${color}:${piece}`;
   const cached = SVG_CACHE.get(cacheKey);
   if (cached) return cached;

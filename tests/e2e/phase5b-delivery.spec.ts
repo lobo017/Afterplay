@@ -27,7 +27,10 @@ const NO_MOVES =
   '[Event "2022 Chess.com Daily Chess Championship - Round 1"]\n[Site "Chess.com"]\n[Date "2022.01.01"]\n[White "Marufazimov"]\n[Black "LocoLobo06"]\n' +
   '[Result "0-1"]\n[Termination "LocoLobo06 won on time"]\n\n0-1';
 const ILLEGAL = '[Event "Bad"]\n[White "Carol"]\n[Black "Dave"]\n[Result "*"]\n\n1. e4 e5 2. Ke3 *';
-const UNUSUAL = STANDARD.replace('[Event "Live Chess"]', '[Event "The "big" one"]').replace('[Site "Chess.com"]', "[Site 'Club']");
+const UNUSUAL = STANDARD.replace('[Event "Live Chess"]', '[Event "The "big" one"]').replace(
+  '[Site "Chess.com"]',
+  "[Site 'Club']",
+);
 
 let session: ExtensionSession | null = null;
 
@@ -46,12 +49,24 @@ async function seedWaiting(s: ExtensionSession, games: Array<[string, string]>):
         }
       ).__wizardChessCapture;
       for (const [key, pgn] of games) {
-        await api.queue.addReady([{ key, source: key.split(':')[0], pgn: placeholder, method: 'lichess-history', trigger: 'history' }]);
+        await api.queue.addReady([
+          { key, source: key.split(':')[0], pgn: placeholder, method: 'lichess-history', trigger: 'history' },
+        ]);
         await chrome.storage.local.set({ [`queue:pgn:${key}`]: pgn });
         // The index row as the old queue wrote it: players, date and result from the game's own PGN
         const tag = (name: string) => new RegExp(`\\[${name} "([^"]*)"\\]`).exec(pgn)?.[1] ?? '';
-        const index = (await chrome.storage.local.get(['queue:index']))['queue:index'] as Record<string, Record<string, unknown>>;
-        index[key] = { ...index[key], white: tag('White'), black: tag('Black'), date: tag('Date'), result: tag('Result'), playedAt: null };
+        const index = (await chrome.storage.local.get(['queue:index']))['queue:index'] as Record<
+          string,
+          Record<string, unknown>
+        >;
+        index[key] = {
+          ...index[key],
+          white: tag('White'),
+          black: tag('Black'),
+          date: tag('Date'),
+          result: tag('Result'),
+          playedAt: null,
+        };
         await chrome.storage.local.set({ 'queue:index': index });
       }
       await api.updateBadge();
@@ -67,7 +82,9 @@ test.describe('Phase 5b — delivery outcomes', () => {
     const site = await openGamesList(s);
     await site.evaluate(async (pgn) => {
       const api = (await window.__wizardChessLibraryReady)!;
-      await api.library.saveBridgeGames([{ key: 'chesscom:live-1', source: 'chesscom', pgn, capturedAt: 1, method: 'chesscom-callback' }]);
+      await api.library.saveBridgeGames([
+        { key: 'chesscom:live-1', source: 'chesscom', pgn, capturedAt: 1, method: 'chesscom-callback' },
+      ]);
     }, STANDARD);
     await site.close();
 
@@ -89,12 +106,17 @@ test.describe('Phase 5b — delivery outcomes', () => {
     await expect(reopened.getByTestId('games-row')).toHaveCount(2);
     expect(await queueEntry(s, 'chesscom:live-1')).toMatchObject({ status: 'delivered' });
     expect(await queueEntry(s, 'chesscom:live-3')).toMatchObject({ status: 'delivered' });
-    await expect(reopened.locator('[data-game-id="chesscom:live-3"]').getByTestId('games-row-opponent')).toContainText('Alice vs Bob');
+    await expect(reopened.locator('[data-game-id="chesscom:live-3"]').getByTestId('games-row-opponent')).toContainText(
+      'Alice vs Bob',
+    );
 
-    await expect(popup.getByTestId('popup-counts')).toHaveText('No games waiting · 2 games on the analysis site · 4 not imported');
+    await expect(popup.getByTestId('popup-counts')).toHaveText(
+      'No games waiting · 2 games on the analysis site · 4 not imported',
+    );
     const section = popup.getByTestId('popup-rejected-section');
     await expect(section).toBeVisible();
-    const reason = (key: string) => popup.locator(`[data-testid="popup-rejected-entry"][data-key="${key}"] [data-testid="popup-rejected-reason"]`);
+    const reason = (key: string) =>
+      popup.locator(`[data-testid="popup-rejected-entry"][data-key="${key}"] [data-testid="popup-rejected-reason"]`);
     await expect(reason('lichess:6XyS2AA6')).toHaveText('not imported (variant: Antichess)');
     await expect(reason('lichess:N8YdYmlV')).toHaveText('not imported (variant: Atomic)');
     await expect(reason('chesscom:daily-376600893')).toHaveText('not imported (no moves)');
@@ -108,13 +130,17 @@ test.describe('Phase 5b — delivery outcomes', () => {
 
     // Retry: offered again at once (the site is open), refused again with the same reason
     await popup.locator('[data-key="chesscom:live-2"] [data-testid="popup-rejected-retry"]').click();
-    await expect.poll(async () => (await queueEntry(s, 'chesscom:live-2'))?.status, { timeout: 10_000 }).toBe('rejected');
+    await expect
+      .poll(async () => (await queueEntry(s, 'chesscom:live-2'))?.status, { timeout: 10_000 })
+      .toBe('rejected');
     await expect(reason('chesscom:live-2')).toContainText('Illegal move: Ke3');
 
     // Dismiss: gone from the list and the counts, and not imported again
     await popup.locator('[data-key="chesscom:live-2"] [data-testid="popup-rejected-dismiss"]').click();
     await expect(popup.locator('[data-testid="popup-rejected-entry"][data-key="chesscom:live-2"]')).toHaveCount(0);
-    await expect(popup.getByTestId('popup-counts')).toHaveText('No games waiting · 2 games on the analysis site · 3 not imported');
+    await expect(popup.getByTestId('popup-counts')).toHaveText(
+      'No games waiting · 2 games on the analysis site · 3 not imported',
+    );
     expect(await queueEntry(s, 'chesscom:live-2')).toMatchObject({ status: 'rejected', dismissed: true });
     expect(await badgeText(s.worker)).toBe('');
     await expect(reopened.getByTestId('games-row')).toHaveCount(2);

@@ -61,7 +61,10 @@ const adapter: PageRunnerAdapter = {
     let data = fresh ? null : readLichessPageData(document);
     let source = 'page data';
     if (!data) {
-      const res = await fetch(`https://lichess.org/${ref.gameId}`, { credentials: 'include', headers: { Accept: 'text/html' } });
+      const res = await fetch(`https://lichess.org/${ref.gameId}`, {
+        credentials: 'include',
+        headers: { Accept: 'text/html' },
+      });
       if (res.status === 404) return { notFound: `Lichess has no game ${ref.gameId}.` };
       if (!res.ok) throw new Error(`The game page answered ${res.status}.`);
       data = readLichessPageData(await res.text());
@@ -71,7 +74,9 @@ const adapter: PageRunnerAdapter = {
     return { game: gameFromData(ref, data, source) };
   },
   watchForEnd(ref, game, onEnd, log) {
-    const stopDom = watchForSelector(GAME_OVER_SELECTOR, () => onEnd({ source: 'the result block appeared (.result-wrap)', fromData: false }));
+    const stopDom = watchForSelector(GAME_OVER_SELECTOR, () =>
+      onEnd({ source: 'the result block appeared (.result-wrap)', fromData: false }),
+    );
     const stream = watchGameStream({
       gameId: ref.gameId,
       fetch: (i, init) => fetch(i, init),

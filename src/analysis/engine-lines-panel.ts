@@ -1,8 +1,4 @@
-import {
-  RulesAdapter,
-  type Color,
-  type ExecutedMove,
-} from '../core/rules';
+import { RulesAdapter, type Color, type ExecutedMove } from '../core/rules';
 import type { EngineLine } from '../engine/cache';
 import { formatEvalBarScore } from './eval-bar';
 
@@ -70,12 +66,7 @@ export function formatPvMovesToSan(
     const color = adapter.turn();
     try {
       const executed = adapter.move(uci);
-      const prefix =
-        color === 'w'
-          ? `${moveNum}.`
-          : i === 0
-            ? `${moveNum}...`
-            : '';
+      const prefix = color === 'w' ? `${moveNum}.` : i === 0 ? `${moveNum}...` : '';
       const displayToken = prefix ? `${prefix} ${executed.san}` : executed.san;
 
       result.push({
@@ -132,9 +123,7 @@ type PendingPanelUpdate =
   | { kind: 'clear'; fen: string };
 
 const formatNps = (nps: number): string =>
-  nps >= 1_000_000
-    ? `${(nps / 1_000_000).toFixed(2)} MN/s`
-    : `${Math.round(nps / 1000)} kN/s`;
+  nps >= 1_000_000 ? `${(nps / 1_000_000).toFixed(2)} MN/s` : `${Math.round(nps / 1000)} kN/s`;
 
 /**
  * Live MultiPV (1–5) Engine Lines Panel.
@@ -173,12 +162,8 @@ export class EngineLinesPanel {
 
   private readonly onToggleEngine?: (enabled: boolean) => void;
   private readonly onChangeMultiPv?: (multipv: number) => void;
-  private readonly onHoverLine?: (
-    preview: GhostLinePreviewPayload | null,
-  ) => void;
-  private readonly onSelectLine?: (
-    selection: SelectLineVariationPayload,
-  ) => void;
+  private readonly onHoverLine?: (preview: GhostLinePreviewPayload | null) => void;
+  private readonly onSelectLine?: (selection: SelectLineVariationPayload) => void;
 
   constructor(parent: HTMLElement, options?: EngineLinesPanelOptions) {
     this.enabled = options?.initialEnabled ?? true;
@@ -250,32 +235,16 @@ export class EngineLinesPanel {
       </div>
     `;
 
-    this.toggleBtnEl = this.rootEl.querySelector(
-      '[data-testid="toggle-analysis-engine"]',
-    ) as HTMLButtonElement;
-    this.multiPvSelectEl = this.rootEl.querySelector(
-      '[data-testid="select-multipv"]',
-    ) as HTMLSelectElement;
-    this.depthBadgeEl = this.rootEl.querySelector(
-      '[data-testid="analysis-depth"]',
-    ) as HTMLElement;
-    this.npsBadgeEl = this.rootEl.querySelector(
-      '[data-testid="analysis-nps"]',
-    ) as HTMLElement;
-    this.linesContainerEl = this.rootEl.querySelector(
-      '[data-testid="engine-lines-list"]',
-    ) as HTMLElement;
-    this.emptyStatusEl = this.rootEl.querySelector(
-      '[data-testid="engine-lines-empty"]',
-    ) as HTMLElement;
-    this.disabledStatusEl = this.rootEl.querySelector(
-      '[data-testid="engine-lines-disabled"]',
-    ) as HTMLElement;
+    this.toggleBtnEl = this.rootEl.querySelector('[data-testid="toggle-analysis-engine"]') as HTMLButtonElement;
+    this.multiPvSelectEl = this.rootEl.querySelector('[data-testid="select-multipv"]') as HTMLSelectElement;
+    this.depthBadgeEl = this.rootEl.querySelector('[data-testid="analysis-depth"]') as HTMLElement;
+    this.npsBadgeEl = this.rootEl.querySelector('[data-testid="analysis-nps"]') as HTMLElement;
+    this.linesContainerEl = this.rootEl.querySelector('[data-testid="engine-lines-list"]') as HTMLElement;
+    this.emptyStatusEl = this.rootEl.querySelector('[data-testid="engine-lines-empty"]') as HTMLElement;
+    this.disabledStatusEl = this.rootEl.querySelector('[data-testid="engine-lines-disabled"]') as HTMLElement;
 
     for (let k = 1; k <= MAX_LINES; k++) {
-      const rowEl = this.rootEl.querySelector(
-        `[data-testid="engine-line-row-${k}"]`,
-      ) as HTMLElement;
+      const rowEl = this.rootEl.querySelector(`[data-testid="engine-line-row-${k}"]`) as HTMLElement;
       this.slots.push({
         rowEl,
         evalEl: rowEl.querySelector('.wc-engine-line-eval') as HTMLElement,
@@ -299,31 +268,22 @@ export class EngineLinesPanel {
     });
 
     this.multiPvSelectEl.addEventListener('change', () => {
-      const next = Math.max(
-        1,
-        Math.min(MAX_LINES, Number(this.multiPvSelectEl.value) || 3),
-      );
+      const next = Math.max(1, Math.min(MAX_LINES, Number(this.multiPvSelectEl.value) || 3));
       this.setMultiPv(next);
       this.onChangeMultiPv?.(this.multipv);
     });
 
     this.linesContainerEl.addEventListener('mouseover', (e) => {
       const target = e.target as HTMLElement;
-      const moveEl = target.closest(
-        '[data-pv-move-index]',
-      ) as HTMLElement | null;
-      const rowEl = target.closest(
-        '[data-multipv-index]',
-      ) as HTMLElement | null;
+      const moveEl = target.closest('[data-pv-move-index]') as HTMLElement | null;
+      const rowEl = target.closest('[data-multipv-index]') as HTMLElement | null;
       if (!rowEl) return;
 
       const multipvIdx = Number(rowEl.getAttribute('data-multipv-index'));
       const line = this.formattedLines.find((l) => l.multipv === multipvIdx);
       if (!line || line.moves.length === 0) return;
 
-      const plyCount = moveEl
-        ? Number(moveEl.getAttribute('data-pv-move-index')) + 1
-        : Math.min(4, line.moves.length);
+      const plyCount = moveEl ? Number(moveEl.getAttribute('data-pv-move-index')) + 1 : Math.min(4, line.moves.length);
       const slice = line.moves.slice(0, Math.max(1, plyCount));
       const lastMove = slice[slice.length - 1];
       if (!lastMove) return;
@@ -348,21 +308,15 @@ export class EngineLinesPanel {
 
     this.linesContainerEl.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
-      const moveEl = target.closest(
-        '[data-pv-move-index]',
-      ) as HTMLElement | null;
-      const rowEl = target.closest(
-        '[data-multipv-index]',
-      ) as HTMLElement | null;
+      const moveEl = target.closest('[data-pv-move-index]') as HTMLElement | null;
+      const rowEl = target.closest('[data-multipv-index]') as HTMLElement | null;
       if (!rowEl) return;
 
       const multipvIdx = Number(rowEl.getAttribute('data-multipv-index'));
       const line = this.formattedLines.find((l) => l.multipv === multipvIdx);
       if (!line || line.moves.length === 0) return;
 
-      const plyCount = moveEl
-        ? Number(moveEl.getAttribute('data-pv-move-index')) + 1
-        : Math.min(4, line.moves.length);
+      const plyCount = moveEl ? Number(moveEl.getAttribute('data-pv-move-index')) + 1 : Math.min(4, line.moves.length);
       const slice = line.moves.slice(0, Math.max(1, plyCount));
       if (slice.length === 0) return;
 
@@ -380,9 +334,7 @@ export class EngineLinesPanel {
     this.enabled = enabled;
     this.toggleBtnEl.setAttribute('aria-pressed', String(enabled));
     this.toggleBtnEl.textContent = enabled ? 'Engine: ON' : 'Engine: OFF';
-    this.toggleBtnEl.className = `wc-btn wc-btn-sm ${
-      enabled ? 'wc-btn-primary' : 'wc-btn-ghost'
-    }`;
+    this.toggleBtnEl.className = `wc-btn wc-btn-sm ${enabled ? 'wc-btn-primary' : 'wc-btn-ghost'}`;
     if (!enabled) {
       this.lastHoverKey = '';
       this.onHoverLine?.(null);
@@ -510,12 +462,7 @@ export class EngineLinesPanel {
 
         const pvKey = `${update.fen}|${line.pv.slice(0, PV_PLIES).join(' ')}`;
         if (pvKey !== slot.pvKey || !slot.formatted) {
-          const moves = formatPvMovesToSan(
-            update.fen,
-            line.pv,
-            PV_PLIES,
-            update.chess960,
-          );
+          const moves = formatPvMovesToSan(update.fen, line.pv, PV_PLIES, update.chess960);
           slot.pvEl.innerHTML = moves
             .map(
               (m) =>
@@ -573,10 +520,7 @@ export class EngineLinesPanel {
 
     if (this.layoutDirty) {
       this.layoutDirty = false;
-      this.linesContainerEl.style.setProperty(
-        '--wc-engine-rows',
-        String(this.multipv),
-      );
+      this.linesContainerEl.style.setProperty('--wc-engine-rows', String(this.multipv));
       this.linesContainerEl.setAttribute('data-enabled', String(this.enabled));
       this.slots.forEach((slot, i) => {
         slot.rowEl.hidden = i >= this.multipv;

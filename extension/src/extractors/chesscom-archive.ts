@@ -58,7 +58,8 @@ export async function fetchApiJson<T>(
   });
   if (res.status === 304) return { status: 'not-modified' };
   if (res.status === 404 || res.status === 410) return { status: 'not-found' };
-  if (res.status === 429) return { status: 'rate-limited', retryAfterMs: retryAfterMs(res.headers.get('retry-after'), 60_000) };
+  if (res.status === 429)
+    return { status: 'rate-limited', retryAfterMs: retryAfterMs(res.headers.get('retry-after'), 60_000) };
   if (!res.ok) return { status: 'error', reason: `Chess.com's API answered ${res.status}.` };
   try {
     return { status: 'ok', body: (await res.json()) as T, etag: res.headers.get('etag') };
@@ -121,7 +122,8 @@ export async function lookupInArchives(
 ): Promise<ArchiveLookup> {
   for (const month of months) {
     const r = await fetchArchiveMonth(doFetch, username, month);
-    if (r.status === 'rate-limited') return { status: 'pending', reason: 'Rate limited by Chess.com.', retryAfterMs: r.retryAfterMs };
+    if (r.status === 'rate-limited')
+      return { status: 'pending', reason: 'Rate limited by Chess.com.', retryAfterMs: r.retryAfterMs };
     if (r.status === 'error') return { status: 'error', reason: r.reason };
     if (r.status !== 'ok') continue;
     const game = findArchiveGame(r.games, ref);

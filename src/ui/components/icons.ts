@@ -42,24 +42,35 @@ export const ICONS = {
   first: svg('<path d="M6 5v14M18 6l-7 6 7 6"/>', { width: 2 }),
   last: svg('<path d="M18 5v14M6 6l7 6-7 6"/>', { width: 2 }),
   caret: svg('<path d="M6 9l6 6 6-6"/>', { width: 2.2 }),
-  more: svg('<circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/>', { fill: true }),
+  more: svg('<circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/>', {
+    fill: true,
+  }),
   hint: svg('<path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.5 10.9c.6.5 1 1.2 1 2.1h5c0-.9.4-1.6 1-2.1A6 6 0 0 0 12 3z"/>'),
   undo: svg('<path d="M9 14L4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/>'),
   flip: svg('<path d="M7 4v16M4 7l3-3 3 3M17 20V4M14 17l3 3 3-3"/>'),
   flag: svg('<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>'),
-  handshake: svg('<path d="M8 12V6a1.5 1.5 0 0 1 3 0v5M11 11V4.5a1.5 1.5 0 0 1 3 0V11M14 11V6a1.5 1.5 0 0 1 3 0v8a6 6 0 0 1-6 6h-1a5 5 0 0 1-4.2-2.3L4 14.5a1.5 1.5 0 0 1 2.4-1.8L8 14"/>'),
+  handshake: svg(
+    '<path d="M8 12V6a1.5 1.5 0 0 1 3 0v5M11 11V4.5a1.5 1.5 0 0 1 3 0V11M14 11V6a1.5 1.5 0 0 1 3 0v8a6 6 0 0 1-6 6h-1a5 5 0 0 1-4.2-2.3L4 14.5a1.5 1.5 0 0 1 2.4-1.8L8 14"/>',
+  ),
   plus: svg('<path d="M12 5v14M5 12h14"/>', { width: 2.2 }),
-  board: svg('<rect x="4" y="4" width="16" height="16" rx="1.5"/><path d="M4 12h16M12 4v16M8 4v4M4 8h4M16 12v4M12 16h4M8 12v4M4 16h4M16 4v4M12 8h4M16 16v4M20 8h-4"/>', { width: 1.4 }),
+  board: svg(
+    '<rect x="4" y="4" width="16" height="16" rx="1.5"/><path d="M4 12h16M12 4v16M8 4v4M4 8h4M16 12v4M12 16h4M8 12v4M4 16h4M16 4v4M12 8h4M16 16v4M20 8h-4"/>',
+    { width: 1.4 },
+  ),
   edit: svg('<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13 7l4 4"/>'),
   upload: svg('<path d="M12 16V4M7 9l5-5 5 5"/><path d="M5 20h14"/>'),
   download: svg('<path d="M12 4v12M7 11l5 5 5-5"/><path d="M5 20h14"/>'),
   bot: svg('<rect x="5" y="8" width="14" height="11" rx="3"/><path d="M12 4v4M9 13h.01M15 13h.01"/>'),
   person: svg('<circle cx="12" cy="8" r="4"/><path d="M4 20c1.5-4 4.5-6 8-6s6.5 2 8 6"/>'),
   /** Repertoire: an open book. */
-  book: svg('<path d="M12 6.5C10.5 5 8 4.5 4 4.5V18c4 0 6.5.5 8 2 1.5-1.5 4-2 8-2V4.5c-4 0-6.5.5-8 2z"/><path d="M12 6.5V20"/>'),
+  book: svg(
+    '<path d="M12 6.5C10.5 5 8 4.5 4 4.5V18c4 0 6.5.5 8 2 1.5-1.5 4-2 8-2V4.5c-4 0-6.5.5-8 2z"/><path d="M12 6.5V20"/>',
+  ),
   /** Visualization: an eye. */
   eye: svg('<path d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12z"/><circle cx="12" cy="12" r="2.8"/>'),
-  copy: svg('<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/>'),
+  copy: svg(
+    '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/>',
+  ),
 } as const;
 
 export type IconName = keyof typeof ICONS;

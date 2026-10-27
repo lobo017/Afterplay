@@ -21,8 +21,11 @@ const lichessLines = fs
   .split('\n')
   .filter(Boolean)
   .map((l) => JSON.parse(l) as LichessLine);
-const ccGames = (JSON.parse(fs.readFileSync(path.join(FIX, 'chesscom', 'archive-hikaru-2026-10.json'), 'utf8')) as { games: ArchiveGame[] })
-  .games;
+const ccGames = (
+  JSON.parse(fs.readFileSync(path.join(FIX, 'chesscom', 'archive-hikaru-2026-10.json'), 'utf8')) as {
+    games: ArchiveGame[];
+  }
+).games;
 
 /** A Lichess games-API line for game `id` started at `createdAt` (the PGN of a recorded game, renamed). */
 function lichessGame(id: string, createdAt: number, patch: Partial<LichessLine> = {}): LichessLine {
@@ -41,7 +44,10 @@ function response(body: string, status = 200, headers: Record<string, string> = 
   } as unknown as Response;
 }
 
-function setup(handler: (url: URL, init?: RequestInit) => Response | Promise<Response>, start = Date.UTC(2026, 9, 18, 12, 0, 0)) {
+function setup(
+  handler: (url: URL, init?: RequestInit) => Response | Promise<Response>,
+  start = Date.UTC(2026, 9, 18, 12, 0, 0),
+) {
   const clock = { now: start };
   const store = new MemoryStore();
   const queue = new CaptureQueue(store, () => clock.now);
@@ -86,14 +92,24 @@ describe('Phase 5b — automatic sync (Lichess)', () => {
       return response(ndjson(games.filter((g) => g.createdAt >= since)));
     });
     const state = await s.sync.run('lichess', 'Lobo017', 'alarm');
-    expect(state).toMatchObject({ lastAdded: 2, totalAdded: 2, lastResult: '2 new games.', lastError: null, username: 'Lobo017' });
+    expect(state).toMatchObject({
+      lastAdded: 2,
+      totalAdded: 2,
+      lastResult: '2 new games.',
+      lastError: null,
+      username: 'Lobo017',
+    });
     const first = s.requests[0]!.url;
     expect(first.pathname).toBe('/api/games/user/Lobo017');
     expect(Number(first.searchParams.get('since'))).toBe(t0 - AUTO_SYNC_FIRST_WINDOW_MS);
     expect(first.searchParams.get('ongoing')).toBe('true');
     expect(first.searchParams.get('sort')).toBe('dateAsc');
     expect(s.requests[0]!.headers.Accept).toBe('application/x-ndjson');
-    expect(await s.queue.get('lichess:aaaaaaa1')).toMatchObject({ status: 'ready', method: LICHESS_SYNC_METHOD, trigger: 'sync' });
+    expect(await s.queue.get('lichess:aaaaaaa1')).toMatchObject({
+      status: 'ready',
+      method: LICHESS_SYNC_METHOD,
+      trigger: 'sync',
+    });
     expect(await s.queue.get('lichess:aaaaaaa2')).toBeNull();
     expect(await s.queue.get('lichess:aaaaaaa4')).toBeNull();
 
@@ -107,14 +123,22 @@ describe('Phase 5b — automatic sync (Lichess)', () => {
 
     // Then from just after the newest game
     s.clock.now += AUTO_SYNC_MIN_GAP_MS;
-    expect(await s.sync.run('lichess', 'Lobo017', 'alarm')).toMatchObject({ lastAdded: 0, lastResult: 'No new games.' });
+    expect(await s.sync.run('lichess', 'Lobo017', 'alarm')).toMatchObject({
+      lastAdded: 0,
+      lastResult: 'No new games.',
+    });
     expect(Number(s.requests[2]!.url.searchParams.get('since'))).toBe(t0 - 5 * 60_000 + 1);
   });
 
   it('a correspondence game in progress does not hold the cursor back', async () => {
     const t0 = Date.UTC(2026, 9, 18, 12, 0, 0);
-    const games = [lichessGame('ccccccc1', t0 - 3600_000, { status: 'started', speed: 'correspondence' }), lichessGame('ccccccc2', t0 - 60_000)];
-    const s = setup((url) => response(ndjson(games.filter((g) => g.createdAt >= Number(url.searchParams.get('since'))))));
+    const games = [
+      lichessGame('ccccccc1', t0 - 3600_000, { status: 'started', speed: 'correspondence' }),
+      lichessGame('ccccccc2', t0 - 60_000),
+    ];
+    const s = setup((url) =>
+      response(ndjson(games.filter((g) => g.createdAt >= Number(url.searchParams.get('since'))))),
+    );
     await s.sync.run('lichess', 'me', 'alarm');
     s.clock.now += AUTO_SYNC_MIN_GAP_MS;
     await s.sync.run('lichess', 'me', 'alarm');
@@ -178,7 +202,9 @@ describe('Phase 5b — automatic sync (Lichess)', () => {
 
   it('reports an unknown user and other failures without throwing', async () => {
     const s = setup(() => response('', 404));
-    expect(await s.sync.run('lichess', 'nobody', 'manual')).toMatchObject({ lastResult: 'Failed: Lichess has no user "nobody".' });
+    expect(await s.sync.run('lichess', 'nobody', 'manual')).toMatchObject({
+      lastResult: 'Failed: Lichess has no user "nobody".',
+    });
     const s2 = setup(() => response('', 500));
     expect(await s2.sync.run('lichess', 'me', 'manual')).toMatchObject({ lastError: 'Lichess answered 500.' });
   });
@@ -189,18 +215,17 @@ describe('Phase 5b — automatic sync (Chess.com)', () => {
 
   it('first run: recent games of the current month only, with the ETag; then 304 means nothing new', async () => {
     const etag = '"v1"';
-    const s = setup(
-      (url, init) => {
-        const sent = (init?.headers as Record<string, string>)['If-None-Match'];
-        if (url.pathname.endsWith('/2026/10')) {
-          return sent === etag ? response('', 304) : response(JSON.stringify({ games: ccGames }), 200, { ETag: etag });
-        }
-        return response(JSON.stringify({ games: [] }));
-      },
-      lastEnd + 3600_000,
-    );
+    const s = setup((url, init) => {
+      const sent = (init?.headers as Record<string, string>)['If-None-Match'];
+      if (url.pathname.endsWith('/2026/10')) {
+        return sent === etag ? response('', 304) : response(JSON.stringify({ games: ccGames }), 200, { ETag: etag });
+      }
+      return response(JSON.stringify({ games: [] }));
+    }, lastEnd + 3600_000);
     const state = await s.sync.run('chesscom', 'Hikaru', 'alarm');
-    const recent = ccGames.filter((g) => g.end_time! * 1000 >= lastEnd + 3600_000 - AUTO_SYNC_FIRST_WINDOW_MS - CHESSCOM_ARCHIVE_LAG_MS);
+    const recent = ccGames.filter(
+      (g) => g.end_time! * 1000 >= lastEnd + 3600_000 - AUTO_SYNC_FIRST_WINDOW_MS - CHESSCOM_ARCHIVE_LAG_MS,
+    );
     expect(recent.length).toBeGreaterThan(0);
     expect(recent.length).toBeLessThan(ccGames.length);
     expect(state.lastAdded).toBe(recent.length);
@@ -209,18 +234,27 @@ describe('Phase 5b — automatic sync (Chess.com)', () => {
     expect(one).toMatchObject({ status: 'ready', method: CHESSCOM_SYNC_METHOD, trigger: 'sync' });
 
     s.clock.now += AUTO_SYNC_MIN_GAP_MS;
-    expect(await s.sync.run('chesscom', 'Hikaru', 'alarm')).toMatchObject({ lastAdded: 0, lastResult: 'No new games.' });
+    expect(await s.sync.run('chesscom', 'Hikaru', 'alarm')).toMatchObject({
+      lastAdded: 0,
+      lastResult: 'No new games.',
+    });
     expect(s.requests[1]!.headers['If-None-Match']).toBe(etag);
   });
 
   it('at a month change the previous month is read too; rate limits back off', async () => {
     // Just after midnight UTC on 1 November: the lag window reaches back into October
-    const s = setup((url) => {
-      if (url.pathname.endsWith('/2026/11')) return response('', 429, { 'Retry-After': '120' });
-      return response(JSON.stringify({ games: [] }));
-    }, Date.UTC(2026, 10, 1, 0, 30));
+    const s = setup(
+      (url) => {
+        if (url.pathname.endsWith('/2026/11')) return response('', 429, { 'Retry-After': '120' });
+        return response(JSON.stringify({ games: [] }));
+      },
+      Date.UTC(2026, 10, 1, 0, 30),
+    );
     const state = await s.sync.run('chesscom', 'hikaru', 'manual');
-    expect(s.requests.map((r) => r.url.pathname)).toEqual(['/pub/player/hikaru/games/2026/10', '/pub/player/hikaru/games/2026/11']);
+    expect(s.requests.map((r) => r.url.pathname)).toEqual([
+      '/pub/player/hikaru/games/2026/10',
+      '/pub/player/hikaru/games/2026/11',
+    ]);
     expect(state.backoffUntil).toBe(Date.UTC(2026, 10, 1, 0, 30) + 120_000);
   });
 
@@ -229,6 +263,9 @@ describe('Phase 5b — automatic sync (Chess.com)', () => {
     const first = await s.sync.run('chesscom', 'hikaru', 'manual');
     expect(first.lastAdded).toBeGreaterThan(0);
     s.clock.now += 1;
-    expect(await s.sync.run('chesscom', 'hikaru', 'manual')).toMatchObject({ lastAdded: 0, totalAdded: first.lastAdded });
+    expect(await s.sync.run('chesscom', 'hikaru', 'manual')).toMatchObject({
+      lastAdded: 0,
+      totalAdded: first.lastAdded,
+    });
   });
 });

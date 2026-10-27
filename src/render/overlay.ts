@@ -31,12 +31,7 @@ export function hexToAnnotationColor(hex: string): AnnotationColor {
   const lower = hex.trim().toLowerCase();
   if (lower === '#ef4444' || lower === 'red' || lower === 'r') return 'R';
   if (lower === '#38bdf8' || lower === 'blue' || lower === 'b') return 'B';
-  if (
-    lower === '#eab308' ||
-    lower === '#f59e0b' ||
-    lower === 'yellow' ||
-    lower === 'y'
-  ) {
+  if (lower === '#eab308' || lower === '#f59e0b' || lower === 'yellow' || lower === 'y') {
     return 'Y';
   }
   return 'G';
@@ -108,38 +103,19 @@ export function squareToBoardCoords(
 }
 
 function buildStaticSignature(state: BoardOverlayState): string {
-  const legalKey = state.legalMoves
-    .map((m) => `${m.to}${m.isCapture ? 'x' : '.'}`)
-    .join(',');
-  const premoveKey = state.premoves
-    .map((p) => `${p.from}-${p.to}-${p.promotion ?? ''}`)
-    .join(',');
+  const legalKey = state.legalMoves.map((m) => `${m.to}${m.isCapture ? 'x' : '.'}`).join(',');
+  const premoveKey = state.premoves.map((p) => `${p.from}-${p.to}-${p.promotion ?? ''}`).join(',');
   const premoveFlashKey = (state.premoveFlash ?? []).join(',');
   const premoveTargetsKey = state.premoveTargets.join(',');
-  const confirmKey = state.pendingConfirmMove
-    ? `${state.pendingConfirmMove.from}-${state.pendingConfirmMove.to}`
-    : '';
-  const hintKey = state.hintMove
-    ? `${state.hintMove.from}-${state.hintMove.to}`
-    : '';
-  const bestKey = state.bestMove
-    ? `${state.bestMove.from}-${state.bestMove.to}`
-    : '';
-  const threatKey = state.threatMove
-    ? `${state.threatMove.from}-${state.threatMove.to}`
-    : '';
-  const ghostKey = (state.ghostArrows ?? [])
-    .map((g) => `${g.from}>${g.to}`)
-    .join(',');
+  const confirmKey = state.pendingConfirmMove ? `${state.pendingConfirmMove.from}-${state.pendingConfirmMove.to}` : '';
+  const hintKey = state.hintMove ? `${state.hintMove.from}-${state.hintMove.to}` : '';
+  const bestKey = state.bestMove ? `${state.bestMove.from}-${state.bestMove.to}` : '';
+  const threatKey = state.threatMove ? `${state.threatMove.from}-${state.threatMove.to}` : '';
+  const ghostKey = (state.ghostArrows ?? []).map((g) => `${g.from}>${g.to}`).join(',');
   const arrowsKey = state.arrows
-    .map(
-      (a) =>
-        `${a.from}>${a.to}:${a.color}:${a.opacity ?? 0.85}:${a.dashed ? 1 : 0}`,
-    )
+    .map((a) => `${a.from}>${a.to}:${a.color}:${a.opacity ?? 0.85}:${a.dashed ? 1 : 0}`)
     .join(',');
-  const circlesKey = state.circles
-    .map((c) => `${c.square}:${c.color}`)
-    .join(',');
+  const circlesKey = state.circles.map((c) => `${c.square}:${c.color}`).join(',');
 
   return [
     state.flipped ? 'F1' : 'F0',
@@ -393,17 +369,9 @@ export class BoardOverlay {
 
     // Pending confirm-move highlight
     if (state.pendingConfirmMove) {
-      const fromC = squareToBoardCoords(
-        state.pendingConfirmMove.from,
-        state.flipped,
-      );
-      const toC = squareToBoardCoords(
-        state.pendingConfirmMove.to,
-        state.flipped,
-      );
-      parts.push(
-        `<rect x="${fromC.x}" y="${fromC.y}" width="100" height="100" fill="#38bdf8" fill-opacity="0.24" />`,
-      );
+      const fromC = squareToBoardCoords(state.pendingConfirmMove.from, state.flipped);
+      const toC = squareToBoardCoords(state.pendingConfirmMove.to, state.flipped);
+      parts.push(`<rect x="${fromC.x}" y="${fromC.y}" width="100" height="100" fill="#38bdf8" fill-opacity="0.24" />`);
       parts.push(
         `<rect x="${toC.x + 3}" y="${toC.y + 3}" width="94" height="94" rx="8" fill="#38bdf8" fill-opacity="0.30" stroke="#38bdf8" stroke-width="5" data-testid="overlay-confirm-target" data-square="${state.pendingConfirmMove.to}" />`,
       );
@@ -495,17 +463,7 @@ export class BoardOverlay {
     // Ghost preview trajectory arrows
     if (state.ghostArrows) {
       for (const ga of state.ghostArrows) {
-        parts.push(
-          renderArrowSvg(
-            ga.from,
-            ga.to,
-            state.flipped,
-            '#a855f7',
-            0.76,
-            true,
-            'overlay-ghost-arrow',
-          ),
-        );
+        parts.push(renderArrowSvg(ga.from, ga.to, state.flipped, '#a855f7', 0.76, true, 'overlay-ghost-arrow'));
       }
     }
 

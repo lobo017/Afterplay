@@ -2,11 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { installIndexedDBPolyfill } from './helpers/indexeddb-polyfill';
 installIndexedDBPolyfill();
 
-import {
-  LATEST_SCHEMA_VERSION,
-  WizardChessStorage,
-  deleteWizardChessDB,
-} from '../../src/storage/db';
+import { LATEST_SCHEMA_VERSION, WizardChessStorage, deleteWizardChessDB } from '../../src/storage/db';
 import { parsePgn, writePgn } from '../../src/core/pgn';
 
 describe('Phase 1 — IndexedDB Storage & Versioned Schema Migrations', () => {
@@ -23,11 +19,7 @@ describe('Phase 1 — IndexedDB Storage & Versioned Schema Migrations', () => {
       version: 1,
     });
     expect(v1Storage.version).toBe(1);
-    expect(v1Storage.storeNames.sort()).toEqual([
-      'games',
-      'schema_meta',
-      'settings',
-    ]);
+    expect(v1Storage.storeNames.sort()).toEqual(['games', 'schema_meta', 'settings']);
     expect(v1Storage.getIndexNames('games')).not.toContain('by-accuracy');
 
     // Insert a v1 game record and a setting
@@ -53,13 +45,7 @@ describe('Phase 1 — IndexedDB Storage & Versioned Schema Migrations', () => {
       version: 2,
     });
     expect(v2Storage.version).toBe(2);
-    expect(v2Storage.storeNames.sort()).toEqual([
-      'games',
-      'puzzles',
-      'schema_meta',
-      'settings',
-      'srs_cards',
-    ]);
+    expect(v2Storage.storeNames.sort()).toEqual(['games', 'puzzles', 'schema_meta', 'settings', 'srs_cards']);
     expect(v2Storage.getIndexNames('games')).toContain('by-accuracy');
 
     // Verify v1 game and setting survived v1 -> v2 migration
@@ -173,15 +159,8 @@ describe('Phase 1 — IndexedDB Storage & Versioned Schema Migrations', () => {
       updatedAt: 3000,
     });
 
-    expect((await storage.listGames()).map((g) => g.id)).toEqual([
-      'g-french',
-      'g-sicilian',
-    ]);
-    expect(
-      (await storage.listGames({ playerColor: 'w', minAccuracy: 90 })).map(
-        (g) => g.id,
-      ),
-    ).toEqual(['g-sicilian']);
+    expect((await storage.listGames()).map((g) => g.id)).toEqual(['g-french', 'g-sicilian']);
+    expect((await storage.listGames({ playerColor: 'w', minAccuracy: 90 })).map((g) => g.id)).toEqual(['g-sicilian']);
 
     await storage.saveSrsCard({
       id: 'card-due',

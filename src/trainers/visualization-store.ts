@@ -71,7 +71,13 @@ export class VisualizationStore {
   }
 
   public async blindfoldStats(): Promise<BlindfoldStats> {
-    return (await this.storage.getSetting<BlindfoldStats>(BLINDFOLD_SETTING)) ?? { level: BLINDFOLD_START_PLIES, drills: 0, bestLevel: 0 };
+    return (
+      (await this.storage.getSetting<BlindfoldStats>(BLINDFOLD_SETTING)) ?? {
+        level: BLINDFOLD_START_PLIES,
+        drills: 0,
+        bestLevel: 0,
+      }
+    );
   }
 
   public async guessStats(): Promise<GuessStats> {
@@ -91,11 +97,19 @@ export class VisualizationStore {
     const stats: CoordinateStats = {
       rounds: prev.rounds + 1,
       best: Math.max(prev.best, round.correct),
-      history: [...prev.history, { at: now, correct: round.correct, wrong: round.wrong }].slice(-COORDINATE_HISTORY_LIMIT),
+      history: [...prev.history, { at: now, correct: round.correct, wrong: round.wrong }].slice(
+        -COORDINATE_HISTORY_LIMIT,
+      ),
     };
     await this.storage.setSetting(COORDINATES_SETTING, stats);
     const grade = gradeCoordinates(round);
-    const card = await gradeStoredCard(this.storage, 'visualization', visualizationCardTarget('coordinates'), grade, now);
+    const card = await gradeStoredCard(
+      this.storage,
+      'visualization',
+      visualizationCardTarget('coordinates'),
+      grade,
+      now,
+    );
     this.emit();
     return { stats, card, grade, newBest };
   }
@@ -126,7 +140,13 @@ export class VisualizationStore {
     const stats = { ...(await this.guessStats()), [gameId]: { hits: result.hits, total: result.total, at: now } };
     await this.storage.setSetting(GUESS_SETTING, stats);
     const grade = gradeGuess(result);
-    const card = await gradeStoredCard(this.storage, 'visualization', visualizationCardTarget('guess', gameId), grade, now);
+    const card = await gradeStoredCard(
+      this.storage,
+      'visualization',
+      visualizationCardTarget('guess', gameId),
+      grade,
+      now,
+    );
     this.emit();
     return { stats, card, grade };
   }

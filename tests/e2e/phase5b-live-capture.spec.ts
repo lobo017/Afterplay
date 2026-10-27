@@ -26,11 +26,14 @@ const SCREENSHOT_DIR = path.join('test-results', 'phase5b-screens');
 const LICHESS_GAME = 'https://lichess.org/Bjl39T9x';
 const CHESSCOM_GAME = 'https://www.chess.com/game/live/185518487990';
 const CHESSCOM_CALLBACK = 'https://www.chess.com/callback/live/game/185518487990';
-const CHESSCOM_PAGE = '<!doctype html><html><head><title>Chess.com</title></head><body><div id="board-layout-main"></div></body></html>';
+const CHESSCOM_PAGE =
+  '<!doctype html><html><head><title>Chess.com</title></head><body><div id="board-layout-main"></div></body></html>';
 
 const lichessFinished = () => stripPageAssets(readFixture('lichess/page-Bjl39T9x.html'));
 const lichessLive = () =>
-  lichessFinished().replace('"status":{"id":30,"name":"mate"}', '"status":{"id":20,"name":"started"}').replace('"winner":"black",', '');
+  lichessFinished()
+    .replace('"status":{"id":30,"name":"mate"}', '"status":{"id":20,"name":"started"}')
+    .replace('"winner":"black",', '');
 
 /** Hikaru's game 185518487990 as Chess.com's game data, finished `endedAgoS` seconds ago (null: still running). */
 function chessComCallback(endedAgoS: number | null): string {
@@ -73,7 +76,10 @@ test.describe('Phase 5b — live capture fixes', () => {
       streamRequests.push(route.request().url());
       // Lichess keeps the stream open while the game runs and sends the last line when it ends
       await ended;
-      await route.fulfill({ body: readFixture('lichess/stream-Bjl39T9x-finished.ndjson'), contentType: 'application/x-ndjson' });
+      await route.fulfill({
+        body: readFixture('lichess/stream-Bjl39T9x-finished.ndjson'),
+        contentType: 'application/x-ndjson',
+      });
     });
     await setUsernames(s, 'lobo017', '');
 
@@ -97,14 +103,21 @@ test.describe('Phase 5b — live capture fixes', () => {
     mock(s, CHESSCOM_CALLBACK, json(chessComCallback(90)));
     const OLD = 'https://www.chess.com/game/live/185358990103';
     mock(s, OLD, { body: CHESSCOM_PAGE });
-    mock(s, 'https://www.chess.com/callback/live/game/185358990103', json(readFixture('chesscom/callback-live-185358990103.json')));
+    mock(
+      s,
+      'https://www.chess.com/callback/live/game/185358990103',
+      json(readFixture('chesscom/callback-live-185358990103.json')),
+    );
     await setUsernames(s, '', 'hikaru');
 
     const page = await s.context.newPage();
     await page.goto(CHESSCOM_GAME);
     await expect(page.getByTestId('wc-save-button')).toHaveAttribute('data-state', 'saved', { timeout: 10_000 });
     await expect(page.getByTestId('wc-save-note')).toContainText('Captured automatically');
-    expect(await queueEntry(s, 'chesscom:live-185518487990')).toMatchObject({ method: 'chesscom-callback', trigger: 'page-open' });
+    expect(await queueEntry(s, 'chesscom:live-185518487990')).toMatchObject({
+      method: 'chesscom-callback',
+      trigger: 'page-open',
+    });
 
     await page.goto(OLD);
     await expect(page.getByTestId('wc-save-button')).toHaveAttribute('data-state', 'ready');
@@ -129,7 +142,9 @@ test.describe('Phase 5b — live capture fixes', () => {
     const popup = await openPopup(s, await tabIdOf(s, PLAY));
     await popup.getByTestId('popup-debug-btn').click();
     await expect(await debugRow(popup, 'Page')).toHaveText('play page (no game ID in the URL)');
-    await expect(await debugRow(popup, 'Game ID')).toHaveText("live-185518487990 (from the page's requests (/callback/live/game/185518487990))");
+    await expect(await debugRow(popup, 'Game ID')).toHaveText(
+      "live-185518487990 (from the page's requests (/callback/live/game/185518487990))",
+    );
   });
 
   test('Leaving a Chess.com game page before the end shows: the background captures the game, then syncs', async () => {
@@ -151,8 +166,11 @@ test.describe('Phase 5b — live capture fixes', () => {
     await expect
       .poll(() =>
         s.worker.evaluate(async () => {
-          const api = (self as unknown as { __wizardChessCapture: { readTabs(): Promise<Record<string, { state: string; mine: boolean }>> } })
-            .__wizardChessCapture;
+          const api = (
+            self as unknown as {
+              __wizardChessCapture: { readTabs(): Promise<Record<string, { state: string; mine: boolean }>> };
+            }
+          ).__wizardChessCapture;
           return Object.values(await api.readTabs()).map((t) => `${t.state}/${t.mine}`);
         }),
       )
@@ -161,11 +179,13 @@ test.describe('Phase 5b — live capture fixes', () => {
     // The game ends and I close the tab at once, before the page's next check
     callback = chessComCallback(5);
     await page.close();
-    await expect.poll(() => queueEntry(s, 'chesscom:live-185518487990'), { timeout: 10_000 }).toMatchObject({
-      status: 'ready',
-      method: 'chesscom-callback',
-      trigger: 'left-page',
-    });
+    await expect
+      .poll(() => queueEntry(s, 'chesscom:live-185518487990'), { timeout: 10_000 })
+      .toMatchObject({
+        status: 'ready',
+        method: 'chesscom-callback',
+        trigger: 'left-page',
+      });
     // …and my recent games are checked too (the safety net)
     await expect.poll(() => archiveRequests.length, { timeout: 15_000 }).toBeGreaterThan(0);
     expect(archiveRequests[0]).toMatch(/\/pub\/player\/hikaru\/games\/\d{4}\/\d{2}$/);
@@ -183,7 +203,10 @@ test.describe('Phase 5b — live capture fixes', () => {
       const url = new URL(route.request().url());
       userRequests.push(url.toString());
       const since = Number(url.searchParams.get('since'));
-      const body = lines.filter((l) => (l.createdAt as number) >= since).map((l) => JSON.stringify(l)).join('\n');
+      const body = lines
+        .filter((l) => (l.createdAt as number) >= since)
+        .map((l) => JSON.stringify(l))
+        .join('\n');
       return route.fulfill({ body, contentType: 'application/x-ndjson' });
     });
     mock(s, 'https://lichess.org/', { body: '<!doctype html><title>lichess.org</title><p>Lobby</p>' });
@@ -191,7 +214,8 @@ test.describe('Phase 5b — live capture fixes', () => {
     expect(await s.worker.evaluate(async () => (await chrome.alarms.get('auto-sync'))?.periodInMinutes)).toBe(3);
     const alarm = () =>
       s.worker.evaluate(async () => {
-        const api = (self as unknown as { __wizardChessCapture: { onAutoSyncAlarm(): Promise<void> } }).__wizardChessCapture;
+        const api = (self as unknown as { __wizardChessCapture: { onAutoSyncAlarm(): Promise<void> } })
+          .__wizardChessCapture;
         await api.onAutoSyncAlarm();
       });
 
@@ -204,7 +228,11 @@ test.describe('Phase 5b — live capture fixes', () => {
     await alarm();
     expect(userRequests).toHaveLength(1);
     await expect.poll(() => badgeText(s.worker)).toBe('4');
-    expect(await queueEntry(s, 'lichess:iTIXmTZF')).toMatchObject({ status: 'ready', method: 'lichess-sync', trigger: 'sync' });
+    expect(await queueEntry(s, 'lichess:iTIXmTZF')).toMatchObject({
+      status: 'ready',
+      method: 'lichess-sync',
+      trigger: 'sync',
+    });
 
     const popup = await openPopup(s);
     await expect(popup.getByTestId('popup-sync-lichess-status')).toContainText('4 new games.');
@@ -238,7 +266,10 @@ test.describe('Phase 5b — live capture fixes', () => {
     await expect(site.getByTestId('games-row')).toHaveCount(1, { timeout: 10_000 });
     expect(await site.evaluate(() => (window as unknown as { __wakes: number }).__wakes)).toBe(0);
     await expect.poll(() => badgeText(s.worker)).toBe('');
-    expect(await queueEntry(s, 'chesscom:live-185518487990')).toMatchObject({ status: 'delivered', trigger: 'save-button' });
+    expect(await queueEntry(s, 'chesscom:live-185518487990')).toMatchObject({
+      status: 'delivered',
+      trigger: 'save-button',
+    });
   });
 
   test('Debug this tab: what the page sees; a stopped script is reported and can be started again; other tabs', async () => {
@@ -262,7 +293,9 @@ test.describe('Phase 5b — live capture fixes', () => {
     await expect(await debugRow(popup, 'My game')).toHaveText('yes: lobo017 plays Black');
     await expect(await debugRow(popup, 'Watching for the end')).toContainText('Lichess game stream');
     await expect(await debugRow(popup, 'Watching for the end')).toContainText('.result-wrap');
-    await expect(await debugRow(popup, 'Last detection event')).toContainText('Game Bjl39T9x: in progress (page data).');
+    await expect(await debugRow(popup, 'Last detection event')).toContainText(
+      'Game Bjl39T9x: in progress (page data).',
+    );
     await expect(await debugRow(popup, 'Lichess check')).toContainText('on: every 3 min while a Lichess tab is open');
     await expect(await debugRow(popup, 'This game')).toHaveText('not captured');
     await expect(popup.getByTestId('popup-debug-events')).toContainText('Capture script started');
@@ -285,7 +318,9 @@ test.describe('Phase 5b — live capture fixes', () => {
     const site = await openGamesList(s);
     const popup2 = await openPopup(s, await tabIdOf(s, `${SITE_URL}/#games`));
     await popup2.getByTestId('popup-debug-btn').click();
-    await expect(await debugRow(popup2, 'Capture script')).toContainText('none (it only runs on lichess.org and www.chess.com)');
+    await expect(await debugRow(popup2, 'Capture script')).toContainText(
+      'none (it only runs on lichess.org and www.chess.com)',
+    );
     await expect(await debugRow(popup2, 'Analysis site')).toContainText('open in a tab');
     await site.close();
   });
@@ -328,7 +363,9 @@ test.describe('Phase 5b — live capture fixes', () => {
     await expect(popup.getByTestId('popup-delivery-text')).toContainText(
       '“Waiting” means captured and kept here in the extension, but not yet copied into the analysis site’s Games list.',
     );
-    await expect(popup.getByTestId('popup-delivery-text')).toContainText(`as soon as the site (${SITE_URL}) is open in a tab`);
+    await expect(popup.getByTestId('popup-delivery-text')).toContainText(
+      `as soon as the site (${SITE_URL}) is open in a tab`,
+    );
     await expect(popup.getByTestId('popup-site-state')).toHaveText('The analysis site isn’t open in any tab.');
     // 20:30 UTC on the 17th is 05:30 on the 18th in Tokyo
     await expect(popup.getByTestId('popup-entry-played')).toHaveText('2026-10-18 05:30');
@@ -343,7 +380,9 @@ test.describe('Phase 5b — live capture fixes', () => {
     await expect(site.locator('.wc-games-date')).toHaveAttribute('title', 'Started 2026-10-18 05:30 (Asia/Tokyo)');
     await site.screenshot({ path: path.join(SCREENSHOT_DIR, 'games-list-local-time.png') });
 
-    await expect(popup.getByTestId('popup-counts')).toHaveText('No games waiting · 1 game on the analysis site', { timeout: 10_000 });
+    await expect(popup.getByTestId('popup-counts')).toHaveText('No games waiting · 1 game on the analysis site', {
+      timeout: 10_000,
+    });
     await expect(popup.getByTestId('popup-site-state')).toHaveText('The analysis site is open in a tab.');
     await expect(popup.getByTestId('popup-open-site')).toHaveText('Show the analysis site');
   });
@@ -389,7 +428,9 @@ test.describe('Phase 5b — Chess.com games with no data until they end', () => 
     await page.goto(UNTYPED);
     const save = page.getByTestId('wc-save-button');
     await expect(save).toHaveAttribute('data-state', 'in-progress');
-    await expect(page.getByTestId('wc-save-note')).toHaveText('Captured when the game has ended (Chess.com shares it then).');
+    await expect(page.getByTestId('wc-save-note')).toHaveText(
+      'Captured when the game has ended (Chess.com shares it then).',
+    );
 
     const popup = await openPopup(s, await tabIdOf(s, UNTYPED));
     await popup.getByTestId('popup-debug-btn').click();
@@ -404,11 +445,17 @@ test.describe('Phase 5b — Chess.com games with no data until they end', () => 
     await popup.getByTestId('popup-debug-btn').click();
     await expect(popup.getByTestId('popup-debug-events')).toContainText('Game data check: not available yet (404).');
     await expect(save).toHaveAttribute('data-state', 'in-progress');
-    await popup.screenshot({ path: path.join(SCREENSHOT_DIR, 'popup-debug-chesscom-not-available.png'), fullPage: true });
+    await popup.screenshot({
+      path: path.join(SCREENSHOT_DIR, 'popup-debug-chesscom-not-available.png'),
+      fullPage: true,
+    });
 
     game.end();
     await expect(save).toHaveAttribute('data-state', 'saved', { timeout: 15_000 });
-    expect(await queueEntry(s, 'chesscom:live-185518487990')).toMatchObject({ method: 'chesscom-callback', trigger: 'game-end' });
+    expect(await queueEntry(s, 'chesscom:live-185518487990')).toMatchObject({
+      method: 'chesscom-callback',
+      trigger: 'game-end',
+    });
     // A 12-digit ID is a live game: the daily endpoint is never asked
     expect(game.dataRequests.every((u) => u === CHESSCOM_CALLBACK)).toBe(true);
     await popup.getByTestId('popup-debug-btn').click();
@@ -416,7 +463,7 @@ test.describe('Phase 5b — Chess.com games with no data until they end', () => 
     await expect(await debugRow(popup, 'Game state')).toHaveText('finished (game data (callback))');
   });
 
-  test("a request of the page about the game triggers the check at once (no 10 s wait)", async () => {
+  test('a request of the page about the game triggers the check at once (no 10 s wait)', async () => {
     const s = await start();
     const game = chessComGameInProgress(s);
     mock(s, 'https://www.chess.com/analysis/game/live/185518487990*', { body: '<!doctype html><p>review</p>' });
@@ -435,7 +482,9 @@ test.describe('Phase 5b — Chess.com games with no data until they end', () => 
 
     const popup = await openPopup(s, await tabIdOf(s, UNTYPED));
     await popup.getByTestId('popup-debug-btn').click();
-    await expect(popup.getByTestId('popup-debug-events')).toContainText('Page request about this game: /analysis/game/live/185518487990');
+    await expect(popup.getByTestId('popup-debug-events')).toContainText(
+      'Page request about this game: /analysis/game/live/185518487990',
+    );
   });
 
   test('leaving while the data is still 404: the background tries again and captures the game', async () => {
@@ -449,8 +498,9 @@ test.describe('Phase 5b — Chess.com games with no data until they end', () => 
     await expect
       .poll(() =>
         s.worker.evaluate(async () => {
-          const api = (self as unknown as { __wizardChessCapture: { readTabs(): Promise<Record<string, { state: string }>> } })
-            .__wizardChessCapture;
+          const api = (
+            self as unknown as { __wizardChessCapture: { readTabs(): Promise<Record<string, { state: string }>> } }
+          ).__wizardChessCapture;
           return Object.values(await api.readTabs()).map((t) => t.state);
         }),
       )
@@ -462,8 +512,11 @@ test.describe('Phase 5b — Chess.com games with no data until they end', () => 
     await expect.poll(() => game.dataRequests.length).toBeGreaterThan(before);
     const retrying = () =>
       s.worker.evaluate(async () => {
-        const api = (self as unknown as { __wizardChessCapture: { retries: { list(): Promise<Array<{ key: string; attempt: number }>> } } })
-          .__wizardChessCapture;
+        const api = (
+          self as unknown as {
+            __wizardChessCapture: { retries: { list(): Promise<Array<{ key: string; attempt: number }>> } };
+          }
+        ).__wizardChessCapture;
         return api.retries.list();
       });
     await expect.poll(retrying).toEqual([expect.objectContaining({ key: 'chesscom:live-185518487990', attempt: 0 })]);
@@ -471,11 +524,13 @@ test.describe('Phase 5b — Chess.com games with no data until they end', () => 
 
     // The game ends; the retry 10 s later gets it
     game.end();
-    await expect.poll(() => queueEntry(s, 'chesscom:live-185518487990'), { timeout: 20_000 }).toMatchObject({
-      status: 'ready',
-      method: 'chesscom-callback',
-      trigger: 'left-page',
-    });
+    await expect
+      .poll(() => queueEntry(s, 'chesscom:live-185518487990'), { timeout: 20_000 })
+      .toMatchObject({
+        status: 'ready',
+        method: 'chesscom-callback',
+        trigger: 'left-page',
+      });
     expect(await retrying()).toEqual([]);
   });
 });

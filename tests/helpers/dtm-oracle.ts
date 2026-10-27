@@ -12,7 +12,8 @@ type Extra = 'q' | 'r' | 'p';
 const file = (s: number) => s & 7;
 const rank = (s: number) => s >> 3;
 const square = (f: number, r: number) => f + 8 * r;
-const adjacent = (a: number, b: number) => a !== b && Math.abs(file(a) - file(b)) <= 1 && Math.abs(rank(a) - rank(b)) <= 1;
+const adjacent = (a: number, b: number) =>
+  a !== b && Math.abs(file(a) - file(b)) <= 1 && Math.abs(rank(a) - rank(b)) <= 1;
 
 const KING_STEPS: number[][] = Array.from({ length: 64 }, (_, s) => {
   const out: number[] = [];
@@ -26,7 +27,12 @@ const KING_STEPS: number[][] = Array.from({ length: 64 }, (_, s) => {
   return out;
 });
 
-const ROOK_DIRS: ReadonlyArray<readonly [number, number]> = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+const ROOK_DIRS: ReadonlyArray<readonly [number, number]> = [
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
+];
 const QUEEN_DIRS: ReadonlyArray<readonly [number, number]> = [...ROOK_DIRS, [1, 1], [1, -1], [-1, 1], [-1, -1]];
 
 /** The squares a slider reaches from `from`, each ray ending at (and including) the first blocker. */
@@ -79,7 +85,8 @@ async function solve(type: Extra, promotions: Partial<Record<'q' | 'r', Table>> 
     const out: Array<number | null> = [];
     for (const to of KING_STEPS[bk]!) {
       if (to === wk || adjacent(to, wk)) continue;
-      if (to === x) out.push(null); // takes the unprotected piece: a draw
+      if (to === x)
+        out.push(null); // takes the unprotected piece: a draw
       else if (!attacks(wk, bk, x, to, true)) out.push(index(wk, to, x));
     }
     return out;

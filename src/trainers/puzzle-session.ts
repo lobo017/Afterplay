@@ -29,7 +29,12 @@ export interface AttemptOutcome {
 }
 
 /** Again for a failure, Hard after a hint, Easy for a quick clean solve, Good otherwise. */
-export function gradeAttempt(input: { solved: boolean; hintUsed: boolean; timeMs: number; playerMoves: number }): Grade {
+export function gradeAttempt(input: {
+  solved: boolean;
+  hintUsed: boolean;
+  timeMs: number;
+  playerMoves: number;
+}): Grade {
   if (!input.solved) return 1;
   if (input.hintUsed) return 2;
   const perMove = input.timeMs / 1000 / Math.max(1, input.playerMoves);
@@ -83,7 +88,9 @@ export class PuzzleSession {
 
   /** The solution move the player is expected to find now. */
   public get expectedMove(): string | null {
-    return this.statusNow === 'playing' || this.statusNow === 'checking' ? (this.puzzle.solution[this.step] ?? null) : null;
+    return this.statusNow === 'playing' || this.statusNow === 'checking'
+      ? (this.puzzle.solution[this.step] ?? null)
+      : null;
   }
 
   public play(uci: string): PlayResult {

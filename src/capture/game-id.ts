@@ -48,7 +48,10 @@ export function isValidRef(ref: SiteGameRef): boolean {
 }
 
 function hostOf(url: URL): string {
-  return url.hostname.toLowerCase().replace(/^www\./, '').replace(/^m\./, '');
+  return url.hostname
+    .toLowerCase()
+    .replace(/^www\./, '')
+    .replace(/^m\./, '');
 }
 
 /**
@@ -169,6 +172,8 @@ export function contentHash(text: string): string {
  * same game again finds the stored copy.
  */
 export function pasteKey(headers: Readonly<Record<string, string>>, sanMoves: readonly string[]): string {
-  const id = [headers.White ?? '', headers.Black ?? '', headers.Date ?? '', headers.FEN ?? '', sanMoves.join(' ')].join('|');
+  const id = [headers.White ?? '', headers.Black ?? '', headers.Date ?? '', headers.FEN ?? '', sanMoves.join(' ')].join(
+    '|',
+  );
   return `paste:${contentHash(id)}`;
 }

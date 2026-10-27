@@ -1,8 +1,4 @@
-import {
-  DEFAULT_POSITION,
-  validateChessFen,
-  type Color,
-} from '../core/rules';
+import { DEFAULT_POSITION, validateChessFen, type Color } from '../core/rules';
 import {
   AnalysisCache,
   normalizeFenForCache,
@@ -23,8 +19,7 @@ export { AnalysisCache, normalizeFenForCache };
 export type { CacheStats, EngineAnalysisResult, EngineLine };
 
 export const MULTI_THREADED_STOCKFISH_FILE = 'stockfish-17.1-lite-51f59da.js';
-export const SINGLE_THREADED_STOCKFISH_FILE =
-  'stockfish-17.1-lite-single-03e3232.js';
+export const SINGLE_THREADED_STOCKFISH_FILE = 'stockfish-17.1-lite-single-03e3232.js';
 
 export const MULTI_THREADED_ENGINE_URL = `/stockfish/${MULTI_THREADED_STOCKFISH_FILE}`;
 export const SINGLE_THREADED_ENGINE_URL = `/stockfish/${SINGLE_THREADED_STOCKFISH_FILE}`;
@@ -71,10 +66,7 @@ export interface EngineClientOptions {
   threads?: number;
   hashMb?: number;
   cache?: AnalysisCache;
-  transportFactory?: (
-    variant: EngineVariant,
-    scriptUrl: string,
-  ) => EngineTransport;
+  transportFactory?: (variant: EngineVariant, scriptUrl: string) => EngineTransport;
   onTelemetry?: (telemetry: EngineTelemetry) => void;
   onCacheLookup?: (hit: boolean) => void;
   initTimeoutMs?: number;
@@ -141,23 +133,17 @@ export function detectEngineCapabilities(envOverride?: {
   const crossOriginIsolated =
     envOverride?.crossOriginIsolated ??
     (typeof globalThis !== 'undefined' &&
-      Boolean(
-        (globalThis as { crossOriginIsolated?: boolean }).crossOriginIsolated,
-      ));
+      Boolean((globalThis as { crossOriginIsolated?: boolean }).crossOriginIsolated));
 
   const sharedArrayBufferAvailable =
-    envOverride?.sharedArrayBufferAvailable ??
-    typeof SharedArrayBuffer !== 'undefined';
+    envOverride?.sharedArrayBufferAvailable ?? typeof SharedArrayBuffer !== 'undefined';
 
-  const multiThreadedSupported =
-    crossOriginIsolated && sharedArrayBufferAvailable;
+  const multiThreadedSupported = crossOriginIsolated && sharedArrayBufferAvailable;
 
   const hardwareConcurrency = Math.max(
     1,
     envOverride?.hardwareConcurrency ??
-      (typeof navigator !== 'undefined' && navigator.hardwareConcurrency
-        ? navigator.hardwareConcurrency
-        : 1),
+      (typeof navigator !== 'undefined' && navigator.hardwareConcurrency ? navigator.hardwareConcurrency : 1),
   );
 
   const deviceMemory =
@@ -168,27 +154,13 @@ export function detectEngineCapabilities(envOverride?: {
       ? (navigator as { deviceMemory: number }).deviceMemory
       : 4);
 
-  const recommendedVariant: EngineVariant = multiThreadedSupported
-    ? 'multi-threaded'
-    : 'single-threaded';
+  const recommendedVariant: EngineVariant = multiThreadedSupported ? 'multi-threaded' : 'single-threaded';
 
   const recommendedThreads = multiThreadedSupported
-    ? Math.max(
-        1,
-        Math.min(
-          4,
-          hardwareConcurrency > 2
-            ? hardwareConcurrency - 1
-            : hardwareConcurrency,
-        ),
-      )
+    ? Math.max(1, Math.min(4, hardwareConcurrency > 2 ? hardwareConcurrency - 1 : hardwareConcurrency))
     : 1;
 
-  const recommendedHashMb = multiThreadedSupported
-    ? deviceMemory >= 8
-      ? 64
-      : 32
-    : 16;
+  const recommendedHashMb = multiThreadedSupported ? (deviceMemory >= 8 ? 64 : 32) : 16;
 
   return {
     crossOriginIsolated,
@@ -204,19 +176,13 @@ export function detectEngineCapabilities(envOverride?: {
 /**
  * Default browser Web Worker transport for Stockfish WASM.
  */
-export function createBrowserWorkerTransport(
-  _variant: EngineVariant,
-  scriptUrl: string,
-): EngineTransport {
+export function createBrowserWorkerTransport(_variant: EngineVariant, scriptUrl: string): EngineTransport {
   const worker = new Worker(scriptUrl);
   const messageHandlers: Array<(line: string) => void> = [];
   const errorHandlers: Array<(error: Error) => void> = [];
 
   worker.onmessage = (event: MessageEvent<unknown>) => {
-    const raw =
-      typeof event.data === 'string'
-        ? event.data
-        : String(event.data ?? '');
+    const raw = typeof event.data === 'string' ? event.data : String(event.data ?? '');
     const lines = raw.split(/\r?\n/);
     for (const line of lines) {
       if (!line) continue;
@@ -227,10 +193,7 @@ export function createBrowserWorkerTransport(
   };
 
   worker.onerror = (event: ErrorEvent) => {
-    const err =
-      event.error instanceof Error
-        ? event.error
-        : new Error(event.message || `Worker error in ${scriptUrl}`);
+    const err = event.error instanceof Error ? event.error : new Error(event.message || `Worker error in ${scriptUrl}`);
     for (const h of errorHandlers) {
       h(err);
     }
@@ -344,8 +307,7 @@ export class EngineClient {
   private taskSeq = 0;
   private readonly queue: QueuedTask[] = [];
   private activeTask: QueuedTask | null = null;
-  private activePhase: 'idle' | 'configuring' | 'searching' | 'stopping' =
-    'idle';
+  private activePhase: 'idle' | 'configuring' | 'searching' | 'stopping' = 'idle';
   private readyWaiters: Array<() => void> = [];
 
   private latestDepth = 0;
@@ -355,20 +317,12 @@ export class EngineClient {
   constructor(options?: EngineClientOptions) {
     this.options = options ?? {};
     const caps = detectEngineCapabilities();
-    this.activeVariant =
-      options?.variant && options.variant !== 'auto'
-        ? options.variant
-        : caps.recommendedVariant;
+    this.activeVariant = options?.variant && options.variant !== 'auto' ? options.variant : caps.recommendedVariant;
 
     this.configuredThreads =
-      this.activeVariant === 'single-threaded'
-        ? 1
-        : Math.max(1, options?.threads ?? caps.recommendedThreads);
+      this.activeVariant === 'single-threaded' ? 1 : Math.max(1, options?.threads ?? caps.recommendedThreads);
 
-    this.configuredHashMb = Math.max(
-      1,
-      options?.hashMb ?? caps.recommendedHashMb,
-    );
+    this.configuredHashMb = Math.max(1, options?.hashMb ?? caps.recommendedHashMb);
 
     this.cache =
       options?.cache ??
@@ -384,9 +338,7 @@ export class EngineClient {
   }
 
   public getScriptUrl(variant: EngineVariant = this.activeVariant): string {
-    return variant === 'multi-threaded'
-      ? MULTI_THREADED_ENGINE_URL
-      : SINGLE_THREADED_ENGINE_URL;
+    return variant === 'multi-threaded' ? MULTI_THREADED_ENGINE_URL : SINGLE_THREADED_ENGINE_URL;
   }
 
   public getEngineName(): string {
@@ -488,8 +440,7 @@ export class EngineClient {
     }
 
     const scriptUrl = this.getScriptUrl(variant);
-    const factory =
-      this.options.transportFactory ?? createBrowserWorkerTransport;
+    const factory = this.options.transportFactory ?? createBrowserWorkerTransport;
     const transport = factory(variant, scriptUrl);
     this.transport = transport;
     // Lines from a replaced worker must never reach the tasks of the next one
@@ -502,11 +453,7 @@ export class EngineClient {
     await new Promise<void>((resolve, reject) => {
       let uciOkReceived = false;
       const timer = setTimeout(() => {
-        reject(
-          new Error(
-            `Timed out waiting for Stockfish (${variant}) initialization after ${timeoutMs}ms`,
-          ),
-        );
+        reject(new Error(`Timed out waiting for Stockfish (${variant}) initialization after ${timeoutMs}ms`));
       }, timeoutMs);
 
       transport.onError((err) => {
@@ -533,14 +480,9 @@ export class EngineClient {
             uciOkReceived = true;
             const threadsOpt = this.uciOptions.get('Threads');
             const maxThreads = threadsOpt?.max ?? (variant === 'multi-threaded' ? 32 : 1);
-            this.configuredThreads = Math.max(
-              1,
-              Math.min(maxThreads, this.configuredThreads),
-            );
+            this.configuredThreads = Math.max(1, Math.min(maxThreads, this.configuredThreads));
             if (maxThreads > 1 || this.configuredThreads > 1) {
-              transport.send(
-                `setoption name Threads value ${this.configuredThreads}`,
-              );
+              transport.send(`setoption name Threads value ${this.configuredThreads}`);
             }
             transport.send(`setoption name Hash value ${this.configuredHashMb}`);
             transport.send('isready');
@@ -575,17 +517,11 @@ export class EngineClient {
    * stopped, terminated and booted again, and the search that was running continues on
    * the new worker (same position, MultiPV and callbacks; its promise stays pending).
    */
-  public async configure(config: {
-    threads?: number;
-    hashMb?: number;
-  }): Promise<void> {
+  public async configure(config: { threads?: number; hashMb?: number }): Promise<void> {
     await this.init();
 
     let threads = this.configuredThreads;
-    if (
-      typeof config.threads === 'number' &&
-      this.activeVariant === 'multi-threaded'
-    ) {
+    if (typeof config.threads === 'number' && this.activeVariant === 'multi-threaded') {
       const maxThreads = this.uciOptions.get('Threads')?.max ?? 32;
       threads = Math.max(1, Math.min(maxThreads, Math.floor(config.threads)));
     }
@@ -668,9 +604,7 @@ export class EngineClient {
    * Enqueues a Stockfish analysis task with priority ordering, streaming MultiPV info,
    * result caching, and AbortSignal / ID cancellation.
    */
-  public async analyze(
-    request: EngineAnalyzeRequest,
-  ): Promise<EngineAnalysisResult> {
+  public async analyze(request: EngineAnalyzeRequest): Promise<EngineAnalysisResult> {
     const taskId = request.id ?? `analyze-${++this.taskSeq}`;
     if (request.signal?.aborted) {
       throw new EngineCancelledError(taskId);
@@ -681,18 +615,12 @@ export class EngineClient {
     const priority: EnginePriority = request.priority ?? 'live';
     const chess960 = detectChess960Need(fen, request.chess960);
 
-    const isFullStrength =
-      !request.uciLimitStrength &&
-      (request.skillLevel === undefined || request.skillLevel >= 20);
+    const isFullStrength = !request.uciLimitStrength && (request.skillLevel === undefined || request.skillLevel >= 20);
     const hasCustomMoves =
       Boolean(request.moves && request.moves.length > 0) ||
       Boolean(request.searchMoves && request.searchMoves.length > 0);
-    const hasNodeLimit =
-      typeof request.nodes === 'number' && request.nodes > 0;
-    const targetDepth =
-      !request.infinite && !request.movetime && !hasNodeLimit
-        ? (request.depth ?? 14)
-        : request.depth;
+    const hasNodeLimit = typeof request.nodes === 'number' && request.nodes > 0;
+    const targetDepth = !request.infinite && !request.movetime && !hasNodeLimit ? (request.depth ?? 14) : request.depth;
 
     const cacheable =
       request.useCache !== false &&
@@ -834,12 +762,7 @@ export class EngineClient {
    * Stops the currently active search so it resolves with the best move/lines found so far.
    */
   public stopActiveSearch(): void {
-    if (
-      this.activeTask &&
-      this.activeTask.kind === 'analyze' &&
-      this.activePhase === 'searching' &&
-      this.transport
-    ) {
+    if (this.activeTask && this.activeTask.kind === 'analyze' && this.activePhase === 'searching' && this.transport) {
       this.activeTask.stoppingToResolve = true;
       this.activePhase = 'stopping';
       this.transport.send('stop');
@@ -937,13 +860,7 @@ export class EngineClient {
   }
 
   private pumpQueue(): void {
-    if (
-      !this.initialized ||
-      this.destroyed ||
-      !this.transport ||
-      this.activeTask !== null ||
-      this.queue.length === 0
-    ) {
+    if (!this.initialized || this.destroyed || !this.transport || this.activeTask !== null || this.queue.length === 0) {
       return;
     }
 
@@ -971,14 +888,8 @@ export class EngineClient {
     const desiredMultiPv = task.multipv;
     const desiredChess960 = task.chess960;
     const desiredLimitStrength = Boolean(req.uciLimitStrength);
-    const desiredElo = Math.max(
-      1320,
-      Math.min(3190, Math.round(req.uciElo ?? 1320)),
-    );
-    const desiredSkill = Math.max(
-      0,
-      Math.min(20, Math.round(req.skillLevel ?? 20)),
-    );
+    const desiredElo = Math.max(1320, Math.min(3190, Math.round(req.uciElo ?? 1320)));
+    const desiredSkill = Math.max(0, Math.min(20, Math.round(req.skillLevel ?? 20)));
 
     if (req.resetGame) {
       this.transport.send('ucinewgame');
@@ -990,16 +901,12 @@ export class EngineClient {
     }
 
     if (this.appliedOptions.chess960 !== desiredChess960) {
-      this.transport.send(
-        `setoption name UCI_Chess960 value ${desiredChess960 ? 'true' : 'false'}`,
-      );
+      this.transport.send(`setoption name UCI_Chess960 value ${desiredChess960 ? 'true' : 'false'}`);
       this.appliedOptions.chess960 = desiredChess960;
     }
 
     if (this.appliedOptions.uciLimitStrength !== desiredLimitStrength) {
-      this.transport.send(
-        `setoption name UCI_LimitStrength value ${desiredLimitStrength ? 'true' : 'false'}`,
-      );
+      this.transport.send(`setoption name UCI_LimitStrength value ${desiredLimitStrength ? 'true' : 'false'}`);
       this.appliedOptions.uciLimitStrength = desiredLimitStrength;
     }
 
@@ -1023,11 +930,7 @@ export class EngineClient {
       }
 
       this.activePhase = 'searching';
-      const posCmd = this.buildPositionCommand(
-        task.fen,
-        task.chess960,
-        req.moves,
-      );
+      const posCmd = this.buildPositionCommand(task.fen, task.chess960, req.moves);
       this.transport.send(posCmd);
       this.transport.send(this.buildGoCommand(req));
     });
@@ -1037,9 +940,7 @@ export class EngineClient {
     if (!this.transport) return;
 
     if (this.appliedOptions.chess960 !== task.chess960) {
-      this.transport.send(
-        `setoption name UCI_Chess960 value ${task.chess960 ? 'true' : 'false'}`,
-      );
+      this.transport.send(`setoption name UCI_Chess960 value ${task.chess960 ? 'true' : 'false'}`);
       this.appliedOptions.chess960 = task.chess960;
     }
 
@@ -1059,14 +960,8 @@ export class EngineClient {
     });
   }
 
-  private buildPositionCommand(
-    fen: string,
-    chess960: boolean,
-    moves?: string[],
-  ): string {
-    const isStartPos =
-      !chess960 &&
-      (fen.toLowerCase() === 'startpos' || fen === DEFAULT_POSITION);
+  private buildPositionCommand(fen: string, chess960: boolean, moves?: string[]): string {
+    const isStartPos = !chess960 && (fen.toLowerCase() === 'startpos' || fen === DEFAULT_POSITION);
     const base = isStartPos ? 'position startpos' : `position fen ${fen}`;
     if (moves && moves.length > 0) {
       return `${base} moves ${moves.join(' ')}`;
@@ -1087,8 +982,7 @@ export class EngineClient {
       }
       if (
         typeof req.depth === 'number' ||
-        (typeof req.movetime !== 'number' &&
-          !(typeof req.nodes === 'number' && req.nodes > 0))
+        (typeof req.movetime !== 'number' && !(typeof req.nodes === 'number' && req.nodes > 0))
       ) {
         parts.push(`depth ${Math.max(1, Math.floor(req.depth ?? 14))}`);
       }
@@ -1139,10 +1033,7 @@ export class EngineClient {
     }
   }
 
-  private handleAnalyzeInfo(
-    task: QueuedAnalyzeTask,
-    info: UciInfoSearchMessage,
-  ): void {
+  private handleAnalyzeInfo(task: QueuedAnalyzeTask, info: UciInfoSearchMessage): void {
     if (task.cancelled) return;
 
     if (typeof info.nps === 'number') {
@@ -1165,8 +1056,7 @@ export class EngineClient {
         const evalCp = scoreToCentipawns(score);
         const existing = task.linesByMultiPv.get(mpv);
 
-        const pv =
-          info.pv.length > 0 ? info.pv : (existing?.pv ?? []);
+        const pv = info.pv.length > 0 ? info.pv : (existing?.pv ?? []);
 
         const lineObj: EngineLine = {
           multipv: mpv,
@@ -1196,11 +1086,7 @@ export class EngineClient {
     }
   }
 
-  private handleAnalyzeBestMove(
-    task: QueuedAnalyzeTask,
-    bestMove: string | null,
-    ponder: string | null,
-  ): void {
+  private handleAnalyzeBestMove(task: QueuedAnalyzeTask, bestMove: string | null, ponder: string | null): void {
     this.activeTask = null;
     this.activePhase = 'idle';
     task.abortHandler?.();
@@ -1213,11 +1099,7 @@ export class EngineClient {
 
     const result = this.buildTaskSnapshot(task, bestMove, ponder);
 
-    if (
-      task.cacheable &&
-      typeof task.request.depth === 'number' &&
-      !task.stoppingToResolve
-    ) {
+    if (task.cacheable && typeof task.request.depth === 'number' && !task.stoppingToResolve) {
       this.cache.set(task.fen, task.request.depth, task.multipv, result);
     }
 
@@ -1260,15 +1142,11 @@ export class EngineClient {
     bestMove: string | null,
     ponder: string | null,
   ): EngineAnalysisResult {
-    const lines = Array.from(task.linesByMultiPv.values()).sort(
-      (a, b) => a.multipv - b.multipv,
-    );
+    const lines = Array.from(task.linesByMultiPv.values()).sort((a, b) => a.multipv - b.multipv);
     const resolvedBestMove = bestMove ?? lines[0]?.pv[0] ?? null;
     const resolvedPonder = ponder ?? lines[0]?.pv[1] ?? null;
     const elapsed =
-      task.latestTimeMs > 0
-        ? task.latestTimeMs
-        : Math.max(0, Math.round(performance.now() - task.startedAt));
+      task.latestTimeMs > 0 ? task.latestTimeMs : Math.max(0, Math.round(performance.now() - task.startedAt));
 
     return {
       fen: task.fen,

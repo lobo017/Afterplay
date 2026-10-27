@@ -23,7 +23,8 @@ import { WizardChessStorage, deleteWizardChessDB } from '../../src/storage/db';
 const DB = 'wizards-chess-delivery-test';
 const ORIGIN = 'http://127.0.0.1:4173';
 
-const STANDARD = '[Event "Casual"]\n[White "Alice"]\n[Black "Bob"]\n[Result "1-0"]\n\n1. e4 e5 2. Qh5 Nc6 3. Bc4 Nf6 4. Qxf7# 1-0';
+const STANDARD =
+  '[Event "Casual"]\n[White "Alice"]\n[Black "Bob"]\n[Result "1-0"]\n\n1. e4 e5 2. Qh5 Nc6 3. Bc4 Nf6 4. Qxf7# 1-0';
 const ANTICHESS =
   '[Event "casual variant:antichess game"]\n[Site "https://lichess.org/6XyS2AA6"]\n[White "BradyAranya"]\n[Black "Lobo017"]\n' +
   '[Result "1-0"]\n[Variant "Antichess"]\n\n1. e3 b6 2. Ba6 Bxa6 3. Qe2 Bxe2 4. Kxe2 Nc6 5. Kd3 Qc8 6. Kc4 1-0';
@@ -74,7 +75,13 @@ describe('Phase 5b — the site’s answer for every game it is offered', () => 
     const storage = await WizardChessStorage.create({ dbName: DB });
     const library = new GameLibrary(storage);
     await library.init();
-    const game = (key: string, pgn: string): BridgeGame => ({ key, source: key.split(':')[0] as BridgeGame['source'], pgn, capturedAt: 1, method: 'm' });
+    const game = (key: string, pgn: string): BridgeGame => ({
+      key,
+      source: key.split(':')[0] as BridgeGame['source'],
+      pgn,
+      capturedAt: 1,
+      method: 'm',
+    });
     await library.saveBridgeGames([game('chesscom:live-1', STANDARD)]);
     const outcome = await library.saveBridgeGames([
       game('chesscom:live-1', STANDARD),
@@ -113,7 +120,11 @@ describe('Phase 5b — the site’s answer for every game it is offered', () => 
     expect(parsePageMessage({ ...saved, failed: [{ key: 'lichess:6XyS2AA6', reason: 'x' }] })).not.toBeNull();
     expect(rejectionOf({ key: 'lichess:6XyS2AA6', reason: 'x' })).toBeNull();
     expect(rejectionOf({ key: 'lichess:6XyS2AA6', kind: 'error', reason: 'x' })).toBeNull();
-    expect(rejectionOf({ key: 'lichess:6XyS2AA6', kind: 'invalid', reason: 'x' })).toEqual({ key: 'lichess:6XyS2AA6', kind: 'invalid', reason: 'x' });
+    expect(rejectionOf({ key: 'lichess:6XyS2AA6', kind: 'invalid', reason: 'x' })).toEqual({
+      key: 'lichess:6XyS2AA6',
+      kind: 'invalid',
+      reason: 'x',
+    });
   });
 });
 
@@ -151,7 +162,9 @@ describe('Phase 5b — the extension acts on every answer', () => {
     const queue = new CaptureQueue(store, () => 1);
     for (const [key, pgn] of Object.entries(games)) {
       // An import that didn't look at the PGN: written as the old queue wrote it
-      await queue.addReady([{ key, source: key.split(':')[0] as 'lichess', pgn: STANDARD, method: 'lichess-history', trigger: 'history' }]);
+      await queue.addReady([
+        { key, source: key.split(':')[0] as 'lichess', pgn: STANDARD, method: 'lichess-history', trigger: 'history' },
+      ]);
       await store.set({ [`queue:pgn:${key}`]: pgn });
     }
     return { store, queue };
@@ -165,7 +178,10 @@ describe('Phase 5b — the extension acts on every answer', () => {
       markDelivered: (keys) => queue.markDelivered(keys),
       markRejected: (items) => queue.markRejected(items),
     });
-    const client = new ExtensionBridgeClient(win, { saveGames: (g) => library.saveBridgeGames(g), setAccounts: () => undefined });
+    const client = new ExtensionBridgeClient(win, {
+      saveGames: (g) => library.saveBridgeGames(g),
+      setAccounts: () => undefined,
+    });
     bridge.start();
     client.start();
     await vi.waitFor(
@@ -185,7 +201,9 @@ describe('Phase 5b — the extension acts on every answer', () => {
     const storage = await WizardChessStorage.create({ dbName: DB });
     const library = new GameLibrary(storage);
     await library.init();
-    await library.saveBridgeGames([{ key: 'chesscom:live-1', source: 'chesscom', pgn: STANDARD, capturedAt: 1, method: 'm' }]);
+    await library.saveBridgeGames([
+      { key: 'chesscom:live-1', source: 'chesscom', pgn: STANDARD, capturedAt: 1, method: 'm' },
+    ]);
     const { queue, store } = await legacyQueue({
       'lichess:6XyS2AA6': ANTICHESS,
       'lichess:N8YdYmlV': ATOMIC,
@@ -199,7 +217,11 @@ describe('Phase 5b — the extension acts on every answer', () => {
     expect(await queue.counts()).toEqual({ pending: 0, ready: 0, delivered: 2, rejected: 4 });
     expect(await queue.get('chesscom:live-1')).toMatchObject({ status: 'delivered' }); // already on the site
     expect(await queue.get('chesscom:live-3')).toMatchObject({ status: 'delivered' }); // unusual headers
-    expect(await queue.get('lichess:6XyS2AA6')).toMatchObject({ status: 'rejected', rejectKind: 'variant', rejectReason: 'variant: Antichess' });
+    expect(await queue.get('lichess:6XyS2AA6')).toMatchObject({
+      status: 'rejected',
+      rejectKind: 'variant',
+      rejectReason: 'variant: Antichess',
+    });
     expect(await queue.get('chesscom:daily-376600893')).toMatchObject({ status: 'rejected', rejectKind: 'no-moves' });
     expect(await queue.get('chesscom:live-2')).toMatchObject({ status: 'rejected', rejectKind: 'invalid' });
     // A variant's PGN is dropped; an unreadable one is kept for Retry
@@ -240,24 +262,49 @@ describe('Phase 5b — the extension acts on every answer', () => {
     const queue = new CaptureQueue(store, () => 1);
     const outcomes = await queue.addReady([
       { key: 'lichess:6XyS2AA6', source: 'lichess', pgn: ANTICHESS, method: 'lichess-history', trigger: 'history' },
-      { key: 'chesscom:daily-376600893', source: 'chesscom', pgn: NO_MOVES, method: 'chesscom-archive-history', trigger: 'history' },
+      {
+        key: 'chesscom:daily-376600893',
+        source: 'chesscom',
+        pgn: NO_MOVES,
+        method: 'chesscom-archive-history',
+        trigger: 'history',
+      },
       { key: 'chesscom:live-1', source: 'chesscom', pgn: STANDARD, method: 'm', trigger: 'history' },
     ]);
     expect(outcomes).toEqual(['not-importable', 'not-importable', 'added']);
     expect(await queue.counts()).toEqual({ pending: 0, ready: 1, delivered: 0, rejected: 2 });
-    expect(Object.keys(await store.get(null)).filter((k) => k.startsWith('queue:pgn:'))).toEqual(['queue:pgn:chesscom:live-1']);
+    expect(Object.keys(await store.get(null)).filter((k) => k.startsWith('queue:pgn:'))).toEqual([
+      'queue:pgn:chesscom:live-1',
+    ]);
     expect((await queue.takeBatch(50)).games.map((g) => g.key)).toEqual(['chesscom:live-1']);
 
     // Imports and the sync don't bring a rejected game back; Save, a link or a paste may
-    expect(await queue.addReady([{ key: 'lichess:6XyS2AA6', source: 'lichess', pgn: STANDARD, method: 'lichess-sync', trigger: 'sync' }])).toEqual(['already-rejected']);
-    expect(await queue.addReady([{ key: 'lichess:6XyS2AA6', source: 'lichess', pgn: ANTICHESS, method: 'x', trigger: 'save-button' }])).toEqual(['not-importable']);
-    expect(await queue.addPending({ key: 'lichess:6XyS2AA6', source: 'lichess', url: null, error: 'x', nextRetryAt: null })).toBe('already-rejected');
+    expect(
+      await queue.addReady([
+        { key: 'lichess:6XyS2AA6', source: 'lichess', pgn: STANDARD, method: 'lichess-sync', trigger: 'sync' },
+      ]),
+    ).toEqual(['already-rejected']);
+    expect(
+      await queue.addReady([
+        { key: 'lichess:6XyS2AA6', source: 'lichess', pgn: ANTICHESS, method: 'x', trigger: 'save-button' },
+      ]),
+    ).toEqual(['not-importable']);
+    expect(
+      await queue.addPending({ key: 'lichess:6XyS2AA6', source: 'lichess', url: null, error: 'x', nextRetryAt: null }),
+    ).toBe('already-rejected');
 
     // Games queued before the queue looked: classified when the extension starts
-    const old = await legacyQueue({ 'lichess:CfJ0muXA': CRAZYHOUSE, 'chesscom:live-38386395525': DRAWN_AT_MOVE_0, 'chesscom:live-9': STANDARD });
+    const old = await legacyQueue({
+      'lichess:CfJ0muXA': CRAZYHOUSE,
+      'chesscom:live-38386395525': DRAWN_AT_MOVE_0,
+      'chesscom:live-9': STANDARD,
+    });
     expect(await old.queue.classifyWaiting()).toBe(2);
     expect(await old.queue.counts()).toEqual({ pending: 0, ready: 1, delivered: 0, rejected: 2 });
-    expect(await old.queue.get('lichess:CfJ0muXA')).toMatchObject({ rejectKind: 'variant', rejectReason: 'variant: Crazyhouse' });
+    expect(await old.queue.get('lichess:CfJ0muXA')).toMatchObject({
+      rejectKind: 'variant',
+      rejectReason: 'variant: Crazyhouse',
+    });
   });
 });
 

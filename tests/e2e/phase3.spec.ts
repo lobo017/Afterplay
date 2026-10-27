@@ -36,9 +36,7 @@ test.describe('Phase 3 — 2D Board, Play Mode vs Bot & Legacy Bug Regression Su
     await expect(page.getByTestId('piece-e2')).toBeVisible();
 
     // Verify all pieces are positioned using CSS transform: translate3d(...)
-    const e2Transform = await page
-      .getByTestId('piece-e2')
-      .evaluate((el) => (el as HTMLElement).style.transform);
+    const e2Transform = await page.getByTestId('piece-e2').evaluate((el) => (el as HTMLElement).style.transform);
     expect(e2Transform).toMatch(/^translate3d\(400%, 600%, 0(?:px)?\)$/);
 
     // -------------------------------------------------------------------------
@@ -75,18 +73,14 @@ test.describe('Phase 3 — 2D Board, Play Mode vs Bot & Legacy Bug Regression Su
     await expect(page.getByTestId('hints-used-badge')).toHaveText('1 hint used');
     await expect(page.getByTestId('btn-hint')).toHaveText('Hint (2)');
 
-    const hintsLog = await page.evaluate(() =>
-      window.__wizardChessPlay!.controller.getHintsLog(),
-    );
+    const hintsLog = await page.evaluate(() => window.__wizardChessPlay!.controller.getHintsLog());
     expect(hintsLog.length).toBe(1);
     expect(hintsLog[0]?.ply).toBe(0);
     expect(hintsLog[0]?.suggestedSan.length).toBeGreaterThanOrEqual(2);
 
     // Click e2 -> legal move dots appear -> click e4 to play 1. e4
     await page.getByTestId('square-e2').click();
-    await expect(
-      page.locator('[data-testid="overlay-legal-dot"][data-square="e4"]'),
-    ).toBeVisible();
+    await expect(page.locator('[data-testid="overlay-legal-dot"][data-square="e4"]')).toBeVisible();
     await page.getByTestId('square-e4').click();
 
     // Wait for Stockfish bot to reply with Black's move (ply 2)
@@ -109,10 +103,7 @@ test.describe('Phase 3 — 2D Board, Play Mode vs Bot & Legacy Bug Regression Su
     // -------------------------------------------------------------------------
     await page.evaluate(() => {
       // Load a position where White has a pawn on a7 ready to promote on a8 (empty a8)
-      window.__wizardChessPlay!.controller.loadPosition(
-        '2r1kbnr/Pppppppp/8/8/8/8/1PPPPPPP/RNBQKBNR w KQk - 0 1',
-        'w',
-      );
+      window.__wizardChessPlay!.controller.loadPosition('2r1kbnr/Pppppppp/8/8/8/8/1PPPPPPP/RNBQKBNR w KQk - 0 1', 'w');
     });
 
     const boardBox = await board.boundingBox();
@@ -135,16 +126,12 @@ test.describe('Phase 3 — 2D Board, Play Mode vs Bot & Legacy Bug Regression Su
     await expect(promoPicker).toBeVisible();
 
     // Legacy Bug #2 check: while modal is open, the pawn at a7 must NOT have .wc-piece-dragging or be floating mid-air
-    const pawnWhileModalOpen = await page
-      .getByTestId('piece-a7')
-      .evaluate((el) => ({
-        hasDraggingClass: el.classList.contains('wc-piece-dragging'),
-        transform: (el as HTMLElement).style.transform,
-      }));
+    const pawnWhileModalOpen = await page.getByTestId('piece-a7').evaluate((el) => ({
+      hasDraggingClass: el.classList.contains('wc-piece-dragging'),
+      transform: (el as HTMLElement).style.transform,
+    }));
     expect(pawnWhileModalOpen.hasDraggingClass).toBe(false);
-    expect(pawnWhileModalOpen.transform).toMatch(
-      /^translate3d\(0%, 100%, 0(?:px)?\)$/,
-    );
+    expect(pawnWhileModalOpen.transform).toMatch(/^translate3d\(0%, 100%, 0(?:px)?\)$/);
 
     // Cancel the promotion picker with Escape key (was impossible in legacy app!)
     await page.keyboard.press('Escape');
@@ -177,10 +164,7 @@ test.describe('Phase 3 — 2D Board, Play Mode vs Bot & Legacy Bug Regression Su
       // Set a 900ms bot delay so we can queue the premove via the Promotion Picker UI while Black is thinking
       play.controller.setBotMoveDelayMs(900);
       // Black to move first; c8 Bishop blocks d8 Queen from reaching a8, so a8 stays empty for White's premove
-      play.controller.loadPosition(
-        '2bqkbnr/Pppppppp/8/8/8/8/1PPPPPPP/RNBQKBNR b KQk - 0 1',
-        'w',
-      );
+      play.controller.loadPosition('2bqkbnr/Pppppppp/8/8/8/8/1PPPPPPP/RNBQKBNR b KQk - 0 1', 'w');
     });
 
     // Click a7 -> click a8 while it is Black's turn -> Premove Promotion Picker opens -> click Knight ('promote-n')
@@ -208,11 +192,7 @@ test.describe('Phase 3 — 2D Board, Play Mode vs Bot & Legacy Bug Regression Su
             return;
           }
           if (Date.now() > deadline) {
-            reject(
-              new Error(
-                `Timed out waiting for premove underpromotion; moves: ${moves.join(', ')}`,
-              ),
-            );
+            reject(new Error(`Timed out waiting for premove underpromotion; moves: ${moves.join(', ')}`));
             return;
           }
           setTimeout(poll, 30);
@@ -231,9 +211,7 @@ test.describe('Phase 3 — 2D Board, Play Mode vs Bot & Legacy Bug Regression Su
     });
 
     expect(premoveUnderpromoResult.queuedPromotion).toBe('n');
-    expect(
-      premoveUnderpromoResult.mainLineSan.some((san) => san.includes('=N')),
-    ).toBe(true);
+    expect(premoveUnderpromoResult.mainLineSan.some((san) => san.includes('=N'))).toBe(true);
 
     // -------------------------------------------------------------------------
     // 5. Legacy Bug #4 Regression: In-Flight Bot Search Cancelled Cleanly on New Game
@@ -242,10 +220,7 @@ test.describe('Phase 3 — 2D Board, Play Mode vs Bot & Legacy Bug Regression Su
       const play = window.__wizardChessPlay!;
       play.controller.setBotMoveDelayMs(400);
       // Start a game where Black (bot) is thinking
-      play.controller.loadPosition(
-        'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1',
-        'w',
-      );
+      play.controller.loadPosition('rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1', 'w');
       const thinkingDuringOldGame = play.controller.isBotCurrentlyThinking();
 
       // Immediately start a brand new standard game (White to move) while bot search is in flight
@@ -267,9 +242,7 @@ test.describe('Phase 3 — 2D Board, Play Mode vs Bot & Legacy Bug Regression Su
     expect(raceConditionCheck.thinkingDuringOldGame).toBe(true);
     expect(raceConditionCheck.thinkingAfterReset).toBe(false);
     expect(raceConditionCheck.movesCountAfterWait).toBe(0);
-    expect(raceConditionCheck.fenAfterWait).toBe(
-      'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
-    );
+    expect(raceConditionCheck.fenAfterWait).toBe('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1');
 
     // -------------------------------------------------------------------------
     // 6. Optional Confirm-Move Setting, Board Themes, Piece Sets, and Flip
@@ -299,19 +272,11 @@ test.describe('Phase 3 — 2D Board, Play Mode vs Bot & Legacy Bug Regression Su
 
     // Switch Board Theme & Piece Set (including High Contrast)
     await page.getByTestId('select-board-theme').selectOption('high-contrast');
-    await expect(page.getByTestId('chess-board-frame')).toHaveAttribute(
-      'data-theme',
-      'high-contrast',
-    );
+    await expect(page.getByTestId('chess-board-frame')).toHaveAttribute('data-theme', 'high-contrast');
     await page.getByTestId('select-piece-set').selectOption('high-contrast');
-    await expect(page.getByTestId('chess-board-frame')).toHaveAttribute(
-      'data-piece-set',
-      'high-contrast',
-    );
+    await expect(page.getByTestId('chess-board-frame')).toHaveAttribute('data-piece-set', 'high-contrast');
     // Restore default Cathedral Marble & Obsidian theme for screenshots
-    await page
-      .getByTestId('select-board-theme')
-      .selectOption('marble-obsidian');
+    await page.getByTestId('select-board-theme').selectOption('marble-obsidian');
     await page.getByTestId('select-piece-set').selectOption('cathedral');
     await page.keyboard.press('Escape');
     await expect(page.getByTestId('settings-sheet')).toBeHidden();
@@ -342,9 +307,7 @@ test.describe('Phase 3 — 2D Board, Play Mode vs Bot & Legacy Bug Regression Su
     await page.getByTestId('square-c4').click();
     await page.getByTestId('square-f7').click();
 
-    await expect(page.getByTestId('game-status-banner')).toContainText(
-      'Checkmate — White wins · 1-0',
-    );
+    await expect(page.getByTestId('game-status-banner')).toContainText('Checkmate — White wins · 1-0');
 
     const finalGameState = await page.evaluate(() => {
       const play = window.__wizardChessPlay!;
@@ -352,10 +315,7 @@ test.describe('Phase 3 — 2D Board, Play Mode vs Bot & Legacy Bug Regression Su
         isGameOver: play.controller.isGameOver(),
         result: play.controller.getGameResult(),
         pgn: play.controller.getPgn(),
-        particlePoolSize: play.controller
-          .getBoard()
-          .getParticles()
-          .getPoolSize(),
+        particlePoolSize: play.controller.getBoard().getParticles().getPoolSize(),
       };
     });
 
@@ -523,8 +483,7 @@ test.describe('Phase 3 — 2D Board, Play Mode vs Bot & Legacy Bug Regression Su
             };
             const boardPart = rows.map(encodeRow).join('/');
             // For premove mode, it is the opponent's turn to move while `color` queues a promotion premove
-            const turn =
-              mode === 'premove' ? (color === 'w' ? 'b' : 'w') : color;
+            const turn = mode === 'premove' ? (color === 'w' ? 'b' : 'w') : color;
             return `${boardPart} ${turn} - - 0 1`;
           })();
 
@@ -568,12 +527,8 @@ test.describe('Phase 3 — 2D Board, Play Mode vs Bot & Legacy Bug Regression Su
 
           // Verify 4 piece buttons with SVG icons and zero text labels, and verify no clipping
           const layoutMetrics = await page.evaluate(() => {
-            const boardEl = document.querySelector(
-              '[data-testid="chess-board"]',
-            )!;
-            const colEl = document.querySelector(
-              '[data-testid="promotion-picker"]',
-            )!;
+            const boardEl = document.querySelector('[data-testid="chess-board"]')!;
+            const colEl = document.querySelector('[data-testid="promotion-picker"]')!;
             const qEl = document.querySelector('[data-testid="promote-q"]')!;
             const nEl = document.querySelector('[data-testid="promote-n"]')!;
             const rEl = document.querySelector('[data-testid="promote-r"]')!;
@@ -606,9 +561,7 @@ test.describe('Phase 3 — 2D Board, Play Mode vs Bot & Legacy Bug Regression Su
               bCenterY: (bBtnRect.top + bBtnRect.bottom) / 2,
               buttonCount: colEl.querySelectorAll('button').length,
               allHaveSvgAndNoText: buttons.every(
-                (btn) =>
-                  btn.querySelector('svg') !== null &&
-                  (btn.textContent ?? '').trim() === '',
+                (btn) => btn.querySelector('svg') !== null && (btn.textContent ?? '').trim() === '',
               ),
             };
           });
@@ -617,47 +570,26 @@ test.describe('Phase 3 — 2D Board, Play Mode vs Bot & Legacy Bug Regression Su
           expect(layoutMetrics.allHaveSvgAndNoText).toBe(true);
 
           // Must sit inside the board with zero clipping on any edge (1.5px float tolerance)
-          expect(layoutMetrics.colRect.left).toBeGreaterThanOrEqual(
-            layoutMetrics.boardRect.left - 1.5,
-          );
-          expect(layoutMetrics.colRect.right).toBeLessThanOrEqual(
-            layoutMetrics.boardRect.right + 1.5,
-          );
-          expect(layoutMetrics.colRect.top).toBeGreaterThanOrEqual(
-            layoutMetrics.boardRect.top - 1.5,
-          );
-          expect(layoutMetrics.colRect.bottom).toBeLessThanOrEqual(
-            layoutMetrics.boardRect.bottom + 1.5,
-          );
+          expect(layoutMetrics.colRect.left).toBeGreaterThanOrEqual(layoutMetrics.boardRect.left - 1.5);
+          expect(layoutMetrics.colRect.right).toBeLessThanOrEqual(layoutMetrics.boardRect.right + 1.5);
+          expect(layoutMetrics.colRect.top).toBeGreaterThanOrEqual(layoutMetrics.boardRect.top - 1.5);
+          expect(layoutMetrics.colRect.bottom).toBeLessThanOrEqual(layoutMetrics.boardRect.bottom + 1.5);
 
           // Column width is 1/8th of board width and height is 4/8ths (50%) of board height
-          expect(
-            Math.abs(
-              layoutMetrics.colRect.width - layoutMetrics.boardRect.width / 8,
-            ),
-          ).toBeLessThan(2.5);
-          expect(
-            Math.abs(
-              layoutMetrics.colRect.height - layoutMetrics.boardRect.height / 2,
-            ),
-          ).toBeLessThan(2.5);
+          expect(Math.abs(layoutMetrics.colRect.width - layoutMetrics.boardRect.width / 8)).toBeLessThan(2.5);
+          expect(Math.abs(layoutMetrics.colRect.height - layoutMetrics.boardRect.height / 2)).toBeLessThan(2.5);
 
           // Queen ('q') must be closest to the board edge (top edge when visualToRow === 0, bottom edge when visualToRow === 7)
           if (visualToRow === 0) {
             expect(layoutMetrics.qCenterY).toBeLessThan(layoutMetrics.bCenterY);
           } else {
-            expect(layoutMetrics.qCenterY).toBeGreaterThan(
-              layoutMetrics.bCenterY,
-            );
+            expect(layoutMetrics.qCenterY).toBeGreaterThan(layoutMetrics.bCenterY);
           }
 
           if (process.env.SCREENSHOT_DIR) {
             const orientLabel = flipped ? 'flipped' : 'unflipped';
             await board.screenshot({
-              path: path.join(
-                process.env.SCREENSHOT_DIR,
-                `promo-${color}-${orientLabel}-file-${file}.png`,
-              ),
+              path: path.join(process.env.SCREENSHOT_DIR, `promo-${color}-${orientLabel}-file-${file}.png`),
             });
           }
 
@@ -675,4 +607,3 @@ test.describe('Phase 3 — 2D Board, Play Mode vs Bot & Legacy Bug Regression Su
     }
   });
 });
-

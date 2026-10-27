@@ -86,9 +86,7 @@ async function main() {
   const rng = createRng(0x57495a43); // "WIZC"
 
   // 5 rating buckets x 20 priority themes = 100 strata -> ~200 puzzles per stratum = 20,000
-  const stratumCapacity = Math.ceil(
-    TARGET_TOTAL / (RATING_BUCKETS.length * PRIORITY_THEMES.length),
-  );
+  const stratumCapacity = Math.ceil(TARGET_TOTAL / (RATING_BUCKETS.length * PRIORITY_THEMES.length));
   /** @type {Map<string, { items: Array<{ id: string; fen: string; moves: string[]; rating: number; themes: string[] }>; seen: number }>} */
   const strata = new Map();
   /** @type {Array<{ id: string; fen: string; moves: string[]; rating: number; themes: string[] }>} */

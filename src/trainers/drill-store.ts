@@ -24,7 +24,10 @@ export interface DrillSummary {
   nextDueAt: number | null;
 }
 
-export function summarizeCards(cards: readonly StoredSrsCardRecord[], now: number): { deck: DeckSummary; nextDueAt: number | null } {
+export function summarizeCards(
+  cards: readonly StoredSrsCardRecord[],
+  now: number,
+): { deck: DeckSummary; nextDueAt: number | null } {
   const deck: DeckSummary = { due: 0, fresh: 0, total: cards.length };
   let nextDueAt: number | null = null;
   for (const c of cards) {

@@ -8,12 +8,7 @@ import {
 import { buildGameReview, mainLinePlies } from '../../src/review/review-game';
 import { ReviewRunner, type ReviewEngine } from '../../src/review/review-runner';
 import type { GameReview } from '../../src/review/types';
-import {
-  classificationFixtures,
-  isBookFen,
-  recordedLine,
-  resolveStartFen,
-} from '../helpers/review-fixtures';
+import { classificationFixtures, isBookFen, recordedLine, resolveStartFen } from '../helpers/review-fixtures';
 
 /** Replays the recorded fixture results, keyed by the number of moves played. */
 class RecordedEngine implements ReviewEngine {
@@ -127,11 +122,19 @@ describe('Phase 5 — review runner', () => {
       if (moves === 0) {
         return [
           { multipv: 1, score: { type: 'mate' as const, value: 3 }, pv: ['e2e4'] },
-          { multipv: 2, score: quick ? { type: 'cp' as const, value: 100 } : { type: 'mate' as const, value: 4 }, pv: ['d2d4'] },
+          {
+            multipv: 2,
+            score: quick ? { type: 'cp' as const, value: 100 } : { type: 'mate' as const, value: 4 },
+            pv: ['d2d4'],
+          },
         ];
       }
       return [
-        { multipv: 1, score: quick ? { type: 'cp' as const, value: -300 } : { type: 'mate' as const, value: -3 }, pv: ['g8f6'] },
+        {
+          multipv: 1,
+          score: quick ? { type: 'cp' as const, value: -300 } : { type: 'mate' as const, value: -3 },
+          pv: ['g8f6'],
+        },
       ];
     };
     const requests: EngineAnalyzeRequest[] = [];
@@ -146,7 +149,16 @@ describe('Phase 5 — review runner', () => {
           multipv: 2,
           bestMove: lines[0]!.pv[0]!,
           ponder: null,
-          lines: lines.map((l) => ({ ...l, depth: 10, seldepth: 10, scoreWhite: l.score, evalCp: 0, nodes: 0, nps: 0, timeMs: 0 })),
+          lines: lines.map((l) => ({
+            ...l,
+            depth: 10,
+            seldepth: 10,
+            scoreWhite: l.score,
+            evalCp: 0,
+            nodes: 0,
+            nps: 0,
+            timeMs: 0,
+          })),
           nodes: 0,
           nps: 0,
           timeMs: 0,
@@ -186,7 +198,17 @@ describe('Phase 5 — review runner', () => {
       multipv: lines.length,
       bestMove: lines[0]!.pv[0]!,
       ponder: null,
-      lines: lines.map((l, i) => ({ multipv: i + 1, ...l, depth, seldepth: depth, scoreWhite: l.score, evalCp: 0, nodes: 0, nps: 0, timeMs: 0 })),
+      lines: lines.map((l, i) => ({
+        multipv: i + 1,
+        ...l,
+        depth,
+        seldepth: depth,
+        scoreWhite: l.score,
+        evalCp: 0,
+        nodes: 0,
+        nps: 0,
+        timeMs: 0,
+      })),
       nodes: 0,
       nps: 0,
       timeMs: 0,

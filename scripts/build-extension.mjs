@@ -157,5 +157,7 @@ for (const [name] of ENTRIES) {
     throw new Error(`${name}.js loads remote code`);
   }
 }
-const sizes = ENTRIES.map(([name]) => `${name}.js ${(fs.statSync(path.join(OUT, `${name}.js`)).size / 1024).toFixed(0)} kB`);
+const sizes = ENTRIES.map(
+  ([name]) => `${name}.js ${(fs.statSync(path.join(OUT, `${name}.js`)).size / 1024).toFixed(0)} kB`,
+);
 console.log(`Extension built into ${path.relative(root, OUT)}/ (v${pkg.version}): ${sizes.join(', ')}`);

@@ -2,16 +2,9 @@ import fs from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { selectHumanLikeMove } from '../../src/engine/bot';
 import { BotSelectionClient } from '../../src/engine/bot-selection-client';
-import {
-  SHARED_STREAM_SEED,
-  buildBotGoldenCases,
-  hashCases,
-  mulberry32,
-} from '../helpers/bot-golden-cases';
+import { SHARED_STREAM_SEED, buildBotGoldenCases, hashCases, mulberry32 } from '../helpers/bot-golden-cases';
 
-const golden = JSON.parse(
-  fs.readFileSync('tests/fixtures/bot-selection-golden.json', 'utf8'),
-) as {
+const golden = JSON.parse(fs.readFileSync('tests/fixtures/bot-selection-golden.json', 'utf8')) as {
   generatedFrom: string;
   caseCount: number;
   casesHash: string;
@@ -35,14 +28,10 @@ describe('Phase 3 — bot move selection matches the original implementation', (
   });
 
   it('selectHumanLikeMove gives the golden move for every case and seed', () => {
-    const independent = cases.map(
-      (c) => selectHumanLikeMove({ ...request(c), rng: mulberry32(c.seed) }).uci,
-    );
+    const independent = cases.map((c) => selectHumanLikeMove({ ...request(c), rng: mulberry32(c.seed) }).uci);
     expect(independent).toEqual(golden.independent);
     const shared = mulberry32(SHARED_STREAM_SEED);
-    const sharedStream = cases.map(
-      (c) => selectHumanLikeMove({ ...request(c), rng: shared }).uci,
-    );
+    const sharedStream = cases.map((c) => selectHumanLikeMove({ ...request(c), rng: shared }).uci);
     expect(sharedStream).toEqual(golden.sharedStream);
   }, 120_000);
 

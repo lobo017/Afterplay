@@ -1,9 +1,6 @@
 /// <reference lib="webworker" />
 import { selectHumanLikeMove } from './bot';
-import type {
-  BotSelectionRequestMessage,
-  BotSelectionResponseMessage,
-} from './bot-selection-client';
+import type { BotSelectionRequestMessage, BotSelectionResponseMessage } from './bot-selection-client';
 
 /**
  * Bot move selection worker: runs selectHumanLikeMove() with the random values the main

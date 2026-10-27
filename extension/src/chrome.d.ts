@@ -26,7 +26,11 @@ declare namespace chrome {
     function sendMessage<T = unknown>(message: unknown): Promise<T>;
     const onMessage: {
       addListener(
-        callback: (message: unknown, sender: MessageSender, sendResponse: (response?: unknown) => void) => boolean | void,
+        callback: (
+          message: unknown,
+          sender: MessageSender,
+          sendResponse: (response?: unknown) => void,
+        ) => boolean | void,
       ): void;
     };
     const onInstalled: { addListener(callback: (details: InstalledDetails) => void): void };
@@ -92,7 +96,10 @@ declare namespace chrome {
       scheduledTime: number;
       periodInMinutes?: number;
     }
-    function create(name: string, info: { when?: number; delayInMinutes?: number; periodInMinutes?: number }): Promise<void>;
+    function create(
+      name: string,
+      info: { when?: number; delayInMinutes?: number; periodInMinutes?: number },
+    ): Promise<void>;
     function get(name: string): Promise<Alarm | undefined>;
     function clear(name: string): Promise<boolean>;
     const onAlarm: { addListener(callback: (alarm: Alarm) => void): void };
@@ -111,7 +118,10 @@ declare namespace chrome {
     function updateContentScripts(scripts: RegisteredContentScript[]): Promise<void>;
     function unregisterContentScripts(filter?: { ids?: string[] }): Promise<void>;
     function getRegisteredContentScripts(filter?: { ids?: string[] }): Promise<RegisteredContentScript[]>;
-    function executeScript(injection: { target: { tabId: number; allFrames?: boolean }; files: string[] }): Promise<unknown[]>;
+    function executeScript(injection: {
+      target: { tabId: number; allFrames?: boolean };
+      files: string[];
+    }): Promise<unknown[]>;
   }
 
   namespace tabs {
@@ -132,7 +142,9 @@ declare namespace chrome {
     function update(tabId: number, properties: { active?: boolean }): Promise<Tab | undefined>;
     function sendMessage<T = unknown>(tabId: number, message: unknown): Promise<T>;
     const onUpdated: { addListener(callback: (tabId: number, changeInfo: TabChangeInfo, tab: Tab) => void): void };
-    const onRemoved: { addListener(callback: (tabId: number, removeInfo: { windowId: number; isWindowClosing: boolean }) => void): void };
+    const onRemoved: {
+      addListener(callback: (tabId: number, removeInfo: { windowId: number; isWindowClosing: boolean }) => void): void;
+    };
   }
 
   namespace windows {

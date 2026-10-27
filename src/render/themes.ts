@@ -1,7 +1,4 @@
-export type BoardThemeId =
-  | 'marble-obsidian'
-  | 'imperial-walnut'
-  | 'high-contrast';
+export type BoardThemeId = 'marble-obsidian' | 'imperial-walnut' | 'high-contrast';
 
 export type PieceSetId = 'cathedral' | 'staunton' | 'high-contrast';
 
@@ -102,13 +99,11 @@ export const PIECE_SETS: Record<PieceSetId, PieceSetConfig> = {
   staunton: {
     id: 'staunton',
     label: 'Championship Staunton',
-    description:
-      'Classic tournament Staunton silhouettes with balanced collars and clean bevel shading.',
+    description: 'Classic tournament Staunton silhouettes with balanced collars and clean bevel shading.',
   },
   'high-contrast': {
     id: 'high-contrast',
     label: 'High Contrast Vector',
-    description:
-      'Ultra-crisp high-contrast monochrome silhouettes with thick dual outlines for maximum legibility.',
+    description: 'Ultra-crisp high-contrast monochrome silhouettes with thick dual outlines for maximum legibility.',
   },
 };

@@ -142,8 +142,15 @@ export function lichessDataToPgn(data: LichessGameData): string | null {
   const startFen = parts[0]!.fen;
   const fromPosition = variantKey === 'chess960' || variantKey === 'fromPosition' || startFen !== DEFAULT_POSITION;
   const timeControl =
-    data.clock?.initial !== undefined ? `${data.clock.initial}+${data.clock.increment ?? 0}` : data.correspondence ? '-' : null;
-  const event = `${data.game.rated ? 'rated' : 'casual'} ${data.game.speed ?? data.game.perf ?? ''} game`.replace(/\s+/g, ' ');
+    data.clock?.initial !== undefined
+      ? `${data.clock.initial}+${data.clock.increment ?? 0}`
+      : data.correspondence
+        ? '-'
+        : null;
+  const event = `${data.game.rated ? 'rated' : 'casual'} ${data.game.speed ?? data.game.perf ?? ''} game`.replace(
+    /\s+/g,
+    ' ',
+  );
 
   const headers: Array<readonly [string, string | number | null | undefined]> = [
     ['Event', event],

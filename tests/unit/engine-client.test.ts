@@ -27,18 +27,12 @@ class MockStockfishTransport implements EngineTransport {
     if (command === 'uci') {
       queueMicrotask(() => {
         const name =
-          this.variant === 'multi-threaded'
-            ? 'Stockfish 17.1 Lite WASM Multithreaded'
-            : 'Stockfish 17.1 Lite WASM';
+          this.variant === 'multi-threaded' ? 'Stockfish 17.1 Lite WASM Multithreaded' : 'Stockfish 17.1 Lite WASM';
         const maxThreads = this.variant === 'multi-threaded' ? 32 : 1;
         this.emit(`id name ${name}`);
         this.emit('id author the Stockfish developers');
-        this.emit(
-          `option name Threads type spin default 1 min 1 max ${maxThreads}`,
-        );
-        this.emit(
-          'option name Hash type spin default 16 min 1 max 33554432',
-        );
+        this.emit(`option name Threads type spin default 1 min 1 max ${maxThreads}`);
+        this.emit('option name Hash type spin default 16 min 1 max 33554432');
         this.emit('option name MultiPV type spin default 1 min 1 max 256');
         this.emit('option name UCI_Chess960 type check default false');
         this.emit('uciok');
@@ -56,12 +50,8 @@ class MockStockfishTransport implements EngineTransport {
         });
       } else {
         queueMicrotask(() => {
-          this.emit(
-            'info depth 10 seldepth 14 multipv 1 score cp 32 nodes 12000 nps 480000 time 25 pv e2e4 e7e5 g1f3',
-          );
-          this.emit(
-            'info depth 10 seldepth 14 multipv 2 score cp 24 nodes 12000 nps 480000 time 25 pv d2d4 d7d5 c2c4',
-          );
+          this.emit('info depth 10 seldepth 14 multipv 1 score cp 32 nodes 12000 nps 480000 time 25 pv e2e4 e7e5 g1f3');
+          this.emit('info depth 10 seldepth 14 multipv 2 score cp 24 nodes 12000 nps 480000 time 25 pv d2d4 d7d5 c2c4');
           this.emit('bestmove e2e4 ponder e7e5');
         });
       }
@@ -139,8 +129,7 @@ describe('Phase 2 — EngineClient, Thread Detection, Priority Queue & Cache', (
     });
 
     // Force initial attempt as multi-threaded
-    (client as unknown as { activeVariant: EngineVariant }).activeVariant =
-      'multi-threaded';
+    (client as unknown as { activeVariant: EngineVariant }).activeVariant = 'multi-threaded';
 
     await client.init();
     expect(requestedVariants).toEqual(['multi-threaded', 'single-threaded']);
@@ -182,9 +171,7 @@ describe('Phase 2 — EngineClient, Thread Detection, Priority Queue & Cache', (
     expect(res1.lines[0]?.pv).toEqual(['e2e4', 'e7e5', 'g1f3']);
     expect(res1.lines[1]?.pv).toEqual(['d2d4', 'd7d5', 'c2c4']);
     expect(streamedSnapshots.length).toBeGreaterThanOrEqual(2);
-    expect(telemetryEvents.some((e) => e.depth === 10 && e.nps === 480000)).toBe(
-      true,
-    );
+    expect(telemetryEvents.some((e) => e.depth === 10 && e.nps === 480000)).toBe(true);
 
     const commandsBeforeSecondCall = mockTransport.sentCommands.length;
 
@@ -227,9 +214,7 @@ describe('Phase 2 — EngineClient, Thread Detection, Priority Queue & Cache', (
         currentGoCount++;
         const goIndex = currentGoCount;
         setTimeout(() => {
-          mockTransport.emit(
-            `info depth 8 multipv 1 score cp ${goIndex * 10} nodes 1000 nps 100000 time 10 pv e2e4`,
-          );
+          mockTransport.emit(`info depth 8 multipv 1 score cp ${goIndex * 10} nodes 1000 nps 100000 time 10 pv e2e4`);
           mockTransport.emit('bestmove e2e4');
         }, 15);
       }

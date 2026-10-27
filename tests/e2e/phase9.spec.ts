@@ -6,11 +6,18 @@ import { expect, test, type Page } from '@playwright/test';
 async function moveListState(page: Page) {
   return page.evaluate(() => {
     const controller = window.__wizardChessPlay!.controller;
-    const sans = controller.getGameTree().getMainLine().map((n) => n.san ?? '');
+    const sans = controller
+      .getGameTree()
+      .getMainLine()
+      .map((n) => n.san ?? '');
     const list = document.querySelector('[data-testid="move-history-list"]')!;
     const spans = [...list.querySelectorAll<HTMLElement>('.wc-move-san')];
     const rows = [...list.querySelectorAll<HTMLElement>('.wc-move-row')];
-    const drawn = spans.map((s) => ({ id: s.getAttribute('data-testid'), text: s.textContent, active: s.classList.contains('wc-move-san-active') }));
+    const drawn = spans.map((s) => ({
+      id: s.getAttribute('data-testid'),
+      text: s.textContent,
+      active: s.classList.contains('wc-move-san-active'),
+    }));
     const expected = Array.from({ length: Math.ceil(sans.length / 2) * 2 }, (_, i) => ({
       id: `move-ply-${i + 1}`,
       text: sans[i] ?? '',
@@ -29,12 +36,16 @@ async function moveListState(page: Page) {
 
 async function waitForPlies(page: Page, plies: number): Promise<void> {
   await expect
-    .poll(() => page.evaluate(() => window.__wizardChessPlay!.controller.getGameTree().getMainLine().length), { timeout: 30_000 })
+    .poll(() => page.evaluate(() => window.__wizardChessPlay!.controller.getGameTree().getMainLine().length), {
+      timeout: 30_000,
+    })
     .toBe(plies);
 }
 
 test.describe('Phase 9 — performance pass', () => {
-  test('the move list is extended move by move and always equals a full rebuild (also after a takeback and a new game)', async ({ page }) => {
+  test('the move list is extended move by move and always equals a full rebuild (also after a takeback and a new game)', async ({
+    page,
+  }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('/');
     await expect(page.getByTestId('play-layout')).toBeVisible();
@@ -99,7 +110,9 @@ test.describe('Phase 9 — performance pass', () => {
     expect(fresh.drawn).toEqual([]);
   });
 
-  test('a hint asked for while playing is kept with the game: a comment on the move, in the PGN, and counted by the review', async ({ page }) => {
+  test('a hint asked for while playing is kept with the game: a comment on the move, in the PGN, and counted by the review', async ({
+    page,
+  }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('/');
     await expect(page.getByTestId('play-layout')).toBeVisible();
@@ -119,11 +132,16 @@ test.describe('Phase 9 — performance pass', () => {
     await play.getByTestId('square-d4').click();
     await waitForPlies(page, 4);
     const comments = await page.evaluate(() =>
-      window.__wizardChessPlay!.controller.getGameTree().getMainLine().map((n) => n.comment),
+      window
+        .__wizardChessPlay!.controller.getGameTree()
+        .getMainLine()
+        .map((n) => n.comment),
     );
     expect(comments[0]).toBe(`Hint used: ${hint!.suggestedSan}`);
     expect(comments.slice(1)).toEqual(['', '', '']);
-    expect(await page.evaluate(() => window.__wizardChessPlay!.controller.getPgn())).toContain(`Hint used: ${hint!.suggestedSan}`);
+    expect(await page.evaluate(() => window.__wizardChessPlay!.controller.getPgn())).toContain(
+      `Hint used: ${hint!.suggestedSan}`,
+    );
 
     // The game goes to Review with its comment; the review keeps it and says how many moves followed a hint
     await page.evaluate(() => window.__wizardChessPlay!.controller.resign());
@@ -133,7 +151,9 @@ test.describe('Phase 9 — performance pass', () => {
     await expect
       .poll(() => page.getByTestId('review-progress').getAttribute('data-details'))
       .toContain('1 move played after a hint (1. e4)');
-    const afterReview = await page.evaluate(() => window.__wizardChessAnalysis!.controller.getGameTree().getMainLine()[0]!.comment);
+    const afterReview = await page.evaluate(
+      () => window.__wizardChessAnalysis!.controller.getGameTree().getMainLine()[0]!.comment,
+    );
     expect(afterReview).toContain(`Hint used: ${hint!.suggestedSan}`);
   });
 

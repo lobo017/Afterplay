@@ -101,7 +101,10 @@ export async function fetchChessComCallback(
   ref: SiteGameRef,
   doFetch: typeof fetch,
 ): Promise<{ ok: true; data: ChessComCallback } | { ok: false; status: number; reason: string }> {
-  const res = await doFetch(chessComCallbackUrl(ref), { credentials: 'include', headers: { Accept: 'application/json' } });
+  const res = await doFetch(chessComCallbackUrl(ref), {
+    credentials: 'include',
+    headers: { Accept: 'application/json' },
+  });
   if (!res.ok) return { ok: false, status: res.status, reason: `The game data answered ${res.status}.` };
   let data: ChessComCallback;
   try {
@@ -110,7 +113,8 @@ export async function fetchChessComCallback(
     return { ok: false, status: res.status, reason: 'The game data is not JSON.' };
   }
   const { id } = chessComParts(ref);
-  if (!data?.game || String(data.game.id) !== id) return { ok: false, status: res.status, reason: 'The game data is for another game.' };
+  if (!data?.game || String(data.game.id) !== id)
+    return { ok: false, status: res.status, reason: 'The game data is for another game.' };
   return { ok: true, data };
 }
 

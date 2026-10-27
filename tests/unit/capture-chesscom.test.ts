@@ -58,11 +58,27 @@ function fetchFrom(handler: (url: string, init?: RequestInit) => Response) {
 }
 
 const CALLBACKS = [
-  { file: 'callback-live-185518487990.json', ref: { site: 'chesscom' as const, gameId: 'live-185518487990' }, clocks: true },
-  { file: 'callback-live-185358990103.json', ref: { site: 'chesscom' as const, gameId: 'live-185358990103' }, clocks: true },
+  {
+    file: 'callback-live-185518487990.json',
+    ref: { site: 'chesscom' as const, gameId: 'live-185518487990' },
+    clocks: true,
+  },
+  {
+    file: 'callback-live-185358990103.json',
+    ref: { site: 'chesscom' as const, gameId: 'live-185358990103' },
+    clocks: true,
+  },
   // Daily games: Chess.com's archive writes a [%clk] for them, the callback has no matching clock
-  { file: 'callback-daily-1036320138.json', ref: { site: 'chesscom' as const, gameId: 'daily-1036320138' }, clocks: false },
-  { file: 'callback-daily-1033338800.json', ref: { site: 'chesscom' as const, gameId: 'daily-1033338800' }, clocks: false },
+  {
+    file: 'callback-daily-1036320138.json',
+    ref: { site: 'chesscom' as const, gameId: 'daily-1036320138' },
+    clocks: false,
+  },
+  {
+    file: 'callback-daily-1033338800.json',
+    ref: { site: 'chesscom' as const, gameId: 'daily-1033338800' },
+    clocks: false,
+  },
 ];
 
 describe("Phase 5b — Chess.com's game data (callback)", () => {
@@ -75,7 +91,20 @@ describe("Phase 5b — Chess.com's game data (callback)", () => {
       expect(movesAndClocks(pgn, c.clocks)).toEqual(movesAndClocks(archived!.pgn!, c.clocks));
       const mine = parsePgn(pgn).getHeaders();
       const theirs = parsePgn(archived!.pgn!).getHeaders();
-      for (const h of ['Event', 'Date', 'White', 'Black', 'Result', 'WhiteElo', 'BlackElo', 'TimeControl', 'Termination', 'Link', 'FEN', 'Variant']) {
+      for (const h of [
+        'Event',
+        'Date',
+        'White',
+        'Black',
+        'Result',
+        'WhiteElo',
+        'BlackElo',
+        'TimeControl',
+        'Termination',
+        'Link',
+        'FEN',
+        'Variant',
+      ]) {
         expect(mine[h], h).toBe(theirs[h]);
       }
       const { games } = checkPgnText(pgn);
@@ -98,14 +127,23 @@ describe("Phase 5b — Chess.com's game data (callback)", () => {
     const ref = { site: 'chesscom' as const, gameId: 'live-185518487990' };
     const data = json<ChessComCallback>('callback-live-185518487990.json');
     const ok = fetchFrom(() => respond(data));
-    expect(await chessComCallbackExtractor.extract({ ref, fetch: ok.fn })).toMatchObject({ ok: true, method: 'chesscom-callback' });
+    expect(await chessComCallbackExtractor.extract({ ref, fetch: ok.fn })).toMatchObject({
+      ok: true,
+      method: 'chesscom-callback',
+    });
     expect(ok.calls[0]!.url).toBe('https://www.chess.com/callback/live/game/185518487990');
     const live = fetchFrom(() => respond({ ...data, game: { ...data.game, isFinished: false } }));
-    expect(await chessComCallbackExtractor.extract({ ref, fetch: live.fn })).toMatchObject({ ok: false, inProgress: true });
+    expect(await chessComCallbackExtractor.extract({ ref, fetch: live.fn })).toMatchObject({
+      ok: false,
+      inProgress: true,
+    });
     const other = fetchFrom(() => respond({ ...data, game: { ...data.game, id: 1 } }));
     expect(await chessComCallbackExtractor.extract({ ref, fetch: other.fn })).toMatchObject({ ok: false });
     const missing = fetchFrom(() => respond({ message: 'Game is not found.' }, { status: 404 }));
-    expect(await chessComCallbackExtractor.extract({ ref, fetch: missing.fn })).toMatchObject({ ok: false, notFound: true });
+    expect(await chessComCallbackExtractor.extract({ ref, fetch: missing.fn })).toMatchObject({
+      ok: false,
+      notFound: true,
+    });
   });
 });
 
@@ -128,13 +166,18 @@ describe("Phase 5b — Chess.com's monthly archives", () => {
     const etag = 'W/"5ce5bab2c2c728a1fa4c63a023b0a4ba"';
     const f = fetchFrom((_url, init) => {
       const sent = (init?.headers as Record<string, string>)['If-None-Match'];
-      return sent === etag ? respond(null, { status: 304 }) : respond({ games: archiveGames }, { headers: { ETag: etag } });
+      return sent === etag
+        ? respond(null, { status: 304 })
+        : respond({ games: archiveGames }, { headers: { ETag: etag } });
     });
     expect(await fetchArchiveMonth(f.fn, 'Hikaru', '2026/10')).toMatchObject({ status: 'ok', etag });
     expect(f.calls[0]!.url).toBe('https://api.chess.com/pub/player/hikaru/games/2026/10');
     expect(await fetchArchiveMonth(f.fn, 'hikaru', '2026/10', etag)).toEqual({ status: 'not-modified' });
     const limited = fetchFrom(() => respond(null, { status: 429, headers: { 'Retry-After': '120' } }));
-    expect(await fetchArchiveMonth(limited.fn, 'hikaru', '2026/10')).toEqual({ status: 'rate-limited', retryAfterMs: 120_000 });
+    expect(await fetchArchiveMonth(limited.fn, 'hikaru', '2026/10')).toEqual({
+      status: 'rate-limited',
+      retryAfterMs: 120_000,
+    });
     const gone = fetchFrom(() => respond(null, { status: 404 }));
     expect(await fetchArchiveMonth(gone.fn, 'nobody', '2026/10')).toEqual({ status: 'not-found' });
   });
@@ -173,7 +216,9 @@ describe('Phase 5b — links and pending games', () => {
 
   it('queues a link as pending, retries when due, and turns ready once the archive has it', async () => {
     const { svc, queue, advance } = service((n) =>
-      n < 3 ? { kind: 'pending', reason: 'not yet', retryAt: 1_000_000 + n * 60_000 } : { kind: 'pgn', pgn: archived, method: 'chesscom-archive' },
+      n < 3
+        ? { kind: 'pending', reason: 'not yet', retryAt: 1_000_000 + n * 60_000 }
+        : { kind: 'pgn', pgn: archived, method: 'chesscom-archive' },
     );
     expect(await svc.saveLink(LINK)).toMatchObject({ ok: true, outcome: 'pending' });
     expect(await queue.get('chesscom:live-185518487990')).toMatchObject({ status: 'pending', error: 'not yet' });
@@ -182,7 +227,10 @@ describe('Phase 5b — links and pending games', () => {
     expect(await svc.retryPending()).toBe(0);
     advance(70_000);
     expect(await svc.retryPending()).toBe(1);
-    expect(await queue.get('chesscom:live-185518487990')).toMatchObject({ status: 'ready', method: 'chesscom-archive' });
+    expect(await queue.get('chesscom:live-185518487990')).toMatchObject({
+      status: 'ready',
+      method: 'chesscom-archive',
+    });
     // A known game isn't resolved again
     expect(await svc.saveLink(LINK)).toMatchObject({ ok: true, outcome: 'already-queued' });
   });

@@ -51,7 +51,8 @@ function fenOf(wk: number, bk: number, x: number, kind: TableKind, turn: 'w' | '
   return `${rows.join('/')} ${turn} - - 0 1`;
 }
 
-const adjacent = (a: number, b: number) => a !== b && Math.abs((a & 7) - (b & 7)) <= 1 && Math.abs((a >> 3) - (b >> 3)) <= 1;
+const adjacent = (a: number, b: number) =>
+  a !== b && Math.abs((a & 7) - (b & 7)) <= 1 && Math.abs((a >> 3) - (b >> 3)) <= 1;
 
 /** Random positions with the kings apart and a legal pawn rank; the side not to move is not in check. */
 function samples(kind: TableKind, turn: 'w' | 'b', count: number, seed: number): string[] {
@@ -62,7 +63,7 @@ function samples(kind: TableKind, turn: 'w' | 'b', count: number, seed: number):
     const bk = Math.floor(next() * 64);
     const x = Math.floor(next() * 64);
     if (wk === bk || wk === x || bk === x || adjacent(wk, bk)) continue;
-    if (kind === 'p' && ((x >> 3) < 1 || (x >> 3) > 6)) continue;
+    if (kind === 'p' && (x >> 3 < 1 || x >> 3 > 6)) continue;
     const fen = fenOf(wk, bk, x, kind, turn);
     let chess: Chess;
     try {
@@ -155,7 +156,11 @@ describe('endgame tables: the defender is DTM-optimal', () => {
         if (game.isGameOver()) break;
         const d = tables.defend(game.fen());
         expect(d, game.fen()).not.toBeNull();
-        game.move({ from: d!.move.slice(0, 2), to: d!.move.slice(2, 4), ...(d!.move.length > 4 ? { promotion: d!.move[4] } : {}) });
+        game.move({
+          from: d!.move.slice(0, 2),
+          to: d!.move.slice(2, 4),
+          ...(d!.move.length > 4 ? { promotion: d!.move[4] } : {}),
+        });
       }
       expect(game.isCheckmate(), entry.id).toBe(true);
       expect(moves, entry.id).toBe(entry.optimalMoves);

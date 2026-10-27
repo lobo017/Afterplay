@@ -79,7 +79,9 @@ describe('Phase 6 — puzzle loader: the first move is the opponent’s', () => 
     expect(() => preparePuzzle({ id: 'x', fen: byId('1yy9U').fen, moves: ['b1c1', 'c8c1', 'e6e1'] })).toThrow(
       /end on the player/,
     );
-    expect(() => preparePuzzle({ id: 'x', fen: byId('0ND4A').fen, moves: ['f8f1', 'e1f1'] })).toThrow(/Illegal move f8f1/);
+    expect(() => preparePuzzle({ id: 'x', fen: byId('0ND4A').fen, moves: ['f8f1', 'e1f1'] })).toThrow(
+      /Illegal move f8f1/,
+    );
   });
 
   it('all 20,000 bundled puzzles: moves[0] moves a piece of the FEN’s side to move, the solution ends on a player move', () => {

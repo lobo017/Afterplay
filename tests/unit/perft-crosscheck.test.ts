@@ -3,11 +3,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { DEFAULT_POSITION, RulesAdapter } from '../../src/core/rules';
-import {
-  EngineClient,
-  SINGLE_THREADED_STOCKFISH_FILE,
-  type EngineTransport,
-} from '../../src/engine/engine-client';
+import { EngineClient, SINGLE_THREADED_STOCKFISH_FILE, type EngineTransport } from '../../src/engine/engine-client';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const stockfishJsPath = path.resolve(
@@ -21,11 +17,7 @@ const stockfishJsPath = path.resolve(
 );
 
 function createNodeStockfishTransport(): EngineTransport {
-  const proc: ChildProcessWithoutNullStreams = spawn(
-    process.execPath,
-    [stockfishJsPath],
-    { stdio: 'pipe' },
-  );
+  const proc: ChildProcessWithoutNullStreams = spawn(process.execPath, [stockfishJsPath], { stdio: 'pipe' });
   const messageHandlers: Array<(line: string) => void> = [];
   const errorHandlers: Array<(err: Error) => void> = [];
   let stdoutBuffer = '';
@@ -281,73 +273,61 @@ describe('Phase 2 — Perft Cross-Check: RulesAdapter vs Stockfish 17.1 WASM `go
 
   describe('Standard positions (Start Position & Kiwipete)', () => {
     for (const tc of STANDARD_POSITIONS) {
-      it(
-        `matches Stockfish perft on ${tc.name}`,
-        async () => {
-          for (const depth of tc.depths) {
-            const adapter = new RulesAdapter(tc.fen, { chess960: tc.chess960 });
-            const adapterNodes = adapter.perft(depth);
-            const sfResult = await engine.perft({
-              fen: tc.fen,
-              depth,
-              chess960: tc.chess960,
-            });
-            expect(
-              adapterNodes,
-              `Mismatch on "${tc.name}" (${tc.fen}) at depth ${depth}: RulesAdapter=${adapterNodes} vs Stockfish=${sfResult.nodes}`,
-            ).toBe(sfResult.nodes);
-          }
-        },
-        25000,
-      );
+      it(`matches Stockfish perft on ${tc.name}`, async () => {
+        for (const depth of tc.depths) {
+          const adapter = new RulesAdapter(tc.fen, { chess960: tc.chess960 });
+          const adapterNodes = adapter.perft(depth);
+          const sfResult = await engine.perft({
+            fen: tc.fen,
+            depth,
+            chess960: tc.chess960,
+          });
+          expect(
+            adapterNodes,
+            `Mismatch on "${tc.name}" (${tc.fen}) at depth ${depth}: RulesAdapter=${adapterNodes} vs Stockfish=${sfResult.nodes}`,
+          ).toBe(sfResult.nodes);
+        }
+      }, 25000);
     }
   });
 
   describe('12 Chess960 (Fischer Random) starting positions', () => {
     for (const tc of CHESS960_STARTING_POSITIONS) {
-      it(
-        `matches Stockfish UCI_Chess960 perft on ${tc.name}`,
-        async () => {
-          for (const depth of tc.depths) {
-            const adapter = new RulesAdapter(tc.fen, { chess960: tc.chess960 });
-            const adapterNodes = adapter.perft(depth);
-            const sfResult = await engine.perft({
-              fen: tc.fen,
-              depth,
-              chess960: tc.chess960,
-            });
-            expect(
-              adapterNodes,
-              `Mismatch on "${tc.name}" (${tc.fen}) at depth ${depth}: RulesAdapter=${adapterNodes} vs Stockfish=${sfResult.nodes}`,
-            ).toBe(sfResult.nodes);
-          }
-        },
-        25000,
-      );
+      it(`matches Stockfish UCI_Chess960 perft on ${tc.name}`, async () => {
+        for (const depth of tc.depths) {
+          const adapter = new RulesAdapter(tc.fen, { chess960: tc.chess960 });
+          const adapterNodes = adapter.perft(depth);
+          const sfResult = await engine.perft({
+            fen: tc.fen,
+            depth,
+            chess960: tc.chess960,
+          });
+          expect(
+            adapterNodes,
+            `Mismatch on "${tc.name}" (${tc.fen}) at depth ${depth}: RulesAdapter=${adapterNodes} vs Stockfish=${sfResult.nodes}`,
+          ).toBe(sfResult.nodes);
+        }
+      }, 25000);
     }
   });
 
   describe('Hand-built Chess960 castling edge cases (attacked paths, rank-shielding rooks, swap/stay)', () => {
     for (const tc of HAND_BUILT_CHESS960_POSITIONS) {
-      it(
-        `matches Stockfish UCI_Chess960 perft on ${tc.name}`,
-        async () => {
-          for (const depth of tc.depths) {
-            const adapter = new RulesAdapter(tc.fen, { chess960: tc.chess960 });
-            const adapterNodes = adapter.perft(depth);
-            const sfResult = await engine.perft({
-              fen: tc.fen,
-              depth,
-              chess960: tc.chess960,
-            });
-            expect(
-              adapterNodes,
-              `Mismatch on "${tc.name}" (${tc.fen}) at depth ${depth}: RulesAdapter=${adapterNodes} vs Stockfish=${sfResult.nodes}`,
-            ).toBe(sfResult.nodes);
-          }
-        },
-        15000,
-      );
+      it(`matches Stockfish UCI_Chess960 perft on ${tc.name}`, async () => {
+        for (const depth of tc.depths) {
+          const adapter = new RulesAdapter(tc.fen, { chess960: tc.chess960 });
+          const adapterNodes = adapter.perft(depth);
+          const sfResult = await engine.perft({
+            fen: tc.fen,
+            depth,
+            chess960: tc.chess960,
+          });
+          expect(
+            adapterNodes,
+            `Mismatch on "${tc.name}" (${tc.fen}) at depth ${depth}: RulesAdapter=${adapterNodes} vs Stockfish=${sfResult.nodes}`,
+          ).toBe(sfResult.nodes);
+        }
+      }, 15000);
     }
   });
 });

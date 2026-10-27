@@ -229,9 +229,7 @@ function motifPhrase(motif: Motif, fen: string): string | null {
     case 'skewer':
       return `skewering the ${names[0]} and the ${names[1]}`;
     case 'discovered-attack':
-      return motif.piece === 'k'
-        ? 'a discovered check'
-        : `a discovered attack on the ${pieceOn(motif)}`;
+      return motif.piece === 'k' ? 'a discovered check' : `a discovered attack on the ${pieceOn(motif)}`;
     case 'trapped-piece':
       return `trapping the ${pieceOn(motif)}`;
     case 'promotion-threat':
@@ -242,19 +240,13 @@ function motifPhrase(motif: Motif, fen: string): string | null {
 }
 
 /** A capture with `uci` that nets material, if `realize`'s line really wins that much. */
-function winningCapture(
-  fen: string,
-  uci: string,
-  realize: Realize,
-): { piece: PieceSymbol; square: string } | null {
+function winningCapture(fen: string, uci: string, realize: Realize): { piece: PieceSymbol; square: string } | null {
   const threat = captureThreats(fen).find((t) => t.move.uci === uci && t.gain > 0);
   if (!threat) return null;
   const piece = threat.move.captured ?? 'p';
   const gain = lineMaterialGain(realize.baseFen, realize.line, realize.beneficiary);
   const claimed = PIECE_VALUE[piece];
-  return gain >= requiredGain(claimed) && backedByEval(claimed, realize)
-    ? { piece, square: threat.move.to }
-    : null;
+  return gain >= requiredGain(claimed) && backedByEval(claimed, realize) ? { piece, square: threat.move.to } : null;
 }
 
 /** How a side stands, from its win%. */
@@ -329,7 +321,8 @@ export function fallbackSentence(params: {
             ? `Throws away most of ${s}'s winning advantage ${e}${tail('kept the win')}`
             : `Lets ${s}'s winning advantage shrink to a small edge ${e}${tail('kept the win')}`;
       else if (to === 'equal') text = `Throws away ${s}'s winning advantage ${e}${tail('kept it')}`;
-      else if (to === 'worse') text = `Throws away ${s}'s winning advantage and gives the opponent the better game ${e}${tail('kept the win')}`;
+      else if (to === 'worse')
+        text = `Throws away ${s}'s winning advantage and gives the opponent the better game ${e}${tail('kept the win')}`;
       else text = `Turns ${s}'s winning position into a losing one ${e}${tail('kept the win')}`;
       break;
     case 'better':
@@ -339,12 +332,14 @@ export function fallbackSentence(params: {
           params.classification === 'Blunder'
             ? `Throws away ${s}'s advantage ${e}${tail('kept it')}`
             : `Lets ${s}'s advantage slip away ${e}${tail('kept it')}`;
-      else if (to === 'worse') text = `Turns ${s}'s advantage into the worse position ${e}${tail('kept the advantage')}`;
+      else if (to === 'worse')
+        text = `Turns ${s}'s advantage into the worse position ${e}${tail('kept the advantage')}`;
       else text = `Turns ${s}'s advantage into a losing position ${e}${tail('kept the advantage')}`;
       break;
     case 'equal':
       if (to === 'equal') text = `Gives the opponent the easier game ${e}${tail('was stronger')}`;
-      else if (to === 'worse') text = `Hands the opponent the advantage in a level position ${e}${tail('kept the balance')}`;
+      else if (to === 'worse')
+        text = `Hands the opponent the advantage in a level position ${e}${tail('kept the balance')}`;
       else text = `Turns a level position into a losing one for ${s} ${e}${tail('kept the balance')}`;
       break;
     case 'worse':
@@ -380,11 +375,8 @@ export function explainMove(input: ExplainInput): ExplainResult {
   // Mover's evaluation (pawns) before the move, after it, and after the best move
   const pawns = (score: UciScore | undefined) => (score ? scoreToCentipawns(score) / 100 : 0);
   const evalBefore = pawns(best?.score);
-  const evalAfter = input.after.terminal === 'checkmate'
-    ? 100
-    : input.after.terminal
-      ? 0
-      : -pawns(input.after.lines[0]?.score);
+  const evalAfter =
+    input.after.terminal === 'checkmate' ? 100 : input.after.terminal ? 0 : -pawns(input.after.lines[0]?.score);
   // The reviewed move and the opponent's best line, counted from before the move
   const againstMover: Realize = {
     baseFen: input.fenBefore,
@@ -407,9 +399,7 @@ export function explainMove(input: ExplainInput): ExplainResult {
     hanging = null; // attacked, but the engine's line doesn't actually win it
   }
   if (hanging) motifs.push(hanging);
-  const refutationMotifs = refutationUci
-    ? attackMotifs(fenAfter, refutationUci, 'refutation', againstMover)
-    : [];
+  const refutationMotifs = refutationUci ? attackMotifs(fenAfter, refutationUci, 'refutation', againstMover) : [];
   motifs.push(...refutationMotifs);
   const missedMate = tagged(
     detectMissedMate({
@@ -482,9 +472,7 @@ export function explainMove(input: ExplainInput): ExplainResult {
   if (missedMate && missedMate.san) {
     const n = missedMate.mateIn ?? 1;
     const explanation =
-      n === 1
-        ? `Misses mate in 1 with ${missedMate.san}.`
-        : `Misses mate in ${n}, starting with ${missedMate.san}.`;
+      n === 1 ? `Misses mate in 1 with ${missedMate.san}.` : `Misses mate in ${n}, starting with ${missedMate.san}.`;
     return { explanation, motifs };
   }
 
@@ -519,9 +507,7 @@ export function explainMove(input: ExplainInput): ExplainResult {
   // 6. The opponent's best reply is a tactic
   if (refutationSan && refutationUci) {
     const motif = refutationMotifs.find((m) => m.kind !== 'back-rank');
-    const phrase = motif
-      ? motifPhrase(motif, applyUci(fenAfter, refutationUci)?.after ?? fenAfter)
-      : null;
+    const phrase = motif ? motifPhrase(motif, applyUci(fenAfter, refutationUci)?.after ?? fenAfter) : null;
     if (phrase) return { explanation: `Allows ${refutationSan}, ${phrase}.`, motifs };
     const capture = winningCapture(fenAfter, refutationUci, againstMover);
     if (capture) {

@@ -1,19 +1,10 @@
 import type { GameTree } from '../core/game-tree';
 import { RulesAdapter } from '../core/rules';
-import {
-  EngineCancelledError,
-  type EngineAnalysisResult,
-  type EngineAnalyzeRequest,
-} from '../engine/engine-client';
+import { EngineCancelledError, type EngineAnalysisResult, type EngineAnalyzeRequest } from '../engine/engine-client';
 import { scoreToCentipawns, type UciScore } from '../engine/uci-parser';
 import { MATE_HORIZON_MOVES, negateScore } from './classification';
 import { ReviewAnalysisClient } from './review-analysis-client';
-import {
-  buildGameReview,
-  mainLinePlies,
-  reviewMoveInput,
-  type ReviewPly,
-} from './review-game';
+import { buildGameReview, mainLinePlies, reviewMoveInput, type ReviewPly } from './review-game';
 import {
   REVIEW_MULTIPV,
   REVIEW_PRESET_MOVETIME_MS,
@@ -126,10 +117,7 @@ export class ReviewRunner {
     let cancelled = false;
 
     const snapshot = () =>
-      buildGameReview(
-        { preset, budget, startFen, plies, positions, isBookPosition: options.isBookPosition },
-        cache,
-      );
+      buildGameReview({ preset, budget, startFen, plies, positions, isBookPosition: options.isBookPosition }, cache);
 
     // Book status of each move: in the dataset, with every earlier move in it too
     const bookPrefix: boolean[] = [];

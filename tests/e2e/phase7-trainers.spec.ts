@@ -11,7 +11,8 @@ import { bestAttackerMove, blackToMoveValue } from '../helpers/dtm-play';
 // test-results/phase7-screens/.
 const SCREENSHOT_DIR = path.join('test-results', 'phase7-screens');
 fs.mkdirSync(SCREENSHOT_DIR, { recursive: true });
-const shot = (page: Page, name: string, fullPage = false) => page.screenshot({ path: path.join(SCREENSHOT_DIR, name), fullPage });
+const shot = (page: Page, name: string, fullPage = false) =>
+  page.screenshot({ path: path.join(SCREENSHOT_DIR, name), fullPage });
 
 function trackNetwork(page: Page): string[] {
   const external: string[] = [];
@@ -65,7 +66,9 @@ async function importRepertoire(page: Page, pgn: string): Promise<void> {
 }
 
 test.describe('Phase 7 — the Train hub', () => {
-  test('lists the four trainers and adds their cards to Today, with nothing waiting on a fresh profile', async ({ page }) => {
+  test('lists the four trainers and adds their cards to Today, with nothing waiting on a fresh profile', async ({
+    page,
+  }) => {
     const external = trackNetwork(page);
     await openTrain(page);
     for (const kind of ['puzzles', 'repertoire', 'endgames', 'visualization']) {
@@ -92,7 +95,10 @@ test.describe('Phase 7 — the Train hub', () => {
     await openTrain(page);
     await page.waitForTimeout(300);
     for (const name of ['repertoire-trainer', 'endgame-trainer', 'visualization-trainer']) {
-      expect(requests.some((p) => p.includes(name)), name).toBe(false);
+      expect(
+        requests.some((p) => p.includes(name)),
+        name,
+      ).toBe(false);
     }
     await page.getByTestId('btn-trainer-endgames').click();
     await expect(page.getByTestId('endgame-trainer')).toBeVisible();
@@ -122,7 +128,9 @@ test.describe('Phase 7 — repertoire trainer', () => {
 
     // Import: every game and variation goes in (13 moves, 3 lines, 6 positions to answer)
     await importRepertoire(page, WHITE_REPERTOIRE);
-    await expect(page.getByTestId('rep-summary')).toHaveText('White repertoire: 13 moves in 3 lines, 6 positions to answer.');
+    await expect(page.getByTestId('rep-summary')).toHaveText(
+      'White repertoire: 13 moves in 3 lines, 6 positions to answer.',
+    );
     await expect(page.getByTestId('rep-import-result')).toContainText('Imported 2 games: 13 new moves.');
     await expect(page.getByTestId('rep-moves').getByRole('button', { name: 'Bb5' })).toBeVisible();
     // Importing the same text again adds nothing
@@ -133,7 +141,11 @@ test.describe('Phase 7 — repertoire trainer', () => {
     await page.getByTestId('btn-rep-last').click();
     await expect(page.getByTestId('rep-moves').locator('[aria-current="true"]')).toHaveText('Nf6');
     await page.getByTestId('rep-moves').getByRole('button', { name: 'Bb5' }).click();
-    expect(await page.evaluate(() => window.__wizardChessDrills!.getRepertoire()!.getBoard().getPieceElement('b5') !== undefined)).toBe(true);
+    expect(
+      await page.evaluate(
+        () => window.__wizardChessDrills!.getRepertoire()!.getBoard().getPieceElement('b5') !== undefined,
+      ),
+    ).toBe(true);
     await shot(page, 'desktop-repertoire-build.png');
 
     // Build by playing: a Black repertoire, 1.e4 e5 on the board
@@ -141,7 +153,9 @@ test.describe('Phase 7 — repertoire trainer', () => {
     await expect(page.getByTestId('rep-summary')).toContainText('Black repertoire: empty');
     await clickMove(page, 'repertoire-trainer', 'e2', 'e4');
     await clickMove(page, 'repertoire-trainer', 'e7', 'e5');
-    await expect(page.getByTestId('rep-summary')).toHaveText('Black repertoire: 2 moves in 1 line, 1 position to answer.');
+    await expect(page.getByTestId('rep-summary')).toHaveText(
+      'Black repertoire: 2 moves in 1 line, 1 position to answer.',
+    );
     // The tree is stored: a reload keeps it
     await page.evaluate(async () => {
       const api = await window.__wizardChessDrillsReady!;
@@ -150,7 +164,9 @@ test.describe('Phase 7 — repertoire trainer', () => {
     });
     // A mistaken move can be deleted
     await page.getByTestId('btn-rep-delete').click();
-    await expect(page.getByTestId('rep-summary')).toHaveText('Black repertoire: 1 move in 1 line, 0 positions to answer.');
+    await expect(page.getByTestId('rep-summary')).toHaveText(
+      'Black repertoire: 1 move in 1 line, 0 positions to answer.',
+    );
     await page.getByTestId('rep-color-w').click();
 
     // What's waiting shows on the Train tab and in Today
@@ -162,7 +178,9 @@ test.describe('Phase 7 — repertoire trainer', () => {
     await expect(page.getByTestId('rep-drill-lines')).toHaveText('3');
     const trainer = page.getByTestId('repertoire-trainer');
     const remaining = () =>
-      page.evaluate(async () => (await (await window.__wizardChessDrillsReady!).store.repertoire.due('w')).ordered.length);
+      page.evaluate(
+        async () => (await (await window.__wizardChessDrillsReady!).store.repertoire.due('w')).ordered.length,
+      );
     let lines = 0;
     let shotTaken = false;
     let refused = false;
@@ -185,7 +203,12 @@ test.describe('Phase 7 — repertoire trainer', () => {
         // A wrong move first: it is refused, said so, and the position stays
         if (!refused) {
           refused = true;
-          await clickMove(page, 'repertoire-trainer', move.from === 'a2' ? 'h2' : 'a2', move.from === 'a2' ? 'h3' : 'a3');
+          await clickMove(
+            page,
+            'repertoire-trainer',
+            move.from === 'a2' ? 'h2' : 'a2',
+            move.from === 'a2' ? 'h3' : 'a3',
+          );
           await expect(page.getByTestId('rep-status')).toContainText('Not a move from your repertoire');
           await expect(trainer).toHaveAttribute('data-rep-state', 'asking');
         }
@@ -224,7 +247,9 @@ test.describe('Phase 7 — repertoire trainer', () => {
     const schedule = () =>
       page.evaluate(async () => {
         const api = await window.__wizardChessDrillsReady!;
-        return (await api.store.repertoire.cards('w')).map((c) => ({ id: c.id, state: c.state, reps: c.reps, dueDate: c.dueDate })).sort((a, b) => a.id.localeCompare(b.id));
+        return (await api.store.repertoire.cards('w'))
+          .map((c) => ({ id: c.id, state: c.state, reps: c.reps, dueDate: c.dueDate }))
+          .sort((a, b) => a.id.localeCompare(b.id));
       });
     const before = await schedule();
     await page.getByTestId('btn-rep-practise').click();
@@ -248,7 +273,9 @@ test.describe('Phase 7 — repertoire trainer', () => {
     }
     expect(asked).toBeGreaterThanOrEqual(2);
     await expect(page.getByTestId('rep-status')).toHaveText('Practice line complete');
-    await expect(page.getByTestId('rep-result')).toContainText(`of ${asked} position${asked === 1 ? '' : 's'} right first time.`);
+    await expect(page.getByTestId('rep-result')).toContainText(
+      `of ${asked} position${asked === 1 ? '' : 's'} right first time.`,
+    );
     await expect(page.getByTestId('btn-rep-practise')).toHaveText('Practise another line');
     await page.waitForTimeout(400);
     expect(await schedule()).toEqual(before);
@@ -311,21 +338,29 @@ test.describe('Phase 7 — repertoire trainer', () => {
     const note = page.getByTestId('review-repertoire');
     await expect(note).toBeVisible();
     await expect(note).toHaveAttribute('data-kind', 'left');
-    await expect(page.getByTestId('review-repertoire-text')).toHaveText('You left your White repertoire at 3.d4. Your repertoire plays Bb5 there.');
+    await expect(page.getByTestId('review-repertoire-text')).toHaveText(
+      'You left your White repertoire at 3.d4. Your repertoire plays Bb5 there.',
+    );
     await shot(page, 'desktop-review-repertoire-left.png');
     // The button goes to that move
     await page.getByTestId('btn-review-repertoire-jump').click();
-    expect(await page.evaluate(() => window.__wizardChessAnalysis!.controller.getGameTree().currentNode.san)).toBe('d4');
+    expect(await page.evaluate(() => window.__wizardChessAnalysis!.controller.getGameTree().currentNode.san)).toBe(
+      'd4',
+    );
 
     // The opponent leaves my White repertoire at move 1
     await review(game('Lobo017', 'Opponent', '1. e4 d5 2. exd5 Qxd5', 'OppLvW01'));
     await expect(note).toHaveAttribute('data-kind', 'opponent-left');
-    await expect(page.getByTestId('review-repertoire-text')).toContainText('Your opponent left your White repertoire at 1...d5');
+    await expect(page.getByTestId('review-repertoire-text')).toContainText(
+      'Your opponent left your White repertoire at 1...d5',
+    );
 
     // As Black I played 1...c5 where my Black repertoire has 1...e5
     await review(game('Opponent', 'Lobo017', '1. e4 c5 2. Nf3 d6', 'LeaveB01'));
     await expect(note).toHaveAttribute('data-kind', 'left');
-    await expect(page.getByTestId('review-repertoire-text')).toHaveText('You left your Black repertoire at 1...c5. Your repertoire plays e5 there.');
+    await expect(page.getByTestId('review-repertoire-text')).toHaveText(
+      'You left your Black repertoire at 1...c5. Your repertoire plays e5 there.',
+    );
 
     // A game I followed to the end of a line
     await review(game('Lobo017', 'Opponent', '1. e4 c5 2. Nf3 d6 3. d4 cxd4', 'EndLin01'));
@@ -348,7 +383,9 @@ test.describe('Phase 7 — repertoire trainer', () => {
     await shot(page, 'phone-repertoire-build.png', true);
     await page.getByTestId('rep-tab-drill').click();
     await page.getByTestId('btn-rep-start').click();
-    await expect(page.getByTestId('repertoire-trainer')).toHaveAttribute('data-rep-state', 'asking', { timeout: 20_000 });
+    await expect(page.getByTestId('repertoire-trainer')).toHaveAttribute('data-rep-state', 'asking', {
+      timeout: 20_000,
+    });
     await noSidewaysScroll(page, 390);
     await shot(page, 'phone-repertoire-drill.png', true);
   });
@@ -361,7 +398,9 @@ test.describe('Phase 7 — endgame trainer', () => {
   async function playOut(page: Page, moves = 40): Promise<string> {
     const trainer = page.getByTestId('endgame-trainer');
     for (let i = 0; i < moves; i++) {
-      await expect.poll(() => trainer.getAttribute('data-endgame-state'), { timeout: 30_000 }).toMatch(/playing|reached|failed/);
+      await expect
+        .poll(() => trainer.getAttribute('data-endgame-state'), { timeout: 30_000 })
+        .toMatch(/playing|reached|failed/);
       const state = (await trainer.getAttribute('data-endgame-state'))!;
       if (state !== 'playing') return state;
       await page.getByTestId('btn-endgame-hint').click();
@@ -413,7 +452,14 @@ test.describe('Phase 7 — endgame trainer', () => {
       return { progress, cards: cards.map((c) => ({ id: c.id, state: c.state, reps: c.reps })) };
     });
     // The hints made it a drill without a best count; it is still a completion
-    expect(saved.progress).toMatchObject({ completed: 1, attempts: 1, completions: 1, bestMoves: null, optimalMoves: 7, lastReached: true });
+    expect(saved.progress).toMatchObject({
+      completed: 1,
+      attempts: 1,
+      completions: 1,
+      bestMoves: null,
+      optimalMoves: 7,
+      lastReached: true,
+    });
     expect(saved.progress!.lastMoves).toBeGreaterThanOrEqual(1);
     expect(saved.cards).toEqual([{ id: 'endgame:kq-vs-k', state: 'review', reps: 1 }]);
     expect(external).toEqual([]);
@@ -426,8 +472,14 @@ test.describe('Phase 7 — endgame trainer', () => {
   // The three mate drills are answered from exact tables, not the engine: whatever the player
   // does, the opponent's reply keeps the mate as far away as it can be, so playing the best
   // moves mates in exactly the stored "best possible" count.
-  for (const [id, label] of [['kq-vs-k', 'K+Q v K'], ['kr-vs-k', 'K+R v K'], ['kp-opposition', 'K+P v K']] as const) {
-    test(`${label}: the opponent always plays the DTM-optimal defence, so best play mates in the stored count`, async ({ page }) => {
+  for (const [id, label] of [
+    ['kq-vs-k', 'K+Q v K'],
+    ['kr-vs-k', 'K+R v K'],
+    ['kp-opposition', 'K+P v K'],
+  ] as const) {
+    test(`${label}: the opponent always plays the DTM-optimal defence, so best play mates in the stored count`, async ({
+      page,
+    }) => {
       test.setTimeout(180_000);
       await ensureOracle();
       const external = trackNetwork(page);
@@ -458,9 +510,17 @@ test.describe('Phase 7 — endgame trainer', () => {
         expect(exactMateDistance(replied), `reply to ${after.fen()}: ${replied}`).toBe(expected);
       }
       await expect(trainer).toHaveAttribute('data-endgame-state', 'reached');
-      await expect(page.getByTestId('endgame-result')).toContainText(`Mate in ${optimal} moves; best possible is ${optimal}.`);
+      await expect(page.getByTestId('endgame-result')).toContainText(
+        `Mate in ${optimal} moves; best possible is ${optimal}.`,
+      );
       await expect
-        .poll(() => page.evaluate(async (endgameId) => (await (await window.__wizardChessDrillsReady!).store.endgames.getProgress(endgameId)) ?? null, id))
+        .poll(() =>
+          page.evaluate(
+            async (endgameId) =>
+              (await (await window.__wizardChessDrillsReady!).store.endgames.getProgress(endgameId)) ?? null,
+            id,
+          ),
+        )
         .toMatchObject({ completed: 1, bestMoves: optimal, optimalMoves: optimal, lastMoves: optimal });
       expect(external).toEqual([]);
     });
@@ -476,7 +536,9 @@ test.describe('Phase 7 — endgame trainer', () => {
     expect(await page.evaluate(() => window.__wizardChessDrills!.getEndgames()!.getBoard().isFlipped())).toBe(true);
     await expect(page.getByTestId('btn-endgame-draw')).toBeVisible();
     await page.getByTestId('btn-endgame-draw').click();
-    await expect(page.getByTestId('endgame-status')).toContainText('Too early to offer a draw: make 10 more moves first.');
+    await expect(page.getByTestId('endgame-status')).toContainText(
+      'Too early to offer a draw: make 10 more moves first.',
+    );
 
     // Ra6 holds; then give up
     await clickMove(page, 'endgame-trainer', 'a3', 'a6');
@@ -488,7 +550,10 @@ test.describe('Phase 7 — endgame trainer', () => {
     await expect(page.getByTestId('endgame-result')).toContainText('Given up');
     const saved = await page.evaluate(async () => {
       const api = await window.__wizardChessDrillsReady!;
-      return { progress: await api.store.endgames.getProgress('philidor-position'), cards: await api.store.endgames.listCards() };
+      return {
+        progress: await api.store.endgames.getProgress('philidor-position'),
+        cards: await api.store.endgames.listCards(),
+      };
     });
     expect(saved.progress).toMatchObject({ completed: 0, attempts: 1, completions: 0, lastReached: false });
     expect(saved.cards[0]).toMatchObject({ id: 'endgame:philidor-position', state: 'learning' });
@@ -498,28 +563,47 @@ test.describe('Phase 7 — endgame trainer', () => {
     await page.getByTestId('btn-endgame-restart').click();
     await expect(trainer).toHaveAttribute('data-endgame-state', 'playing');
     await expect(page.getByTestId('endgame-moves')).toHaveText('0 moves');
-    expect((await page.evaluate(async () => (await (await window.__wizardChessDrillsReady!).store.endgames.getProgress('philidor-position'))?.attempts))).toBe(1);
+    expect(
+      await page.evaluate(
+        async () =>
+          (await (await window.__wizardChessDrillsReady!).store.endgames.getProgress('philidor-position'))?.attempts,
+      ),
+    ).toBe(1);
   });
 
-  test('R+P v R: a position without a mate count is won by converting it (promote, and the engine agrees it is decided)', async ({ page }) => {
+  test('R+P v R: a position without a mate count is won by converting it (promote, and the engine agrees it is decided)', async ({
+    page,
+  }) => {
     test.setTimeout(240_000);
     await openTrain(page);
     await page.getByTestId('btn-trainer-endgames').click();
     await page.getByTestId('endgame-item-rp-vs-r').click();
     const trainer = page.getByTestId('endgame-trainer');
     await expect(trainer).toHaveAttribute('data-endgame-id', 'rp-vs-r');
-    await expect(page.getByTestId('endgame-goal')).toHaveText('Promote the pawn, or win the last piece, and keep the win.');
+    await expect(page.getByTestId('endgame-goal')).toHaveText(
+      'Promote the pawn, or win the last piece, and keep the win.',
+    );
     expect(await playOut(page, 60)).toBe('reached');
     const end = await page.evaluate(() => window.__wizardChessDrills!.getEndgames()!.getSession()!.end!);
     expect(['converted', 'checkmate']).toContain(end.how);
     expect(end.result).toBe('1-0');
     // No move count is kept for it: only that the result was reached
-    const progress = await page.evaluate(async () => (await window.__wizardChessDrillsReady!).store.endgames.getProgress('rp-vs-r'));
-    expect(progress).toMatchObject({ completed: 1, bestMoves: null, optimalMoves: null, lastMoves: null, lastReached: true });
+    const progress = await page.evaluate(async () =>
+      (await window.__wizardChessDrillsReady!).store.endgames.getProgress('rp-vs-r'),
+    );
+    expect(progress).toMatchObject({
+      completed: 1,
+      bestMoves: null,
+      optimalMoves: null,
+      lastMoves: null,
+      lastReached: true,
+    });
     await expect(page.getByTestId('endgame-result')).not.toContainText('best possible');
   });
 
-  test('Lucena: the bridge is built and the pawn promoted; the drill ends as converted with no move count', async ({ page }) => {
+  test('Lucena: the bridge is built and the pawn promoted; the drill ends as converted with no move count', async ({
+    page,
+  }) => {
     test.setTimeout(240_000);
     await openTrain(page);
     await page.getByTestId('btn-trainer-endgames').click();
@@ -529,11 +613,15 @@ test.describe('Phase 7 — endgame trainer', () => {
     expect(await playOut(page, 60)).toBe('reached');
     const end = await page.evaluate(() => window.__wizardChessDrills!.getEndgames()!.getSession()!.end!);
     expect(['converted', 'checkmate']).toContain(end.how);
-    const progress = await page.evaluate(async () => (await (await window.__wizardChessDrillsReady!).store.endgames.getProgress('lucena-position')));
+    const progress = await page.evaluate(
+      async () => await (await window.__wizardChessDrillsReady!).store.endgames.getProgress('lucena-position'),
+    );
     expect(progress).toMatchObject({ completed: 1, bestMoves: null, optimalMoves: null, lastMoves: null });
   });
 
-  test('Philidor: after ten moves of holding, a draw offer is accepted and the draw is the result', async ({ page }) => {
+  test('Philidor: after ten moves of holding, a draw offer is accepted and the draw is the result', async ({
+    page,
+  }) => {
     test.setTimeout(240_000);
     await openTrain(page);
     await page.getByTestId('btn-trainer-endgames').click();
@@ -541,15 +629,20 @@ test.describe('Phase 7 — endgame trainer', () => {
     const trainer = page.getByTestId('endgame-trainer');
     await expect(trainer).toHaveAttribute('data-endgame-id', 'philidor-position');
     for (let i = 0; i < 10; i++) {
-      await expect.poll(() => trainer.getAttribute('data-endgame-state'), { timeout: 30_000 }).toMatch(/playing|reached|failed/);
+      await expect
+        .poll(() => trainer.getAttribute('data-endgame-state'), { timeout: 30_000 })
+        .toMatch(/playing|reached|failed/);
       if ((await trainer.getAttribute('data-endgame-state')) !== 'playing') break;
       await page.getByTestId('btn-endgame-hint').click();
       await expect(trainer).toHaveAttribute('data-hint', /^[a-h][1-8][a-h][1-8]/);
       const hint = (await trainer.getAttribute('data-hint'))!;
       await clickMove(page, 'endgame-trainer', hint.slice(0, 2), hint.slice(2, 4));
     }
-    await expect.poll(() => trainer.getAttribute('data-endgame-state'), { timeout: 30_000 }).toMatch(/playing|reached|failed/);
-    if ((await trainer.getAttribute('data-endgame-state')) === 'playing') await page.getByTestId('btn-endgame-draw').click();
+    await expect
+      .poll(() => trainer.getAttribute('data-endgame-state'), { timeout: 30_000 })
+      .toMatch(/playing|reached|failed/);
+    if ((await trainer.getAttribute('data-endgame-state')) === 'playing')
+      await page.getByTestId('btn-endgame-draw').click();
     await expect(trainer).toHaveAttribute('data-endgame-state', 'reached', { timeout: 20_000 });
     const end = await page.evaluate(() => window.__wizardChessDrills!.getEndgames()!.getSession()!.end!);
     expect(end.result).toBe('1/2-1/2');
@@ -563,7 +656,16 @@ test.describe('Phase 7 — endgame trainer', () => {
       const api = await window.__wizardChessDrillsReady!;
       // A failed drill 11 minutes ago: back in the schedule now (Again → 10 minutes)
       await api.store.endgames.record(
-        { id: 'lucena-position', title: 'Lucena', category: 'Lucena', fen: '1K1k4/1P6/8/8/8/8/r7/2R5 w - - 0 1', sideToMove: 'w', targetResult: '1-0', optimalMoves: null, description: '' },
+        {
+          id: 'lucena-position',
+          title: 'Lucena',
+          category: 'Lucena',
+          fen: '1K1k4/1P6/8/8/8/8/r7/2R5 w - - 0 1',
+          sideToMove: 'w',
+          targetResult: '1-0',
+          optimalMoves: null,
+          description: '',
+        },
         { reached: false, moves: 6, hintsUsed: 0 },
         Date.now() - 11 * 60_000,
       );
@@ -634,7 +736,10 @@ test.describe('Phase 7 — visualization drills', () => {
     await expect(page.getByTestId('viz-coord-best')).toHaveText('Best round: 5 right · 1 round played.');
     const stats = await page.evaluate(async () => {
       const api = await window.__wizardChessDrillsReady!;
-      return { stats: await api.store.visualization.coordinateStats(), cards: (await api.store.visualization.listCards()).map((c) => c.id) };
+      return {
+        stats: await api.store.visualization.coordinateStats(),
+        cards: (await api.store.visualization.listCards()).map((c) => c.id),
+      };
     });
     expect(stats.stats).toMatchObject({ rounds: 1, best: 5 });
     expect(stats.cards).toEqual(['visualization:coordinates']);
@@ -646,10 +751,14 @@ test.describe('Phase 7 — visualization drills', () => {
     await openTrain(page);
     await page.getByTestId('btn-trainer-visualization').click();
     await page.getByTestId('viz-orient-b').click();
-    expect(await page.evaluate(() => window.__wizardChessDrills!.getVisualization()!.getBoard().isFlipped())).toBe(true);
+    expect(await page.evaluate(() => window.__wizardChessDrills!.getVisualization()!.getBoard().isFlipped())).toBe(
+      true,
+    );
     await page.getByTestId('btn-coord-start').click();
     await expect(page.getByTestId('viz-coord-time')).toHaveText(/^(30|29)$/);
-    await expect(page.getByTestId('visualization-trainer')).toHaveAttribute('data-coord-state', 'done', { timeout: 40_000 });
+    await expect(page.getByTestId('visualization-trainer')).toHaveAttribute('data-coord-state', 'done', {
+      timeout: 40_000,
+    });
     await expect(page.getByTestId('viz-coord-result')).toContainText('0 right · 0 wrong');
   });
 
@@ -666,14 +775,17 @@ test.describe('Phase 7 — visualization drills', () => {
     await expect(page.getByTestId('viz-blind-stage')).toContainText(/(White|Black): /);
     await expect(trainer.locator('.wc-piece')).toHaveCount(0);
     await shot(page, 'desktop-viz-blindfold-reading.png');
-    while ((await trainer.getAttribute('data-blind-state')) === 'reading') await page.getByTestId('btn-blind-start').click();
+    while ((await trainer.getAttribute('data-blind-state')) === 'reading')
+      await page.getByTestId('btn-blind-start').click();
     await expect(trainer).toHaveAttribute('data-blind-state', 'asking');
     await expect(page.getByTestId('viz-blind-stage')).toHaveText(/^Where is the (white|black) /);
     let answered = 0;
     for (;;) {
       await expect.poll(() => trainer.getAttribute('data-blind-state'), { timeout: 15_000 }).toMatch(/asking|done/);
       if ((await trainer.getAttribute('data-blind-state')) === 'done') break;
-      const square = await page.evaluate(() => window.__wizardChessDrills!.getVisualization()!.getBlindfoldQuestion()!.squares[0]!);
+      const square = await page.evaluate(
+        () => window.__wizardChessDrills!.getVisualization()!.getBlindfoldQuestion()!.squares[0]!,
+      );
       if (answered === 1) await shot(page, 'desktop-viz-blindfold-question.png');
       const p = await squareCenter(page, 'visualization-trainer', square);
       await page.mouse.click(p.x, p.y);
@@ -687,7 +799,10 @@ test.describe('Phase 7 — visualization drills', () => {
     await expect(page.getByTestId('viz-blind-level')).toContainText('Level: 10 moves');
     const saved = await page.evaluate(async () => {
       const api = await window.__wizardChessDrillsReady!;
-      return { stats: await api.store.visualization.blindfoldStats(), cards: (await api.store.visualization.listCards()).map((c) => c.id) };
+      return {
+        stats: await api.store.visualization.blindfoldStats(),
+        cards: (await api.store.visualization.listCards()).map((c) => c.id),
+      };
     });
     expect(saved.stats).toEqual({ level: 10, drills: 1, bestLevel: 8 });
     expect(saved.cards).toEqual(['visualization:blindfold']);
@@ -730,7 +845,10 @@ test.describe('Phase 7 — visualization drills', () => {
     await expect(page.getByTestId('viz-guess-result')).toContainText('5 of 6 moves matched.');
     const saved = await page.evaluate(async () => {
       const api = await window.__wizardChessDrillsReady!;
-      return { stats: await api.store.visualization.guessStats(), cards: (await api.store.visualization.listCards()).map((c) => c.id) };
+      return {
+        stats: await api.store.visualization.guessStats(),
+        cards: (await api.store.visualization.listCards()).map((c) => c.id),
+      };
     });
     expect(Object.values(saved.stats)).toMatchObject([{ hits: 5, total: 6 }]);
     expect(saved.cards).toHaveLength(1);
@@ -749,7 +867,9 @@ test.describe('Phase 7 — visualization drills', () => {
     await expect(page.getByTestId('app-shell')).toHaveAttribute('data-mode', 'games');
   });
 
-  test('due drills feed Today in the same order as puzzles: reviews, repertoire, endgames, then visualization', async ({ page }) => {
+  test('due drills feed Today in the same order as puzzles: reviews, repertoire, endgames, then visualization', async ({
+    page,
+  }) => {
     await openTrain(page);
     // Each trainer has a card that came due 11 minutes ago
     await page.evaluate(async () => {
@@ -767,7 +887,16 @@ test.describe('Phase 7 — visualization drills', () => {
       const api = await window.__wizardChessDrillsReady!;
       const ago = Date.now() - 11 * 60_000;
       await api.store.endgames.record(
-        { id: 'kq-vs-k', title: 'x', category: 'K+Q v K', fen: '8/8/8/4k3/8/8/8/3QK3 w - - 0 1', sideToMove: 'w', targetResult: '1-0', optimalMoves: 7, description: '' },
+        {
+          id: 'kq-vs-k',
+          title: 'x',
+          category: 'K+Q v K',
+          fen: '8/8/8/4k3/8/8/8/3QK3 w - - 0 1',
+          sideToMove: 'w',
+          targetResult: '1-0',
+          optimalMoves: 7,
+          description: '',
+        },
         { reached: false, moves: 1, hintsUsed: 0 },
         ago,
       );
@@ -787,8 +916,21 @@ test.describe('Phase 7 — visualization drills', () => {
     // A due puzzle review comes first
     await page.evaluate(async () => {
       const api = await window.__wizardChessPuzzlesReady!;
-      const entry = { id: 'TstDue7', fen: '7k/6pp/8/8/8/8/6PP/R6K w - - 0 1', moves: ['h8g8', 'a1a8'], rating: 900, themes: ['mateIn1'], popularity: 0, plays: 0 };
-      await api.store.recordAttempt(entry as never, 'lichess', { solved: false, hintUsed: false, mistakes: 1, timeMs: 5000, grade: 1 }, Date.now() - 11 * 60_000);
+      const entry = {
+        id: 'TstDue7',
+        fen: '7k/6pp/8/8/8/8/6PP/R6K w - - 0 1',
+        moves: ['h8g8', 'a1a8'],
+        rating: 900,
+        themes: ['mateIn1'],
+        popularity: 0,
+        plays: 0,
+      };
+      await api.store.recordAttempt(
+        entry as never,
+        'lichess',
+        { solved: false, hintUsed: false, mistakes: 1, timeMs: 5000, grade: 1 },
+        Date.now() - 11 * 60_000,
+      );
     });
     await expect(page.getByTestId('train-start-detail')).toHaveText('Your 1 due review');
     await expect(page.getByTestId('nav-train-count')).toHaveText('4');

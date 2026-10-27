@@ -42,13 +42,17 @@ async function prepare(page: Page): Promise<void> {
   // Review both on Quick, through the Games list's own queue
   await page.evaluate(async () => {
     const api = await window.__wizardChessLibraryReady!;
-    api.queue.enqueue((await api.library.list()).map((g) => g.id), 'quick');
+    api.queue.enqueue(
+      (await api.library.list()).map((g) => g.id),
+      'quick',
+    );
   });
   await expect(page.locator('[data-analysis="analyzed"]')).toHaveCount(2, { timeout: 120_000 });
   // A puzzle rating history (as solving rated puzzles would have written it)
   await page.evaluate(async () => {
     const api = await window.__wizardChessLibraryReady!;
-    const storage = (api.library as unknown as { storage: { setSetting: (k: string, v: unknown) => Promise<void> } }).storage;
+    const storage = (api.library as unknown as { storage: { setSetting: (k: string, v: unknown) => Promise<void> } })
+      .storage;
     const base = Date.UTC(2026, 9, 1);
     await storage.setSetting('puzzles.rating', {
       rating: 1540,
@@ -97,7 +101,9 @@ test.describe('Phase 8 — insights', () => {
     // Open it: the game is on the Review board at that move
     await page.getByTestId('insight-position').first().getByRole('button').click();
     await expect(page.getByTestId('analysis-layout')).toBeVisible();
-    await expect.poll(() => page.evaluate(() => window.__wizardChessAnalysis!.controller.getGameTree().currentNode.san)).toBe('Qxe5+');
+    await expect
+      .poll(() => page.evaluate(() => window.__wizardChessAnalysis!.controller.getGameTree().currentNode.san))
+      .toBe('Qxe5+');
     await page.getByTestId('mode-tab-games').click();
     await expect(page.getByTestId('games-tab-insights')).toHaveAttribute('aria-selected', 'true');
 

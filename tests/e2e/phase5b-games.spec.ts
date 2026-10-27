@@ -73,7 +73,8 @@ async function dropFiles(page: Page, files: Array<{ name: string; text: string }
   }, files);
 }
 
-const opponents = (page: Page) => page.getByTestId('games-row-opponent').locator('.wc-games-opp-name').allTextContents();
+const opponents = (page: Page) =>
+  page.getByTestId('games-row-opponent').locator('.wc-games-opp-name').allTextContents();
 
 test.describe('Phase 5b — Games list (no extension)', () => {
   // Dates are shown in the viewer's time zone: fixed here so the expected text doesn't depend on the machine
@@ -123,7 +124,9 @@ test.describe('Phase 5b — Games list (no extension)', () => {
     await expect(lichessRow.getByTestId('games-row-date')).toHaveText('2026-10-04 05:33');
     await expect(lichessRow.getByTestId('games-row-opening')).toContainText('Mieses');
     await expect(lichessRow.getByTestId('games-row-analysis')).toHaveText('Not analyzed');
-    await expect(page.locator('[data-game-id="chesscom:live-185518487990"]').getByTestId('games-row-tc')).toHaveText('3+0');
+    await expect(page.locator('[data-game-id="chesscom:live-185518487990"]').getByTestId('games-row-tc')).toHaveText(
+      '3+0',
+    );
 
     // Filters
     await page.getByTestId('games-filter-source').selectOption('chesscom');
@@ -170,7 +173,9 @@ test.describe('Phase 5b — Games list (no extension)', () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     const external = await openGames(page);
     // My Chess.com username, as the extension's settings would send it
-    await page.evaluate(() => window.__wizardChessLibrary!.library.setMyAccounts({ lichess: 'Lobo017', chesscom: 'hikaru' }));
+    await page.evaluate(() =>
+      window.__wizardChessLibrary!.library.setMyAccounts({ lichess: 'Lobo017', chesscom: 'hikaru' }),
+    );
     await pastePgn(page, SHORT_CHESSCOM);
     const row = page.locator('[data-game-id="chesscom:live-999000111"]');
     await expect(row.getByTestId('games-row-color')).toHaveAttribute('data-color', 'b');
@@ -182,7 +187,10 @@ test.describe('Phase 5b — Games list (no extension)', () => {
     await expect(row.getByTestId('games-row-analysis')).toContainText('Analyzed', { timeout: 60_000 });
     const stored = await page.evaluate(async () => {
       const lib = window.__wizardChessLibrary!.library;
-      return { record: await lib.get('chesscom:live-999000111'), review: await lib.getReview('chesscom:live-999000111') };
+      return {
+        record: await lib.get('chesscom:live-999000111'),
+        review: await lib.getReview('chesscom:live-999000111'),
+      };
     });
     expect(stored.record?.analysis?.preset).toBe('standard');
     expect(stored.review?.review.moves).toHaveLength(6);
@@ -256,12 +264,16 @@ test.describe('Phase 5b — Games list (no extension)', () => {
     await expect(page.getByTestId('games-row').first().getByTestId('games-row-analysis')).toContainText('Analyzed');
   });
 
-  test('phone width: the list fits, with no horizontal scroll and no layout shift while filtering', async ({ page }) => {
+  test('phone width: the list fits, with no horizontal scroll and no layout shift while filtering', async ({
+    page,
+  }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await openGames(page);
     await pastePgn(page, `${LICHESS_PGN}\n\n${CHESSCOM_PGN}\n\n${SHORT_PLAIN}`);
     await expect(page.getByTestId('games-row')).toHaveCount(3);
-    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    const overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
     expect(overflow).toBe(0);
     for (const row of await page.getByTestId('games-row').all()) {
       const box = (await row.boundingBox())!;

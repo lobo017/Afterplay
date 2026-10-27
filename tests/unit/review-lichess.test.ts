@@ -1,19 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { parsePgn } from '../../src/core/pgn';
 import { averageCentipawnLoss, gameAccuracy, winPercentFromCp } from '../../src/review/formulas';
-import {
-  CLASSIFICATION_NAG,
-  buildAnnotatedPgn,
-  buildGameReview,
-  mainLinePlies,
-} from '../../src/review/review-game';
+import { CLASSIFICATION_NAG, buildAnnotatedPgn, buildGameReview, mainLinePlies } from '../../src/review/review-game';
 import type { GameTree } from '../../src/core/game-tree';
-import {
-  lichessGame,
-  lichessPositions,
-  lichessTree,
-  lichessWhiteCps,
-} from '../helpers/lichess-fixture';
+import { lichessGame, lichessPositions, lichessTree, lichessWhiteCps } from '../helpers/lichess-fixture';
 import { isBookFen } from '../helpers/review-fixtures';
 
 /*
@@ -116,7 +106,9 @@ describe('Phase 5 — Lichess reference game Bjl39T9x', () => {
       // At most one alternative per move, and only the app's best line after its errors
       const siblings = exported.getNode(node.parentId!)!.children;
       const isError = ['Mistake', 'Blunder', 'Miss'].includes(move.classification);
-      expect(siblings.length, `${i + 1}. ${node.san}`).toBe(isError && move.bestMoveUci && move.bestMoveUci !== move.uci ? 2 : 1);
+      expect(siblings.length, `${i + 1}. ${node.san}`).toBe(
+        isError && move.bestMoveUci && move.bestMoveUci !== move.uci ? 2 : 1,
+      );
     });
     // Idempotent: reviewing the export again gives the same PGN
     const again = reviewWithLichessEvals(parsePgn(pgn));

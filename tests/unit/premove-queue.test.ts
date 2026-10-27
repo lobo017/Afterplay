@@ -19,21 +19,14 @@ describe('Phase 3 — premove queue on a hypothetical board', () => {
 
     // The same knight can be premoved again from where premove 1 left it
     const targets = computePremoveTargetsOnSquares(squares, 'f3', 'w');
-    expect(targets.sort()).toEqual(
-      ['d4', 'e5', 'g5', 'h4', 'g1', 'e1', 'd2', 'h2'].sort(),
-    );
+    expect(targets.sort()).toEqual(['d4', 'e5', 'g5', 'h4', 'g1', 'e1', 'd2', 'h2'].sort());
     // ...and the original square has nothing left to premove
     expect(computePremoveTargetsOnSquares(squares, 'g1', 'w')).toEqual([]);
   });
 
   it('allows pawn diagonals onto empty squares and squares held by your own pieces', () => {
     const squares = board(START);
-    expect(computePremoveTargetsOnSquares(squares, 'e2', 'w').sort()).toEqual([
-      'd3',
-      'e3',
-      'e4',
-      'f3',
-    ]);
+    expect(computePremoveTargetsOnSquares(squares, 'e2', 'w').sort()).toEqual(['d3', 'e3', 'e4', 'f3']);
     // Rook sliding through its own pieces: geometry only, blockers ignored
     const rook = computePremoveTargetsOnSquares(squares, 'a1', 'w');
     expect(rook).toContain('a2');

@@ -34,7 +34,14 @@ function utcMs(date: string | undefined, time: string | undefined): number | nul
   const d = DATE.exec(usable(date));
   if (!d) return null;
   const t = TIME.exec(usable(time));
-  const ms = Date.UTC(Number(d[1]), Number(d[2]) - 1, Number(d[3]), t ? Number(t[1]) : 0, t ? Number(t[2]) : 0, t?.[3] ? Number(t[3]) : 0);
+  const ms = Date.UTC(
+    Number(d[1]),
+    Number(d[2]) - 1,
+    Number(d[3]),
+    t ? Number(t[1]) : 0,
+    t ? Number(t[2]) : 0,
+    t?.[3] ? Number(t[3]) : 0,
+  );
   return Number.isFinite(ms) ? ms : null;
 }
 
@@ -58,10 +65,13 @@ export interface PlayedAt {
  */
 export function playedAtDetail(headers: Readonly<Record<string, string>>): PlayedAt | null {
   const date = usable(headers.UTCDate) || usable(headers.Date);
-  if (hasTime(headers.UTCTime) && DATE.test(date)) return { ms: utcMs(date, headers.UTCTime)!, hasTime: true, isEnd: false };
-  if (hasTime(headers.StartTime) && DATE.test(date)) return { ms: utcMs(date, headers.StartTime)!, hasTime: true, isEnd: false };
+  if (hasTime(headers.UTCTime) && DATE.test(date))
+    return { ms: utcMs(date, headers.UTCTime)!, hasTime: true, isEnd: false };
+  if (hasTime(headers.StartTime) && DATE.test(date))
+    return { ms: utcMs(date, headers.StartTime)!, hasTime: true, isEnd: false };
   const endDate = usable(headers.EndDate) || date;
-  if (hasTime(headers.EndTime) && DATE.test(endDate)) return { ms: utcMs(endDate, headers.EndTime)!, hasTime: true, isEnd: true };
+  if (hasTime(headers.EndTime) && DATE.test(endDate))
+    return { ms: utcMs(endDate, headers.EndTime)!, hasTime: true, isEnd: true };
   const ms = utcMs(date, undefined);
   return ms === null ? null : { ms, hasTime: false, isEnd: false };
 }

@@ -31,7 +31,8 @@ async function rowCount(page: Page): Promise<number> {
 }
 
 /** A Chess.com game page as the extension sees it: the game data comes from the callback request. */
-const CHESSCOM_PAGE = '<!doctype html><html><head><title>Chess.com</title></head><body><div id="board-layout-main"></div></body></html>';
+const CHESSCOM_PAGE =
+  '<!doctype html><html><head><title>Chess.com</title></head><body><div id="board-layout-main"></div></body></html>';
 
 /** A Chess.com page whose Share button opens a dialog with a PGN tab, like the site's. */
 function shareDialogPage(pgn: string): string {
@@ -132,7 +133,11 @@ test.describe('Phase 5b — capture extension', () => {
     const PAGE = 'https://lichess.org/Bjl39T9x';
     mock(session, PAGE, { body: stripPageAssets(readFixture('lichess/page-Bjl39T9x.html')) });
     // The single-game export without a session: the recorded login wall
-    mock(session, 'https://lichess.org/game/export/Bjl39T9x*', { status: 303, body: '', headers: { location: '/signup' } });
+    mock(session, 'https://lichess.org/game/export/Bjl39T9x*', {
+      status: 303,
+      body: '',
+      headers: { location: '/signup' },
+    });
     mock(session, 'https://lichess.org/signup', { body: '<!doctype html><title>Sign up</title>' });
     await setUsernames(session, 'Lobo017', '');
 
@@ -202,11 +207,22 @@ test.describe('Phase 5b — capture extension', () => {
       const cookie = route.request().headers()['cookie'] ?? '';
       exportRequests.push(cookie);
       return cookie.includes('lila2=')
-        ? route.fulfill({ body: readFixture('lichess/export-ids-Bjl39T9x.pgn'), contentType: 'application/x-chess-pgn' })
+        ? route.fulfill({
+            body: readFixture('lichess/export-ids-Bjl39T9x.pgn'),
+            contentType: 'application/x-chess-pgn',
+          })
         : route.fulfill({ status: 401, body: '{"error":"Login required"}', contentType: 'application/json' });
     });
     await session.context.addCookies([
-      { name: 'lila2', value: 'test-session', domain: 'lichess.org', path: '/', secure: true, httpOnly: true, sameSite: 'Lax' },
+      {
+        name: 'lila2',
+        value: 'test-session',
+        domain: 'lichess.org',
+        path: '/',
+        secure: true,
+        httpOnly: true,
+        sameSite: 'Lax',
+      },
     ]);
     await setUsernames(session, 'lobo017', '');
 
@@ -218,7 +234,9 @@ test.describe('Phase 5b — capture extension', () => {
 
     // The game ends: Lichess's server has the finished game, the page shows the result block
     pageHtml = finished;
-    await page.evaluate(() => document.body.insertAdjacentHTML('beforeend', '<div class="result-wrap"><p class="result">0-1</p></div>'));
+    await page.evaluate(() =>
+      document.body.insertAdjacentHTML('beforeend', '<div class="result-wrap"><p class="result">0-1</p></div>'),
+    );
     await expect(save).toHaveAttribute('data-state', 'saved', { timeout: 15_000 });
     await expect(page.getByTestId('wc-save-note')).toContainText('Captured automatically');
     await expect.poll(() => badgeText(session.worker)).toBe('1');
@@ -254,7 +272,10 @@ test.describe('Phase 5b — capture extension', () => {
       'https://lichess.org/api/games/export/_ids*',
       (route) => {
         exportCalls.push(route.request().postData() ?? '');
-        return route.fulfill({ body: readFixture('lichess/export-ids-iTIXmTZF.pgn'), contentType: 'application/x-chess-pgn' });
+        return route.fulfill({
+          body: readFixture('lichess/export-ids-iTIXmTZF.pgn'),
+          contentType: 'application/x-chess-pgn',
+        });
       },
       'POST',
     );
@@ -263,7 +284,10 @@ test.describe('Phase 5b — capture extension', () => {
     await popup.getByTestId('popup-save').click();
     await expect(popup.getByTestId('popup-result')).toHaveText('Saved cauchyunderground vs Lobo017');
     expect(exportCalls).toEqual(['iTIXmTZF']);
-    expect(await queueEntry(session, 'lichess:iTIXmTZF')).toMatchObject({ status: 'ready', method: 'lichess-ids-export' });
+    expect(await queueEntry(session, 'lichess:iTIXmTZF')).toMatchObject({
+      status: 'ready',
+      method: 'lichess-ids-export',
+    });
     await expect.poll(() => badgeText(session.worker)).toBe('1');
   });
 
@@ -299,7 +323,9 @@ test.describe('Phase 5b — capture extension', () => {
     await expect(row.getByTestId('games-row-result')).toHaveText('W');
     await expect.poll(() => badgeText(session.worker)).toBe('');
     // The stored PGN keeps Chess.com's clocks
-    const pgn = await site.evaluate(async () => (await window.__wizardChessLibrary!.library.get('chesscom:live-185518487990'))!.pgn);
+    const pgn = await site.evaluate(
+      async () => (await window.__wizardChessLibrary!.library.get('chesscom:live-185518487990'))!.pgn,
+    );
     expect(pgn).toContain('[%clk 0:02:56.3]');
     expect(pgn).toContain('[Link "https://www.chess.com/game/live/185518487990"]');
   });
@@ -311,7 +337,10 @@ test.describe('Phase 5b — capture extension', () => {
     // The page's first request (is the game over?) works; the extractor's fails, so the dialog is next
     mock(session, 'https://www.chess.com/callback/live/game/185518487990', (route) =>
       ++callbackCalls === 1
-        ? route.fulfill({ body: readFixture('chesscom/callback-live-185518487990.json'), contentType: 'application/json' })
+        ? route.fulfill({
+            body: readFixture('chesscom/callback-live-185518487990.json'),
+            contentType: 'application/json',
+          })
         : route.fulfill({ status: 500, body: 'oops' }),
     );
     const page = await session.context.newPage();
@@ -329,7 +358,10 @@ test.describe('Phase 5b — capture extension', () => {
     const FIRST = 'https://www.chess.com/game/live/185358990103';
     const GAME = 'https://www.chess.com/game/live/185518487990';
     const finished = readFixture('chesscom/callback-live-185518487990.json');
-    const running = JSON.stringify({ ...JSON.parse(finished), game: { ...JSON.parse(finished).game, isFinished: false } });
+    const running = JSON.stringify({
+      ...JSON.parse(finished),
+      game: { ...JSON.parse(finished).game, isFinished: false },
+    });
     let callback = running;
     mock(session, FIRST, { body: CHESSCOM_PAGE });
     mock(session, 'https://www.chess.com/callback/live/game/185358990103', {
@@ -348,7 +380,9 @@ test.describe('Phase 5b — capture extension', () => {
     const save = page.getByTestId('wc-save-button');
     await expect(save).toHaveAttribute('data-state', 'in-progress', { timeout: 5000 });
     callback = finished;
-    await page.evaluate(() => document.body.insertAdjacentHTML('beforeend', '<div class="game-over-modal-content">Hikaru won on time</div>'));
+    await page.evaluate(() =>
+      document.body.insertAdjacentHTML('beforeend', '<div class="game-over-modal-content">Hikaru won on time</div>'),
+    );
     await expect(save).toHaveAttribute('data-state', 'saved', { timeout: 15_000 });
     expect(await queueEntry(session, 'chesscom:live-185518487990')).toMatchObject({ method: 'chesscom-callback' });
     // The first game was only viewed, not saved
@@ -372,9 +406,11 @@ test.describe('Phase 5b — capture extension', () => {
 
     // The context menu on a game link runs the same resolution as a pasted link
     await session.worker.evaluate(async (link) => {
-      const api = (self as unknown as {
-        __wizardChessCapture: { onContextMenuClick(info: unknown): Promise<void>; contextMenuId: string };
-      }).__wizardChessCapture;
+      const api = (
+        self as unknown as {
+          __wizardChessCapture: { onContextMenuClick(info: unknown): Promise<void>; contextMenuId: string };
+        }
+      ).__wizardChessCapture;
       await api.onContextMenuClick({ menuItemId: api.contextMenuId, linkUrl: link });
     }, LINK);
     expect(await queueEntry(session, 'chesscom:live-185518487990')).toMatchObject({ status: 'pending' });
@@ -391,7 +427,10 @@ test.describe('Phase 5b — capture extension', () => {
     archive = { games: JSON.parse(readFixture('chesscom/archive-hikaru-2026-10.json')).games };
     await entry.getByTestId('popup-entry-retry').click();
     await expect(entry).toHaveAttribute('data-status', 'ready');
-    expect(await queueEntry(session, 'chesscom:live-185518487990')).toMatchObject({ status: 'ready', method: 'chesscom-archive' });
+    expect(await queueEntry(session, 'chesscom:live-185518487990')).toMatchObject({
+      status: 'ready',
+      method: 'chesscom-archive',
+    });
     expect(await badgeText(session.worker)).toBe('1');
   });
 
@@ -401,7 +440,10 @@ test.describe('Phase 5b — capture extension', () => {
     mock(session, GAME, { body: CHESSCOM_PAGE });
     mock(session, 'https://www.chess.com/callback/live/game/185518487990', (route) =>
       ++calls === 1
-        ? route.fulfill({ body: readFixture('chesscom/callback-live-185518487990.json'), contentType: 'application/json' })
+        ? route.fulfill({
+            body: readFixture('chesscom/callback-live-185518487990.json'),
+            contentType: 'application/json',
+          })
         : route.fulfill({ status: 503, body: 'down' }),
     );
     const page = await session.context.newPage();
@@ -424,7 +466,9 @@ test.describe('Phase 5b — capture extension', () => {
     const popup = await openPopup(session);
     await expect(popup.getByTestId('popup-failure')).toBeVisible();
     await expect(popup.getByTestId('popup-failure-text')).toContainText(GAME);
-    await expect(popup.getByTestId('popup-failure-text')).toContainText('chesscom-share-pgn: No Share button on the page.');
+    await expect(popup.getByTestId('popup-failure-text')).toContainText(
+      'chesscom-share-pgn: No Share button on the page.',
+    );
     await popup.getByTestId('popup-failure-use').click();
     await expect(popup.getByTestId('popup-paste')).toHaveValue(GAME);
     await expect(popup.getByTestId('popup-failure')).toBeHidden();
@@ -447,7 +491,10 @@ test.describe('Phase 5b — capture extension', () => {
           contentType: 'application/json',
         });
       }
-      return route.fulfill({ body: readFixture('chesscom/archive-hikaru-2026-10.json'), contentType: 'application/json' });
+      return route.fulfill({
+        body: readFixture('chesscom/archive-hikaru-2026-10.json'),
+        contentType: 'application/json',
+      });
     });
     await setUsernames(session, 'Lobo017', 'hikaru');
     const popup = await openPopup(session);
@@ -462,9 +509,12 @@ test.describe('Phase 5b — capture extension', () => {
 
     await popup.getByTestId('popup-backfill-chesscom-btn').click();
     const ccGames = JSON.parse(readFixture('chesscom/archive-hikaru-2026-10.json')).games.length as number;
-    await expect(popup.getByTestId('popup-backfill-chesscom-status')).toHaveText(`Up to date · ${ccGames} new games imported`, {
-      timeout: 20_000,
-    });
+    await expect(popup.getByTestId('popup-backfill-chesscom-status')).toHaveText(
+      `Up to date · ${ccGames} new games imported`,
+      {
+        timeout: 20_000,
+      },
+    );
     expect(ccRequests.map((u) => u.slice(-8))).toEqual(['archives', '/2026/10']);
     await expect.poll(() => badgeText(session.worker)).toBe(String(4 + ccGames));
 
@@ -505,7 +555,9 @@ test.describe('Phase 5b — capture extension', () => {
     await expect(popup.getByTestId('popup-settings-result')).toHaveText('Saved.');
     await expect(popup.getByTestId('popup-site-url')).toHaveValue('http://localhost:5173');
     const matches = () =>
-      session.worker.evaluate(async () => (await chrome.scripting.getRegisteredContentScripts()).flatMap((c) => c.matches ?? []).sort());
+      session.worker.evaluate(async () =>
+        (await chrome.scripting.getRegisteredContentScripts()).flatMap((c) => c.matches ?? []).sort(),
+      );
     // Both loopback names of the port
     expect(await matches()).toEqual(['http://127.0.0.1:5173/*', 'http://localhost:5173/*']);
     for (const [field, value, message] of [

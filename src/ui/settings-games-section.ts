@@ -35,7 +35,9 @@ export function mountGamesSettings(panel: SettingsPanel, library: GameLibrary, l
   lichess.value = accounts?.lichess ?? '';
   chesscom.value = accounts?.chesscom ?? '';
   const save = (): void => {
-    void library.setMyAccounts({ lichess: lichess.value.trim(), chesscom: chesscom.value.trim() }).then(() => list.refresh());
+    void library
+      .setMyAccounts({ lichess: lichess.value.trim(), chesscom: chesscom.value.trim() })
+      .then(() => list.refresh());
   };
   lichess.addEventListener('change', save);
   chesscom.addEventListener('change', save);

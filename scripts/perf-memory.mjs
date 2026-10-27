@@ -17,13 +17,7 @@ import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 import { chromium } from '@playwright/test';
-import {
-  formatGb,
-  formatProcesses,
-  freeMemoryBytes,
-  installCleanup,
-  killAllChildTrees,
-} from './lib/process-guard.mjs';
+import { formatGb, formatProcesses, freeMemoryBytes, installCleanup, killAllChildTrees } from './lib/process-guard.mjs';
 
 const PORT = Number(process.env.PERF_PORT || 4181);
 const BASE_URL = `http://127.0.0.1:${PORT}`;
@@ -188,7 +182,12 @@ async function snapshotSummary(cdp) {
   for (let i = 0; i < snap.nodes.length; i += stride) {
     const type = typeNames[snap.nodes[i + iType]];
     const rawName = snap.strings[snap.nodes[i + iName]];
-    const name = type === 'string' || type === 'concatenated string' || type === 'number' ? '(strings)' : rawName.length > 60 ? `${rawName.slice(0, 60)}…` : rawName;
+    const name =
+      type === 'string' || type === 'concatenated string' || type === 'number'
+        ? '(strings)'
+        : rawName.length > 60
+          ? `${rawName.slice(0, 60)}…`
+          : rawName;
     const size = snap.nodes[i + iSize];
     total += size;
     if (type === 'native' && (rawName.startsWith('<') || rawName === 'Text' || rawName === 'Comment')) domReachable++;
@@ -199,7 +198,13 @@ async function snapshotSummary(cdp) {
     by.set(key, row);
     if (iDetached >= 0 && snap.nodes[i + iDetached] === 2) detachedNodes++;
   }
-  return { by, detachedNodes, domReachable, totalMB: Number((total / 1024 ** 2).toFixed(2)), nodeCount: snap.nodes.length / stride };
+  return {
+    by,
+    detachedNodes,
+    domReachable,
+    totalMB: Number((total / 1024 ** 2).toFixed(2)),
+    nodeCount: snap.nodes.length / stride,
+  };
 }
 
 function slopeKbPerGame(points) {
@@ -217,11 +222,16 @@ function slopeKbPerGame(points) {
 }
 
 async function run() {
-  log(`[run] perf:memory, ${GAMES} games, node ${process.version}, ${os.cpus().length} CPUs, log ${path.resolve(LOG_PATH)}`);
+  log(
+    `[run] perf:memory, ${GAMES} games, node ${process.version}, ${os.cpus().length} CPUs, log ${path.resolve(LOG_PATH)}`,
+  );
   const free = freeMemoryBytes();
   log(`[memory] start: ${formatGb(free)} free of ${formatGb(os.totalmem())}`);
   if (free < MIN_FREE_MEMORY_BYTES) {
-    throw new PerfAbort(`Only ${formatGb(free)} of memory is free; perf:memory needs at least ${formatGb(MIN_FREE_MEMORY_BYTES)}.`, 3);
+    throw new PerfAbort(
+      `Only ${formatGb(free)} of memory is free; perf:memory needs at least ${formatGb(MIN_FREE_MEMORY_BYTES)}.`,
+      3,
+    );
   }
   installCleanup({
     log: logError,
@@ -249,7 +259,9 @@ async function run() {
     page.on('pageerror', (err) => logError('[page error]', err.message));
     await page.goto(BASE_URL, { waitUntil: 'domcontentloaded' });
     await page.locator('[data-testid="chess-board"]').waitFor({ state: 'visible' });
-    await page.waitForFunction(() => window.__wizardChessPlay?.controller.getAudio().isInitialized(), undefined, { timeout: 10_000 });
+    await page.waitForFunction(() => window.__wizardChessPlay?.controller.getAudio().isInitialized(), undefined, {
+      timeout: 10_000,
+    });
     const cdp = await context.newCDPSession(page);
     await cdp.send('HeapProfiler.enable');
 
@@ -267,7 +279,9 @@ async function run() {
       if (game % CHECK_EVERY === 0 || game === GAMES) {
         const m = await collect(cdp, page);
         points.push({ game, ...m });
-        log(`[game ${String(game).padStart(2)}] heap ${m.heapMB} MB, DOM nodes ${m.domNodes}, listeners ${m.listeners}, documents ${m.documents}, workers ${m.workers}  (${((Date.now() - started) / 1000).toFixed(0)} s)`);
+        log(
+          `[game ${String(game).padStart(2)}] heap ${m.heapMB} MB, DOM nodes ${m.domNodes}, listeners ${m.listeners}, documents ${m.documents}, workers ${m.workers}  (${((Date.now() - started) / 1000).toFixed(0)} s)`,
+        );
         if (game === CHECK_EVERY) snapA = await snapshotSummary(cdp);
       }
     }
@@ -284,22 +298,51 @@ async function run() {
     const reachableGrowth = snapB.domReachable - snapA.domReachable;
     const listenerGrowth = last.listeners - first.listeners;
     const failures = [];
-    if (slope > MAX_GROWTH_PER_GAME_KB) failures.push(`heap grows ${slope.toFixed(1)} KB per game (limit ${MAX_GROWTH_PER_GAME_KB})`);
-    if (reachableGrowth > MAX_DOM_GROWTH) failures.push(`reachable DOM nodes grew by ${reachableGrowth} between the snapshots (limit ${MAX_DOM_GROWTH})`);
-    if (listenerGrowth > MAX_DOM_GROWTH) failures.push(`event listeners grew by ${listenerGrowth} (limit ${MAX_DOM_GROWTH})`);
-    if (new Set(points.map((p) => p.workers)).size !== 1) failures.push(`the number of workers changed: ${points.map((p) => p.workers).join(', ')}`);
+    if (slope > MAX_GROWTH_PER_GAME_KB)
+      failures.push(`heap grows ${slope.toFixed(1)} KB per game (limit ${MAX_GROWTH_PER_GAME_KB})`);
+    if (reachableGrowth > MAX_DOM_GROWTH)
+      failures.push(`reachable DOM nodes grew by ${reachableGrowth} between the snapshots (limit ${MAX_DOM_GROWTH})`);
+    if (listenerGrowth > MAX_DOM_GROWTH)
+      failures.push(`event listeners grew by ${listenerGrowth} (limit ${MAX_DOM_GROWTH})`);
+    if (new Set(points.map((p) => p.workers)).size !== 1)
+      failures.push(`the number of workers changed: ${points.map((p) => p.workers).join(', ')}`);
     if (last.documents !== first.documents) failures.push(`documents ${first.documents} → ${last.documents}`);
-    if (snapB.detachedNodes > snapA.detachedNodes + 20) failures.push(`detached DOM nodes ${snapA.detachedNodes} → ${snapB.detachedNodes}`);
+    if (snapB.detachedNodes > snapA.detachedNodes + 20)
+      failures.push(`detached DOM nodes ${snapA.detachedNodes} → ${snapB.detachedNodes}`);
     if (saved !== GAMES) failures.push(`only ${saved} of ${GAMES} games reached the library`);
 
     const growth = [...snapB.by.entries()]
-      .map(([k, v]) => ({ k, dCount: v.count - (snapA.by.get(k)?.count ?? 0), dKB: (v.bytes - (snapA.by.get(k)?.bytes ?? 0)) / 1024 }))
+      .map(([k, v]) => ({
+        k,
+        dCount: v.count - (snapA.by.get(k)?.count ?? 0),
+        dKB: (v.bytes - (snapA.by.get(k)?.bytes ?? 0)) / 1024,
+      }))
       .sort((a, b) => b.dKB - a.dKB)
       .slice(0, 10);
     log('\n=== Memory report (perf:memory) ===');
-    log(JSON.stringify({ games: GAMES, savedToLibrary: saved, checkpoints: points, settledFromGame: SETTLE_GAMES, heapSlopeKbPerGame: Number(slope.toFixed(1)), heapGrowthMB, domCounterGrowth: domGrowth, reachableDomGrowth: reachableGrowth, listenerGrowth }, null, 1));
-    log(`heap snapshot after game ${CHECK_EVERY}: ${snapA.totalMB} MB in ${snapA.nodeCount} objects, ${snapA.detachedNodes} detached DOM nodes`);
-    log(`heap snapshot after game ${GAMES}: ${snapB.totalMB} MB in ${snapB.nodeCount} objects, ${snapB.detachedNodes} detached DOM nodes`);
+    log(
+      JSON.stringify(
+        {
+          games: GAMES,
+          savedToLibrary: saved,
+          checkpoints: points,
+          settledFromGame: SETTLE_GAMES,
+          heapSlopeKbPerGame: Number(slope.toFixed(1)),
+          heapGrowthMB,
+          domCounterGrowth: domGrowth,
+          reachableDomGrowth: reachableGrowth,
+          listenerGrowth,
+        },
+        null,
+        1,
+      ),
+    );
+    log(
+      `heap snapshot after game ${CHECK_EVERY}: ${snapA.totalMB} MB in ${snapA.nodeCount} objects, ${snapA.detachedNodes} detached DOM nodes`,
+    );
+    log(
+      `heap snapshot after game ${GAMES}: ${snapB.totalMB} MB in ${snapB.nodeCount} objects, ${snapB.detachedNodes} detached DOM nodes`,
+    );
     log('largest growth by object class between the two snapshots (count, KB):');
     for (const g of growth) log(`  ${String(g.dCount).padStart(7)} ${g.dKB.toFixed(0).padStart(7)} KB  ${g.k}`);
     log(`failures: ${JSON.stringify(failures)}`);

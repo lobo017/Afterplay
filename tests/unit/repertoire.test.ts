@@ -246,9 +246,7 @@ describe('Phase 7 — drilling a repertoire', () => {
   it('plays my moves where nothing is due and heads for the due position', () => {
     const index = indexRepertoire(whiteTree(), 'w');
     // Only the position after 1.e4 e5 2.Nf3 Nc6 (White chooses Bb5 or Bc4) is due
-    const deep = positionKey(
-      index.tree.root.children[0]!.children[0]!.children[0]!.children[0]!.fen,
-    );
+    const deep = positionKey(index.tree.root.children[0]!.children[0]!.children[0]!.children[0]!.fen);
     const drill = new RepertoireDrill(index, new Set([deep]), seededRandom(5));
     expect(drill.asking).toBe(false);
     const played: string[] = [];
@@ -286,7 +284,9 @@ describe('Phase 7 — finding where a game leaves the repertoire', () => {
     const d = findDeparture(white(), game('1. e4 e5 2. Nf3 Nc6 3. d4'))!;
     expect(d).toMatchObject({ kind: 'left', ply: 5, moveLabel: '3.d4', san: 'd4', mover: 'w', followed: 4 });
     expect(d.expected).toEqual(['Bb5', 'Bc4']);
-    expect(describeDeparture(d, 'w')).toBe('You left your White repertoire at 3.d4. Your repertoire plays Bb5 or Bc4 there.');
+    expect(describeDeparture(d, 'w')).toBe(
+      'You left your White repertoire at 3.d4. Your repertoire plays Bb5 or Bc4 there.',
+    );
   });
 
   it('left on my first move', () => {
@@ -321,12 +321,21 @@ describe('Phase 7 — finding where a game leaves the repertoire', () => {
     // 1.d4 e6 2.c4 Nf6 is another move order into the same position. ...e6 isn't prepared against 1.d4
     // yet, so the game leaves at move 1; once the repertoire holds both orders the whole game follows it
     // (the position after 2...Nf6 has 3.Nc3 whichever way it was reached) up to the end of the line
-    expect(findDeparture(index, game('1. d4 e6 2. c4 Nf6 3. Nc3 Bb4'))).toMatchObject({ kind: 'left', moveLabel: '1...e6' });
+    expect(findDeparture(index, game('1. d4 e6 2. c4 Nf6 3. Nc3 Bb4'))).toMatchObject({
+      kind: 'left',
+      moveLabel: '1...e6',
+    });
     play(tree, 'd4', 'e6', 'c4', 'Nf6');
     const both = indexRepertoire(tree, 'b');
     expect(findDeparture(both, game('1. d4 e6 2. c4 Nf6 3. Nc3 Bb4'))).toMatchObject({ kind: 'ended', followed: 6 });
-    expect(findDeparture(both, game('1. d4 e6 2. c4 Nf6 3. Nc3 Bb4 4. e3'))).toMatchObject({ kind: 'ended', followed: 6 });
-    expect(findDeparture(both, game('1. d4 e6 2. c4 Nf6 3. Nf3'))).toMatchObject({ kind: 'opponent-left', moveLabel: '3.Nf3' });
+    expect(findDeparture(both, game('1. d4 e6 2. c4 Nf6 3. Nc3 Bb4 4. e3'))).toMatchObject({
+      kind: 'ended',
+      followed: 6,
+    });
+    expect(findDeparture(both, game('1. d4 e6 2. c4 Nf6 3. Nf3'))).toMatchObject({
+      kind: 'opponent-left',
+      moveLabel: '3.Nf3',
+    });
   });
 
   it('has nothing to say for an empty repertoire or a game from another start position', () => {

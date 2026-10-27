@@ -103,7 +103,8 @@ export function registerServiceWorker(): void {
           worker.addEventListener('statechange', () => {
             if (worker.state === 'installed' && navigator.serviceWorker.controller) announceUpdate();
             if (worker.state === 'activated') askStatus();
-            if (worker.state === 'redundant') set({ kind: 'failed', message: 'the worker could not install (is the network up?)' });
+            if (worker.state === 'redundant')
+              set({ kind: 'failed', message: 'the worker could not install (is the network up?)' });
           });
         };
         watch(reg.installing);

@@ -1,12 +1,7 @@
 import { expect, test, type Page } from '@playwright/test';
 
 /** Loads `fen` with the player on `color` and a fixed bot think time. */
-async function setupGame(
-  page: Page,
-  fen: string,
-  color: 'w' | 'b',
-  botDelayMs: number,
-): Promise<void> {
+async function setupGame(page: Page, fen: string, color: 'w' | 'b', botDelayMs: number): Promise<void> {
   await page.evaluate(
     ({ fen, color, botDelayMs }) => {
       const c = window.__wizardChessPlay!.controller;
@@ -30,20 +25,17 @@ async function clickSquare(page: Page, sq: string) {
 
 async function mainLine(page: Page): Promise<string[]> {
   return page.evaluate(() =>
-    window.__wizardChessPlay!.controller
-      .getGameTree()
+    window
+      .__wizardChessPlay!.controller.getGameTree()
       .getMainLine()
       .map((n) => n.san),
   );
 }
 
 async function waitForPly(page: Page, ply: number, timeout = 15_000) {
-  await page.waitForFunction(
-    (n) =>
-      window.__wizardChessPlay!.controller.getGameTree().getMainLine().length >= n,
-    ply,
-    { timeout },
-  );
+  await page.waitForFunction((n) => window.__wizardChessPlay!.controller.getGameTree().getMainLine().length >= n, ply, {
+    timeout,
+  });
 }
 
 /** Board piece elements vs. the real position: catches ghost or duplicate elements. */
@@ -59,21 +51,14 @@ async function boardMatchesPosition(page: Page) {
         if (/\d/.test(ch)) {
           f += Number(ch);
         } else {
-          expected.push(
-            `${files[f]}${8 - r}:${ch === ch.toUpperCase() ? 'w' : 'b'}${ch.toLowerCase()}`,
-          );
+          expected.push(`${files[f]}${8 - r}:${ch === ch.toUpperCase() ? 'w' : 'b'}${ch.toLowerCase()}`);
           f++;
         }
       }
     });
-    const els = Array.from(
-      document.querySelectorAll<HTMLElement>(
-        '[data-testid="board-pieces-layer"] .wc-piece',
-      ),
-    );
+    const els = Array.from(document.querySelectorAll<HTMLElement>('[data-testid="board-pieces-layer"] .wc-piece'));
     const actual = els.map(
-      (el) =>
-        `${el.getAttribute('data-square')}:${el.getAttribute('data-color')}${el.getAttribute('data-piece')}`,
+      (el) => `${el.getAttribute('data-square')}:${el.getAttribute('data-color')}${el.getAttribute('data-piece')}`,
     );
     return {
       expected: expected.sort(),
@@ -90,16 +75,9 @@ test.describe('Phase 3 — Drag survival, drag cancel & premove queue', () => {
     await expect(page.getByTestId('chess-board')).toBeVisible();
   });
 
-  test('a drag held through an opponent move continues and plays the move on drop', async ({
-    page,
-  }) => {
+  test('a drag held through an opponent move continues and plays the move on drop', async ({ page }) => {
     test.setTimeout(60_000);
-    await setupGame(
-      page,
-      'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
-      'w',
-      1200,
-    );
+    await setupGame(page, 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', 'w', 1200);
     await clickSquare(page, 'e2');
     await clickSquare(page, 'e4');
     await expect(page.getByTestId('move-ply-1')).toHaveText('e4');
@@ -110,11 +88,7 @@ test.describe('Phase 3 — Drag survival, drag cancel & premove queue', () => {
     await page.mouse.move(d2.x, d2.y);
     await page.mouse.down();
     await page.mouse.move(d3.x, d3.y, { steps: 5 });
-    expect(
-      await page.evaluate(() =>
-        window.__wizardChessPlay!.controller.getBoard().isDragInProgress(),
-      ),
-    ).toBe(true);
+    expect(await page.evaluate(() => window.__wizardChessPlay!.controller.getBoard().isDragInProgress())).toBe(true);
 
     // The bot's reply arrives while the pawn is still in the air
     await waitForPly(page, 2);
@@ -132,9 +106,7 @@ test.describe('Phase 3 — Drag survival, drag cancel & premove queue', () => {
     // The held piece still follows the pointer after the board update
     const d4 = await squareCenter(page, 'd4');
     await page.mouse.move(d4.x, d4.y, { steps: 4 });
-    const followTransform = await page
-      .getByTestId('piece-d2')
-      .evaluate((el) => (el as HTMLElement).style.transform);
+    const followTransform = await page.getByTestId('piece-d2').evaluate((el) => (el as HTMLElement).style.transform);
     // Lifted at the board feel's lift scale (tunable since Phase 6b)
     const liftScale = await page.evaluate(() => window.__wizardChessPlay!.boardFeel.get().liftScale);
     expect(liftScale).toBeGreaterThan(1);
@@ -148,9 +120,7 @@ test.describe('Phase 3 — Drag survival, drag cancel & premove queue', () => {
     expect(after.dragging).toBe(0);
   });
 
-  test('a held piece that gets captured ends the drag cleanly with no ghost', async ({
-    page,
-  }) => {
+  test('a held piece that gets captured ends the drag cleanly with no ghost', async ({ page }) => {
     test.setTimeout(60_000);
     // Black's only legal move is Kxb8, capturing the rook we will be holding
     await setupGame(page, 'kR6/8/1K6/8/8/8/7P/8 b - - 0 1', 'w', 1200);
@@ -168,9 +138,7 @@ test.describe('Phase 3 — Drag survival, drag cancel & premove queue', () => {
       const board = window.__wizardChessPlay!.controller.getBoard();
       return {
         dragging: board.isDragInProgress(),
-        whiteRooks: document.querySelectorAll(
-          '.wc-piece[data-color="w"][data-piece="r"]',
-        ).length,
+        whiteRooks: document.querySelectorAll('.wc-piece[data-color="w"][data-piece="r"]').length,
       };
     });
     expect(state).toEqual({ dragging: false, whiteRooks: 0 });
@@ -190,16 +158,9 @@ test.describe('Phase 3 — Drag survival, drag cancel & premove queue', () => {
     page,
   }) => {
     test.setTimeout(60_000);
-    await setupGame(
-      page,
-      'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
-      'w',
-      1200,
-    );
+    await setupGame(page, 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', 'w', 1200);
     const homeTransform = (sq: string) =>
-      page
-        .getByTestId(`piece-${sq}`)
-        .evaluate((el) => (el as HTMLElement).style.transform);
+      page.getByTestId(`piece-${sq}`).evaluate((el) => (el as HTMLElement).style.transform);
     const e2Home = await homeTransform('e2');
 
     // 1. Right-click while dragging. Inspect the piece inside the same mousedown dispatch
@@ -246,11 +207,7 @@ test.describe('Phase 3 — Drag survival, drag cancel & premove queue', () => {
     await page.mouse.down();
     await page.mouse.move(f3.x, f3.y, { steps: 6 });
     await page.keyboard.press('Escape');
-    expect(
-      await page.evaluate(() =>
-        window.__wizardChessPlay!.controller.getBoard().isDragInProgress(),
-      ),
-    ).toBe(false);
+    expect(await page.evaluate(() => window.__wizardChessPlay!.controller.getBoard().isDragInProgress())).toBe(false);
     await page.mouse.up(); // released over f3: must not play Nf3
     await page.waitForTimeout(200);
     expect(await mainLine(page)).toEqual([]);
@@ -271,10 +228,7 @@ test.describe('Phase 3 — Drag survival, drag cancel & premove queue', () => {
 
     // 4. Clicking the selected piece again deselects it
     await clickSquare(page, 'd2');
-    await expect(page.getByTestId('overlay-selected-square')).toHaveAttribute(
-      'data-square',
-      'd2',
-    );
+    await expect(page.getByTestId('overlay-selected-square')).toHaveAttribute('data-square', 'd2');
     await clickSquare(page, 'd2');
     await expect(page.getByTestId('overlay-selected-square')).toHaveCount(0);
     await expect(page.getByTestId('overlay-legal-dot')).toHaveCount(0);
@@ -283,17 +237,13 @@ test.describe('Phase 3 — Drag survival, drag cancel & premove queue', () => {
     expect(board.actual).toEqual(board.expected);
   });
 
-  test('three queued premoves all execute across three bot moves, each in the bot move’s frame', async ({
-    page,
-  }) => {
+  test('three queued premoves all execute across three bot moves, each in the bot move’s frame', async ({ page }) => {
     test.setTimeout(60_000);
     // Black has only a king and two pawns, so it can never check or block our knights
     // The New game card's time chips (applied when the game below starts)
     await page.getByTestId('time-control-5+3').click();
     await setupGame(page, '7k/6pp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQ - 0 1', 'w', 700);
-    expect(
-      await page.evaluate(() => window.__wizardChessPlay!.controller.getMaxPremoves()),
-    ).toBe(10);
+    expect(await page.evaluate(() => window.__wizardChessPlay!.controller.getMaxPremoves())).toBe(10);
 
     // Sample the ply count and White's clock on every frame
     await page.evaluate(() => {
@@ -338,9 +288,9 @@ test.describe('Phase 3 — Drag survival, drag cancel & premove queue', () => {
       return {
         thinking: window.__wizardChessPlay!.controller.isBotCurrentlyThinking(),
         premoves: board.getPremoves().map((p) => `${p.from}${p.to}`),
-        orderLabels: Array.from(
-          document.querySelectorAll('[data-testid="overlay-premove-order"]'),
-        ).map((el) => `${el.getAttribute('data-square')}:${el.textContent}`),
+        orderLabels: Array.from(document.querySelectorAll('[data-testid="overlay-premove-order"]')).map(
+          (el) => `${el.getAttribute('data-square')}:${el.textContent}`,
+        ),
       };
     });
     expect(queued.thinking).toBe(true);
@@ -374,8 +324,7 @@ test.describe('Phase 3 — Drag survival, drag cancel & premove queue', () => {
     expect([2, 4, 6].filter((p) => seenPlies.has(p))).toEqual([]);
 
     // Clock: each premove costs ~0 ms and earns the 3 s increment.
-    const whiteAt = (ply: number) =>
-      result.samples.find((s) => s.ply === ply)!.whiteMs;
+    const whiteAt = (ply: number) => result.samples.find((s) => s.ply === ply)!.whiteMs;
     for (const ply of [3, 5, 7]) {
       const delta = whiteAt(ply) - whiteAt(ply - 2);
       expect(delta).toBeGreaterThan(3000 - 60);
@@ -383,9 +332,7 @@ test.describe('Phase 3 — Drag survival, drag cancel & premove queue', () => {
     }
   });
 
-  test('an illegal premove cancels itself and every premove queued after it, with a flash', async ({
-    page,
-  }) => {
+  test('an illegal premove cancels itself and every premove queued after it, with a flash', async ({ page }) => {
     test.setTimeout(60_000);
     // Black's only legal move is ...c3, which blocks our premoved Rc1-c4.
     await setupGame(page, 'k7/8/1Q6/8/2p5/8/8/2R4K b - - 0 1', 'w', 1200);
@@ -398,8 +345,8 @@ test.describe('Phase 3 — Drag survival, drag cancel & premove queue', () => {
     await clickSquare(page, 'g1');
     expect(
       await page.evaluate(() =>
-        window.__wizardChessPlay!.controller
-          .getBoard()
+        window
+          .__wizardChessPlay!.controller.getBoard()
           .getPremoves()
           .map((p) => `${p.from}${p.to}`),
       ),
@@ -408,26 +355,22 @@ test.describe('Phase 3 — Drag survival, drag cancel & premove queue', () => {
     // Catch the board in the first frame after the bot's move
     const afterBot = await page.evaluate(
       () =>
-        new Promise<{ ply: number; premoves: number; flash: string[]; overlayFlash: number }>(
-          (resolve) => {
-            const controller = window.__wizardChessPlay!.controller;
-            const tick = () => {
-              if (controller.getGameTree().getMainLine().length >= 1) {
-                resolve({
-                  ply: controller.getGameTree().getMainLine().length,
-                  premoves: controller.getBoard().getPremoves().length,
-                  flash: controller.getBoard().getPremoveFlashSquares().sort(),
-                  overlayFlash: document.querySelectorAll(
-                    '[data-testid="overlay-premove-flash"]',
-                  ).length,
-                });
-                return;
-              }
-              requestAnimationFrame(tick);
-            };
-            tick();
-          },
-        ),
+        new Promise<{ ply: number; premoves: number; flash: string[]; overlayFlash: number }>((resolve) => {
+          const controller = window.__wizardChessPlay!.controller;
+          const tick = () => {
+            if (controller.getGameTree().getMainLine().length >= 1) {
+              resolve({
+                ply: controller.getGameTree().getMainLine().length,
+                premoves: controller.getBoard().getPremoves().length,
+                flash: controller.getBoard().getPremoveFlashSquares().sort(),
+                overlayFlash: document.querySelectorAll('[data-testid="overlay-premove-flash"]').length,
+              });
+              return;
+            }
+            requestAnimationFrame(tick);
+          };
+          tick();
+        }),
     );
     expect(afterBot.ply).toBe(1);
     expect(afterBot.premoves).toBe(0);
@@ -440,21 +383,14 @@ test.describe('Phase 3 — Drag survival, drag cancel & premove queue', () => {
     await expect(page.getByTestId('overlay-premove-flash')).toHaveCount(0);
     const board = await boardMatchesPosition(page);
     expect(board.actual).toEqual(board.expected);
-    expect(
-      await page.evaluate(() => window.__wizardChessPlay!.controller.getAdapter().turn()),
-    ).toBe('w');
+    expect(await page.evaluate(() => window.__wizardChessPlay!.controller.getAdapter().turn())).toBe('w');
   });
 
   test('right-click clears the premove queue; right-click still draws circles otherwise; max premoves applies', async ({
     page,
   }) => {
     test.setTimeout(60_000);
-    await setupGame(
-      page,
-      'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
-      'w',
-      8000,
-    );
+    await setupGame(page, 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', 'w', 8000);
     await clickSquare(page, 'e2');
     await clickSquare(page, 'e4');
     await expect(page.getByTestId('move-ply-1')).toHaveText('e4');
@@ -468,11 +404,7 @@ test.describe('Phase 3 — Drag survival, drag cancel & premove queue', () => {
     // Right-click anywhere on the board: the queue is cleared and no circle is drawn
     const h5 = await squareCenter(page, 'h5');
     await page.mouse.click(h5.x, h5.y, { button: 'right' });
-    expect(
-      await page.evaluate(() =>
-        window.__wizardChessPlay!.controller.getBoard().getPremoves().length,
-      ),
-    ).toBe(0);
+    expect(await page.evaluate(() => window.__wizardChessPlay!.controller.getBoard().getPremoves().length)).toBe(0);
     await expect(page.getByTestId('overlay-premove-order')).toHaveCount(0);
     await expect(page.getByTestId('overlay-user-circle')).toHaveCount(0);
     let board = await boardMatchesPosition(page);
@@ -494,8 +426,8 @@ test.describe('Phase 3 — Drag survival, drag cancel & premove queue', () => {
     await clickSquare(page, 'f3');
     expect(
       await page.evaluate(() =>
-        window.__wizardChessPlay!.controller
-          .getBoard()
+        window
+          .__wizardChessPlay!.controller.getBoard()
           .getPremoves()
           .map((p) => `${p.from}${p.to}`),
       ),
@@ -503,11 +435,7 @@ test.describe('Phase 3 — Drag survival, drag cancel & premove queue', () => {
 
     // Escape also clears the queue
     await page.keyboard.press('Escape');
-    expect(
-      await page.evaluate(() =>
-        window.__wizardChessPlay!.controller.getBoard().getPremoves().length,
-      ),
-    ).toBe(0);
+    expect(await page.evaluate(() => window.__wizardChessPlay!.controller.getBoard().getPremoves().length)).toBe(0);
     board = await boardMatchesPosition(page);
     expect(board.actual).toEqual(board.expected);
   });

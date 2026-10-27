@@ -66,7 +66,12 @@ test.describe('Phase 6b — Settings', () => {
     const e2 = (await page.getByTestId('play-layout').getByTestId('square-e2').boundingBox())!;
     await page.mouse.move(e2.x + e2.width / 2, e2.y + e2.height / 2);
     await page.mouse.down();
-    expect(await page.getByTestId('play-layout').getByTestId('piece-e2').evaluate((el) => (el as HTMLElement).style.transform)).toContain('scale(1.25)');
+    expect(
+      await page
+        .getByTestId('play-layout')
+        .getByTestId('piece-e2')
+        .evaluate((el) => (el as HTMLElement).style.transform),
+    ).toContain('scale(1.25)');
     await page.mouse.up();
 
     await openSettings(page);
@@ -150,7 +155,10 @@ test.describe('Phase 6b — Settings', () => {
     await expect(page.getByTestId('backup-status')).toContainText('Backup saved: 1 game');
     const backup = JSON.parse(fs.readFileSync(file, 'utf8')) as {
       games: Array<{ id: string }>;
-      settings: Array<{ key: string; value: { app: { boardTheme: string; captureEffects: boolean }; boardFeel: { touchOffset: number } } }>;
+      settings: Array<{
+        key: string;
+        value: { app: { boardTheme: string; captureEffects: boolean }; boardFeel: { touchOffset: number } };
+      }>;
     };
     expect(backup.games).toHaveLength(1);
     const prefs = backup.settings.find((s) => s.key === 'app.preferences')!.value;
@@ -179,10 +187,14 @@ test.describe('Phase 6b — Settings', () => {
           };
         }),
     );
-    expect(await page.evaluate(async () => (await (await window.__wizardChessLibraryReady!).library.list()).length)).toBe(0);
+    expect(
+      await page.evaluate(async () => (await (await window.__wizardChessLibraryReady!).library.list()).length),
+    ).toBe(0);
 
     // A file that isn't a backup is refused
-    await page.getByTestId('backup-file-input').setInputFiles({ name: 'x.json', mimeType: 'application/json', buffer: Buffer.from('{"hello":1}') });
+    await page
+      .getByTestId('backup-file-input')
+      .setInputFiles({ name: 'x.json', mimeType: 'application/json', buffer: Buffer.from('{"hello":1}') });
     await expect(page.getByTestId('backup-status')).toHaveText('This file is not a Wizard’s Chess backup.');
     await expect(page.getByTestId('backup-confirm')).toBeHidden();
 
@@ -198,7 +210,10 @@ test.describe('Phase 6b — Settings', () => {
     await expect(page.getByTestId('feel-value-touchOffset')).toHaveText('1.20 sq');
     await expect(page.getByTestId('toggle-capture-particles')).not.toBeChecked();
     await page.keyboard.press('Escape');
-    await expect(page.getByTestId('play-layout').getByTestId('chess-board-frame')).toHaveAttribute('data-theme', 'high-contrast');
+    await expect(page.getByTestId('play-layout').getByTestId('chess-board-frame')).toHaveAttribute(
+      'data-theme',
+      'high-contrast',
+    );
     await page.getByTestId('mode-tab-games').click();
     await expect(page.getByTestId('games-row')).toHaveCount(1);
   });

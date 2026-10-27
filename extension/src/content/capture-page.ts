@@ -52,7 +52,12 @@ export interface SiteAdapter {
   /** The game (`fresh`: reload the site's data, e.g. after the game ended). */
   detect(ref: SiteGameRef, fresh: boolean): Promise<DetectResult>;
   /** Calls `onEnd` when the game may have ended. */
-  watchForEnd(ref: SiteGameRef, game: PageGame, onEnd: (signal: EndSignal) => void, log: (text: string) => void): EndWatch;
+  watchForEnd(
+    ref: SiteGameRef,
+    game: PageGame,
+    onEnd: (signal: EndSignal) => void,
+    log: (text: string) => void,
+  ): EndWatch;
   readonly extractors: readonly Extractor[];
 }
 
@@ -79,7 +84,11 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 const STOPPED: CapturePageHandle = { stop: () => undefined, watching: () => [] };
 
-const STATE_LABEL: Record<PageGame['state'], string> = { 'in-progress': 'in progress', finished: 'finished', aborted: 'aborted' };
+const STATE_LABEL: Record<PageGame['state'], string> = {
+  'in-progress': 'in progress',
+  finished: 'finished',
+  aborted: 'aborted',
+};
 const TRIGGER_LABEL: Partial<Record<CaptureTrigger, string>> = {
   'game-end': 'the game ended on this page',
   'page-open': 'a recent game of mine was opened',
@@ -92,7 +101,12 @@ function stateForEntry(entry: QueueEntry | null): 'already-queued' | 'already-de
   return null;
 }
 
-function mineReason(game: PageGame, settings: ExtensionSettings, site: SiteGameRef['site'], mine: boolean | null): string {
+function mineReason(
+  game: PageGame,
+  settings: ExtensionSettings,
+  site: SiteGameRef['site'],
+  mine: boolean | null,
+): string {
   const named = site === 'lichess' ? settings.lichessUsername : settings.chesscomUsername;
   const siteName = site === 'lichess' ? 'Lichess' : 'Chess.com';
   if (named.trim() !== '') {
@@ -109,7 +123,11 @@ function mineReason(game: PageGame, settings: ExtensionSettings, site: SiteGameR
  * mine when it ends while the page is open, or when it is opened already finished within
  * the last few hours.
  */
-export async function runCapturePage(adapter: SiteAdapter, pageRef: SiteGameRef, hooks: PageHooks): Promise<CapturePageHandle> {
+export async function runCapturePage(
+  adapter: SiteAdapter,
+  pageRef: SiteGameRef,
+  hooks: PageHooks,
+): Promise<CapturePageHandle> {
   /** The game: as the URL names it, until the site's data says otherwise (Chess.com daily vs live). */
   let ref = pageRef;
   const { log, update } = hooks;
@@ -139,7 +157,16 @@ export async function runCapturePage(adapter: SiteAdapter, pageRef: SiteGameRef,
   let game: PageGame =
     'game' in detected
       ? detected.game
-      : { ref, state: 'in-progress', white: '', black: '', viewerIsPlayer: null, startedAt: null, endedAt: null, source: '' };
+      : {
+          ref,
+          state: 'in-progress',
+          white: '',
+          black: '',
+          viewerIsPlayer: null,
+          startedAt: null,
+          endedAt: null,
+          source: '',
+        };
   if ('unavailable' in detected) {
     log(detected.unavailable);
     update({ state: 'not-available', stateSource: null, sawInProgress: true });
@@ -233,13 +260,17 @@ export async function runCapturePage(adapter: SiteAdapter, pageRef: SiteGameRef,
       update({ captured: true });
       log(`Captured with ${result.method} (${TRIGGER_LABEL[trigger] ?? trigger}): ${reply.outcome}.`);
       if (reply.outcome === 'not-importable' || reply.outcome === 'already-rejected') {
-        setButton('not-imported', `The analysis site doesn't take this game (${reply.reason ?? 'variant or no moves'}).`);
+        setButton(
+          'not-imported',
+          `The analysis site doesn't take this game (${reply.reason ?? 'variant or no moves'}).`,
+        );
         log(`Not imported: ${reply.reason ?? reply.outcome}.`);
         return;
       }
       if (reply.outcome === 'already-delivered') setButton('already-delivered');
       else if (reply.outcome === 'already-queued') setButton('already-queued');
-      else setButton('saved', auto ? 'Captured automatically. It goes to the analysis site as soon as that is open.' : '');
+      else
+        setButton('saved', auto ? 'Captured automatically. It goes to the analysis site as soon as that is open.' : '');
     } catch (err) {
       log(`Capture error: ${errorText(err)}`);
       setButton('failed', 'Open the extension to paste the link or PGN.');
@@ -253,13 +284,19 @@ export async function runCapturePage(adapter: SiteAdapter, pageRef: SiteGameRef,
   if (game.state === 'finished') {
     if (known) {
       setButton(known);
-      log(known === 'already-delivered' ? 'Already on the analysis site.' : 'Already captured; waiting for the analysis site.');
+      log(
+        known === 'already-delivered'
+          ? 'Already on the analysis site.'
+          : 'Already captured; waiting for the analysis site.',
+      );
     } else if (!settings.autoCapture) {
       setButton('ready');
       log('Finished game; automatic capture is off in Settings.');
     } else if (!mine) {
       setButton('ready');
-      log(`Finished game, not captured automatically: ${mine === false ? 'not my game' : "can't tell whether it's my game"}.`);
+      log(
+        `Finished game, not captured automatically: ${mine === false ? 'not my game' : "can't tell whether it's my game"}.`,
+      );
     } else if (!isRecentGame(game, Date.now())) {
       setButton('ready');
       log(`Finished game of mine, older than ${RECENT_GAME_MS / 3600_000} h: not captured automatically.`);
@@ -270,7 +307,11 @@ export async function runCapturePage(adapter: SiteAdapter, pageRef: SiteGameRef,
   } else {
     setButton(
       known ?? 'in-progress',
-      known ? '' : unavailable ? 'Captured when the game has ended (Chess.com shares it then).' : 'Save it when the game has ended.',
+      known
+        ? ''
+        : unavailable
+          ? 'Captured when the game has ended (Chess.com shares it then).'
+          : 'Save it when the game has ended.',
     );
     const onEndSignal = async (signal: EndSignal) => {
       if (checking || stopped || !watch) return;

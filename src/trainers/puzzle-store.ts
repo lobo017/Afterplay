@@ -169,7 +169,10 @@ export class PuzzleStore {
     if (rated) {
       const next = ratePuzzleAttempt(rating, base.rating, outcome.solved);
       ratingAfter = next.rating;
-      const history = [...rating.history, { at: now, rating: next.rating, puzzleId: puzzle.id, solved: outcome.solved }];
+      const history = [
+        ...rating.history,
+        { at: now, rating: next.rating, puzzleId: puzzle.id, solved: outcome.solved },
+      ];
       await this.storage.setSetting<PuzzleRatingState>(RATING_SETTING, {
         ...next,
         games: rating.games + 1,
@@ -283,21 +286,30 @@ export class PuzzleStore {
     const state = (await this.storage.getSetting<PersonalSyncState>(SYNC_SETTING)) ?? { accountsKey: key, games: {} };
     // Only mark it scanned when the accounts are the ones the other games were scanned with
     if (state.accountsKey === key && game.analysis?.savedAt !== undefined) {
-      await this.storage.setSetting(SYNC_SETTING, { ...state, games: { ...state.games, [game.id]: game.analysis.savedAt } });
+      await this.storage.setSetting(SYNC_SETTING, {
+        ...state,
+        games: { ...state.games, [game.id]: game.analysis.savedAt },
+      });
     }
     this.emit();
     return ids;
   }
 
   /** Puzzle ids due now: cards already seen (any source) first by due time; new personal puzzles after. */
-  public async dueQueue(now: number = Date.now()): Promise<{ reviews: StoredSrsCardRecord[]; fresh: StoredSrsCardRecord[] }> {
+  public async dueQueue(
+    now: number = Date.now(),
+  ): Promise<{ reviews: StoredSrsCardRecord[]; fresh: StoredSrsCardRecord[] }> {
     const cards = await this.listCards();
     const due = cards.filter((c) => c.dueDate <= now).sort((a, b) => a.dueDate - b.dueDate);
     return { reviews: due.filter((c) => c.state !== 'new'), fresh: due.filter((c) => c.state === 'new') };
   }
 
   public async todaySummary(now: number = Date.now()): Promise<TodaySummary> {
-    const [cards, personal, rating] = await Promise.all([this.listCards(), this.storage.listPuzzles('personal'), this.getRating()]);
+    const [cards, personal, rating] = await Promise.all([
+      this.listCards(),
+      this.storage.listPuzzles('personal'),
+      this.getRating(),
+    ]);
     const personalIds = new Set(personal.map((p) => p.id));
     const dueReviews = { personal: 0, lichess: 0 };
     let newPersonal = 0;

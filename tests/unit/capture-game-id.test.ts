@@ -51,19 +51,34 @@ describe('Phase 5b — game IDs', () => {
 
   it('builds canonical URLs and keys, and validates keys', () => {
     expect(gameUrl({ site: 'lichess', gameId: 'Bjl39T9x' })).toBe('https://lichess.org/Bjl39T9x');
-    expect(gameUrl({ site: 'chesscom', gameId: 'daily-1036320138' })).toBe('https://www.chess.com/game/daily/1036320138');
+    expect(gameUrl({ site: 'chesscom', gameId: 'daily-1036320138' })).toBe(
+      'https://www.chess.com/game/daily/1036320138',
+    );
     expect(gameKey({ site: 'chesscom', gameId: 'live-1' })).toBe('chesscom:live-1');
     expect(isGameKey('lichess:Bjl39T9x')).toBe(true);
     expect(isGameKey('chesscom:live-185518487990')).toBe(true);
     expect(isGameKey('paste:0123456789abcdef')).toBe(true);
-    for (const bad of ['lichess:analysis', 'lichess:short', 'chesscom:185518487990', 'paste:xyz', 'other:Bjl39T9x', '']) {
+    for (const bad of [
+      'lichess:analysis',
+      'lichess:short',
+      'chesscom:185518487990',
+      'paste:xyz',
+      'other:Bjl39T9x',
+      '',
+    ]) {
       expect(isGameKey(bad), bad).toBe(false);
     }
   });
 
   it('finds the site game a PGN names', () => {
-    expect(refFromPgnHeaders({ Site: 'https://lichess.org/Bjl39T9x' })).toEqual({ site: 'lichess', gameId: 'Bjl39T9x' });
-    expect(refFromPgnHeaders({ Site: 'lichess.org', GameId: 'Bjl39T9x' })).toEqual({ site: 'lichess', gameId: 'Bjl39T9x' });
+    expect(refFromPgnHeaders({ Site: 'https://lichess.org/Bjl39T9x' })).toEqual({
+      site: 'lichess',
+      gameId: 'Bjl39T9x',
+    });
+    expect(refFromPgnHeaders({ Site: 'lichess.org', GameId: 'Bjl39T9x' })).toEqual({
+      site: 'lichess',
+      gameId: 'Bjl39T9x',
+    });
     expect(refFromPgnHeaders({ Site: 'Chess.com', Link: 'https://www.chess.com/game/live/185518487990' })).toEqual({
       site: 'chesscom',
       gameId: 'live-185518487990',
@@ -81,7 +96,8 @@ describe('Phase 5b — game IDs', () => {
 });
 
 describe('Phase 5b — checking pasted PGN', () => {
-  const GAME_A = '[Event "A"]\n[White "Alice"]\n[Black "Bob"]\n[Result "1-0"]\n\n1. e4 e5 2. Qh5 Nc6 3. Bc4 Nf6 4. Qxf7# 1-0';
+  const GAME_A =
+    '[Event "A"]\n[White "Alice"]\n[Black "Bob"]\n[Result "1-0"]\n\n1. e4 e5 2. Qh5 Nc6 3. Bc4 Nf6 4. Qxf7# 1-0';
   const GAME_B =
     '[Event "B"]\n[Site "https://lichess.org/Bjl39T9x"]\n[White "GEU3"]\n[Black "Lobo017"]\n[Result "0-1"]\n\n1. d3 { [%clk 0:02:00]\n} d5 0-1';
 

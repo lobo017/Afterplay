@@ -1,7 +1,4 @@
-import type {
-  PgnArrowAnnotation,
-  PgnHighlightAnnotation,
-} from '../core/game-tree';
+import type { PgnArrowAnnotation, PgnHighlightAnnotation } from '../core/game-tree';
 import {
   RulesAdapter,
   type Color,
@@ -26,13 +23,7 @@ import { CaptureParticleSystem } from './particles';
 import { boardFeel, resolveDropSquare, type BoardFeel } from './board-feel';
 import { attachBoardResizeHandle } from './board-size';
 import { getPieceSvgMarkup } from './piece-sets';
-import {
-  BOARD_THEMES,
-  DEFAULT_BOARD_THEME,
-  DEFAULT_PIECE_SET,
-  type BoardThemeId,
-  type PieceSetId,
-} from './themes';
+import { BOARD_THEMES, DEFAULT_BOARD_THEME, DEFAULT_PIECE_SET, type BoardThemeId, type PieceSetId } from './themes';
 
 export interface PremoveInput {
   from: Square;
@@ -68,10 +59,7 @@ export interface BoardRendererOptions {
   onMove?: (move: MoveInput, wasDragged: boolean) => void;
   onSelectSquare?: (square: Square, piece: Piece) => void;
   onSquareEdit?: (square: Square) => boolean;
-  onAnnotationsChange?: (
-    arrows: PgnArrowAnnotation[],
-    highlights: PgnHighlightAnnotation[],
-  ) => void;
+  onAnnotationsChange?: (arrows: PgnArrowAnnotation[], highlights: PgnHighlightAnnotation[]) => void;
   onFlipChange?: (flipped: boolean) => void;
 }
 
@@ -173,10 +161,7 @@ export function boardSquaresFromAdapter(adapter: RulesAdapter): Map<Square, Piec
  * chosen piece (queen by default), and whatever stood on the target square is replaced.
  * Real legality is checked only when the premove executes.
  */
-export function applyPremoveToSquares(
-  squares: Map<Square, Piece>,
-  premove: PremoveInput,
-): void {
+export function applyPremoveToSquares(squares: Map<Square, Piece>, premove: PremoveInput): void {
   const piece = squares.get(premove.from);
   if (!piece) return;
   squares.delete(premove.from);
@@ -205,9 +190,7 @@ export function applyPremoveToSquares(
 
   const lastRank = piece.color === 'w' ? '8' : '1';
   const placed: Piece =
-    piece.type === 'p' && premove.to[1] === lastRank
-      ? { color: piece.color, type: premove.promotion ?? 'q' }
-      : piece;
+    piece.type === 'p' && premove.to[1] === lastRank ? { color: piece.color, type: premove.promotion ?? 'q' } : piece;
   squares.set(premove.to, placed);
 }
 
@@ -218,11 +201,7 @@ export function applyPremoveToSquares(
  * (they may be recaptured on by then), and a king on its home rank may castle toward
  * any of its own rooks there.
  */
-export function computePremoveTargetsOnSquares(
-  squares: Map<Square, Piece>,
-  from: Square,
-  color: Color,
-): Square[] {
+export function computePremoveTargetsOnSquares(squares: Map<Square, Piece>, from: Square, color: Color): Square[] {
   const piece = squares.get(from);
   if (!piece || piece.color !== color) return [];
 
@@ -321,16 +300,8 @@ export function computePremoveTargetsOnSquares(
 }
 
 /** Premove destinations on the real position held by `adapter`. */
-export function computePremoveTargets(
-  adapter: RulesAdapter,
-  from: Square,
-  color: Color,
-): Square[] {
-  return computePremoveTargetsOnSquares(
-    boardSquaresFromAdapter(adapter),
-    from,
-    color,
-  );
+export function computePremoveTargets(adapter: RulesAdapter, from: Square, color: Color): Square[] {
+  return computePremoveTargetsOnSquares(boardSquaresFromAdapter(adapter), from, color);
 }
 
 const squareDistance = (a: Square, b: Square): number => {
@@ -356,10 +327,7 @@ const isPromotionPair = (pawnSq: Square, pieceSq: Square, color: Color): boolean
  * when stepping backward). This one plan covers normal moves, captures, castling, en
  * passant, moves played in reverse, and premoves snapping back.
  */
-export function planPieceTransitions(
-  prev: Map<Square, Piece>,
-  next: Map<Square, Piece>,
-): PieceTransition[] {
+export function planPieceTransitions(prev: Map<Square, Piece>, next: Map<Square, Piece>): PieceTransition[] {
   const vanished: Array<{ sq: Square; piece: Piece }> = [];
   const appeared: Array<{ sq: Square; piece: Piece }> = [];
   for (const [sq, piece] of prev) {
@@ -402,14 +370,8 @@ export function planPieceTransitions(
   for (const a of unmatched) {
     for (const v of vanished) {
       if (used.has(v.sq) || v.piece.color !== a.piece.color) continue;
-      const forward =
-        v.piece.type === 'p' &&
-        a.piece.type !== 'p' &&
-        isPromotionPair(v.sq, a.sq, a.piece.color);
-      const backward =
-        a.piece.type === 'p' &&
-        v.piece.type !== 'p' &&
-        isPromotionPair(a.sq, v.sq, a.piece.color);
+      const forward = v.piece.type === 'p' && a.piece.type !== 'p' && isPromotionPair(v.sq, a.sq, a.piece.color);
+      const backward = a.piece.type === 'p' && v.piece.type !== 'p' && isPromotionPair(a.sq, v.sq, a.piece.color);
       if (forward || backward) {
         used.add(v.sq);
         transitions.push({ from: v.sq, to: a.sq });
@@ -496,19 +458,11 @@ export class BoardRenderer {
   /** A right-click that cancelled a drag must not also open the browser menu. */
   private suppressContextMenuUntil = 0;
 
-  private onMoveCallback:
-    | ((move: MoveInput, wasDragged: boolean) => void)
-    | undefined;
-  private onSelectSquareCallback:
-    | ((square: Square, piece: Piece) => void)
-    | undefined;
+  private onMoveCallback: ((move: MoveInput, wasDragged: boolean) => void) | undefined;
+  private onSelectSquareCallback: ((square: Square, piece: Piece) => void) | undefined;
   private onSquareEditCallback: ((square: Square) => boolean) | undefined;
   private onAnnotationsChangeCallback:
-    | ((
-        arrows: PgnArrowAnnotation[],
-        highlights: PgnHighlightAnnotation[],
-      ) => void)
-    | undefined;
+    ((arrows: PgnArrowAnnotation[], highlights: PgnHighlightAnnotation[]) => void) | undefined;
   private onFlipChangeCallback: ((flipped: boolean) => void) | undefined;
 
   constructor(parent: HTMLElement, options?: BoardRendererOptions) {
@@ -546,7 +500,10 @@ export class BoardRenderer {
     this.boardEl.setAttribute('data-testid', 'chess-board');
     this.boardEl.setAttribute('data-flipped', String(this.flipped));
     this.boardEl.setAttribute('role', 'application');
-    this.boardEl.setAttribute('aria-label', 'Chessboard. Arrow keys move the cursor; Enter or Space picks a piece up and puts it down.');
+    this.boardEl.setAttribute(
+      'aria-label',
+      'Chessboard. Arrow keys move the cursor; Enter or Space picks a piece up and puts it down.',
+    );
     this.boardEl.tabIndex = 0;
     this.boardEl.tabIndex = 0;
 
@@ -611,8 +568,7 @@ export class BoardRenderer {
     this.frameEl.appendChild(this.boardEl);
     this.frameEl.appendChild(this.confirmBarEl);
     this.container.appendChild(this.frameEl);
-    this.detachResizeHandle =
-      options?.resizable === false ? null : attachBoardResizeHandle(this.frameEl);
+    this.detachResizeHandle = options?.resizable === false ? null : attachBoardResizeHandle(this.frameEl);
 
     this.applyThemeVariables();
     this.renderSquaresGrid();
@@ -624,8 +580,7 @@ export class BoardRenderer {
   }
 
   private applyThemeVariables(): void {
-    const theme =
-      BOARD_THEMES[this.boardTheme] ?? BOARD_THEMES['marble-obsidian'];
+    const theme = BOARD_THEMES[this.boardTheme] ?? BOARD_THEMES['marble-obsidian'];
     this.frameEl.setAttribute('data-theme', this.boardTheme);
     this.frameEl.setAttribute('data-piece-set', this.pieceSet);
     const s = this.frameEl.style;
@@ -663,12 +618,8 @@ export class BoardRenderer {
   }
 
   private renderCoordinates(): void {
-    const files = this.flipped
-      ? ['h', 'g', 'f', 'e', 'd', 'c', 'b', 'a']
-      : ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
-    const ranks = this.flipped
-      ? ['1', '2', '3', '4', '5', '6', '7', '8']
-      : ['8', '7', '6', '5', '4', '3', '2', '1'];
+    const files = this.flipped ? ['h', 'g', 'f', 'e', 'd', 'c', 'b', 'a'] : ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+    const ranks = this.flipped ? ['1', '2', '3', '4', '5', '6', '7', '8'] : ['8', '7', '6', '5', '4', '3', '2', '1'];
 
     const rankHtml = ranks
       .map(
@@ -713,25 +664,17 @@ export class BoardRenderer {
     this.promotionBackdropEl.addEventListener('click', (e) => {
       e.stopPropagation();
       const target = e.target as HTMLElement;
-      const promoBtn = target.closest(
-        '[data-promotion-piece]',
-      ) as HTMLElement | null;
+      const promoBtn = target.closest('[data-promotion-piece]') as HTMLElement | null;
       if (promoBtn) {
-        const piece = promoBtn.getAttribute(
-          'data-promotion-piece',
-        ) as PieceSymbol;
+        const piece = promoBtn.getAttribute('data-promotion-piece') as PieceSymbol;
         this.resolvePromotionPicker(piece);
         return;
       }
       this.cancelPromotionPicker();
     });
 
-    const acceptBtn = this.confirmBarEl.querySelector(
-      '[data-testid="confirm-move-accept"]',
-    );
-    const cancelBtn = this.confirmBarEl.querySelector(
-      '[data-testid="confirm-move-cancel"]',
-    );
+    const acceptBtn = this.confirmBarEl.querySelector('[data-testid="confirm-move-accept"]');
+    const cancelBtn = this.confirmBarEl.querySelector('[data-testid="confirm-move-cancel"]');
     acceptBtn?.addEventListener('click', () => this.acceptPendingConfirmMove());
     cancelBtn?.addEventListener('click', () => this.cancelPendingConfirmMove());
 
@@ -781,12 +724,7 @@ export class BoardRenderer {
     const outer = this.boardEl.getBoundingClientRect();
     const el = this.boardEl;
     if (el.clientWidth <= 0 || el.clientHeight <= 0) return outer;
-    return new DOMRect(
-      outer.left + el.clientLeft,
-      outer.top + el.clientTop,
-      el.clientWidth,
-      el.clientHeight,
-    );
+    return new DOMRect(outer.left + el.clientLeft, outer.top + el.clientTop, el.clientWidth, el.clientHeight);
   }
 
   private getBoardRect(): DOMRect {
@@ -796,10 +734,7 @@ export class BoardRenderer {
     return this.cachedBoardRect;
   }
 
-  public squareFromClientPoint(
-    clientX: number,
-    clientY: number,
-  ): Square | null {
+  public squareFromClientPoint(clientX: number, clientY: number): Square | null {
     const rect = this.getBoardRect();
     if (rect.width <= 0 || rect.height <= 0) return null;
 
@@ -822,11 +757,7 @@ export class BoardRenderer {
     return `translate3d(${col * 100}%, ${row * 100}%, 0)`;
   }
 
-  private acquirePieceElement(
-    square: Square,
-    color: Color,
-    piece: PieceSymbol,
-  ): HTMLElement {
+  private acquirePieceElement(square: Square, color: Color, piece: PieceSymbol): HTMLElement {
     const el = this.freePiecePool.pop() ?? document.createElement('div');
     el.className = 'wc-piece';
     el.setAttribute('data-square', square);
@@ -880,10 +811,10 @@ export class BoardRenderer {
     this.cancelPieceAnimations(el);
     if (durationMs <= 0 || typeof el.animate !== 'function') return null;
     try {
-      const anim = el.animate(
-        [{ transform: fromTransform }, { transform: toTransform }],
-        { duration: durationMs, easing: 'cubic-bezier(0.22, 1, 0.36, 1)' },
-      );
+      const anim = el.animate([{ transform: fromTransform }, { transform: toTransform }], {
+        duration: durationMs,
+        easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+      });
       this.pieceAnimations.set(el, anim);
       anim.addEventListener('finish', () => {
         if (this.pieceAnimations.get(el) === anim) {
@@ -897,12 +828,7 @@ export class BoardRenderer {
     }
   }
 
-  private animatePiece(
-    el: HTMLElement,
-    fromTransform: string,
-    toTransform: string,
-    durationMs: number,
-  ): void {
+  private animatePiece(el: HTMLElement, fromTransform: string, toTransform: string, durationMs: number): void {
     this.startPieceAnimation(el, fromTransform, toTransform, durationMs);
   }
 
@@ -924,9 +850,7 @@ export class BoardRenderer {
       keepElement?: HTMLElement | null;
     },
   ): void {
-    const durationMs = opts.animate
-      ? (opts.durationMs ?? this.animationDurationOverride ?? this.feel.animationMs)
-      : 0;
+    const durationMs = opts.animate ? (opts.durationMs ?? this.animationDurationOverride ?? this.feel.animationMs) : 0;
 
     const prev = new Map<Square, Piece>();
     for (const [sq, el] of this.pieceElements) {
@@ -969,10 +893,7 @@ export class BoardRenderer {
         el.classList.remove('wc-piece-ghost-vacated', 'wc-piece-dragging');
         el.setAttribute('data-square', sq);
         el.setAttribute('data-testid', `piece-${sq}`);
-        if (
-          el.getAttribute('data-piece') !== piece.type ||
-          el.getAttribute('data-color') !== piece.color
-        ) {
+        if (el.getAttribute('data-piece') !== piece.type || el.getAttribute('data-color') !== piece.color) {
           el.setAttribute('data-color', piece.color);
           el.setAttribute('data-piece', piece.type);
           el.innerHTML = getPieceSvgMarkup(this.pieceSet, piece.color, piece.type);
@@ -980,12 +901,7 @@ export class BoardRenderer {
         el.style.transform = toTransform;
         this.pieceElements.set(sq, el);
         if (sq !== opts.noAnimateTo) {
-          this.animatePiece(
-            el,
-            this.getSquareTranslateTransform(from),
-            toTransform,
-            durationMs,
-          );
+          this.animatePiece(el, this.getSquareTranslateTransform(from), toTransform, durationMs);
         } else {
           // A dragged piece glides in from where it was released
           const glide = this.takeDropGlide(el, sq);
@@ -1084,11 +1000,7 @@ export class BoardRenderer {
           ghostEl.setAttribute('data-color', targetPiece.color);
           ghostEl.setAttribute('data-piece', targetPiece.type);
           ghostEl.setAttribute('data-testid', `ghost-piece-${sq}`);
-          ghostEl.innerHTML = getPieceSvgMarkup(
-            this.pieceSet,
-            targetPiece.color,
-            targetPiece.type,
-          );
+          ghostEl.innerHTML = getPieceSvgMarkup(this.pieceSet, targetPiece.color, targetPiece.type);
           ghostEl.style.transform = this.getSquareTranslateTransform(sq);
           this.ghostLayerEl.appendChild(ghostEl);
           this.ghostPieceElements.set(sq, ghostEl);
@@ -1174,9 +1086,7 @@ export class BoardRenderer {
       premoves: this.premoves,
       premoveFlash: this.premoveFlashSquares,
       premoveTargets: this.premoveTargets,
-      pendingConfirmMove: this.pendingConfirm
-        ? { from: this.pendingConfirm.from, to: this.pendingConfirm.to }
-        : null,
+      pendingConfirmMove: this.pendingConfirm ? { from: this.pendingConfirm.from, to: this.pendingConfirm.to } : null,
       hintMove: this.hintMove,
       bestMove: this.bestMoveArrow,
       threatMove: this.threatMoveArrow,
@@ -1242,11 +1152,7 @@ export class BoardRenderer {
 
   /** Premove destinations for a freshly selected piece, or none when premoving isn't possible. */
   private selectionPremoveTargets(square: Square, piece: Piece): Square[] {
-    if (
-      !this.enablePremoves ||
-      piece.color === this.adapter.turn() ||
-      this.premoves.length >= this.maxPremoves
-    ) {
+    if (!this.enablePremoves || piece.color === this.adapter.turn() || this.premoves.length >= this.maxPremoves) {
       return [];
     }
     return computePremoveTargetsOnSquares(this.displaySquares, square, piece.color);
@@ -1514,10 +1420,7 @@ export class BoardRenderer {
   private dragTargets(drag: ActiveDragState): Square[] {
     if (drag.targets) return drag.targets;
     if (drag.piece.color === this.adapter.turn()) {
-      drag.targets =
-        this.selectedSquare === drag.from
-          ? this.getLegalMovesForSelectedSquare().map((t) => t.to)
-          : [];
+      drag.targets = this.selectedSquare === drag.from ? this.getLegalMovesForSelectedSquare().map((t) => t.to) : [];
     } else {
       drag.targets = [...this.premoveTargets];
     }
@@ -1525,11 +1428,7 @@ export class BoardRenderer {
   }
 
   /** The drop square for the held piece at this pointer position (drop tolerance applied). */
-  private dropSquareFor(
-    drag: ActiveDragState,
-    clientX: number,
-    clientY: number,
-  ): Square | null {
+  private dropSquareFor(drag: ActiveDragState, clientX: number, clientY: number): Square | null {
     const rect = this.cachedBoardRect ?? this.getBoardRect();
     if (rect.width <= 0 || rect.height <= 0) return null;
     const { x, y } = this.heldPiecePoint(drag, clientX, clientY, rect);
@@ -1551,10 +1450,7 @@ export class BoardRenderer {
     if (!rect || rect.width <= 0 || rect.height <= 0) return;
 
     if (!drag.isDragging) {
-      const dist = Math.hypot(
-        event.clientX - drag.startX,
-        event.clientY - drag.startY,
-      );
+      const dist = Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY);
       const threshold = this.feel.dragThresholdPx * (drag.isTouch ? 2 : 1);
       if (dist < threshold) {
         // Not a drag yet, but the lifted piece still follows the pointer
@@ -1583,12 +1479,7 @@ export class BoardRenderer {
     this.cancelPieceAnimations(el);
     el.style.transform = toTransform;
     if (fromTransform === toTransform) return;
-    const anim = this.startPieceAnimation(
-      el,
-      fromTransform,
-      `${toTransform} scale(1)`,
-      this.feel.snapMs,
-    );
+    const anim = this.startPieceAnimation(el, fromTransform, `${toTransform} scale(1)`, this.feel.snapMs);
     if (!anim) return;
     el.classList.add('wc-piece-snapback');
     const done = () => el.classList.remove('wc-piece-snapback');
@@ -1661,9 +1552,7 @@ export class BoardRenderer {
             this.userCircles.push({ square: startSq, color });
           }
         } else {
-          const idx = this.userArrows.findIndex(
-            (a) => a.from === startSq && a.to === endSq,
-          );
+          const idx = this.userArrows.findIndex((a) => a.from === startSq && a.to === endSq);
           if (idx >= 0) {
             if (this.userArrows[idx]?.color === color) {
               this.userArrows.splice(idx, 1);
@@ -1683,9 +1572,7 @@ export class BoardRenderer {
     const drag = this.dragState;
     if (!drag || event.pointerId !== drag.pointerId) return;
 
-    const dropSq = drag.isDragging
-      ? this.dropSquareFor(drag, event.clientX, event.clientY)
-      : null;
+    const dropSq = drag.isDragging ? this.dropSquareFor(drag, event.clientX, event.clientY) : null;
     this.dragState = null;
     this.releaseHeldPiece(drag);
 
@@ -1749,10 +1636,7 @@ export class BoardRenderer {
   }
 
   private emitAnnotationsChange(): void {
-    this.onAnnotationsChangeCallback?.(
-      this.getPgnArrows(),
-      this.getPgnHighlights(),
-    );
+    this.onAnnotationsChangeCallback?.(this.getPgnArrows(), this.getPgnHighlights());
   }
 
   public getPgnArrows(): PgnArrowAnnotation[] {
@@ -1770,10 +1654,7 @@ export class BoardRenderer {
     }));
   }
 
-  public setUserAnnotations(
-    arrows: PgnArrowAnnotation[],
-    highlights: PgnHighlightAnnotation[],
-  ): void {
+  public setUserAnnotations(arrows: PgnArrowAnnotation[], highlights: PgnHighlightAnnotation[]): void {
     this.userArrows = arrows.map((a) => ({
       from: a.from,
       to: a.to,
@@ -1802,12 +1683,7 @@ export class BoardRenderer {
     this.emitAnnotationsChange();
   }
 
-  private isPromotionMove(
-    from: Square,
-    to: Square,
-    piece: Piece,
-    isPremove: boolean,
-  ): boolean {
+  private isPromotionMove(from: Square, to: Square, piece: Piece, isPremove: boolean): boolean {
     if (piece.type !== 'p') return false;
     const promoRank = piece.color === 'w' ? '8' : '1';
     if (to[1] !== promoRank) return false;
@@ -1826,11 +1702,7 @@ export class BoardRenderer {
     const needsPromotion = this.isPromotionMove(from, to, piece, isPremove);
     if (needsPromotion) {
       if (this.autoQueen) {
-        this.finalizeMoveOrPremove(
-          { from, to, promotion: 'q' },
-          isPremove,
-          wasDragged,
-        );
+        this.finalizeMoveOrPremove({ from, to, promotion: 'q' }, isPremove, wasDragged);
       } else {
         this.openPromotionPicker({
           from,
@@ -1878,9 +1750,7 @@ export class BoardRenderer {
 
     this.promotionBackdropEl.innerHTML = `
       <div
-        class="wc-promotion-column ${
-          isTopEdge ? 'wc-promotion-column-top' : 'wc-promotion-column-bottom'
-        }"
+        class="wc-promotion-column ${isTopEdge ? 'wc-promotion-column-top' : 'wc-promotion-column-bottom'}"
         data-testid="promotion-picker"
         data-color="${state.color}"
         data-file="${state.to[0]}"
@@ -1930,11 +1800,7 @@ export class BoardRenderer {
     this.syncOverlay();
   }
 
-  private finalizeMoveOrPremove(
-    move: PremoveInput,
-    isPremove: boolean,
-    wasDragged: boolean,
-  ): void {
+  private finalizeMoveOrPremove(move: PremoveInput, isPremove: boolean, wasDragged: boolean): void {
     this.selectedSquare = null;
     this.premoveTargets = [];
 
@@ -1971,9 +1837,7 @@ export class BoardRenderer {
       targetEl.style.opacity = '0.25';
     }
 
-    const labelEl = this.confirmBarEl.querySelector(
-      '[data-testid="confirm-move-label"]',
-    );
+    const labelEl = this.confirmBarEl.querySelector('[data-testid="confirm-move-label"]');
     if (labelEl) {
       labelEl.textContent = `Confirm ${move.from} → ${move.to}${
         move.promotion ? `=${move.promotion.toUpperCase()}` : ''
@@ -2030,10 +1894,7 @@ export class BoardRenderer {
     if (drag) drag.targets = null;
     const held = drag ? this.displaySquares.get(drag.from) : undefined;
     const keepDrag =
-      drag !== null &&
-      held !== undefined &&
-      held.color === drag.piece.color &&
-      held.type === drag.piece.type;
+      drag !== null && held !== undefined && held.color === drag.piece.color && held.type === drag.piece.type;
     if (drag && !keepDrag) {
       this.endDragForRemovedPiece();
     }
@@ -2050,10 +1911,7 @@ export class BoardRenderer {
    * premoves played, opponent passing). Returns false when the queue is full or the
    * premove's piece isn't on its square in that hypothetical position.
    */
-  public addPremove(
-    premove: PremoveInput,
-    options?: { dragged?: boolean },
-  ): boolean {
+  public addPremove(premove: PremoveInput, options?: { dragged?: boolean }): boolean {
     const piece = this.displaySquares.get(premove.from);
     if (!piece || this.premoves.length >= this.maxPremoves) {
       this.syncOverlay();
@@ -2216,12 +2074,7 @@ export class BoardRenderer {
     const lm = options?.lastMove;
     this.lastMove = lm ? { from: lm.from, to: lm.to } : null;
 
-    if (
-      lm &&
-      options?.triggerCaptureParticles !== false &&
-      'isCapture' in lm &&
-      lm.isCapture
-    ) {
+    if (lm && options?.triggerCaptureParticles !== false && 'isCapture' in lm && lm.isCapture) {
       const capturedColor: Color = lm.color === 'w' ? 'b' : 'w';
       this.particles.triggerCapture(lm.to, capturedColor, lm.from, this.flipped);
     }
@@ -2250,9 +2103,7 @@ export class BoardRenderer {
     const animate = options?.animate ?? Boolean(lm);
     this.renderPieces(this.displaySquares, {
       animate,
-      ...(typeof options?.animationDurationMs === 'number'
-        ? { durationMs: options.animationDurationMs }
-        : {}),
+      ...(typeof options?.animationDurationMs === 'number' ? { durationMs: options.animationDurationMs } : {}),
       noAnimateTo: options?.wasDragged && lm ? lm.to : null,
       keepElement: dragContinues && drag ? drag.element : null,
     });
@@ -2295,10 +2146,7 @@ export class BoardRenderer {
     if (this.dragState) {
       this.dragState.targets = null;
       this.selectedSquare = this.dragState.from;
-      this.premoveTargets = this.selectionPremoveTargets(
-        this.dragState.from,
-        this.dragState.piece,
-      );
+      this.premoveTargets = this.selectionPremoveTargets(this.dragState.from, this.dragState.piece);
     } else {
       this.selectedSquare = null;
       this.premoveTargets = [];

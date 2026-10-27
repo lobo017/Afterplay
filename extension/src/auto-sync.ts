@@ -137,7 +137,8 @@ export class AutoSync {
         return skip(`${counts.pending + counts.ready} games wait for the analysis site. Open it to collect them.`);
       }
       try {
-        const added = site === 'lichess' ? await this.syncLichess(username, now) : await this.syncChessCom(username, now);
+        const added =
+          site === 'lichess' ? await this.syncLichess(username, now) : await this.syncChessCom(username, now);
         return this.setState(site, {
           username,
           lastRunAt: now,
@@ -160,7 +161,13 @@ export class AutoSync {
           });
         }
         const message = err instanceof Error ? err.message : String(err);
-        return this.setState(site, { username, lastRunAt: now, lastAdded: 0, lastResult: `Failed: ${message}`, lastError: message });
+        return this.setState(site, {
+          username,
+          lastRunAt: now,
+          lastAdded: 0,
+          lastResult: `Failed: ${message}`,
+          lastError: message,
+        });
       }
     });
   }
@@ -186,7 +193,8 @@ export class AutoSync {
         `https://lichess.org/api/games/user/${encodeURIComponent(username)}` +
         `?since=${since}&max=${LICHESS_SYNC_PAGE_SIZE}&sort=dateAsc&ongoing=true&clocks=true&evals=false&opening=true&pgnInJson=true`;
       const res = await this.deps.fetch(url, { headers: { Accept: 'application/x-ndjson' }, credentials: 'omit' });
-      if (res.status === 429) throw new RateLimited(retryAfterMs(res.headers.get('retry-after'), BACKFILL_MIN_BACKOFF_MS));
+      if (res.status === 429)
+        throw new RateLimited(retryAfterMs(res.headers.get('retry-after'), BACKFILL_MIN_BACKOFF_MS));
       if (res.status === 404) throw new Error(`Lichess has no user "${username}".`);
       if (!res.ok) throw new Error(`Lichess answered ${res.status}.`);
       const lines = (await res.text()).split('\n').filter((l) => l.trim() !== '');
@@ -200,7 +208,8 @@ export class AutoSync {
         }
         if (typeof game.createdAt === 'number') newest = Math.max(newest, game.createdAt);
         if (game.status === 'started' || game.status === 'created') {
-          if (game.speed !== 'correspondence' && typeof game.createdAt === 'number') holdBack = Math.min(holdBack, game.createdAt);
+          if (game.speed !== 'correspondence' && typeof game.createdAt === 'number')
+            holdBack = Math.min(holdBack, game.createdAt);
           continue;
         }
         if (game.status === 'aborted' || game.status === 'noStart') continue;

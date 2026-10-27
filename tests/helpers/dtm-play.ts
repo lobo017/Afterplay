@@ -27,7 +27,13 @@ export function blackToMoveValue(fen: string): number {
 }
 
 /** White's move that gives the shortest mate against the best defence (SAN), with that distance. */
-export function bestAttackerMove(fen: string): { san: string; from: string; to: string; promotion?: string; moves: number } {
+export function bestAttackerMove(fen: string): {
+  san: string;
+  from: string;
+  to: string;
+  promotion?: string;
+  moves: number;
+} {
   const game = new Chess(fen);
   let pick: { san: string; from: string; to: string; promotion?: string; moves: number } | null = null;
   for (const m of game.moves({ verbose: true })) {
@@ -35,7 +41,13 @@ export function bestAttackerMove(fen: string): { san: string; from: string; to: 
     probe.move(m);
     const value = blackToMoveValue(probe.fen());
     if (!pick || value + 1 < pick.moves) {
-      pick = { san: m.san, from: m.from, to: m.to, ...(m.promotion ? { promotion: m.promotion } : {}), moves: value + 1 };
+      pick = {
+        san: m.san,
+        from: m.from,
+        to: m.to,
+        ...(m.promotion ? { promotion: m.promotion } : {}),
+        moves: value + 1,
+      };
     }
   }
   if (!pick) throw new Error(`no legal move in ${fen}`);

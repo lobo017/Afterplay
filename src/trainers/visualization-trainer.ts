@@ -28,7 +28,15 @@ import {
 } from './visualization';
 import { drillCardId } from './srs-cards';
 import type { VisualizationStore } from './visualization-store';
-import { Timers, createTrainerBoard, createTrainerRoot, fromExecuted, playMoveSound, plural, trainerLayoutHtml } from './trainer-kit';
+import {
+  Timers,
+  createTrainerBoard,
+  createTrainerRoot,
+  fromExecuted,
+  playMoveSound,
+  plural,
+  trainerLayoutHtml,
+} from './trainer-kit';
 
 /** A game of mine to guess through. */
 export interface GuessGame {
@@ -146,7 +154,11 @@ export class VisualizationTrainer {
 
   constructor(private readonly options: VisualizationTrainerOptions) {
     this.random = options.random ?? Math.random;
-    this.root = createTrainerRoot(options.container, 'visualization-trainer', 'wc-visualization-layout wc-viz-nocoords');
+    this.root = createTrainerRoot(
+      options.container,
+      'visualization-trainer',
+      'wc-visualization-layout wc-viz-nocoords',
+    );
     this.root.innerHTML = trainerLayoutHtml({
       testId: 'visualization-trainer',
       label: 'Visualization',
@@ -157,7 +169,16 @@ export class VisualizationTrainer {
       body: `
         <section class="wc-tab-panel" ${tabPanelAttrs('viz', 'coordinates', 'coordinates')}>
           <p class="wc-trainer-text">Click the square the name asks for. ${COORDINATE_ROUND_MS / 1000} seconds, as many as you can.</p>
-          ${segmentedHtml('orient', 'viz-orient', [{ value: 'w', label: 'From White’s side' }, { value: 'b', label: 'From Black’s side' }], 'w', 'Board side')}
+          ${segmentedHtml(
+            'orient',
+            'viz-orient',
+            [
+              { value: 'w', label: 'From White’s side' },
+              { value: 'b', label: 'From Black’s side' },
+            ],
+            'w',
+            'Board side',
+          )}
           <div class="wc-puzzle-card wc-trainer-card">
             <div class="wc-status-header">
               <div class="wc-status-banner" data-testid="viz-coord-status" role="status" aria-live="polite" data-state="idle">Ready</div>
@@ -249,7 +270,9 @@ export class VisualizationTrainer {
       const value = (e.target as HTMLElement).closest<HTMLElement>('[role="radio"]')?.dataset.value;
       if (value === 'w' || value === 'b') this.setOrientation(value);
     });
-    this.els.coordStart.addEventListener('click', () => (this.coordState === 'running' ? void this.finishRound() : this.startRound()));
+    this.els.coordStart.addEventListener('click', () =>
+      this.coordState === 'running' ? void this.finishRound() : this.startRound(),
+    );
     this.els.blindStart.addEventListener('click', () => this.blindPress());
     this.els.guessStart.addEventListener('click', () => void this.startGuess());
     this.els.guessSkip.addEventListener('click', () => this.skipGuess());
@@ -311,10 +334,16 @@ export class VisualizationTrainer {
 
   /** Opens the drill that is due (for the Today screen): the first card of the deck that has come due. */
   public async openDue(now: number = Date.now()): Promise<boolean> {
-    const cards = (await this.options.store.listCards()).filter((c) => c.state !== 'new' && c.dueDate <= now).sort((a, b) => a.dueDate - b.dueDate);
+    const cards = (await this.options.store.listCards())
+      .filter((c) => c.state !== 'new' && c.dueDate <= now)
+      .sort((a, b) => a.dueDate - b.dueDate);
     const first = cards[0];
     if (!first) return false;
-    const kind: VisualizationMode = first.targetId.startsWith('guess:') ? 'guess' : first.targetId === 'blindfold' ? 'blindfold' : 'coordinates';
+    const kind: VisualizationMode = first.targetId.startsWith('guess:')
+      ? 'guess'
+      : first.targetId === 'blindfold'
+        ? 'blindfold'
+        : 'coordinates';
     this.tabs.select(kind);
     return true;
   }
@@ -377,16 +406,24 @@ export class VisualizationTrainer {
 
   private flashSquares(squares: ReadonlyArray<{ square: Square; ok: boolean }>, ms = FEEDBACK_MS): void {
     const seq = this.seq;
-    this.board.setUserAnnotations([], squares.map((s) => ({ square: s.square, color: s.ok ? ('G' as const) : ('R' as const) })));
+    this.board.setUserAnnotations(
+      [],
+      squares.map((s) => ({ square: s.square, color: s.ok ? ('G' as const) : ('R' as const) })),
+    );
     this.timers.later(() => {
       if (seq === this.seq) this.board.clearUserAnnotations();
     }, ms);
   }
 
   private async renderStats(): Promise<void> {
-    const [coords, blind] = await Promise.all([this.options.store.coordinateStats(), this.options.store.blindfoldStats()]);
+    const [coords, blind] = await Promise.all([
+      this.options.store.coordinateStats(),
+      this.options.store.blindfoldStats(),
+    ]);
     this.els.coordBest.textContent =
-      coords.rounds === 0 ? 'No rounds yet.' : `Best round: ${coords.best} right · ${plural(coords.rounds, 'round')} played.`;
+      coords.rounds === 0
+        ? 'No rounds yet.'
+        : `Best round: ${coords.best} right · ${plural(coords.rounds, 'round')} played.`;
     this.blindPlies = blind.level;
     this.els.blindLevel.textContent =
       blind.drills === 0
@@ -395,7 +432,8 @@ export class VisualizationTrainer {
   }
 
   private updateButtons(): void {
-    this.els.coordStart.textContent = this.coordState === 'running' ? 'Finish round' : this.coordState === 'done' ? 'Another round' : 'Start round';
+    this.els.coordStart.textContent =
+      this.coordState === 'running' ? 'Finish round' : this.coordState === 'done' ? 'Another round' : 'Start round';
     this.els.coordStart.classList.toggle('wc-btn-primary', this.coordState !== 'running');
     this.els.coordStart.classList.toggle('wc-btn-secondary', this.coordState === 'running');
     const bs = this.blindState;
@@ -426,7 +464,9 @@ export class VisualizationTrainer {
 
   private setOrientation(color: Color): void {
     this.orientation = color;
-    this.els.orient.querySelectorAll<HTMLElement>('[role="radio"]').forEach((el) => el.setAttribute('aria-checked', String(el.dataset.value === color)));
+    this.els.orient
+      .querySelectorAll<HTMLElement>('[role="radio"]')
+      .forEach((el) => el.setAttribute('aria-checked', String(el.dataset.value === color)));
     this.board.setFlipped(color === 'b');
   }
 
@@ -480,7 +520,14 @@ export class VisualizationTrainer {
     const ok = r.answer(square);
     this.options.audio.playSelect();
     // A right click is ringed green; a wrong one red, with the square that was asked for in green
-    this.flashSquares(ok ? [{ square, ok: true }] : [{ square: target, ok: true }, { square, ok: false }]);
+    this.flashSquares(
+      ok
+        ? [{ square, ok: true }]
+        : [
+            { square: target, ok: true },
+            { square, ok: false },
+          ],
+    );
     this.renderRound();
   }
 
@@ -558,8 +605,18 @@ export class VisualizationTrainer {
       games = [];
     }
     if (seq !== this.seq) return;
-    const mine = games.map((g) => ({ label: g.label, sans: parsePgn(g.pgn).getMainLine().map((n) => n.san) }));
-    const sample = { label: "Morphy's opera game", sans: parsePgn(SAMPLE_GAME_PGN).getMainLine().map((n) => n.san) };
+    const mine = games.map((g) => ({
+      label: g.label,
+      sans: parsePgn(g.pgn)
+        .getMainLine()
+        .map((n) => n.san),
+    }));
+    const sample = {
+      label: "Morphy's opera game",
+      sans: parsePgn(SAMPLE_GAME_PGN)
+        .getMainLine()
+        .map((n) => n.san),
+    };
     const plies = this.blindPlies;
     const lines = sourcesFor(plies, [...mine, sample]);
     const source = pickBlindfoldSource(lines, plies, this.random) ?? { label: sample.label, moves: sample.sans };
@@ -630,7 +687,10 @@ export class VisualizationTrainer {
     const where = q.squares.join(' and ');
     this.els.blindFeedback.textContent = ok ? `Yes: ${where}.` : `Not there: it is on ${where}.`;
     this.setBlindState('feedback');
-    this.board.setUserAnnotations([], [...q.squares.map((s) => ({ square: s, color: 'G' as const })), ...(ok ? [] : [{ square, color: 'R' as const }])]);
+    this.board.setUserAnnotations(
+      [],
+      [...q.squares.map((s) => ({ square: s, color: 'G' as const })), ...(ok ? [] : [{ square, color: 'R' as const }])],
+    );
     this.timers.later(() => {
       if (seq !== this.seq) return;
       this.board.clearUserAnnotations();
@@ -649,7 +709,10 @@ export class VisualizationTrainer {
     const seq = this.seq;
     const total = drill.questions.length;
     this.setBlindState('done');
-    this.setBlindStatus(this.blindCorrect === total ? 'All right!' : 'Drill over', this.blindCorrect === total ? 'solved' : 'done');
+    this.setBlindStatus(
+      this.blindCorrect === total ? 'All right!' : 'Drill over',
+      this.blindCorrect === total ? 'solved' : 'done',
+    );
     this.els.blindStage.textContent = '–';
     this.els.blindProgress.textContent = `${this.blindCorrect}/${total}`;
     this.els.blindResult.textContent = `${this.blindCorrect} of ${total} right. ${drill.label}.`;
@@ -657,7 +720,11 @@ export class VisualizationTrainer {
     this.board.setPosition(drill.finalFen, { animate: false });
     this.options.audio.playGameOver(this.blindCorrect === total);
     try {
-      const saved = await this.options.store.recordBlindfold({ plies: drill.moves.length, correct: this.blindCorrect, total });
+      const saved = await this.options.store.recordBlindfold({
+        plies: drill.moves.length,
+        correct: this.blindCorrect,
+        total,
+      });
       if (seq === this.seq) {
         this.els.blindResult.textContent = `${this.els.blindResult.textContent} Next level: ${saved.stats.level} moves. ${this.nextText(saved.card.dueDate)}`;
       }
@@ -789,7 +856,10 @@ export class VisualizationTrainer {
     try {
       const adapter = new RulesAdapter(pos.fen);
       played = adapter.move(pos.uci);
-      this.board.setPosition(adapter, { lastMove: played, ...(verdict === 'played' && guess ? { wasDragged: true } : { animate: true }) });
+      this.board.setPosition(adapter, {
+        lastMove: played,
+        ...(verdict === 'played' && guess ? { wasDragged: true } : { animate: true }),
+      });
       playMoveSound(this.options.audio, fromExecuted(played), /[+#]$/.test(played.san));
       announce(`${played.color === 'w' ? 'White' : 'Black'} plays ${played.san}`);
     } catch {
@@ -834,7 +904,8 @@ export class VisualizationTrainer {
     this.options.audio.playGameOver(this.guessHits * 2 >= total);
     try {
       const saved = await this.options.store.recordGuess(game.id, { hits: this.guessHits, total });
-      if (seq === this.seq) this.els.guessResult.textContent = `${this.els.guessResult.textContent} ${this.nextText(saved.card.dueDate)}`;
+      if (seq === this.seq)
+        this.els.guessResult.textContent = `${this.els.guessResult.textContent} ${this.nextText(saved.card.dueDate)}`;
     } catch (err) {
       this.els.guessResult.textContent = `${this.els.guessResult.textContent} Progress could not be saved: ${err instanceof Error ? err.message : String(err)}`;
     }

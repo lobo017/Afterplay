@@ -22,13 +22,7 @@
   "background": {
     "service_worker": "background.js"
   },
-  "permissions": [
-    "storage",
-    "alarms",
-    "contextMenus",
-    "notifications",
-    "scripting"
-  ],
+  "permissions": ["storage", "alarms", "contextMenus", "notifications", "scripting"],
   "host_permissions": [
     "https://lichess.org/*",
     "https://www.chess.com/*",
@@ -38,21 +32,13 @@
   ],
   "content_scripts": [
     {
-      "matches": [
-        "https://lichess.org/*"
-      ],
-      "js": [
-        "lichess.js"
-      ],
+      "matches": ["https://lichess.org/*"],
+      "js": ["lichess.js"],
       "run_at": "document_idle"
     },
     {
-      "matches": [
-        "https://www.chess.com/*"
-      ],
-      "js": [
-        "chesscom.js"
-      ],
+      "matches": ["https://www.chess.com/*"],
+      "js": ["chesscom.js"],
       "run_at": "document_idle"
     }
   ],

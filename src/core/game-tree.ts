@@ -1,11 +1,4 @@
-import {
-  DEFAULT_POSITION,
-  RulesAdapter,
-  type Color,
-  type MoveInput,
-  type PieceSymbol,
-  type Square,
-} from './rules';
+import { DEFAULT_POSITION, RulesAdapter, type Color, type MoveInput, type PieceSymbol, type Square } from './rules';
 
 export type AnnotationColor = 'G' | 'R' | 'Y' | 'B';
 
@@ -32,16 +25,7 @@ export interface PgnEvalAnnotation {
 }
 
 export type MoveClassification =
-  | 'Best'
-  | 'Excellent'
-  | 'Good'
-  | 'Inaccuracy'
-  | 'Mistake'
-  | 'Blunder'
-  | 'Great'
-  | 'Brilliant'
-  | 'Book'
-  | 'Miss';
+  'Best' | 'Excellent' | 'Good' | 'Inaccuracy' | 'Mistake' | 'Blunder' | 'Great' | 'Brilliant' | 'Book' | 'Miss';
 
 export type GameTermination = '1-0' | '0-1' | '1/2-1/2' | '*';
 
@@ -292,16 +276,10 @@ export class GameTree {
 
   public setHeader(key: string, value: string): void {
     this.headersMap[key] = value;
-    if (
-      key === 'Result' &&
-      (value === '1-0' || value === '0-1' || value === '1/2-1/2' || value === '*')
-    ) {
+    if (key === 'Result' && (value === '1-0' || value === '0-1' || value === '1/2-1/2' || value === '*')) {
       this.gameResult = value;
     }
-    if (
-      key.toLowerCase() === 'variant' &&
-      /^(?:chess960|fischerandom)$/i.test(value.trim())
-    ) {
+    if (key.toLowerCase() === 'variant' && /^(?:chess960|fischerandom)$/i.test(value.trim())) {
       this.isC960 = true;
     }
   }
@@ -322,10 +300,7 @@ export class GameTree {
    * Add a move from `options.fromNodeId` (or the current active node if omitted),
    * advancing `currentNode` to the new (or matched existing) child node.
    */
-  public addMove(
-    moveInput: string | MoveInput | null,
-    options?: AddMoveOptions,
-  ): GameNode {
+  public addMove(moveInput: string | MoveInput | null, options?: AddMoveOptions): GameNode {
     const parentId = options?.fromNodeId ?? this.activeNodeId;
     const parent = this.nodesById.get(parentId);
     if (!parent) {
@@ -600,10 +575,7 @@ export class GameTree {
     node.highlights = highlights.map((h) => ({ ...h }));
   }
 
-  public setClassification(
-    nodeId: string,
-    classification: MoveClassification | undefined,
-  ): void {
+  public setClassification(nodeId: string, classification: MoveClassification | undefined): void {
     const node = this.nodesById.get(nodeId);
     if (!node) throw new Error(`Node not found: ${nodeId}`);
     node.classification = classification;
@@ -708,9 +680,7 @@ export class GameTree {
     };
     indexSubtree(tree.rootNode);
     tree.nextIdCounter = maxNumericId + 1;
-    tree.activeNodeId = tree.nodesById.has(data.currentNodeId)
-      ? data.currentNodeId
-      : tree.rootNode.id;
+    tree.activeNodeId = tree.nodesById.has(data.currentNodeId) ? data.currentNodeId : tree.rootNode.id;
     return tree;
   }
 
@@ -747,9 +717,7 @@ export class GameTree {
     }
   }
 
-  private findVariationBranchRoot(
-    nodeId: string,
-  ): { parent: GameNode; child: GameNode; index: number } | null {
+  private findVariationBranchRoot(nodeId: string): { parent: GameNode; child: GameNode; index: number } | null {
     let curr = this.nodesById.get(nodeId);
     while (curr && curr.parentId) {
       const parent = this.nodesById.get(curr.parentId);

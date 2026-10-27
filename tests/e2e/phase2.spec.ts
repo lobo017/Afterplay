@@ -30,15 +30,9 @@ test.describe('Phase 2 — Stockfish 17.1 WASM (Multi-Threaded & Single-Threaded
     const response = await page.goto('/');
     expect(response?.status()).toBe(200);
 
-    await expect(page.getByTestId('engine-badge')).toContainText(
-      'Stockfish 17.1 WASM · Bot 400–2400',
-    );
-    await expect(page.getByTestId('stat-engine')).toContainText(
-      'Stockfish 17.1 Lite NNUE (MultiPV 1–5)',
-    );
-    await expect(page.getByTestId('stat-bot')).toContainText(
-      '400–2400 Elo · Aggressive / Solid / Gambiteer',
-    );
+    await expect(page.getByTestId('engine-badge')).toContainText('Stockfish 17.1 WASM · Bot 400–2400');
+    await expect(page.getByTestId('stat-engine')).toContainText('Stockfish 17.1 Lite NNUE (MultiPV 1–5)');
+    await expect(page.getByTestId('stat-bot')).toContainText('400–2400 Elo · Aggressive / Solid / Gambiteer');
 
     // Open Dev Overlay so live engine telemetry updates are rendered on screen
     await page.keyboard.press('`');
@@ -78,8 +72,7 @@ test.describe('Phase 2 — Stockfish 17.1 WASM (Multi-Threaded & Single-Threaded
 
       // 2. Mate-in-2 test:
       // White to move: 1. Nf6+ gxf6 2. Bxf7# (Opera/Legal-style mate in 2)
-      const mateIn2Fen =
-        'r2qkb1r/pp2nppp/3p4/2pNN1B1/2BnP3/3P4/PPP2PPP/R2bK2R w KQkq - 1 1';
+      const mateIn2Fen = 'r2qkb1r/pp2nppp/3p4/2pNN1B1/2BnP3/3P4/PPP2PPP/R2bK2R w KQkq - 1 1';
       const mateResult = await mtClient.analyze({
         fen: mateIn2Fen,
         depth: 10,
@@ -88,8 +81,7 @@ test.describe('Phase 2 — Stockfish 17.1 WASM (Multi-Threaded & Single-Threaded
 
       // 3. Winning a hanging piece test:
       // Black has an undefended Queen hanging on d4 (White Nxd4 wins the Queen cleanly)
-      const hangingPieceFen =
-        'r1b1kbnr/pppp1ppp/2n5/4p3/3qP3/5N2/PPP2PPP/RNBQKB1R w KQkq - 0 4';
+      const hangingPieceFen = 'r1b1kbnr/pppp1ppp/2n5/4p3/3qP3/5N2/PPP2PPP/RNBQKB1R w KQkq - 0 4';
       const hangingResult = await mtClient.analyze({
         fen: hangingPieceFen,
         depth: 10,
@@ -191,9 +183,7 @@ test.describe('Phase 2 — Stockfish 17.1 WASM (Multi-Threaded & Single-Threaded
     expect(results.botDecision.san).toBe('Nxd4');
 
     // Verify DevOverlay displays updated engine depth/NPS and cache hit rate (1 hit / 4 cached lookups = 25.0%)
-    await expect(devOverlay.locator('[data-metric="engine"]')).not.toHaveText(
-      'd0 / 0 kN/s',
-    );
+    await expect(devOverlay.locator('[data-metric="engine"]')).not.toHaveText('d0 / 0 kN/s');
     await expect(devOverlay.locator('[data-metric="cache"]')).toHaveText('25.0%');
 
     if (process.env.SCREENSHOT_DIR) {

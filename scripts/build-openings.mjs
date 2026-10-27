@@ -61,9 +61,7 @@ async function main() {
 
   const uniqueCount = Object.keys(openingsByEpd).length;
   await fs.writeFile(outPath, JSON.stringify(openingsByEpd), 'utf8');
-  console.log(
-    `Wrote ${uniqueCount} unique opening positions (from ${totalRows} rows) to ${outPath}`,
-  );
+  console.log(`Wrote ${uniqueCount} unique opening positions (from ${totalRows} rows) to ${outPath}`);
 }
 
 main().catch((err) => {

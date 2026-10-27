@@ -18,9 +18,7 @@ test.describe('Phase 2 — changing engine threads restarts the worker', () => {
     // Engine lines live in Review's Analysis tab
     await page.getByTestId('review-shell-tab-analysis').click();
     await page.getByTestId('select-multipv').selectOption('5');
-    await page.evaluate(() =>
-      window.__wizardChessAnalysis!.controller.setAnalysisDepth('infinite'),
-    );
+    await page.evaluate(() => window.__wizardChessAnalysis!.controller.setAnalysisDepth('infinite'));
     await expect(page.getByTestId('engine-pv-move-5-0')).toBeVisible({ timeout: 20_000 });
 
     const before = await page.evaluate(() => window.__wizardChessPlay!.engine.getTelemetry());
@@ -43,8 +41,7 @@ test.describe('Phase 2 — changing engine threads restarts the worker', () => {
           const controller = window.__wizardChessAnalysis!.controller;
           const tel = engine.getTelemetry();
           const lines = controller.getLinesPanel().getFormattedLines();
-          return tel.depth >= 10 && tel.multipv === 5 && lines.length === 5 &&
-            controller.getAdapter().fen() === fen
+          return tel.depth >= 10 && tel.multipv === 5 && lines.length === 5 && controller.getAdapter().fen() === fen
             ? { threads: tel.threads, depth: tel.depth, multipv: tel.multipv, lines: lines.length }
             : null;
         },
@@ -65,9 +62,7 @@ test.describe('Phase 2 — changing engine threads restarts the worker', () => {
   // booted (its thread pool still starting) hung the page and then crashed it. It happened
   // with an unchanged value too, and only before the engine had searched.
   for (const threads of [4, 2]) {
-    test(`threads set to ${threads} right after the engine starts: no hang, analysis works`, async ({
-      page,
-    }) => {
+    test(`threads set to ${threads} right after the engine starts: no hang, analysis works`, async ({ page }) => {
       test.setTimeout(60_000);
       let crashed = false;
       page.on('crash', () => {
@@ -77,9 +72,7 @@ test.describe('Phase 2 — changing engine threads restarts the worker', () => {
       const result = await page.evaluate(async (t) => {
         const engine = window.__wizardChessPlay!.engine;
         const timeout = (label: string) =>
-          new Promise<never>((_, reject) =>
-            setTimeout(() => reject(new Error(`${label} hung for 20 s`)), 20_000),
-          );
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`${label} hung for 20 s`)), 20_000));
         await Promise.race([engine.configure({ threads: t }), timeout('configure')]);
         const analysis = await Promise.race([
           engine.analyze({ fen: 'startpos', depth: 10, multipv: 3, useCache: false }),

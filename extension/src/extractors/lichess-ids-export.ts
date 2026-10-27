@@ -20,7 +20,12 @@ export const lichessIdsExportExtractor: Extractor = {
     const body = await res.text();
     // An unknown ID is not an error here: the answer is just empty
     if (res.ok && body.trim() === '') {
-      return { ok: false, method: LICHESS_IDS_EXPORT_METHOD, reason: 'Lichess has no game with this ID.', notFound: true };
+      return {
+        ok: false,
+        method: LICHESS_IDS_EXPORT_METHOD,
+        reason: 'Lichess has no game with this ID.',
+        notFound: true,
+      };
     }
     const result = classifyLichessExport(res, body, LICHESS_IDS_EXPORT_METHOD);
     if (result.ok && !result.pgn.includes(`"https://lichess.org/${ctx.ref.gameId}"`)) {

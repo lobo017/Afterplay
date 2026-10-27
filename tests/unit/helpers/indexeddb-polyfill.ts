@@ -111,11 +111,7 @@ export class FakeIDBIndex {
   private meta: IndexMeta;
   private tx: FakeIDBTransaction;
 
-  public constructor(
-    storeData: StoreData,
-    meta: IndexMeta,
-    tx: FakeIDBTransaction,
-  ) {
+  public constructor(storeData: StoreData, meta: IndexMeta, tx: FakeIDBTransaction) {
     this.storeData = storeData;
     this.meta = meta;
     this.tx = tx;
@@ -155,10 +151,7 @@ export class FakeIDBIndex {
     return this.tx.scheduleRequest(() => {
       const results: unknown[] = [];
       for (const val of this.storeData.records.values()) {
-        if (
-          query === undefined ||
-          extractKeyByPath(val, this.meta.keyPath) === query
-        ) {
+        if (query === undefined || extractKeyByPath(val, this.meta.keyPath) === query) {
           results.push(structuredClone(val));
           if (count !== undefined && results.length >= count) break;
         }
@@ -171,10 +164,7 @@ export class FakeIDBIndex {
     return this.tx.scheduleRequest(() => {
       const keys: unknown[] = [];
       for (const [pk, val] of this.storeData.records.entries()) {
-        if (
-          query === undefined ||
-          extractKeyByPath(val, this.meta.keyPath) === query
-        ) {
+        if (query === undefined || extractKeyByPath(val, this.meta.keyPath) === query) {
           keys.push(pk);
           if (count !== undefined && keys.length >= count) break;
         }
@@ -187,10 +177,7 @@ export class FakeIDBIndex {
     return this.tx.scheduleRequest(() => {
       let c = 0;
       for (const val of this.storeData.records.values()) {
-        if (
-          query === undefined ||
-          extractKeyByPath(val, this.meta.keyPath) === query
-        ) {
+        if (query === undefined || extractKeyByPath(val, this.meta.keyPath) === query) {
           c++;
         }
       }
@@ -224,11 +211,7 @@ export class FakeIDBObjectStore {
     return new FakeDOMStringList(...Array.from(this.storeData.indexes.keys()));
   }
 
-  public createIndex(
-    name: string,
-    keyPath: string | string[],
-    options?: { unique?: boolean },
-  ): FakeIDBIndex {
+  public createIndex(name: string, keyPath: string | string[], options?: { unique?: boolean }): FakeIDBIndex {
     const meta: IndexMeta = {
       name,
       keyPath,
@@ -258,9 +241,7 @@ export class FakeIDBObjectStore {
   }
 
   public getKey(key: unknown): FakeIDBRequest {
-    return this.tx.scheduleRequest(() =>
-      this.storeData.records.has(key) ? key : undefined,
-    );
+    return this.tx.scheduleRequest(() => (this.storeData.records.has(key) ? key : undefined));
   }
 
   public getAll(query?: unknown, count?: number): FakeIDBRequest {
@@ -298,11 +279,7 @@ export class FakeIDBObjectStore {
 
   public put(value: unknown, key?: unknown): FakeIDBRequest {
     return this.tx.scheduleRequest(() => {
-      const resolvedKey =
-        key ??
-        (this.storeData.keyPath
-          ? extractKeyByPath(value, this.storeData.keyPath)
-          : undefined);
+      const resolvedKey = key ?? (this.storeData.keyPath ? extractKeyByPath(value, this.storeData.keyPath) : undefined);
       if (resolvedKey === undefined) {
         throw new Error(`Missing key for object store ${this.storeData.name}`);
       }
@@ -313,11 +290,7 @@ export class FakeIDBObjectStore {
 
   public add(value: unknown, key?: unknown): FakeIDBRequest {
     return this.tx.scheduleRequest(() => {
-      const resolvedKey =
-        key ??
-        (this.storeData.keyPath
-          ? extractKeyByPath(value, this.storeData.keyPath)
-          : undefined);
+      const resolvedKey = key ?? (this.storeData.keyPath ? extractKeyByPath(value, this.storeData.keyPath) : undefined);
       if (resolvedKey === undefined) {
         throw new Error(`Missing key for object store ${this.storeData.name}`);
       }
@@ -454,10 +427,7 @@ export class FakeIDBDatabase extends SimpleEventTarget {
     return new FakeDOMStringList(...Array.from(this.dbRecord.stores.keys()));
   }
 
-  public createObjectStore(
-    name: string,
-    options?: { keyPath?: string | null },
-  ): FakeIDBObjectStore {
+  public createObjectStore(name: string, options?: { keyPath?: string | null }): FakeIDBObjectStore {
     if (this.dbRecord.stores.has(name)) {
       throw new Error(`Object store ${name} already exists`);
     }
@@ -468,9 +438,7 @@ export class FakeIDBDatabase extends SimpleEventTarget {
       indexes: new Map(),
     };
     this.dbRecord.stores.set(name, storeData);
-    const tx =
-      this.activeVersionChangeTx ??
-      new FakeIDBTransaction(this.dbRecord, [name], 'versionchange', false);
+    const tx = this.activeVersionChangeTx ?? new FakeIDBTransaction(this.dbRecord, [name], 'versionchange', false);
     if (!tx.objectStoreNames.contains(name)) {
       tx.objectStoreNames.push(name);
     }
@@ -481,10 +449,7 @@ export class FakeIDBDatabase extends SimpleEventTarget {
     this.dbRecord.stores.delete(name);
   }
 
-  public transaction(
-    storeNames: string | string[],
-    mode: 'readonly' | 'readwrite' = 'readonly',
-  ): FakeIDBTransaction {
+  public transaction(storeNames: string | string[], mode: 'readonly' | 'readwrite' = 'readonly'): FakeIDBTransaction {
     const names = Array.isArray(storeNames) ? storeNames : [storeNames];
     return new FakeIDBTransaction(this.dbRecord, names, mode, true);
   }
@@ -526,12 +491,7 @@ export const fakeIndexedDB = {
         const dbInstance = new FakeIDBDatabase(record);
 
         if (targetVersion > oldVersion) {
-          const upgradeTx = new FakeIDBTransaction(
-            record,
-            Array.from(record.stores.keys()),
-            'versionchange',
-            false,
-          );
+          const upgradeTx = new FakeIDBTransaction(record, Array.from(record.stores.keys()), 'versionchange', false);
           dbInstance.activeVersionChangeTx = upgradeTx;
           req.result = dbInstance;
           req.transaction = upgradeTx;

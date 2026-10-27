@@ -57,9 +57,7 @@ test.describe('Phase 4 — Analysis Board, Eval Bar, MultiPV Ghost Previews, Thr
     await playSquareMove('f1', 'c4');
 
     await expect(page.getByTestId('opening-eco')).toHaveText('C50');
-    await expect(page.getByTestId('opening-name')).toContainText(
-      'Italian Game',
-    );
+    await expect(page.getByTestId('opening-name')).toContainText('Italian Game');
 
     // -------------------------------------------------------------------------
     // 2. Live Engine Lines Panel (1–5 lines)
@@ -93,8 +91,7 @@ test.describe('Phase 4 — Analysis Board, Eval Bar, MultiPV Ghost Previews, Thr
     // Load Scholar's Mate threat position:
     // After 1.e4 e5 2.Bc4 Nc6 3.Qf3, Black is to move (+ advantage for White),
     // and if Black passes their turn (null-move), White threatens Qxf7# (f3 -> f7).
-    const scholarsThreatFen =
-      'r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5Q2/PPPP1PPP/RNB1K1NR b KQkq - 3 3';
+    const scholarsThreatFen = 'r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5Q2/PPPP1PPP/RNB1K1NR b KQkq - 3 3';
     await page.evaluate((fen) => {
       window.__wizardChessAnalysis!.controller.loadFen(fen);
     }, scholarsThreatFen);
@@ -106,18 +103,14 @@ test.describe('Phase 4 — Analysis Board, Eval Bar, MultiPV Ghost Previews, Thr
     await expect(threatArrow).toBeVisible({ timeout: 20_000 });
     await expect(threatArrow).toHaveAttribute('data-from', 'f3');
     await expect(threatArrow).toHaveAttribute('data-to', 'f7');
-    await expect(page.getByTestId('threat-move-badge')).toHaveText(
-      'Threat: Qxf7#',
-    );
+    await expect(page.getByTestId('threat-move-badge')).toHaveText('Threat: Qxf7#');
 
     // Draw user annotations with modifier colors:
     // - Right-click f7 (Green circle 'G')
     // - Shift + Right-click c4 (Red circle 'R')
     // - Alt + Right-drag c6 -> d4 (Blue arrow 'B')
     await page.getByTestId('square-f7').click({ button: 'right' });
-    await page
-      .getByTestId('square-c4')
-      .click({ button: 'right', modifiers: ['Shift'] });
+    await page.getByTestId('square-c4').click({ button: 'right', modifiers: ['Shift'] });
 
     const c6Box = await page.getByTestId('square-c6').boundingBox();
     const d4Box = await page.getByTestId('square-d4').boundingBox();
@@ -125,26 +118,16 @@ test.describe('Phase 4 — Analysis Board, Eval Bar, MultiPV Ghost Previews, Thr
     expect(d4Box).not.toBeNull();
     if (c6Box && d4Box) {
       await page.keyboard.down('Alt');
-      await page.mouse.move(
-        c6Box.x + c6Box.width / 2,
-        c6Box.y + c6Box.height / 2,
-      );
+      await page.mouse.move(c6Box.x + c6Box.width / 2, c6Box.y + c6Box.height / 2);
       await page.mouse.down({ button: 'right' });
-      await page.mouse.move(
-        d4Box.x + d4Box.width / 2,
-        d4Box.y + d4Box.height / 2,
-        { steps: 5 },
-      );
+      await page.mouse.move(d4Box.x + d4Box.width / 2, d4Box.y + d4Box.height / 2, { steps: 5 });
       await page.mouse.up({ button: 'right' });
       await page.keyboard.up('Alt');
     }
 
     await expect(page.getByTestId('overlay-user-circle')).toHaveCount(2);
     await expect(page.getByTestId('overlay-user-arrow')).toHaveCount(1);
-    await expect(page.getByTestId('overlay-user-arrow')).toHaveAttribute(
-      'data-color',
-      '#38bdf8',
-    );
+    await expect(page.getByTestId('overlay-user-arrow')).toHaveAttribute('data-color', '#38bdf8');
 
     // Hover the 3rd ply of Engine Line 1 to trigger faded ghost pieces & ghost arrows on the board
     await expect(page.getByTestId('engine-pv-move-1-2')).toBeVisible({
@@ -154,34 +137,18 @@ test.describe('Phase 4 — Analysis Board, Eval Bar, MultiPV Ghost Previews, Thr
 
     const ghostPieces = page.locator('.wc-ghost-piece');
     await expect(ghostPieces.first()).toBeVisible();
-    await expect(
-      page.getByTestId('overlay-ghost-arrow').first(),
-    ).toBeVisible();
+    await expect(page.getByTestId('overlay-ghost-arrow').first()).toBeVisible();
 
     // Verify Unflipped EvalBar & Arrow Geometry
     const unflippedState = await page.evaluate(() => {
-      const evalBar = document.querySelector(
-        '[data-testid="eval-bar"]',
-      ) as HTMLElement;
-      const whiteFill = document.querySelector(
-        '[data-testid="eval-bar-white-fill"]',
-      ) as HTMLElement;
-      const scoreEl = document.querySelector(
-        '[data-testid="eval-bar-score"]',
-      ) as HTMLElement;
-      const threatEl = document.querySelector(
-        '[data-testid="overlay-threat-arrow"]',
-      ) as HTMLElement;
-      const userArrowEl = document.querySelector(
-        '[data-testid="overlay-user-arrow"]',
-      ) as HTMLElement;
-      const ghostEl = document.querySelector(
-        '.wc-ghost-piece',
-      ) as HTMLElement;
+      const evalBar = document.querySelector('[data-testid="eval-bar"]') as HTMLElement;
+      const whiteFill = document.querySelector('[data-testid="eval-bar-white-fill"]') as HTMLElement;
+      const scoreEl = document.querySelector('[data-testid="eval-bar-score"]') as HTMLElement;
+      const threatEl = document.querySelector('[data-testid="overlay-threat-arrow"]') as HTMLElement;
+      const userArrowEl = document.querySelector('[data-testid="overlay-user-arrow"]') as HTMLElement;
+      const ghostEl = document.querySelector('.wc-ghost-piece') as HTMLElement;
       return {
-        boardFlipped: document
-          .querySelector('[data-testid="chess-board"]')
-          ?.getAttribute('data-flipped'),
+        boardFlipped: document.querySelector('[data-testid="chess-board"]')?.getAttribute('data-flipped'),
         evalFlipped: evalBar.getAttribute('data-flipped'),
         whiteFillBottom: whiteFill.style.bottom,
         whiteFillTop: whiteFill.style.top,
@@ -215,28 +182,14 @@ test.describe('Phase 4 — Analysis Board, Eval Bar, MultiPV Ghost Previews, Thr
     await expect(ghostPieces.first()).toBeVisible();
 
     const flippedState = await page.evaluate(() => {
-      const evalBar = document.querySelector(
-        '[data-testid="eval-bar"]',
-      ) as HTMLElement;
-      const whiteFill = document.querySelector(
-        '[data-testid="eval-bar-white-fill"]',
-      ) as HTMLElement;
-      const scoreEl = document.querySelector(
-        '[data-testid="eval-bar-score"]',
-      ) as HTMLElement;
-      const threatEl = document.querySelector(
-        '[data-testid="overlay-threat-arrow"]',
-      ) as HTMLElement;
-      const userArrowEl = document.querySelector(
-        '[data-testid="overlay-user-arrow"]',
-      ) as HTMLElement;
-      const ghostEl = document.querySelector(
-        '.wc-ghost-piece',
-      ) as HTMLElement;
+      const evalBar = document.querySelector('[data-testid="eval-bar"]') as HTMLElement;
+      const whiteFill = document.querySelector('[data-testid="eval-bar-white-fill"]') as HTMLElement;
+      const scoreEl = document.querySelector('[data-testid="eval-bar-score"]') as HTMLElement;
+      const threatEl = document.querySelector('[data-testid="overlay-threat-arrow"]') as HTMLElement;
+      const userArrowEl = document.querySelector('[data-testid="overlay-user-arrow"]') as HTMLElement;
+      const ghostEl = document.querySelector('.wc-ghost-piece') as HTMLElement;
       return {
-        boardFlipped: document
-          .querySelector('[data-testid="chess-board"]')
-          ?.getAttribute('data-flipped'),
+        boardFlipped: document.querySelector('[data-testid="chess-board"]')?.getAttribute('data-flipped'),
         evalFlipped: evalBar.getAttribute('data-flipped'),
         whiteFillBottom: whiteFill.style.bottom,
         whiteFillTop: whiteFill.style.top,
@@ -258,12 +211,8 @@ test.describe('Phase 4 — Analysis Board, Eval Bar, MultiPV Ghost Previews, Thr
     // In flipped orientation, every 800x800 SVG coordinate mirrors across the center (800 - unflipped)
     expect(flippedState.threatStartCx).toBe(800 - unflippedState.threatStartCx);
     expect(flippedState.threatStartCy).toBe(800 - unflippedState.threatStartCy);
-    expect(flippedState.userArrowStartCx).toBe(
-      800 - unflippedState.userArrowStartCx,
-    );
-    expect(flippedState.userArrowStartCy).toBe(
-      800 - unflippedState.userArrowStartCy,
-    );
+    expect(flippedState.userArrowStartCx).toBe(800 - unflippedState.userArrowStartCx);
+    expect(flippedState.userArrowStartCy).toBe(800 - unflippedState.userArrowStartCy);
     expect(flippedState.ghostTransform).not.toBe(unflippedState.ghostTransform);
 
     // Take Playwright screenshot in FLIPPED orientation
@@ -273,10 +222,7 @@ test.describe('Phase 4 — Analysis Board, Eval Bar, MultiPV Ghost Previews, Thr
 
     // Unflip board back to White at bottom via 'F'
     await page.keyboard.press('f');
-    await expect(page.getByTestId('chess-board')).toHaveAttribute(
-      'data-flipped',
-      'false',
-    );
+    await expect(page.getByTestId('chess-board')).toHaveAttribute('data-flipped', 'false');
 
     // -------------------------------------------------------------------------
     // 4. Click an Engine Line to Insert Variation & Keyboard Controls
@@ -309,19 +255,13 @@ test.describe('Phase 4 — Analysis Board, Eval Bar, MultiPV Ghost Previews, Thr
     await expect(page.getByTestId('analysis-move-tree')).toContainText('(');
 
     // Test Up/Down arrows to switch between sibling variations at ply 2
-    const fenInVariation = await page
-      .getByTestId('analysis-current-fen')
-      .textContent();
+    const fenInVariation = await page.getByTestId('analysis-current-fen').textContent();
     await page.keyboard.press('ArrowUp');
-    const fenInMainline = await page
-      .getByTestId('analysis-current-fen')
-      .textContent();
+    const fenInMainline = await page.getByTestId('analysis-current-fen').textContent();
     expect(fenInMainline).not.toBe(fenInVariation);
 
     await page.keyboard.press('ArrowDown');
-    await expect(page.getByTestId('analysis-current-fen')).toHaveText(
-      fenInVariation ?? '',
-    );
+    await expect(page.getByTestId('analysis-current-fen')).toHaveText(fenInVariation ?? '');
 
     // Test Home (start of game) and End (end of mainline)
     await page.keyboard.press('Home');
@@ -329,43 +269,26 @@ test.describe('Phase 4 — Analysis Board, Eval Bar, MultiPV Ghost Previews, Thr
       'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
     );
     await page.keyboard.press('End');
-    await expect(page.getByTestId('analysis-current-fen')).toHaveText(
-      fenInMainline ?? '',
-    );
+    await expect(page.getByTestId('analysis-current-fen')).toHaveText(fenInMainline ?? '');
 
     // Test Spacebar to toggle Engine OFF and back ON
     await page.keyboard.press(' ');
-    await expect(page.getByTestId('toggle-analysis-engine')).toHaveAttribute(
-      'aria-pressed',
-      'false',
-    );
+    await expect(page.getByTestId('toggle-analysis-engine')).toHaveAttribute('aria-pressed', 'false');
     await expect(page.getByTestId('engine-lines-disabled')).toBeVisible();
 
     await page.keyboard.press(' ');
-    await expect(page.getByTestId('toggle-analysis-engine')).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    );
+    await expect(page.getByTestId('toggle-analysis-engine')).toHaveAttribute('aria-pressed', 'true');
 
     // -------------------------------------------------------------------------
     // 5. Mate-Aware Eval Bar Verification
     // -------------------------------------------------------------------------
     // Load a Mate-in-1 position (White plays Rd8#)
     await page.evaluate(() => {
-      window.__wizardChessAnalysis!.controller.loadFen(
-        '6k1/5ppp/8/8/8/8/8/3R2K1 w - - 0 1',
-      );
+      window.__wizardChessAnalysis!.controller.loadFen('6k1/5ppp/8/8/8/8/8/3R2K1 w - - 0 1');
     });
-    await expect(page.getByTestId('eval-bar')).toHaveAttribute(
-      'data-mate',
-      'true',
-      { timeout: 15_000 },
-    );
+    await expect(page.getByTestId('eval-bar')).toHaveAttribute('data-mate', 'true', { timeout: 15_000 });
     await expect(page.getByTestId('eval-bar-score')).toHaveText('M1');
-    await expect(page.getByTestId('eval-bar')).toHaveAttribute(
-      'data-white-pct',
-      '100.0',
-    );
+    await expect(page.getByTestId('eval-bar')).toHaveAttribute('data-white-pct', '100.0');
 
     // -------------------------------------------------------------------------
     // 6. Position Editor with Live FEN Validation & Piece Placement
@@ -376,23 +299,15 @@ test.describe('Phase 4 — Analysis Board, Eval Bar, MultiPV Ghost Previews, Thr
     // Enter an invalid FEN (no White King)
     const fenInput = page.getByTestId('editor-fen-input');
     await fenInput.fill('4k3/8/8/8/8/8/8/8 w - - 0 1');
-    await expect(page.getByTestId('editor-fen-status')).toHaveAttribute(
-      'data-valid',
-      'false',
-    );
+    await expect(page.getByTestId('editor-fen-status')).toHaveAttribute('data-valid', 'false');
     await expect(page.getByTestId('btn-apply-fen')).toBeDisabled();
 
     // Click "Kings Only" preset, then select White Queen tool and click d1 on the board
     await page.getByTestId('btn-editor-kings-only').click();
-    await expect(page.getByTestId('editor-fen-status')).toHaveAttribute(
-      'data-valid',
-      'true',
-    );
+    await expect(page.getByTestId('editor-fen-status')).toHaveAttribute('data-valid', 'true');
     await page.getByTestId('editor-tool-wQ').click();
     await page.getByTestId('square-d1').click();
-    await expect(page.getByTestId('analysis-current-fen')).toHaveText(
-      '4k3/8/8/8/8/8/8/3QK3 w - - 0 1',
-    );
+    await expect(page.getByTestId('analysis-current-fen')).toHaveText('4k3/8/8/8/8/8/8/3QK3 w - - 0 1');
     await expect(page.getByTestId('piece-d1')).toBeVisible();
 
     // Close the Position Editor

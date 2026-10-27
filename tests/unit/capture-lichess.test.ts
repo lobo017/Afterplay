@@ -106,7 +106,10 @@ describe('Phase 5b — Lichess page data', () => {
   });
 
   it('says "in progress" for a game that is still being played', () => {
-    const html = read('page-Bjl39T9x.html').replace('"status":{"id":30,"name":"mate"}', '"status":{"id":20,"name":"started"}');
+    const html = read('page-Bjl39T9x.html').replace(
+      '"status":{"id":30,"name":"mate"}',
+      '"status":{"id":20,"name":"started"}',
+    );
     const data = readLichessPageData(html)!;
     expect(lichessGameState(data)).toBe('in-progress');
     expect(parsePgn(lichessDataToPgn(data)!).getHeaders().Result).toBe('*');
@@ -118,7 +121,9 @@ describe('Phase 5b — Lichess page data', () => {
     expect(result).toMatchObject({ ok: true, method: 'lichess-page-data' });
     expect(calls.map((c) => c.url)).toEqual(['https://lichess.org/Bjl39T9x']);
     const missing = fakeFetch(() => fakeResponse('Not found', { status: 404 }));
-    expect(await lichessPageDataExtractor.extract({ ref: { site: 'lichess', gameId: 'Bjl39T9x' }, fetch: missing.fn })).toMatchObject({
+    expect(
+      await lichessPageDataExtractor.extract({ ref: { site: 'lichess', gameId: 'Bjl39T9x' }, fetch: missing.fn }),
+    ).toMatchObject({
       ok: false,
       notFound: true,
     });
@@ -144,16 +149,26 @@ describe('Phase 5b — Lichess exports', () => {
       'm',
     );
     expect(redirected).toMatchObject({ ok: false, loginRequired: true });
-    const json = classifyLichessExport(fakeResponse(anonymous.jsonRequest.body, { status: anonymous.jsonRequest.status }), anonymous.jsonRequest.body, 'm');
+    const json = classifyLichessExport(
+      fakeResponse(anonymous.jsonRequest.body, { status: anonymous.jsonRequest.status }),
+      anonymous.jsonRequest.body,
+      'm',
+    );
     expect(json).toMatchObject({ ok: false, loginRequired: true });
-    expect(classifyLichessExport(fakeResponse('', { status: 429 }), '', 'm')).toMatchObject({ ok: false, retryAfterMs: 60_000 });
+    expect(classifyLichessExport(fakeResponse('', { status: 429 }), '', 'm')).toMatchObject({
+      ok: false,
+      retryAfterMs: 60_000,
+    });
     expect(classifyLichessExport(fakeResponse('<html>', { status: 200 }), '<html>', 'm')).toMatchObject({ ok: false });
   });
 
   it('session export: a logged-in answer is the PGN; the request carries the session', async () => {
     const pgn = read('export-ids-Bjl39T9x.pgn');
     const { fn, calls } = fakeFetch(() => fakeResponse(pgn, { url: 'https://lichess.org/game/export/Bjl39T9x' }));
-    const result = await lichessSessionExportExtractor.extract({ ref: { site: 'lichess', gameId: 'Bjl39T9x' }, fetch: fn });
+    const result = await lichessSessionExportExtractor.extract({
+      ref: { site: 'lichess', gameId: 'Bjl39T9x' },
+      fetch: fn,
+    });
     expect(result).toMatchObject({ ok: true, method: 'lichess-session-export' });
     expect(calls[0]!.url).toContain('/game/export/Bjl39T9x?clocks=true');
     expect(calls[0]!.init?.credentials).toBe('include');
@@ -162,12 +177,21 @@ describe('Phase 5b — Lichess exports', () => {
   it('IDs export: POSTs the ID, checks the game, treats an empty answer as not found', async () => {
     const { fn, calls } = fakeFetch(() => fakeResponse(read('export-ids-Bjl39T9x.pgn')));
     const ref = { site: 'lichess' as const, gameId: 'Bjl39T9x' };
-    expect(await lichessIdsExportExtractor.extract({ ref, fetch: fn })).toMatchObject({ ok: true, method: 'lichess-ids-export' });
-    expect(calls[0]).toMatchObject({ url: expect.stringContaining('/api/games/export/_ids?clocks=true'), init: { method: 'POST', body: 'Bjl39T9x' } });
+    expect(await lichessIdsExportExtractor.extract({ ref, fetch: fn })).toMatchObject({
+      ok: true,
+      method: 'lichess-ids-export',
+    });
+    expect(calls[0]).toMatchObject({
+      url: expect.stringContaining('/api/games/export/_ids?clocks=true'),
+      init: { method: 'POST', body: 'Bjl39T9x' },
+    });
     const other = fakeFetch(() => fakeResponse(read('export-ids-iTIXmTZF.pgn')));
     expect(await lichessIdsExportExtractor.extract({ ref, fetch: other.fn })).toMatchObject({ ok: false });
     const empty = fakeFetch(() => fakeResponse(''));
-    expect(await lichessIdsExportExtractor.extract({ ref, fetch: empty.fn })).toMatchObject({ ok: false, notFound: true });
+    expect(await lichessIdsExportExtractor.extract({ ref, fetch: empty.fn })).toMatchObject({
+      ok: false,
+      notFound: true,
+    });
   });
 
   it('falls back from the login wall to the game page', async () => {
@@ -181,7 +205,9 @@ describe('Phase 5b — Lichess exports', () => {
       fetch: fn,
     });
     expect(outcome.result).toMatchObject({ ok: true, method: 'lichess-page-data' });
-    expect(outcome.attempts).toEqual([{ method: 'lichess-session-export', reason: 'Lichess wants a login for this export.' }]);
+    expect(outcome.attempts).toEqual([
+      { method: 'lichess-session-export', reason: 'Lichess wants a login for this export.' },
+    ]);
     expect(calls).toHaveLength(2);
   });
 });

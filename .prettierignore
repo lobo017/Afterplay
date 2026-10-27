@@ -10,3 +10,5 @@ dist/
 dist-ext/
 test-results/
 playwright-report/
+# Recorded page and API data: kept exactly as recorded
+tests/fixtures/

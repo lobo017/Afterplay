@@ -77,8 +77,14 @@ describe('Phase 5 — motif detector fixtures', () => {
   it('covers every motif with positive and negative cases', () => {
     for (const kind of MOTIFS) {
       const cases = fixtures.filter((f) => f.motif === kind);
-      expect(cases.some((f) => f.expect), `${kind} positive`).toBe(true);
-      expect(cases.some((f) => !f.expect), `${kind} negative`).toBe(true);
+      expect(
+        cases.some((f) => f.expect),
+        `${kind} positive`,
+      ).toBe(true);
+      expect(
+        cases.some((f) => !f.expect),
+        `${kind} negative`,
+      ).toBe(true);
     }
   });
 
@@ -106,10 +112,7 @@ describe('Phase 5 — motif detector fixtures', () => {
     const motif = detectHangingPiece('4k3/8/8/1b6/8/3R4/8/4K3 w - - 0 1', 'e1f1');
     expect(motif?.square).toBe('d3');
     expect(motif?.preexisting).toBe(true);
-    const fresh = detectHangingPiece(
-      'r1bq1rk1/ppp2ppp/2np1n2/2b1p3/2B1P3/2PP1N2/PP3PPP/RNBQ1RK1 w - - 0 7',
-      'f3d4',
-    );
+    const fresh = detectHangingPiece('r1bq1rk1/ppp2ppp/2np1n2/2b1p3/2B1P3/2PP1N2/PP3PPP/RNBQ1RK1 w - - 0 7', 'f3d4');
     expect(fresh?.preexisting).toBe(false);
   });
 });

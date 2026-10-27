@@ -34,7 +34,11 @@ export interface ReviewedGameInput {
 
 export type GamePhase = 'opening' | 'middlegame' | 'endgame';
 
-export const PHASE_LABEL: Record<GamePhase, string> = { opening: 'Opening', middlegame: 'Middlegame', endgame: 'Endgame' };
+export const PHASE_LABEL: Record<GamePhase, string> = {
+  opening: 'Opening',
+  middlegame: 'Middlegame',
+  endgame: 'Endgame',
+};
 export const PHASES: readonly GamePhase[] = ['opening', 'middlegame', 'endgame'];
 
 /** Plies (half-moves) the opening lasts, unless the pieces have come off sooner. */
@@ -214,7 +218,15 @@ export function resultsByOpening(rows: readonly GameRow[]): OpeningResults[] {
   for (const row of rows) {
     if (row.color === null || row.result === 'unfinished' || !row.record.openingName) continue;
     const name = openingFamily(row.record.openingName);
-    const entry = map.get(name) ?? { name, eco: row.record.openingEco, games: 0, wins: 0, draws: 0, losses: 0, gameIds: [] };
+    const entry = map.get(name) ?? {
+      name,
+      eco: row.record.openingEco,
+      games: 0,
+      wins: 0,
+      draws: 0,
+      losses: 0,
+      gameIds: [],
+    };
     entry.games++;
     if (row.result === 'win') entry.wins++;
     else if (row.result === 'draw') entry.draws++;
@@ -235,6 +247,8 @@ export interface RatingPoint {
 }
 
 /** The puzzle rating history, oldest first. */
-export function puzzleRatingSeries(history: ReadonlyArray<{ at: number; rating: number; puzzleId: string; solved: boolean }>): RatingPoint[] {
+export function puzzleRatingSeries(
+  history: ReadonlyArray<{ at: number; rating: number; puzzleId: string; solved: boolean }>,
+): RatingPoint[] {
   return history.map((h) => ({ ...h })).sort((a, b) => a.at - b.at);
 }

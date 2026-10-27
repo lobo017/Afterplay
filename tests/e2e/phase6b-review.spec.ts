@@ -1,10 +1,6 @@
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import {
-  startLayoutShiftRecorder,
-  stopLayoutShiftRecorder,
-  summarizeShiftSources,
-} from './helpers/layout-shift';
+import { startLayoutShiftRecorder, stopLayoutShiftRecorder, summarizeShiftSources } from './helpers/layout-shift';
 
 // Phase 6b stage 3: Review. The analysis board and the game review in one place: free
 // analysis one click away (New board, Edit position, Load FEN / PGN), the Review / Analysis /
@@ -68,12 +64,16 @@ test.describe('Phase 6b — Review', () => {
     await openReview(page);
     // A game on the board first
     await page.evaluate((pgn) => window.__wizardChessAnalysis!.controller.importPgn(pgn), SHORT_PGN);
-    expect(await page.evaluate(() => window.__wizardChessAnalysis!.controller.getGameTree().getMainLine().length)).toBe(6);
+    expect(await page.evaluate(() => window.__wizardChessAnalysis!.controller.getGameTree().getMainLine().length)).toBe(
+      6,
+    );
 
     // New board: the start position, no moves, the engine lines in view
     await page.getByTestId('btn-reset-analysis').click();
     expect(await fen(page)).toBe(START_FEN);
-    expect(await page.evaluate(() => window.__wizardChessAnalysis!.controller.getGameTree().getMainLine().length)).toBe(0);
+    expect(await page.evaluate(() => window.__wizardChessAnalysis!.controller.getGameTree().getMainLine().length)).toBe(
+      0,
+    );
     expect(await tab(page)).toBe('analysis');
     await expect(page.getByTestId('engine-lines-panel')).toBeVisible();
 
@@ -103,7 +103,9 @@ test.describe('Phase 6b — Review', () => {
     await page.getByTestId('textarea-pgn').fill(SHORT_PGN);
     await page.getByTestId('btn-import-pgn').click();
     await expect(sheet).toBeHidden();
-    expect(await page.evaluate(() => window.__wizardChessAnalysis!.controller.getGameTree().getMainLine().length)).toBe(6);
+    expect(await page.evaluate(() => window.__wizardChessAnalysis!.controller.getGameTree().getMainLine().length)).toBe(
+      6,
+    );
     expect(await tab(page)).toBe('review');
 
     // Nonsense: an error, and the sheet stays open with the text
@@ -181,7 +183,9 @@ test.describe('Phase 6b — Review', () => {
     await page.keyboard.press('Escape');
   });
 
-  test('Settings: the move animation applies to Review; board keys stay quiet while Settings is open', async ({ page }) => {
+  test('Settings: the move animation applies to Review; board keys stay quiet while Settings is open', async ({
+    page,
+  }) => {
     await openReview(page);
     await page.evaluate((pgn) => window.__wizardChessAnalysis!.controller.importPgn(pgn), SHORT_PGN);
     await page.evaluate(() => window.__wizardChessAnalysis!.controller.goToStart());

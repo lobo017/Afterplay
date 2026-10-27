@@ -67,7 +67,10 @@ export class GameRetries {
 
   private async write(items: Record<string, GameRetryItem>): Promise<void> {
     await this.deps.store.set({ [RETRIES_KEY]: items });
-    const next = Object.values(items).reduce<number | null>((m, i) => (m === null || i.nextAt < m ? i.nextAt : m), null);
+    const next = Object.values(items).reduce<number | null>(
+      (m, i) => (m === null || i.nextAt < m ? i.nextAt : m),
+      null,
+    );
     this.deps.onSchedule(next);
   }
 
@@ -126,7 +129,11 @@ export class GameRetries {
         }
         const next = { ...item, attempt, nextAt: this.deps.now() + GAME_RETRY_DELAYS_MS[attempt]! };
         items[item.key] = next;
-        reports.push({ ...base, result: `${outcome.result}; ${GameRetries.describe(next, this.deps.now())}`, done: false });
+        reports.push({
+          ...base,
+          result: `${outcome.result}; ${GameRetries.describe(next, this.deps.now())}`,
+          done: false,
+        });
       }
       await this.write(items);
       return reports;

@@ -3,14 +3,7 @@
  * the site's styles don't reach it and a site re-rendering <body> doesn't remove it.
  */
 export type SaveButtonState =
-  | 'ready'
-  | 'in-progress'
-  | 'saving'
-  | 'saved'
-  | 'already-queued'
-  | 'already-delivered'
-  | 'not-imported'
-  | 'failed';
+  'ready' | 'in-progress' | 'saving' | 'saved' | 'already-queued' | 'already-delivered' | 'not-imported' | 'failed';
 
 const LABELS: Record<SaveButtonState, string> = {
   ready: "Save to Wizard's Chess",
@@ -87,7 +80,11 @@ export class SaveButton {
     this.button.setAttribute('data-state', state);
     this.host.setAttribute('data-state', state);
     this.button.disabled =
-      state === 'saving' || state === 'saved' || state === 'already-queued' || state === 'already-delivered' || state === 'not-imported';
+      state === 'saving' ||
+      state === 'saved' ||
+      state === 'already-queued' ||
+      state === 'already-delivered' ||
+      state === 'not-imported';
     this.note.textContent = note;
   }
 

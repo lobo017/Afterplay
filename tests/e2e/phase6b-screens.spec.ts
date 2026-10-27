@@ -51,10 +51,15 @@ async function expectNoSideScroll(page: Page): Promise<void> {
     const wide = [...document.querySelectorAll<HTMLElement>('body *')]
       .filter((el) => el.getBoundingClientRect().right > vw + 0.5 && el.offsetParent !== null)
       .slice(0, 8)
-      .map((el) => `${el.tagName.toLowerCase()}.${[...el.classList].join('.')}[${el.dataset.testid ?? ''}] right=${Math.round(el.getBoundingClientRect().right)}`);
+      .map(
+        (el) =>
+          `${el.tagName.toLowerCase()}.${[...el.classList].join('.')}[${el.dataset.testid ?? ''}] right=${Math.round(el.getBoundingClientRect().right)}`,
+      );
     return { overflow: document.documentElement.scrollWidth - vw, wide };
   });
-  expect.soft(overflow, `page scrolls sideways; elements past the right edge: ${wide.join(', ')}`).toBeLessThanOrEqual(0);
+  expect
+    .soft(overflow, `page scrolls sideways; elements past the right edge: ${wide.join(', ')}`)
+    .toBeLessThanOrEqual(0);
 }
 
 async function squareCenter(page: Page, root: string, sq: string) {

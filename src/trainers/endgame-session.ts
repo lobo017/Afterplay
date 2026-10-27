@@ -41,9 +41,16 @@ export type PlayerMoveResult =
   /** `check` is true when the move promoted or took the opponent's last piece: ask the engine (judgeConversion). */
   | { kind: 'continue'; move: ExecutedMove; check: boolean };
 
-export type OpponentMoveResult = { kind: 'illegal' } | { kind: 'ended'; move: ExecutedMove; end: EndgameEnd } | { kind: 'continue'; move: ExecutedMove };
+export type OpponentMoveResult =
+  | { kind: 'illegal' }
+  | { kind: 'ended'; move: ExecutedMove; end: EndgameEnd }
+  | { kind: 'continue'; move: ExecutedMove };
 
-export type DrawOfferResult = { kind: 'not-a-draw' } | { kind: 'too-early'; movesLeft: number } | { kind: 'declined' } | { kind: 'agreed'; end: EndgameEnd };
+export type DrawOfferResult =
+  | { kind: 'not-a-draw' }
+  | { kind: 'too-early'; movesLeft: number }
+  | { kind: 'declined' }
+  | { kind: 'agreed'; end: EndgameEnd };
 
 function toInput(uci: string): MoveInput | null {
   const m = /^([a-h][1-8])([a-h][1-8])([qrbn])?$/.exec(uci);
@@ -124,7 +131,11 @@ export class EndgameSession {
     const end = this.ruleEnd(move.color);
     if (end) return { kind: 'ended', move, end };
     const opponent: Color = this.player === 'w' ? 'b' : 'w';
-    return { kind: 'continue', move, check: this.goal === 'convert' && (move.isPromotion || (move.isCapture && hasOnlyKing(this.adapter, opponent))) };
+    return {
+      kind: 'continue',
+      move,
+      check: this.goal === 'convert' && (move.isPromotion || (move.isCapture && hasOnlyKing(this.adapter, opponent))),
+    };
   }
 
   public opponentMove(uci: string): OpponentMoveResult {
@@ -173,7 +184,12 @@ export class EndgameSession {
   public giveUp(): EndgameEnd {
     return (
       this.endNow ??
-      this.finish({ reached: false, result: '*', how: 'given-up', message: 'Given up. The position is yours to try again.' })
+      this.finish({
+        reached: false,
+        result: '*',
+        how: 'given-up',
+        message: 'Given up. The position is yours to try again.',
+      })
     );
   }
 
@@ -203,7 +219,12 @@ export class EndgameSession {
       const playerMated = mover !== this.player;
       return this.finish(
         playerMated
-          ? { reached: false, result: this.player === 'w' ? '0-1' : '1-0', how: 'mated', message: 'Checkmate: you were mated.' }
+          ? {
+              reached: false,
+              result: this.player === 'w' ? '0-1' : '1-0',
+              how: 'mated',
+              message: 'Checkmate: you were mated.',
+            }
           : { reached: true, result: this.winResult(), how: 'checkmate', message: 'Checkmate!' },
       );
     }

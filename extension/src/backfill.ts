@@ -37,7 +37,13 @@ export interface BackfillSiteState {
   resumeAt?: number | null;
 }
 
-export const IDLE_BACKFILL: BackfillSiteState = { status: 'idle', username: '', imported: 0, message: '', updatedAt: 0 };
+export const IDLE_BACKFILL: BackfillSiteState = {
+  status: 'idle',
+  username: '',
+  imported: 0,
+  message: '',
+  updatedAt: 0,
+};
 
 export const BACKFILL_SITES: readonly CaptureSite[] = ['lichess', 'chesscom'];
 
@@ -129,7 +135,8 @@ export class BackfillRunner {
   public start(site: CaptureSite, username: string): Promise<BackfillSiteState> {
     return this.exclusive(async () => {
       const current = await this.state(site);
-      if ((current.status === 'running' || current.status === 'waiting') && current.username === username) return current;
+      if ((current.status === 'running' || current.status === 'waiting') && current.username === username)
+        return current;
       await this.set(backoffKey(site), { strikes: 0 } satisfies Backoff);
       if (site === 'chesscom') {
         // A new import reads the archive list again and looks at the current month again
@@ -168,7 +175,8 @@ export class BackfillRunner {
       const state = await this.state(site);
       if (state.status !== 'running' && state.status !== 'waiting') return { next: 'stop' };
       const now = this.deps.now();
-      if (state.status === 'waiting' && state.resumeAt && state.resumeAt > now) return { next: 'wait', atMs: state.resumeAt };
+      if (state.status === 'waiting' && state.resumeAt && state.resumeAt > now)
+        return { next: 'wait', atMs: state.resumeAt };
       const counts = await this.deps.queue.counts();
       const waiting = counts.pending + counts.ready;
       if (waiting >= BACKFILL_QUEUE_LIMIT) {
@@ -182,7 +190,10 @@ export class BackfillRunner {
       try {
         return site === 'lichess' ? await this.stepLichess(state) : await this.stepChessCom(state);
       } catch (err) {
-        await this.setState(site, { status: 'error', message: `Stopped: ${err instanceof Error ? err.message : String(err)}` });
+        await this.setState(site, {
+          status: 'error',
+          message: `Stopped: ${err instanceof Error ? err.message : String(err)}`,
+        });
         return { next: 'stop' };
       }
     });
@@ -194,7 +205,11 @@ export class BackfillRunner {
     const wait = Math.min(BACKFILL_MAX_BACKOFF_MS, Math.max(retryAfter, BACKFILL_MIN_BACKOFF_MS * 2 ** (strikes - 1)));
     const atMs = this.deps.now() + wait;
     await this.set(backoffKey(site), { strikes } satisfies Backoff);
-    await this.setState(site, { status: 'waiting', resumeAt: atMs, message: `Rate limited; going on at ${clock(atMs)}.` });
+    await this.setState(site, {
+      status: 'waiting',
+      resumeAt: atMs,
+      message: `Rate limited; going on at ${clock(atMs)}.`,
+    });
     return { next: 'wait', atMs };
   }
 
@@ -220,7 +235,8 @@ export class BackfillRunner {
       `https://lichess.org/api/games/user/${encodeURIComponent(state.username)}` +
       `?since=${cursor.since}&max=${LICHESS_PAGE_SIZE}&sort=dateAsc&clocks=true&evals=false&opening=true&pgnInJson=true`;
     const res = await this.deps.fetch(url, { headers: { Accept: 'application/x-ndjson' }, credentials: 'omit' });
-    if (res.status === 429) return this.rateLimited(site, retryAfterMs(res.headers.get('retry-after'), BACKFILL_MIN_BACKOFF_MS));
+    if (res.status === 429)
+      return this.rateLimited(site, retryAfterMs(res.headers.get('retry-after'), BACKFILL_MIN_BACKOFF_MS));
     if (res.status === 404) {
       await this.setState(site, { status: 'error', message: `Lichess has no user "${state.username}".` });
       return { next: 'stop' };
@@ -270,7 +286,12 @@ export class BackfillRunner {
   private async stepChessCom(state: BackfillSiteState): Promise<StepResult> {
     const site: CaptureSite = 'chesscom';
     const key = cursorKey(site, state.username);
-    const cursor: ChessComCursor = (await this.get<ChessComCursor>(key)) ?? { months: [], complete: [], etags: {}, listFetched: false };
+    const cursor: ChessComCursor = (await this.get<ChessComCursor>(key)) ?? {
+      months: [],
+      complete: [],
+      etags: {},
+      listFetched: false,
+    };
 
     if (!cursor.listFetched) {
       const listUrl = archivesListUrl(state.username);

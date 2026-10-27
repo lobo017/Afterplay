@@ -68,9 +68,7 @@ describe('Phase 5 — explanations from the classification fixtures', () => {
       expect.objectContaining({ kind: 'hanging-piece', square: 'd4', role: 'played' }),
     );
     const mate = explainFixture('blunder-throws-away-mate-entirely');
-    expect(mate.motifs).toContainEqual(
-      expect.objectContaining({ kind: 'missed-mate', mateIn: 1, role: 'missed' }),
-    );
+    expect(mate.motifs).toContainEqual(expect.objectContaining({ kind: 'missed-mate', mateIn: 1, role: 'missed' }));
     const backRank = explainFixture('decided-winning-allows-back-rank-mate');
     expect(backRank.motifs).toContainEqual(
       expect.objectContaining({ kind: 'back-rank', square: 'g1', role: 'refutation' }),
@@ -98,14 +96,10 @@ describe('Phase 5 — explanation rules (hand-set engine scores)', () => {
       winBefore: 98,
       winAfter: 50,
       before: analysis(before, [[['h3h5'], { type: 'cp', value: 700 }]]),
-      after: analysis('4k3/8/8/8/3n4/Q7/8/4K3 b - - 1 1', [
-        [['d4c2', 'e1d2', 'c2a3'], { type: 'cp', value: 0 }],
-      ]),
+      after: analysis('4k3/8/8/8/3n4/Q7/8/4K3 b - - 1 1', [[['d4c2', 'e1d2', 'c2a3'], { type: 'cp', value: 0 }]]),
     });
     expect(result.explanation).toBe('Allows Nc2+, forking the king and queen.');
-    expect(result.motifs).toContainEqual(
-      expect.objectContaining({ kind: 'fork', square: 'c2', role: 'refutation' }),
-    );
+    expect(result.motifs).toContainEqual(expect.objectContaining({ kind: 'fork', square: 'c2', role: 'refutation' }));
   });
 
   it('says a piece that was already attacked was left hanging', () => {
@@ -118,9 +112,7 @@ describe('Phase 5 — explanation rules (hand-set engine scores)', () => {
       winBefore: 60,
       winAfter: 20,
       before: analysis(before, [[['d3d5'], { type: 'cp', value: 100 }]]),
-      after: analysis('4k3/8/8/1b6/8/3R4/8/5K2 b - - 1 1', [
-        [['b5d3'], { type: 'cp', value: 400 }],
-      ]),
+      after: analysis('4k3/8/8/1b6/8/3R4/8/5K2 b - - 1 1', [[['b5d3'], { type: 'cp', value: 400 }]]),
     });
     expect(result.explanation).toBe('Leaves the rook on d3 hanging to Bxd3+.');
   });
@@ -169,8 +161,20 @@ describe('Phase 5 — explanation rules (hand-set engine scores)', () => {
       // From winning
       ['w', 'Inaccuracy', 400, 250, "Gives back some of White's winning advantage (+4.0 → +2.5); a4 was stronger."],
       ['w', 'Mistake', 500, 250, "Gives back much of White's winning advantage (+5.0 → +2.5); a4 was stronger."],
-      ['w', 'Blunder', 900, 250, "Gives back a large part of White's winning advantage (+9.0 → +2.5); a4 was stronger."],
-      ['w', 'Mistake', 300, 100, "Lets White's winning advantage shrink to a small edge (+3.0 → +1.0); a4 kept the win."],
+      [
+        'w',
+        'Blunder',
+        900,
+        250,
+        "Gives back a large part of White's winning advantage (+9.0 → +2.5); a4 was stronger.",
+      ],
+      [
+        'w',
+        'Mistake',
+        300,
+        100,
+        "Lets White's winning advantage shrink to a small edge (+3.0 → +1.0); a4 kept the win.",
+      ],
       ['w', 'Blunder', 400, 100, "Throws away most of White's winning advantage (+4.0 → +1.0); a4 kept the win."],
       ['w', 'Blunder', 200, 0, "Throws away White's winning advantage (+2.0 → 0.0); a4 kept it."],
       ['b', 'Blunder', 200, 0, "Throws away Black's winning advantage (−2.0 → 0.0); a6 kept it."],
@@ -188,17 +192,53 @@ describe('Phase 5 — explanation rules (hand-set engine scores)', () => {
       ['w', 'Mistake', 150, 0, "Lets White's advantage slip away (+1.5 → 0.0); a4 kept it."],
       // 6...Be6 in https://lichess.org/Bjl39T9x, a Blunder: −1.57 → +0.23, best ...Bf5
       ['b', 'Blunder', 157, -23, "Throws away Black's advantage (−1.6 → +0.2); a6 kept it."],
-      ['w', 'Blunder', 150, -100, "Turns White's advantage into the worse position (+1.5 → −1.0); a4 kept the advantage."],
-      ['w', 'Blunder', 150, -300, "Turns White's advantage into a losing position (+1.5 → −3.0); a4 kept the advantage."],
+      [
+        'w',
+        'Blunder',
+        150,
+        -100,
+        "Turns White's advantage into the worse position (+1.5 → −1.0); a4 kept the advantage.",
+      ],
+      [
+        'w',
+        'Blunder',
+        150,
+        -300,
+        "Turns White's advantage into a losing position (+1.5 → −3.0); a4 kept the advantage.",
+      ],
       // From a level position
       ['w', 'Inaccuracy', 50, -40, 'Gives the opponent the easier game (+0.5 → −0.4); a4 was stronger.'],
-      ['b', 'Mistake', 0, -150, 'Hands the opponent the advantage in a level position (0.0 → +1.5); a6 kept the balance.'],
-      ['w', 'Blunder', 0, -300, 'Turns a level position into a losing one for White (0.0 → −3.0); a4 kept the balance.'],
+      [
+        'b',
+        'Mistake',
+        0,
+        -150,
+        'Hands the opponent the advantage in a level position (0.0 → +1.5); a6 kept the balance.',
+      ],
+      [
+        'w',
+        'Blunder',
+        0,
+        -300,
+        'Turns a level position into a losing one for White (0.0 → −3.0); a4 kept the balance.',
+      ],
       // From a worse or losing position
       ['w', 'Inaccuracy', -100, -170, "Makes White's difficult position harder (−1.0 → −1.7); a4 defended better."],
       ['w', 'Blunder', -100, -400, "Turns White's difficult position into a losing one (−1.0 → −4.0); a4 held on."],
-      ['b', 'Inaccuracy', -300, -450, "Makes Black's losing position worse (+3.0 → +4.5); a6 was the toughest defence."],
-      ['w', 'Mistake', -300, -600, "Makes White's losing position much worse (−3.0 → −6.0); a4 was the toughest defence."],
+      [
+        'b',
+        'Inaccuracy',
+        -300,
+        -450,
+        "Makes Black's losing position worse (+3.0 → +4.5); a6 was the toughest defence.",
+      ],
+      [
+        'w',
+        'Mistake',
+        -300,
+        -600,
+        "Makes White's losing position much worse (−3.0 → −6.0); a4 was the toughest defence.",
+      ],
       // Miss: the opponent's mistake went unpunished
       ['w', 'Miss', 300, 50, 'Misses the win for White (+3.0 → +0.5); a4 was winning.'],
       ['b', 'Miss', 150, 0, "Lets the opponent off the hook (−1.5 → 0.0); a6 kept Black's advantage."],

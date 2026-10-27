@@ -41,9 +41,7 @@ export const ACCURACY_UNCERTAINTY_BONUS = 1;
 export function moveAccuracy(winDrop: number): number {
   if (winDrop <= 0) return 100;
   const raw =
-    103.1668100711649 * Math.exp(-0.04354415386753951 * winDrop) -
-    3.166924740191411 +
-    ACCURACY_UNCERTAINTY_BONUS;
+    103.1668100711649 * Math.exp(-0.04354415386753951 * winDrop) - 3.166924740191411 + ACCURACY_UNCERTAINTY_BONUS;
   return Math.max(0, Math.min(100, raw));
 }
 
@@ -67,8 +65,7 @@ export const LICHESS_INITIAL_CP = 15;
  * move counts. ACPL is the rounded mean of these per side.
  */
 export function centipawnLoss(beforeCp: number, afterCp: number): number {
-  const clamp = (cp: number) =>
-    Math.max(-WIN_PERCENT_CP_CEILING, Math.min(WIN_PERCENT_CP_CEILING, cp));
+  const clamp = (cp: number) => Math.max(-WIN_PERCENT_CP_CEILING, Math.min(WIN_PERCENT_CP_CEILING, cp));
   return Math.max(0, clamp(beforeCp) - clamp(afterCp));
 }
 
@@ -86,8 +83,7 @@ export function averageCentipawnLoss(
     const sign = mover === 'w' ? 1 : -1;
     losses[mover].push(centipawnLoss(sign * whiteCps[i]!, sign * whiteCps[i + 1]!));
   }
-  const mean = (xs: number[]) =>
-    xs.length > 0 ? Math.round(xs.reduce((a, v) => a + v, 0) / xs.length) : null;
+  const mean = (xs: number[]) => (xs.length > 0 ? Math.round(xs.reduce((a, v) => a + v, 0) / xs.length) : null);
   return { white: mean(losses.w), black: mean(losses.b) };
 }
 
@@ -95,8 +91,7 @@ export function averageCentipawnLoss(
 function standardDeviation(values: readonly number[]): number {
   if (values.length === 0) return 0;
   const mean = values.reduce((sum, v) => sum + v, 0) / values.length;
-  const variance =
-    values.reduce((sum, v) => sum + (v - mean) * (v - mean), 0) / values.length;
+  const variance = values.reduce((sum, v) => sum + (v - mean) * (v - mean), 0) / values.length;
   return Math.sqrt(variance);
 }
 
@@ -123,10 +118,7 @@ export interface GameAccuracyResult {
  * weighted average and the harmonic mean of its move accuracies, which pulls the result
  * down for a few very bad moves.
  */
-export function gameAccuracy(
-  whiteWins: readonly number[],
-  firstMover: Color = 'w',
-): GameAccuracyResult {
+export function gameAccuracy(whiteWins: readonly number[], firstMover: Color = 'w'): GameAccuracyResult {
   const moveCount = whiteWins.length - 1;
   if (moveCount < 1) return { white: null, black: null };
 
@@ -151,21 +143,17 @@ export function gameAccuracy(
   for (let i = 0; i < moveCount; i++) {
     const before = whiteWins[i]!;
     const after = whiteWins[i + 1]!;
-    const mover: Color =
-      i % 2 === 0 ? firstMover : firstMover === 'w' ? 'b' : 'w';
+    const mover: Color = i % 2 === 0 ? firstMover : firstMover === 'w' ? 'b' : 'w';
     const drop = mover === 'w' ? before - after : after - before;
     const window = windows[Math.min(i, windows.length - 1)]!;
     const weight = Math.max(0.5, Math.min(12, standardDeviation(window)));
     perSide[mover].push({ accuracy: moveAccuracy(drop), weight });
   }
 
-  const sideAccuracy = (
-    entries: { accuracy: number; weight: number }[],
-  ): number | null => {
+  const sideAccuracy = (entries: { accuracy: number; weight: number }[]): number | null => {
     if (entries.length === 0) return null;
     const totalWeight = entries.reduce((sum, e) => sum + e.weight, 0);
-    const weighted =
-      entries.reduce((sum, e) => sum + e.accuracy * e.weight, 0) / totalWeight;
+    const weighted = entries.reduce((sum, e) => sum + e.accuracy * e.weight, 0) / totalWeight;
     const harmonic = harmonicMean(entries.map((e) => e.accuracy))!;
     return (weighted + harmonic) / 2;
   };
@@ -232,10 +220,7 @@ export interface BotLevelEstimate {
  * The in-app bot level whose calibrated ACPL matches a side's calibration ACPL,
  * interpolated linearly in log(ACPL) between anchors. Approximate; see BOT_LEVEL_ANCHORS.
  */
-export function estimateBotLevel(
-  acpl: number | null,
-  countedMoves: number,
-): BotLevelEstimate | null {
+export function estimateBotLevel(acpl: number | null, countedMoves: number): BotLevelEstimate | null {
   if (acpl === null || countedMoves < BOT_LEVEL_MIN_COUNTED_MOVES) return null;
   const first = BOT_LEVEL_ANCHORS[0]!;
   const last = BOT_LEVEL_ANCHORS[BOT_LEVEL_ANCHORS.length - 1]!;
@@ -245,9 +230,7 @@ export function estimateBotLevel(
     const hi = BOT_LEVEL_ANCHORS[i]!;
     const lo = BOT_LEVEL_ANCHORS[i + 1]!;
     if (acpl <= hi.acpl && acpl >= lo.acpl) {
-      const t =
-        (Math.log(hi.acpl) - Math.log(acpl)) /
-        (Math.log(hi.acpl) - Math.log(lo.acpl));
+      const t = (Math.log(hi.acpl) - Math.log(acpl)) / (Math.log(hi.acpl) - Math.log(lo.acpl));
       return {
         rating: Math.round(hi.rating + t * (lo.rating - hi.rating)),
         clamped: null,

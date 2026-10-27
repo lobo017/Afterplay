@@ -64,9 +64,7 @@ export class SettingsPanel {
         <h3 class="wc-settings-sec-title" id="settings-${id}-title">${title}</h3>${headExtra}
       </div>
       <div class="wc-settings-sec-body"></div>`;
-    const after = [...this.sections.values()]
-      .filter((s) => s.order > order)
-      .sort((a, b) => a.order - b.order)[0];
+    const after = [...this.sections.values()].filter((s) => s.order > order).sort((a, b) => a.order - b.order)[0];
     if (after) this.sheet.body.insertBefore(el, after.el);
     else this.sheet.body.appendChild(el);
     this.sections.set(id, { el, order });

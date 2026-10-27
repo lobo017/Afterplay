@@ -9,12 +9,7 @@ import {
   whiteWinPercent,
 } from '../../src/review/review-game';
 import type { PositionAnalysis, ReviewedMove } from '../../src/review/types';
-import {
-  classificationFixtures,
-  isBookFen,
-  recordedLine,
-  resolveStartFen,
-} from '../helpers/review-fixtures';
+import { classificationFixtures, isBookFen, recordedLine, resolveStartFen } from '../helpers/review-fixtures';
 
 /** A fixture line whose every position was recorded, as a game tree plus its analyses. */
 function fixtureGame(id: string) {

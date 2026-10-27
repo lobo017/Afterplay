@@ -136,11 +136,7 @@ export function scoreForWhite(score: UciScore, sideToMove: Color): UciScore {
   }
   const invertedValue = score.value === 0 ? 0 : -score.value;
   const invertedBound =
-    score.bound === 'upperbound'
-      ? 'lowerbound'
-      : score.bound === 'lowerbound'
-        ? 'upperbound'
-        : undefined;
+    score.bound === 'upperbound' ? 'lowerbound' : score.bound === 'lowerbound' ? 'upperbound' : undefined;
   return {
     type: score.type,
     value: invertedValue,
@@ -200,10 +196,7 @@ export function parseUciLine(rawLine: string): UciParsedMessage | null {
   if (line.startsWith('bestmove ')) {
     const tokens = line.split(/\s+/);
     const rawBest = tokens[1] ?? '(none)';
-    const bestMove =
-      rawBest === '(none)' || rawBest === '0000' || rawBest === 'null'
-        ? null
-        : rawBest;
+    const bestMove = rawBest === '(none)' || rawBest === '0000' || rawBest === 'null' ? null : rawBest;
     let ponder: string | null = null;
     const ponderIdx = tokens.indexOf('ponder');
     if (ponderIdx !== -1 && tokens[ponderIdx + 1]) {
@@ -250,9 +243,7 @@ export function parseUciLine(rawLine: string): UciParsedMessage | null {
 }
 
 function parseOptionLine(line: string): UciOptionMessage | UciUnknownMessage {
-  const typeMatch = line.match(
-    /^option\s+name\s+(.+?)\s+type\s+(check|spin|combo|button|string)(?:\s+(.*))?$/,
-  );
+  const typeMatch = line.match(/^option\s+name\s+(.+?)\s+type\s+(check|spin|combo|button|string)(?:\s+(.*))?$/);
   if (!typeMatch) {
     return { type: 'unknown', raw: line };
   }
@@ -314,9 +305,7 @@ function parseOptionLine(line: string): UciOptionMessage | UciUnknownMessage {
   return msg;
 }
 
-function parseInfoLine(
-  line: string,
-): UciInfoStringMessage | UciInfoSearchMessage {
+function parseInfoLine(line: string): UciInfoStringMessage | UciInfoSearchMessage {
   const rest = line.slice(5).trim();
   if (rest.startsWith('string ')) {
     return {
@@ -413,10 +402,7 @@ function parseInfoLine(
             type: kind,
             value: rawVal,
           };
-          if (
-            tokens[i] === 'upperbound' ||
-            tokens[i] === 'lowerbound'
-          ) {
+          if (tokens[i] === 'upperbound' || tokens[i] === 'lowerbound') {
             score.bound = tokens[i] as 'upperbound' | 'lowerbound';
             i += 1;
           }

@@ -1,13 +1,6 @@
 import type { MoveClassification } from '../core/game-tree';
 import type { UciScore } from '../engine/uci-parser';
-import {
-  applyUci,
-  captureGain,
-  captureThreats,
-  capturedValue,
-  parseSquares,
-  passTurnFen,
-} from './board';
+import { applyUci, captureGain, captureThreats, capturedValue, parseSquares, passTurnFen } from './board';
 import { winPercentFromScore } from './formulas';
 import type { PositionAnalysis } from './types';
 
@@ -94,9 +87,7 @@ function sameScore(a: UciScore, b: UciScore): boolean {
 }
 
 function shortMateFor(score: UciScore | null | undefined): boolean {
-  return Boolean(
-    score && score.type === 'mate' && score.value > 0 && score.value <= MATE_HORIZON_MOVES,
-  );
+  return Boolean(score && score.type === 'mate' && score.value > 0 && score.value <= MATE_HORIZON_MOVES);
 }
 
 /**
@@ -108,8 +99,7 @@ function shortMateFor(score: UciScore | null | undefined): boolean {
 export function materialSacrifice(fenBefore: string, uci: string): number {
   const applied = applyUci(fenBefore, uci);
   if (!applied) return 0;
-  const bestGain = (fen: string | null) =>
-    fen ? Math.max(0, ...captureThreats(fen).map((t) => t.gain)) : 0;
+  const bestGain = (fen: string | null) => (fen ? Math.max(0, ...captureThreats(fen).map((t) => t.gain)) : 0);
   const lossAfter = bestGain(applied.after);
   const pendingBefore = bestGain(passTurnFen(fenBefore));
   return lossAfter - capturedValue(applied.move) - pendingBefore;
@@ -157,12 +147,8 @@ export function classifyMove(input: ClassifyInput): ClassifyResult | null {
   const winDrop = Math.max(0, winBefore - winAfter);
   const second = before.lines[1];
 
-  const mateLost =
-    shortMateFor(scoreBefore) && after.terminal !== 'checkmate' && !shortMateFor(scoreAfter);
-  const mateCreated =
-    !after.terminal &&
-    shortMateFor(after.lines[0]?.score) &&
-    !shortMateFor(negateScore(scoreBefore));
+  const mateLost = shortMateFor(scoreBefore) && after.terminal !== 'checkmate' && !shortMateFor(scoreAfter);
+  const mateCreated = !after.terminal && shortMateFor(after.lines[0]?.score) && !shortMateFor(negateScore(scoreBefore));
 
   const base = { winBefore, winAfter, winDrop, scoreBefore, scoreAfter, mateLost, mateCreated };
 
@@ -227,12 +213,7 @@ function isRecapture(input: ClassifyInput): boolean {
   return Boolean(current?.move.isCapture && current.move.to === prev.move.to);
 }
 
-function isMiss(
-  opponentBefore: PositionAnalysis,
-  winBefore: number,
-  winAfter: number,
-  winDrop: number,
-): boolean {
+function isMiss(opponentBefore: PositionAnalysis, winBefore: number, winAfter: number, winDrop: number): boolean {
   const opponentBest = opponentBefore.lines[0];
   if (!opponentBest) return false;
   // Mover's win% before the opponent's error, and what that error handed over

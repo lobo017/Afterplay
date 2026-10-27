@@ -105,7 +105,12 @@ export async function launchWithExtension(options: LaunchOptions = {}): Promise<
     const req = route.request();
     const url = req.url();
     // The site under both loopback names (the extension delivers to either)
-    if (url.startsWith(SITE_URL) || url.startsWith(SITE_URL_LOCALHOST) || url.startsWith('chrome-extension://') || url.startsWith('data:')) {
+    if (
+      url.startsWith(SITE_URL) ||
+      url.startsWith(SITE_URL_LOCALHOST) ||
+      url.startsWith('chrome-extension://') ||
+      url.startsWith('data:')
+    ) {
       await route.continue();
       return;
     }
@@ -131,12 +136,16 @@ export async function launchWithExtension(options: LaunchOptions = {}): Promise<
   const browser = context.browser();
   if (!browser) throw new Error('No browser handle for CDP');
   const cdp = await browser.newBrowserCDPSession();
-  const { id: extensionId } = (await cdp.send('Extensions.loadUnpacked' as never, { path: EXTENSION_DIR } as never)) as {
+  const { id: extensionId } = (await cdp.send(
+    'Extensions.loadUnpacked' as never,
+    { path: EXTENSION_DIR } as never,
+  )) as {
     id: string;
   };
   const isOurs = (w: Worker) => w.url().startsWith(`chrome-extension://${extensionId}/`);
   const worker =
-    context.serviceWorkers().find(isOurs) ?? (await context.waitForEvent('serviceworker', { predicate: isOurs, timeout: 15_000 }));
+    context.serviceWorkers().find(isOurs) ??
+    (await context.waitForEvent('serviceworker', { predicate: isOurs, timeout: 15_000 }));
   // onInstalled has registered the bridge on the default site URL
   await expect
     .poll(
@@ -175,7 +184,9 @@ export async function badgeText(worker: Worker): Promise<string> {
  */
 export async function openPopup(session: ExtensionSession, debugTab?: number): Promise<Page> {
   const page = await session.context.newPage();
-  await page.goto(`chrome-extension://${session.extensionId}/popup.html${debugTab !== undefined ? `?tab=${debugTab}` : ''}`);
+  await page.goto(
+    `chrome-extension://${session.extensionId}/popup.html${debugTab !== undefined ? `?tab=${debugTab}` : ''}`,
+  );
   await expect(page.locator('body')).toHaveAttribute('data-loaded', 'true');
   return page;
 }

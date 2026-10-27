@@ -31,8 +31,7 @@ export interface AlternativeInput {
 }
 
 export type AlternativeVerdict =
-  | { accepted: true; reason: 'mate' | 'forced-mate' | 'decisive' | 'as-good' }
-  | { accepted: false };
+  { accepted: true; reason: 'mate' | 'forced-mate' | 'decisive' | 'as-good' } | { accepted: false };
 
 /**
  * Whether a move other than the expected one also solves the puzzle: it mates, or the engine

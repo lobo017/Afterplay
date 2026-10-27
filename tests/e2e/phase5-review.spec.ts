@@ -157,9 +157,7 @@ test.describe('Phase 5 — Game review', () => {
     console.log(
       `[review] sample game: ${review.moves.length} moves, accuracy W ${review.white.accuracy?.toFixed(1)} / B ${review.black.accuracy?.toFixed(1)}, long tasks: ${JSON.stringify(longTasks)}`,
     );
-    console.log(
-      `[review] classes: ${review.moves.map((m) => `${m.san}:${m.classification}`).join(' ')}`,
-    );
+    console.log(`[review] classes: ${review.moves.map((m) => `${m.san}:${m.classification}`).join(' ')}`);
 
     // Every move of the 33-ply game is classified
     expect(review.complete).toBe(true);
@@ -177,7 +175,9 @@ test.describe('Phase 5 — Game review', () => {
       (m) => m.color === 'b' && ['Inaccuracy', 'Mistake', 'Blunder', 'Miss'].includes(m.classification),
     );
     expect(blackErrors.length).toBeGreaterThanOrEqual(1);
-    for (const m of review.moves.filter((x) => ['Inaccuracy', 'Mistake', 'Blunder', 'Miss'].includes(x.classification))) {
+    for (const m of review.moves.filter((x) =>
+      ['Inaccuracy', 'Mistake', 'Blunder', 'Miss'].includes(x.classification),
+    )) {
       expect(m.explanation, `${m.san} explanation`).toBeTruthy();
     }
     expect(review.white.accuracy).not.toBeNull();
@@ -271,7 +271,9 @@ test.describe('Phase 5 — Game review', () => {
     const shifts = await stopLayoutShiftRecorder(page);
     const summary = summarizeShiftSources(shifts);
     for (const s of summary) {
-      console.log(`[layout-shift] ${s.count}× ${s.node} prev=${JSON.stringify(s.example.previousRect)} curr=${JSON.stringify(s.example.currentRect)}`);
+      console.log(
+        `[layout-shift] ${s.count}× ${s.node} prev=${JSON.stringify(s.example.previousRect)} curr=${JSON.stringify(s.example.currentRect)}`,
+      );
     }
     expect((await currentNode(page)).ply).toBe(0);
     expect(await page.evaluate(() => window.scrollY)).toBe(scrollBefore);
@@ -279,9 +281,7 @@ test.describe('Phase 5 — Game review', () => {
     expect(shifts.length).toBe(0);
   });
 
-  test('Black-to-move positions reached through move history keep the right sign everywhere', async ({
-    page,
-  }) => {
+  test('Black-to-move positions reached through move history keep the right sign everywhere', async ({ page }) => {
     test.setTimeout(120_000);
     await openAnalysis(page);
     await page.evaluate((pgn) => window.__wizardChessAnalysis!.controller.importPgn(pgn), QUEEN_BLUNDER_PGN);
@@ -320,9 +320,7 @@ test.describe('Phase 5 — Game review', () => {
     expect(pgn).toMatch(/Qxe5\+ \$4 \{ \[%eval -\d+\.\d\d,\d+\]/);
   });
 
-  test('review tools: retry the mistake, show the refutation, export, play vs bot here', async ({
-    page,
-  }) => {
+  test('review tools: retry the mistake, show the refutation, export, play vs bot here', async ({ page }) => {
     test.setTimeout(150_000);
     await openAnalysis(page);
     await page.evaluate((pgn) => window.__wizardChessAnalysis!.controller.importPgn(pgn), QUEEN_BLUNDER_PGN);
@@ -346,9 +344,7 @@ test.describe('Phase 5 — Game review', () => {
     // The game move again: refused, and the game itself is untouched
     await page.getByTestId('square-h5').click();
     await page.getByTestId('square-e5').click();
-    await expect(page.getByTestId('review-card-text')).toHaveText(
-      'Qxe5+ is the move from the game. Try another one.',
-    );
+    await expect(page.getByTestId('review-card-text')).toHaveText('Qxe5+ is the move from the game. Try another one.');
     expect((await currentNode(page)).id).toBe(parent.id);
     expect((await currentNode(page)).mainLineLength).toBe(6);
 
@@ -429,9 +425,7 @@ test.describe('Phase 5 — Game review', () => {
     expect(play.flipped).toBe(false);
   });
 
-  test('reviewing an imported Lichess analysis replaces it: one consistent annotation per move', async ({
-    page,
-  }) => {
+  test('reviewing an imported Lichess analysis replaces it: one consistent annotation per move', async ({ page }) => {
     test.setTimeout(150_000);
     const fixture = JSON.parse(
       fs.readFileSync(path.join('tests', 'fixtures', 'review', 'lichess-Bjl39T9x.json'), 'utf8'),
@@ -439,11 +433,12 @@ test.describe('Phase 5 — Game review', () => {
     await openAnalysis(page);
     await page.evaluate((pgn) => window.__wizardChessAnalysis!.controller.importPgn(pgn), fixture.pgn);
     // Before the review, the move list shows Lichess's ?! / ? / ?? and evals
-    const before = await page.evaluate(() =>
-      window.__wizardChessAnalysis!.controller
-        .getGameTree()
-        .getMainLine()
-        .filter((n) => n.nags.length > 0).length,
+    const before = await page.evaluate(
+      () =>
+        window
+          .__wizardChessAnalysis!.controller.getGameTree()
+          .getMainLine()
+          .filter((n) => n.nags.length > 0).length,
     );
     expect(before).toBeGreaterThan(10);
 
@@ -451,9 +446,7 @@ test.describe('Phase 5 — Game review', () => {
     await expect(page.getByTestId('review-panel')).toHaveAttribute('data-state', 'done', {
       timeout: 90_000,
     });
-    await expect(page.getByTestId('review-status-tooltip')).toContainText(
-      /replaced \d+ earlier engine annotations/,
-    );
+    await expect(page.getByTestId('review-status-tooltip')).toContainText(/replaced \d+ earlier engine annotations/);
 
     const state = await page.evaluate(() => {
       const tree = window.__wizardChessAnalysis!.controller.getGameTree();
@@ -473,7 +466,10 @@ test.describe('Phase 5 — Game review', () => {
     // and every move carries the app's own class
     expect(state.moves).toHaveLength(46);
     for (const [i, node] of state.main.entries()) {
-      expect(node.nags.filter((n) => n >= 1 && n <= 6), `ply ${i + 1}`).toEqual([]);
+      expect(
+        node.nags.filter((n) => n >= 1 && n <= 6),
+        `ply ${i + 1}`,
+      ).toEqual([]);
       expect(node.comment).not.toMatch(/was best|Checkmate is now unavoidable/);
       expect(node.siblings, `ply ${i + 1}`).toBe(1);
       expect(node.classification).toBe(state.moves[i]!.classification);
@@ -493,7 +489,9 @@ test.describe('Phase 5 — Game review', () => {
     expect(pgn).toContain('[Annotator "Wizard\'s Chess review');
     const exported = await page.evaluate((text) => {
       const tree = window.__wizardChessCore!.parsePgn(text);
-      return tree.getMainLine().map((n) => ({ nags: n.nags, hasEval: Boolean(n.eval), reviews: (n.comment.match(/Review:/g) ?? []).length }));
+      return tree
+        .getMainLine()
+        .map((n) => ({ nags: n.nags, hasEval: Boolean(n.eval), reviews: (n.comment.match(/Review:/g) ?? []).length }));
     }, pgn);
     const nagFor: Record<string, number | undefined> = {
       Brilliant: 3,
@@ -530,9 +528,7 @@ test.describe('Phase 5 — Game review', () => {
     expect(review.analyzed).toBeGreaterThanOrEqual(4);
     expect(review.analyzed).toBeLessThan(82);
     expect(review.moves.length).toBe(review.analyzed - 1);
-    await expect(page.locator('[data-testid="analysis-move-tree"] .wc-tree-class')).toHaveCount(
-      review.moves.length,
-    );
+    await expect(page.locator('[data-testid="analysis-move-tree"] .wc-tree-class')).toHaveCount(review.moves.length);
     await expect(page.getByTestId('btn-review-export')).toBeEnabled();
     await expect(page.getByTestId('btn-review-start')).toBeEnabled();
 
@@ -897,7 +893,9 @@ test.describe('Phase 5 — Review panel on a phone', () => {
       expect(box.x).toBeGreaterThanOrEqual(0);
       expect(box.x + box.width).toBeLessThanOrEqual(390);
     }
-    await page.getByTestId('review-panel').screenshot({ path: path.join(SCREENSHOT_DIR, 'phone-formulas-tooltip.png') });
+    await page
+      .getByTestId('review-panel')
+      .screenshot({ path: path.join(SCREENSHOT_DIR, 'phone-formulas-tooltip.png') });
     await info.tap();
     await expect(formulas).toBeHidden();
     await expect(info).toHaveAttribute('aria-expanded', 'false');

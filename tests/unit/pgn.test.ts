@@ -1,10 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  parseCommentAnnotations,
-  parsePgn,
-  parsePgnGames,
-  writePgn,
-} from '../../src/core/pgn';
+import { parseCommentAnnotations, parsePgn, parsePgnGames, writePgn } from '../../src/core/pgn';
 
 /**
  * Helper that verifies a PGN fixture parses cleanly, serializes via `writePgn`,
@@ -50,14 +45,7 @@ describe('Phase 1 — Adversarial PGN Parser, Writer & Round-Trip Suite', () => 
 
     expect(firstTree.root.comment).toBe('Root game introduction before move 1.');
     const mainLine = firstTree.getMainLine();
-    expect(mainLine.map((n) => n.san)).toEqual([
-      'e4',
-      'e5',
-      'Nf3',
-      'Nc6',
-      'Bb5',
-      'a6',
-    ]);
+    expect(mainLine.map((n) => n.san)).toEqual(['e4', 'e5', 'Nf3', 'Nc6', 'Bb5', 'a6']);
 
     const e4Node = mainLine[0]!;
     expect(e4Node.preComment).toBe("White opens with the King's Pawn");
@@ -112,20 +100,11 @@ describe('Phase 1 — Adversarial PGN Parser, Writer & Round-Trip Suite', () => 
 
     const { firstTree } = assertCanonicalRoundTrip(pgn);
     const mainLine = firstTree.getMainLine();
-    expect(mainLine.map((n) => n.san)).toEqual([
-      'e4',
-      'e5',
-      'Nf3',
-      'Nc6',
-      'Bc4',
-      'Bc5',
-    ]);
+    expect(mainLine.map((n) => n.san)).toEqual(['e4', 'e5', 'Nf3', 'Nc6', 'Bc4', 'Bc5']);
     expect(mainLine[0]!.comment).toBe(
       'This comment contains (1. d4 d5 (2. c4) 1-0) and [Event "Fake"] and [sic] and ; semicolon and $14! Second consecutive comment on 1. e4',
     );
-    expect(mainLine[1]!.comment).toBe(
-      'Rest-of-line semicolon comment after 1... e5',
-    );
+    expect(mainLine[1]!.comment).toBe('Rest-of-line semicolon comment after 1... e5');
     const petrovVar = mainLine[2]!.children[1]!;
     expect(petrovVar.san).toBe('Nf6');
     expect(petrovVar.comment).toBe('Petrov Defense semicolon comment');
@@ -178,9 +157,7 @@ describe('Phase 1 — Adversarial PGN Parser, Writer & Round-Trip Suite', () => 
     expect(main[4]!.comment).toBe('Forced mate sequence');
 
     // Direct unit check on parseCommentAnnotations
-    const direct = parseCommentAnnotations(
-      '{ [%eval -1.25,20] [%cal Bb1c3,Yf3g5] [%csl Bc3] Knight outpost }',
-    );
+    const direct = parseCommentAnnotations('{ [%eval -1.25,20] [%cal Bb1c3,Yf3g5] [%csl Bc3] Knight outpost }');
     expect(direct.eval).toEqual({ cp: -125, depth: 20 });
     expect(direct.arrows).toHaveLength(2);
     expect(direct.highlights).toEqual([{ color: 'B', square: 'c3' }]);
@@ -254,20 +231,10 @@ describe('Phase 1 — Adversarial PGN Parser, Writer & Round-Trip Suite', () => 
 
     const { firstTree } = assertCanonicalRoundTrip(promoPgn);
     const main = firstTree.getMainLine();
-    expect(main.map((n) => n.san)).toEqual([
-      'exd6',
-      'exd6',
-      'bxa8=Q+',
-      'Ke7',
-      'gxh8=Q',
-    ]);
+    expect(main.map((n) => n.san)).toEqual(['exd6', 'exd6', 'bxa8=Q+', 'Ke7', 'gxh8=Q']);
 
     const afterExd6 = main[1]!;
-    expect(afterExd6.children.map((c) => c.san)).toEqual([
-      'bxa8=Q+',
-      'bxa8=R+',
-      'g8=N',
-    ]);
+    expect(afterExd6.children.map((c) => c.san)).toEqual(['bxa8=Q+', 'bxa8=R+', 'g8=N']);
     const underPromoBranch = afterExd6.children[1]!;
     expect(underPromoBranch.children[0]!.children[0]!.san).toBe('gxh8=B');
   });
@@ -326,13 +293,9 @@ describe('Phase 1 — Adversarial PGN Parser, Writer & Round-Trip Suite', () => 
     expect(firstTree.isChess960()).toBe(true);
     const main = firstTree.getMainLine();
     expect(main.map((n) => n.san)).toEqual(['O-O', 'O-O', 'd4', 'd5']);
-    expect(main[0]!.fen).toBe(
-      '1r3kr1/pppppppp/8/8/8/8/PPPPPPPP/1R3RK1 b gb - 1 1',
-    );
+    expect(main[0]!.fen).toBe('1r3kr1/pppppppp/8/8/8/8/PPPPPPPP/1R3RK1 b gb - 1 1');
     expect(firstTree.root.children[1]!.san).toBe('O-O-O');
-    expect(firstTree.root.children[1]!.fen).toBe(
-      '1r3kr1/pppppppp/8/8/8/8/PPPPPPPP/2KR2R1 b gb - 1 1',
-    );
+    expect(firstTree.root.children[1]!.fen).toBe('1r3kr1/pppppppp/8/8/8/8/PPPPPPPP/2KR2R1 b gb - 1 1');
   });
 
   it('Fixture 8: multi-game PGN stream with bracketed text inside comments', () => {
@@ -361,22 +324,9 @@ describe('Phase 1 — Adversarial PGN Parser, Writer & Round-Trip Suite', () => 
     const games = parsePgnGames(multiPgn);
     expect(games).toHaveLength(2);
     expect(games[0]!.getHeaders().Event).toBe('Game One');
-    expect(games[0]!.getMainLine().map((n) => n.san)).toEqual([
-      'e4',
-      'e5',
-      'Qh5',
-      'Nc6',
-      'Bc4',
-      'Nf6',
-      'Qxf7#',
-    ]);
+    expect(games[0]!.getMainLine().map((n) => n.san)).toEqual(['e4', 'e5', 'Qh5', 'Nc6', 'Bc4', 'Nf6', 'Qxf7#']);
     expect(games[1]!.getHeaders().Event).toBe('Game Two');
-    expect(games[1]!.getMainLine().map((n) => n.san)).toEqual([
-      'f3',
-      'e5',
-      'g4',
-      'Qh4#',
-    ]);
+    expect(games[1]!.getMainLine().map((n) => n.san)).toEqual(['f3', 'e5', 'g4', 'Qh4#']);
   });
 
   it('Fixture 9: three-queen double disambiguation (Qh4e1), multiple NAGs ($1 $14 $146), and symbolicMoveSuffixes round-trip', () => {
@@ -437,19 +387,12 @@ describe('Phase 1 — Adversarial PGN Parser, Writer & Round-Trip Suite', () => 
 
   it('Fixture 11: CRLF line endings, no blank line after headers, padded header brackets, and missing result token at EOF', () => {
     const rawCrlfPgn =
-      '[  Event   "Clipboard Paste"  ]\r\n' +
-      '[Site "Forum"]\r\n' +
-      '1. e4 e5 2. Nf3 Nc6 (2... Nf6 3. Nxe5)';
+      '[  Event   "Clipboard Paste"  ]\r\n' + '[Site "Forum"]\r\n' + '1. e4 e5 2. Nf3 Nc6 (2... Nf6 3. Nxe5)';
 
     const { firstTree } = assertCanonicalRoundTrip(rawCrlfPgn);
     expect(firstTree.getHeaders().Event).toBe('Clipboard Paste');
     expect(firstTree.result).toBe('*');
-    expect(firstTree.getMainLine().map((n) => n.san)).toEqual([
-      'e4',
-      'e5',
-      'Nf3',
-      'Nc6',
-    ]);
+    expect(firstTree.getMainLine().map((n) => n.san)).toEqual(['e4', 'e5', 'Nf3', 'Nc6']);
     expect(firstTree.getMainLine()[2]!.children[1]!.san).toBe('Nf6');
   });
 });

@@ -124,10 +124,7 @@ export function evalAnnotation(analysis: PositionAnalysis): PgnEvalAnnotation | 
 }
 
 function emptyCounts(): Record<MoveClassification, number> {
-  return Object.fromEntries(ALL_CLASSIFICATIONS.map((c) => [c, 0])) as Record<
-    MoveClassification,
-    number
-  >;
+  return Object.fromEntries(ALL_CLASSIFICATIONS.map((c) => [c, 0])) as Record<MoveClassification, number>;
 }
 
 function legalMoveCount(fen: string): number {
@@ -180,10 +177,7 @@ export function reviewMoveInput(
     ply,
     before,
     after,
-    previous:
-      prevPly && prevBefore
-        ? { fenBefore: prevPly.fenBefore, uci: prevPly.uci, before: prevBefore }
-        : null,
+    previous: prevPly && prevBefore ? { fenBefore: prevPly.fenBefore, uci: prevPly.uci, before: prevBefore } : null,
     isBook,
   };
 }
@@ -204,8 +198,7 @@ export function analyzeMove(input: ReviewMoveInput): MoveAnalysis {
     isBook: input.isBook,
   });
   if (!result) return { move: null, suspicious: false };
-  const suspicious =
-    VERIFY_CLASSES.has(result.classification) || result.mateLost || result.mateCreated;
+  const suspicious = VERIFY_CLASSES.has(result.classification) || result.mateLost || result.mateCreated;
 
   const best = before.lines[0];
   const bestMoveUci = best?.pv[0] ?? null;
@@ -272,11 +265,7 @@ export function analyzeMove(input: ReviewMoveInput): MoveAnalysis {
   return { move, suspicious };
 }
 
-function summarize(
-  moves: readonly ReviewedMove[],
-  color: Color,
-  accuracy: number | null,
-): SideReviewSummary {
+function summarize(moves: readonly ReviewedMove[], color: Color, accuracy: number | null): SideReviewSummary {
   const counts = emptyCounts();
   const losses: number[] = [];
   const calibrationLosses: number[] = [];
@@ -459,9 +448,7 @@ export function buildAnnotatedPgn(
     const before = positions[move.ply - 1];
     const bestLine = before?.lines[0]?.pv ?? [];
     if (
-      (move.classification === 'Mistake' ||
-        move.classification === 'Blunder' ||
-        move.classification === 'Miss') &&
+      (move.classification === 'Mistake' || move.classification === 'Blunder' || move.classification === 'Miss') &&
       node.parentId &&
       bestLine.length > 0 &&
       bestLine[0] !== move.uci

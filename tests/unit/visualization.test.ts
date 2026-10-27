@@ -68,7 +68,10 @@ describe('Phase 7 — coordinate rounds', () => {
 });
 
 describe('Phase 7 — blindfold drills', () => {
-  const ITALIAN = { label: 'Italian Game', moves: ['e4', 'e5', 'Nf3', 'Nc6', 'Bc4', 'Bc5', 'c3', 'Nf6', 'd4', 'exd4', 'cxd4', 'Bb4+'] };
+  const ITALIAN = {
+    label: 'Italian Game',
+    moves: ['e4', 'e5', 'Nf3', 'Nc6', 'Bc4', 'Bc5', 'c3', 'Nf6', 'd4', 'exd4', 'cxd4', 'Bb4+'],
+  };
 
   it('reads out the first plies of a line, as spoken moves', () => {
     const drill = buildBlindfoldDrill(ITALIAN, 6, seededRandom(1));
@@ -86,11 +89,19 @@ describe('Phase 7 — blindfold drills', () => {
   });
 
   it('says captures, castling and promotion', () => {
-    const drill = buildBlindfoldDrill({ label: 'x', moves: ['e4', 'd5', 'exd5', 'Nf6', 'Nf3', 'Nxd5', 'Be2', 'e6', 'O-O'] }, 9, seededRandom(1));
+    const drill = buildBlindfoldDrill(
+      { label: 'x', moves: ['e4', 'd5', 'exd5', 'Nf6', 'Nf3', 'Nxd5', 'Be2', 'e6', 'O-O'] },
+      9,
+      seededRandom(1),
+    );
     expect(drill.moves[2]!.spoken).toBe('Pawn takes on d5');
     expect(drill.moves[5]!.spoken).toBe('Knight takes on d5');
     expect(drill.moves[8]!.spoken).toBe('Castles kingside');
-    const promo = buildBlindfoldDrill({ label: 'p', moves: ['h4', 'g5', 'hxg5', 'h5', 'g6', 'h4', 'g7', 'h3', 'gxh8=Q'] }, 9, seededRandom(1));
+    const promo = buildBlindfoldDrill(
+      { label: 'p', moves: ['h4', 'g5', 'hxg5', 'h5', 'g6', 'h4', 'g7', 'h3', 'gxh8=Q'] },
+      9,
+      seededRandom(1),
+    );
     expect(promo.moves[8]!.spoken).toBe('Pawn takes on h8, promotes to queen');
   });
 
@@ -102,7 +113,8 @@ describe('Phase 7 — blindfold drills', () => {
       const asked = new Set<string>();
       for (const q of drill.questions) {
         expect(q.squares.length).toBeGreaterThan(0);
-        for (const s of q.squares) expect(board.get(s), `${q.text} ${s}`).toMatchObject({ color: q.color, type: q.piece });
+        for (const s of q.squares)
+          expect(board.get(s), `${q.text} ${s}`).toMatchObject({ color: q.color, type: q.piece });
         expect(q.piece).not.toBe('p');
         expect(q.text).toMatch(/^Where is the (white|black) (king|queen|rook|bishop|knight)\?$/);
         asked.add(`${q.color}${q.piece}`);
@@ -154,7 +166,9 @@ describe('Phase 7 — blindfold drills', () => {
   });
 
   it('the sample game is long enough for the top level', () => {
-    const sample = parsePgn(SAMPLE_GAME_PGN).getMainLine().map((n) => n.san);
+    const sample = parsePgn(SAMPLE_GAME_PGN)
+      .getMainLine()
+      .map((n) => n.san);
     expect(sample.length).toBeGreaterThanOrEqual(30);
     expect(() => buildBlindfoldDrill({ label: 'Opera', moves: sample }, sample.length, seededRandom(3))).not.toThrow();
   });
@@ -186,7 +200,11 @@ describe('Phase 7 — guess the move', () => {
     expect(guessPositions(short, 'w').map((p) => p.label)).toEqual(['1.e4', '2.Nf3', '3.Bb5']);
     expect(guessPositions(short, 'b').map((p) => p.label)).toEqual(['1...e5', '2...Nc6', '3...a6']);
     // Four moves of mine: the first is left out
-    expect(guessPositions(parsePgn('1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 *'), 'w').map((p) => p.label)).toEqual(['2.Nf3', '3.Bb5', '4.Ba4']);
+    expect(guessPositions(parsePgn('1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 *'), 'w').map((p) => p.label)).toEqual([
+      '2.Nf3',
+      '3.Bb5',
+      '4.Ba4',
+    ]);
     expect(guessPositions(parsePgn('1. e4 *'), 'w').map((p) => p.label)).toEqual(['1.e4']);
     expect(guessPositions(parsePgn('1. e4 *'), 'b')).toEqual([]);
   });
@@ -207,7 +225,9 @@ describe('Phase 7 — guess the move', () => {
     expect(judgeGuess(pos, 'b1c3')).toBe('best');
     expect(judgeGuess(pos, 'd2d4')).toBe('other');
     // Castling is a king move of two squares, and the played move matches it
-    const castle = guessPositions(parsePgn('1. e4 e5 2. Nf3 Nc6 3. Bc4 Bc5 4. O-O Nf6 *'), 'w').find((p) => p.san === 'O-O')!;
+    const castle = guessPositions(parsePgn('1. e4 e5 2. Nf3 Nc6 3. Bc4 Bc5 4. O-O Nf6 *'), 'w').find(
+      (p) => p.san === 'O-O',
+    )!;
     expect(judgeGuess(castle, 'e1g1')).toBe('played');
   });
 

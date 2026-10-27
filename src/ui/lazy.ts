@@ -49,7 +49,8 @@ export function lazyProxy<T extends object>(source: () => T): T {
 
 /** Runs `task` in a browser idle moment (or after `timeoutMs` at the latest); a plain timer where idle callbacks don't exist. */
 export function whenIdle(task: () => void, timeoutMs: number): void {
-  const ric = (globalThis as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number }).requestIdleCallback;
+  const ric = (globalThis as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number })
+    .requestIdleCallback;
   if (typeof ric === 'function') ric(task, { timeout: timeoutMs });
   else setTimeout(task, Math.min(timeoutMs, 50));
 }

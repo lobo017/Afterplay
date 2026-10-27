@@ -14,16 +14,9 @@ import {
 import { RulesAdapter } from '../../src/core/rules';
 import type { EngineLine } from '../../src/engine/cache';
 
-function makeLine(
-  multipv: number,
-  evalCp: number,
-  pv: string[],
-  mate?: number,
-): EngineLine {
+function makeLine(multipv: number, evalCp: number, pv: string[], mate?: number): EngineLine {
   const score =
-    mate !== undefined
-      ? ({ type: 'mate', value: mate } as const)
-      : ({ type: 'cp', value: evalCp } as const);
+    mate !== undefined ? ({ type: 'mate', value: mate } as const) : ({ type: 'cp', value: evalCp } as const);
   return {
     multipv,
     depth: 12,
@@ -40,18 +33,8 @@ function makeLine(
 
 describe('Phase 2 — Human-Like Playing Bot (400–2400 Elo & Style Presets)', () => {
   it('defines all five rating tiers (Novice, Casual, Club, Expert, Master) across 400–2400 and all three style presets', () => {
-    expect(Object.keys(BOT_TIERS)).toEqual([
-      'Novice',
-      'Casual',
-      'Club',
-      'Expert',
-      'Master',
-    ]);
-    expect(Object.keys(BOT_STYLE_PRESETS)).toEqual([
-      'aggressive',
-      'solid',
-      'gambiteer',
-    ]);
+    expect(Object.keys(BOT_TIERS)).toEqual(['Novice', 'Casual', 'Club', 'Expert', 'Master']);
+    expect(Object.keys(BOT_STYLE_PRESETS)).toEqual(['aggressive', 'solid', 'gambiteer']);
 
     expect(clampBotRating(100)).toBe(400);
     expect(clampBotRating(3000)).toBe(2400);
@@ -66,12 +49,8 @@ describe('Phase 2 — Human-Like Playing Bot (400–2400 Elo & Style Presets)', 
     const noviceParams = computeBotEngineParams('Novice', 'solid');
     const masterParams = computeBotEngineParams('Master', 'solid');
     expect(noviceParams.skillLevel).toBeLessThan(masterParams.skillLevel);
-    expect(noviceParams.temperatureCp).toBeGreaterThan(
-      masterParams.temperatureCp,
-    );
-    expect(noviceParams.maxPlausibleDropCp).toBeGreaterThan(
-      masterParams.maxPlausibleDropCp,
-    );
+    expect(noviceParams.temperatureCp).toBeGreaterThan(masterParams.temperatureCp);
+    expect(noviceParams.maxPlausibleDropCp).toBeGreaterThan(masterParams.maxPlausibleDropCp);
   });
 
   it('weights candidate moves by centipawn drop so weak bots make plausible mistakes while suppressing catastrophic queen blunders', () => {
@@ -80,8 +59,7 @@ describe('Phase 2 — Human-Like Playing Bot (400–2400 Elo & Style Presets)', 
     // 2. Plausible inaccuracy: Bc4 (-25 cp, drop = 65 cp)
     // 3. Plausible mistake: a3 (-60 cp, drop = 100 cp)
     // 4. Catastrophic Queen blunder: Qg4 (-850 cp, drop = 890 cp)
-    const fen =
-      'r1bqkbnr/pppp1ppp/2n5/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 2 3';
+    const fen = 'r1bqkbnr/pppp1ppp/2n5/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 2 3';
     const lines: EngineLine[] = [
       makeLine(1, 40, ['g1f3', 'g8f6']),
       makeLine(2, -25, ['f1c4', 'g8f6']),
@@ -97,14 +75,10 @@ describe('Phase 2 — Human-Like Playing Bot (400–2400 Elo & Style Presets)', 
       rng: () => 0.75, // Sample into secondary plausible lines
     });
 
-    const nf3Prob =
-      noviceDecision.candidates.find((c) => c.san === 'Nf3')?.probability ?? 0;
-    const bc4Prob =
-      noviceDecision.candidates.find((c) => c.san === 'Bc4')?.probability ?? 0;
-    const a3Prob =
-      noviceDecision.candidates.find((c) => c.san === 'a3')?.probability ?? 0;
-    const qg4Prob =
-      noviceDecision.candidates.find((c) => c.san === 'Qg4')?.probability ?? 0;
+    const nf3Prob = noviceDecision.candidates.find((c) => c.san === 'Nf3')?.probability ?? 0;
+    const bc4Prob = noviceDecision.candidates.find((c) => c.san === 'Bc4')?.probability ?? 0;
+    const a3Prob = noviceDecision.candidates.find((c) => c.san === 'a3')?.probability ?? 0;
+    const qg4Prob = noviceDecision.candidates.find((c) => c.san === 'Qg4')?.probability ?? 0;
 
     // Plausible inaccuracy/mistake have substantial human-like weight (>15% combined)
     expect(bc4Prob + a3Prob).toBeGreaterThan(0.15);
@@ -120,16 +94,14 @@ describe('Phase 2 — Human-Like Playing Bot (400–2400 Elo & Style Presets)', 
       style: 'solid',
       rng: () => 0.9,
     });
-    const masterNf3Prob =
-      masterDecision.candidates.find((c) => c.san === 'Nf3')?.probability ?? 0;
+    const masterNf3Prob = masterDecision.candidates.find((c) => c.san === 'Nf3')?.probability ?? 0;
     expect(masterNf3Prob).toBeGreaterThan(0.99);
     expect(masterDecision.san).toBe('Nf3');
   });
 
   it('applies style presets (aggressive, solid, gambiteer) to shift move preferences among close candidates', () => {
     // Position: White can castle (O-O, quiet/solid), give check/capture (Bxf7+ or Nxd4), or push a gambit pawn (d4)
-    const fen =
-      'r1bqk1nr/pppp1ppp/2n5/2b1p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4';
+    const fen = 'r1bqk1nr/pppp1ppp/2n5/2b1p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4';
     const lines: EngineLine[] = [
       // Line 1: O-O (+30 cp, quiet castling)
       makeLine(1, 30, ['e1g1', 'g8f6']),
@@ -161,20 +133,14 @@ describe('Phase 2 — Human-Like Playing Bot (400–2400 Elo & Style Presets)', 
       rng: () => 0.1,
     });
 
-    const solidCastleProb =
-      solidRes.candidates.find((c) => c.san === 'O-O')?.probability ?? 0;
-    const aggCastleProb =
-      aggRes.candidates.find((c) => c.san === 'O-O')?.probability ?? 0;
+    const solidCastleProb = solidRes.candidates.find((c) => c.san === 'O-O')?.probability ?? 0;
+    const aggCastleProb = aggRes.candidates.find((c) => c.san === 'O-O')?.probability ?? 0;
 
-    const aggCheckProb =
-      aggRes.candidates.find((c) => c.san === 'Bxf7+')?.probability ?? 0;
-    const solidCheckProb =
-      solidRes.candidates.find((c) => c.san === 'Bxf7+')?.probability ?? 0;
+    const aggCheckProb = aggRes.candidates.find((c) => c.san === 'Bxf7+')?.probability ?? 0;
+    const solidCheckProb = solidRes.candidates.find((c) => c.san === 'Bxf7+')?.probability ?? 0;
 
-    const gambitB4Prob =
-      gambitRes.candidates.find((c) => c.san === 'b4')?.probability ?? 0;
-    const solidB4Prob =
-      solidRes.candidates.find((c) => c.san === 'b4')?.probability ?? 0;
+    const gambitB4Prob = gambitRes.candidates.find((c) => c.san === 'b4')?.probability ?? 0;
+    const solidB4Prob = solidRes.candidates.find((c) => c.san === 'b4')?.probability ?? 0;
 
     expect(solidCastleProb).toBeGreaterThan(aggCastleProb);
     expect(aggCheckProb).toBeGreaterThan(solidCheckProb);
@@ -182,12 +148,8 @@ describe('Phase 2 — Human-Like Playing Bot (400–2400 Elo & Style Presets)', 
   });
 
   it('locks onto short forced mates for Club+ bots', () => {
-    const mateFen =
-      'r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4';
-    const lines: EngineLine[] = [
-      makeLine(1, 9990, ['h5f7'], 1),
-      makeLine(2, 50, ['d2d3'], undefined),
-    ];
+    const mateFen = 'r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4';
+    const lines: EngineLine[] = [makeLine(1, 9990, ['h5f7'], 1), makeLine(2, 50, ['d2d3'], undefined)];
 
     const clubBot = new ChessBot(
       {
@@ -258,8 +220,7 @@ describe('Phase 2 — Human-Like Playing Bot (400–2400 Elo & Style Presets)', 
   it('identifies plausible human blunders (missed threats or hanging pieces) while rejecting random-looking walks', () => {
     // Black's knight on c6 attacks White's knight on e5 (320 cp).
     // White has a natural developing move (Nc3) that misses that e5 is hanging, vs an absurd King walk Ke2.
-    const fen =
-      'r1bqk1nr/pppp1ppp/2n5/2b1N3/4P3/8/PPPP1PPP/RNBQKB1R w KQkq - 1 4';
+    const fen = 'r1bqk1nr/pppp1ppp/2n5/2b1N3/4P3/8/PPPP1PPP/RNBQKB1R w KQkq - 1 4';
     const adapter = new RulesAdapter(fen);
     const legalMoves = adapter.verboseMoves();
 
@@ -274,13 +235,7 @@ describe('Phase 2 — Human-Like Playing Bot (400–2400 Elo & Style Presets)', 
 
     // Suppose Nd3 (+40 cp) saves the knight on e5, while Nc3 (-220 cp) leaves e5 hanging to Nxe5
     const nd3Move = legalMoves.find((m) => m.san === 'Nd3')!;
-    const blunderCands = findPlausibleHumanBlunderCandidates(
-      adapter,
-      legalMoves,
-      new Set([nd3Move.uci]),
-      nd3Move,
-      40,
-    );
+    const blunderCands = findPlausibleHumanBlunderCandidates(adapter, legalMoves, new Set([nd3Move.uci]), nd3Move, 40);
     expect(blunderCands.some((c) => c.move.san === 'Nc3')).toBe(true);
     expect(blunderCands.some((c) => c.move.san === 'Ke2')).toBe(false);
 
@@ -316,10 +271,8 @@ describe('Phase 2 — Human-Like Playing Bot (400–2400 Elo & Style Presets)', 
     expect(forcedDelay).toBe(500);
 
     // 2. Early opening vs sharp tactical middlegame
-    const openingFen =
-      'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
-    const sharpMiddlegameFen =
-      'r1bq1rk1/ppp2ppp/2np1n2/2b1p1B1/2B1P3/2NP1N2/PPP2PPP/R2Q1RK1 b - - 4 7';
+    const openingFen = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1';
+    const sharpMiddlegameFen = 'r1bq1rk1/ppp2ppp/2np1n2/2b1p1B1/2B1P3/2NP1N2/PPP2PPP/R2Q1RK1 b - - 4 7';
 
     const openingDelay = computeBotThinkTimeMs({
       fen: openingFen,
@@ -355,4 +308,3 @@ describe('Phase 2 — Human-Like Playing Bot (400–2400 Elo & Style Presets)', 
     expect(timeTroubleDelay).toBeLessThanOrEqual(120);
   });
 });
-

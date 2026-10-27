@@ -32,7 +32,11 @@ const g = (phi: number) => 1 / Math.sqrt(1 + (3 * phi * phi) / (Math.PI * Math.P
 const expected = (mu: number, muJ: number, phiJ: number) => 1 / (1 + Math.exp(-g(phiJ) * (mu - muJ)));
 
 /** The rating after one rating period with `games` (none: only the deviation grows). */
-export function updateGlicko2(player: GlickoRating, games: readonly GlickoGame[], tau: number = DEFAULT_TAU): GlickoRating {
+export function updateGlicko2(
+  player: GlickoRating,
+  games: readonly GlickoGame[],
+  tau: number = DEFAULT_TAU,
+): GlickoRating {
   const mu = (player.rating - 1500) / GLICKO_SCALE;
   const phi = player.rd / GLICKO_SCALE;
   const sigma = player.volatility;

@@ -8,7 +8,9 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const svg = fs.readFileSync(path.join(root, 'public', 'favicon.svg'), 'utf8').replace(/ width="64" height="64"/, ' width="100%" height="100%"');
+const svg = fs
+  .readFileSync(path.join(root, 'public', 'favicon.svg'), 'utf8')
+  .replace(/ width="64" height="64"/, ' width="100%" height="100%"');
 
 const icons = [
   // The icon as drawn, on a transparent background

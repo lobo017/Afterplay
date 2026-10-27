@@ -20,39 +20,19 @@ import {
   getTierForRating,
   type BotStyleId,
 } from '../engine/bot';
-import {
-  EngineCancelledError,
-  EngineClient,
-  type EngineAnalysisResult,
-} from '../engine/engine-client';
+import { EngineCancelledError, EngineClient, type EngineAnalysisResult } from '../engine/engine-client';
 import { BotSelectionClient } from '../engine/bot-selection-client';
 import { formatScore, type UciScore } from '../engine/uci-parser';
 import { CathedralAudio } from '../render/audio';
 import { BoardRenderer } from '../render/board-renderer';
 import { getPieceSvgMarkup } from '../render/piece-sets';
-import {
-  ChessClock,
-  TIME_CONTROL_PRESETS,
-  type ClockSnapshot,
-  type TimeControlPresetId,
-} from './clock';
+import { ChessClock, TIME_CONTROL_PRESETS, type ClockSnapshot, type TimeControlPresetId } from './clock';
 import type { DevOverlayController } from './dev-overlay';
-import {
-  AppSettingsStore,
-  MAX_PREMOVES_LIMIT,
-  type AppSettings,
-  type NewGameOptions,
-} from './app-settings';
+import { AppSettingsStore, MAX_PREMOVES_LIMIT, type AppSettings, type NewGameOptions } from './app-settings';
 import { icon } from './components/icons';
 import { Menu } from './components/menu';
 import { Tabs, tabListHtml, tabPanelAttrs } from './components/tabs';
-import {
-  bindChoiceGroups,
-  chipsHtml,
-  segmentedHtml,
-  setChoice,
-  switchRowHtml,
-} from './components/controls';
+import { bindChoiceGroups, chipsHtml, segmentedHtml, setChoice, switchRowHtml } from './components/controls';
 
 export interface HintUsageRecord {
   ply: number;
@@ -96,9 +76,7 @@ const PIECE_SORT_ORDER: Record<PieceSymbol, number> = {
  * Computes captured piece trays and net material advantage strictly from executed move history
  * (including promotions), preventing Legacy Bug #5 where promoted pawns were miscounted as captured.
  */
-export function computeCapturedAndMaterial(
-  executedMoves: ExecutedMove[],
-): CapturedAndMaterialSummary {
+export function computeCapturedAndMaterial(executedMoves: ExecutedMove[]): CapturedAndMaterialSummary {
   const capturedByWhite: PieceSymbol[] = [];
   const capturedByBlack: PieceSymbol[] = [];
   let netAdvantageWhite = 0;
@@ -116,8 +94,7 @@ export function computeCapturedAndMaterial(
     }
 
     if (move.promotion) {
-      const promoGain =
-        (PIECE_VALUES[move.promotion] ?? 0) - PIECE_VALUES.p;
+      const promoGain = (PIECE_VALUES[move.promotion] ?? 0) - PIECE_VALUES.p;
       if (move.color === 'w') {
         netAdvantageWhite += promoGain;
       } else {
@@ -302,24 +279,17 @@ export class PlayController {
       this.botMaxDelayMs = Math.max(0, options.botMoveDelayMs);
     } else {
       this.botMinDelayMs = Math.max(0, options.botMinDelayMs ?? ng.minThinkMs);
-      this.botMaxDelayMs = Math.max(
-        this.botMinDelayMs,
-        options.botMaxDelayMs ?? ng.maxThinkMs,
-      );
+      this.botMaxDelayMs = Math.max(this.botMinDelayMs, options.botMaxDelayMs ?? ng.maxThinkMs);
     }
 
     this.maxPremoves = Math.max(
       1,
-      Math.min(
-        MAX_PREMOVES_LIMIT,
-        Math.floor(options.maxPremoves ?? this.settings.get().maxPremoves),
-      ),
+      Math.min(MAX_PREMOVES_LIMIT, Math.floor(options.maxPremoves ?? this.settings.get().maxPremoves)),
     );
 
     this.adapter = new RulesAdapter();
     this.gameTree = new GameTree();
-    this.audio =
-      options.audio ?? new CathedralAudio({ enabled: true, volume: 0.75 });
+    this.audio = options.audio ?? new CathedralAudio({ enabled: true, volume: 0.75 });
     // The bot's move selection runs in a worker so it never blocks the board
     if (options.botSelection) {
       this.botSelection = options.botSelection;
@@ -478,7 +448,15 @@ export class PlayController {
                 <div class="wc-status-banner" data-testid="game-status-banner" role="status" aria-live="polite">White to move</div>
                 <div class="wc-eval-pill" data-testid="live-eval-score" title="Evaluation (White's point of view)">+0.00</div>
               </div>
-              ${tabListHtml('play', [{ id: 'moves', label: 'Moves' }, { id: 'analysis', label: 'Analysis' }], 'moves', 'Game')}
+              ${tabListHtml(
+                'play',
+                [
+                  { id: 'moves', label: 'Moves' },
+                  { id: 'analysis', label: 'Analysis' },
+                ],
+                'moves',
+                'Game',
+              )}
               <div class="wc-panel-body">
                 <div class="wc-tab-panel wc-moves-panel" ${tabPanelAttrs('play', 'moves', 'moves')}>
                   <div class="wc-panel-section-title wc-panel-section-title-end">
@@ -511,9 +489,7 @@ export class PlayController {
       </div>
     `;
 
-    const boardMount = this.container.querySelector(
-      '[data-testid="board-mount"]',
-    ) as HTMLElement;
+    const boardMount = this.container.querySelector('[data-testid="board-mount"]') as HTMLElement;
 
     this.board = new BoardRenderer(boardMount, {
       flipped: false,
@@ -533,8 +509,7 @@ export class PlayController {
       },
     });
 
-    const q = <T extends HTMLElement>(id: string) =>
-      this.container.querySelector(`[data-testid="${id}"]`) as T;
+    const q = <T extends HTMLElement>(id: string) => this.container.querySelector(`[data-testid="${id}"]`) as T;
     this.topPlayerNameEl = q('top-player-name');
     this.bottomPlayerNameEl = q('bottom-player-name');
     this.topClockEl = q('top-clock');
@@ -552,7 +527,13 @@ export class PlayController {
     this.menu = new Menu(
       q('play-actions'),
       [
-        { id: 'draw', label: 'Offer draw', testId: 'btn-offer-draw', icon: 'handshake', onSelect: () => void this.offerDraw() },
+        {
+          id: 'draw',
+          label: 'Offer draw',
+          testId: 'btn-offer-draw',
+          icon: 'handshake',
+          onSelect: () => void this.offerDraw(),
+        },
         {
           id: 'analyze',
           label: 'Analyze this position',
@@ -560,8 +541,22 @@ export class PlayController {
           icon: 'review',
           onSelect: () => this.onAnalyzeGame?.(),
         },
-        { id: 'new', label: 'New game…', testId: 'menu-new-game', icon: 'plus', onSelect: () => this.showPanelView('setup', true) },
-        { id: 'resign', label: 'Resign', testId: 'btn-resign', icon: 'flag', danger: true, separatorBefore: true, onSelect: () => this.resign() },
+        {
+          id: 'new',
+          label: 'New game…',
+          testId: 'menu-new-game',
+          icon: 'plus',
+          onSelect: () => this.showPanelView('setup', true),
+        },
+        {
+          id: 'resign',
+          label: 'Resign',
+          testId: 'btn-resign',
+          icon: 'flag',
+          danger: true,
+          separatorBefore: true,
+          onSelect: () => this.resign(),
+        },
       ],
       { testId: 'play-menu', label: 'More game actions' },
     );
@@ -642,13 +637,14 @@ export class PlayController {
   }
 
   private bindUiControls(): void {
-    const q = <T extends HTMLElement>(id: string) =>
-      this.container.querySelector(`[data-testid="${id}"]`) as T;
+    const q = <T extends HTMLElement>(id: string) => this.container.querySelector(`[data-testid="${id}"]`) as T;
 
     // New game card: every change only updates the pending choices
     q<HTMLButtonElement>('btn-new-game').addEventListener('click', () => this.requestNewGame());
     q<HTMLButtonElement>('btn-new-game-keep').addEventListener('click', () => this.showPanelView('game'));
-    q<HTMLButtonElement>('btn-new-game-end').addEventListener('click', () => this.startNewGame(this.pendingStartOptions));
+    q<HTMLButtonElement>('btn-new-game-end').addEventListener('click', () =>
+      this.startNewGame(this.pendingStartOptions),
+    );
     q<HTMLButtonElement>('btn-back-to-game').addEventListener('click', () => this.showPanelView('game'));
 
     const slider = q<HTMLInputElement>('slider-bot-rating');
@@ -798,9 +794,7 @@ export class PlayController {
   public setInfiniteAnalysis(enabled: boolean): void {
     this.infiniteAnalysisEnabled = enabled;
     if (this.settings.get().playLiveEval !== enabled) this.settings.set({ playLiveEval: enabled });
-    const toggle = this.container.querySelector(
-      '[data-testid="toggle-infinite-analysis"]',
-    ) as HTMLInputElement | null;
+    const toggle = this.container.querySelector('[data-testid="toggle-infinite-analysis"]') as HTMLInputElement | null;
     if (toggle && toggle.checked !== enabled) {
       toggle.checked = enabled;
     }
@@ -814,11 +808,7 @@ export class PlayController {
 
   private restartInfiniteAnalysisIfEnabled(): void {
     this.cancelInfiniteAnalysis();
-    if (
-      !this.infiniteAnalysisEnabled ||
-      this.gameOver ||
-      this.adapter.turn() !== this.playerColor
-    ) {
+    if (!this.infiniteAnalysisEnabled || this.gameOver || this.adapter.turn() !== this.playerColor) {
       return;
     }
 
@@ -877,10 +867,7 @@ export class PlayController {
    * Starts a new game with the New game card's choices (the colour can be overridden, e.g.
    * for a position from Review). Ends any game in progress: the card asks first.
    */
-  public startNewGame(options?: {
-    fen?: string;
-    playerColor?: Color;
-  }): void {
+  public startNewGame(options?: { fen?: string; playerColor?: Color }): void {
     this.cancelInFlightBotSearch();
     this.cancelInfiniteAnalysis();
     this.applyNewGameOptions(this.settings.get().newGame);
@@ -998,9 +985,7 @@ export class PlayController {
       } else if (executed.isCapture) {
         this.audio.playShatter();
       } else {
-        this.audio.playSlide(
-          CathedralAudio.shouldPieceLevitate(executed.piece),
-        );
+        this.audio.playSlide(CathedralAudio.shouldPieceLevitate(executed.piece));
       }
       this.gameStatusText = `${
         this.adapter.turn() === 'w' ? 'White' : 'Black'
@@ -1071,8 +1056,7 @@ export class PlayController {
 
       const clockSnap = this.clock.getSnapshot();
       const botColor: Color = this.playerColor === 'w' ? 'b' : 'w';
-      const botRemainingMs =
-        botColor === 'w' ? clockSnap.whiteMs : clockSnap.blackMs;
+      const botRemainingMs = botColor === 'w' ? clockSnap.whiteMs : clockSnap.blackMs;
       const lastPly = this.plyHistory[this.plyHistory.length - 1];
 
       const targetThinkMs = computeBotThinkTimeMs({
@@ -1095,10 +1079,7 @@ export class PlayController {
 
       this.lastBotThinkTimeMs = targetThinkMs;
       const elapsedSearchMs = performance.now() - searchStartedAt;
-      const remainingWaitMs = Math.max(
-        0,
-        Math.round(targetThinkMs - elapsedSearchMs),
-      );
+      const remainingWaitMs = Math.max(0, Math.round(targetThinkMs - elapsedSearchMs));
 
       if (remainingWaitMs > 0) {
         await new Promise<void>((resolve) => {
@@ -1125,8 +1106,7 @@ export class PlayController {
       // Update live evaluation from bot's search
       this.setEvalImmediate(
         formatScore(decision.selectedLine.scoreWhite),
-        decision.selectedLine.evalCp *
-          (decision.executedMove.color === 'w' ? 1 : -1),
+        decision.selectedLine.evalCp * (decision.executedMove.color === 'w' ? 1 : -1),
       );
 
       const executed = this.adapter.move(decision.uci);
@@ -1172,8 +1152,7 @@ export class PlayController {
     this.board.setPremove(null);
 
     // If bot was thinking, undo 1 ply (player's move). Otherwise undo up to 2 plies back to player's turn.
-    const pliesToUndo =
-      wasBotThinking || this.plyHistory.length === 1 ? 1 : 2;
+    const pliesToUndo = wasBotThinking || this.plyHistory.length === 1 ? 1 : 2;
 
     for (let i = 0; i < pliesToUndo && this.plyHistory.length > 0; i++) {
       this.adapter.undo();
@@ -1191,11 +1170,7 @@ export class PlayController {
 
     const prevSnap = this.plyHistory[this.plyHistory.length - 1];
     if (prevSnap) {
-      this.clock.setTimes(
-        prevSnap.whiteClockMs,
-        prevSnap.blackClockMs,
-        this.adapter.turn(),
-      );
+      this.clock.setTimes(prevSnap.whiteClockMs, prevSnap.blackClockMs, this.adapter.turn());
       this.setEvalImmediate(prevSnap.evalText, prevSnap.evalWhiteCp);
     } else {
       const cfg = this.clock.getConfig();
@@ -1210,9 +1185,7 @@ export class PlayController {
       triggerCaptureParticles: false,
     });
 
-    this.gameStatusText = `${
-      this.adapter.turn() === 'w' ? 'White' : 'Black'
-    } to move (Takeback)`;
+    this.gameStatusText = `${this.adapter.turn() === 'w' ? 'White' : 'Black'} to move (Takeback)`;
     this.updateAllHud();
     this.restartInfiniteAnalysisIfEnabled();
     return true;
@@ -1223,11 +1196,7 @@ export class PlayController {
    * decrements remaining hints, and logs a HintUsageRecord for Phase 5 review.
    */
   public async requestHint(): Promise<HintUsageRecord | null> {
-    if (
-      this.gameOver ||
-      this.hintsRemaining <= 0 ||
-      this.adapter.turn() !== this.playerColor
-    ) {
+    if (this.gameOver || this.hintsRemaining <= 0 || this.adapter.turn() !== this.playerColor) {
       return null;
     }
 
@@ -1290,9 +1259,7 @@ export class PlayController {
     this.gameOver = true;
     this.gameResult = this.playerColor === 'w' ? '0-1' : '1-0';
     this.gameTree.setResult(this.gameResult);
-    this.gameStatusText = `${
-      this.playerColor === 'w' ? 'White' : 'Black'
-    } resigned · ${this.gameResult}`;
+    this.gameStatusText = `${this.playerColor === 'w' ? 'White' : 'Black'} resigned · ${this.gameResult}`;
     this.audio.playGameOver(false);
     this.updateAllHud();
     this.notifyGameFinished();
@@ -1302,12 +1269,9 @@ export class PlayController {
     if (this.gameOver) return false;
 
     const botColor: Color = this.playerColor === 'w' ? 'b' : 'w';
-    const botEvalCp =
-      botColor === 'w' ? this.latestEvalWhiteCp : -this.latestEvalWhiteCp;
+    const botEvalCp = botColor === 'w' ? this.latestEvalWhiteCp : -this.latestEvalWhiteCp;
 
-    const accepted =
-      forceAccept ||
-      (this.plyHistory.length >= 2 && botEvalCp <= 55);
+    const accepted = forceAccept || (this.plyHistory.length >= 2 && botEvalCp <= 55);
 
     if (accepted) {
       this.cancelInFlightBotSearch();
@@ -1366,11 +1330,9 @@ export class PlayController {
       this.gameResult = '1/2-1/2';
       let reason = 'Draw';
       if (this.adapter.isStalemate()) reason = 'Stalemate';
-      else if (this.adapter.isThreefoldRepetition())
-        reason = 'Threefold repetition';
+      else if (this.adapter.isThreefoldRepetition()) reason = 'Threefold repetition';
       else if (this.adapter.isDrawByFiftyMoves()) reason = '50-move rule';
-      else if (this.adapter.isInsufficientMaterial())
-        reason = 'Insufficient material';
+      else if (this.adapter.isInsufficientMaterial()) reason = 'Insufficient material';
       this.gameStatusText = `Draw by ${reason} · 1/2-1/2`;
       this.audio.playGameOver(false);
     }
@@ -1397,7 +1359,12 @@ export class PlayController {
     tree.setHeader('White', me === 'w' ? 'You' : bot);
     tree.setHeader('Black', me === 'b' ? 'You' : bot);
     tree.setHeader(me === 'w' ? 'BlackElo' : 'WhiteElo', String(this.botRating));
-    tree.setHeader('TimeControl', config.unlimited ? '-' : `${Math.round(config.initialMs / 1000)}${config.incrementMs ? `+${Math.round(config.incrementMs / 1000)}` : ''}`);
+    tree.setHeader(
+      'TimeControl',
+      config.unlimited
+        ? '-'
+        : `${Math.round(config.initialMs / 1000)}${config.incrementMs ? `+${Math.round(config.incrementMs / 1000)}` : ''}`,
+    );
     this.onGameFinished({ startedAt: this.gameStartedAt, pgn: writePgn(tree), playerColor: me });
   }
 
@@ -1407,36 +1374,26 @@ export class PlayController {
     const bottomColor: Color = flipped ? 'b' : 'w';
 
     if (this.topClockEl) {
-      const topText =
-        topColor === 'w' ? snap.whiteFormatted : snap.blackFormatted;
+      const topText = topColor === 'w' ? snap.whiteFormatted : snap.blackFormatted;
       if (this.topClockEl.textContent !== topText) {
         this.topClockEl.textContent = topText;
       }
-      this.topClockEl.classList.toggle(
-        'wc-clock-active',
-        snap.activeColor === topColor && !this.gameOver,
-      );
+      this.topClockEl.classList.toggle('wc-clock-active', snap.activeColor === topColor && !this.gameOver);
       this.topClockEl.classList.toggle(
         'wc-clock-low',
-        !snap.unlimited &&
-          (topColor === 'w' ? snap.whiteMs : snap.blackMs) < 20_000,
+        !snap.unlimited && (topColor === 'w' ? snap.whiteMs : snap.blackMs) < 20_000,
       );
     }
 
     if (this.bottomClockEl) {
-      const bottomText =
-        bottomColor === 'w' ? snap.whiteFormatted : snap.blackFormatted;
+      const bottomText = bottomColor === 'w' ? snap.whiteFormatted : snap.blackFormatted;
       if (this.bottomClockEl.textContent !== bottomText) {
         this.bottomClockEl.textContent = bottomText;
       }
-      this.bottomClockEl.classList.toggle(
-        'wc-clock-active',
-        snap.activeColor === bottomColor && !this.gameOver,
-      );
+      this.bottomClockEl.classList.toggle('wc-clock-active', snap.activeColor === bottomColor && !this.gameOver);
       this.bottomClockEl.classList.toggle(
         'wc-clock-low',
-        !snap.unlimited &&
-          (bottomColor === 'w' ? snap.whiteMs : snap.blackMs) < 20_000,
+        !snap.unlimited && (bottomColor === 'w' ? snap.whiteMs : snap.blackMs) < 20_000,
       );
     }
   }
@@ -1447,9 +1404,7 @@ export class PlayController {
     const tier = getTierForRating(this.botRating);
 
     const labelForColor = (c: Color): string =>
-      c === this.playerColor
-        ? `You (${c === 'w' ? 'White' : 'Black'})`
-        : `Stockfish ${tier} (${this.botRating})`;
+      c === this.playerColor ? `You (${c === 'w' ? 'White' : 'Black'})` : `Stockfish ${tier} (${this.botRating})`;
 
     setTextIfChanged(this.topPlayerNameEl, labelForColor(topColor));
     setTextIfChanged(this.bottomPlayerNameEl, labelForColor(topColor === 'w' ? 'b' : 'w'));
@@ -1465,8 +1420,7 @@ export class PlayController {
     const pieceSet = this.board.getPieceSet();
 
     const renderTrayHtml = (forColor: Color): string => {
-      const capturedPieces =
-        forColor === 'w' ? summary.capturedByWhite : summary.capturedByBlack;
+      const capturedPieces = forColor === 'w' ? summary.capturedByWhite : summary.capturedByBlack;
       const capturedEnemyColor: Color = forColor === 'w' ? 'b' : 'w';
       const icons = capturedPieces
         .map(
@@ -1475,14 +1429,9 @@ export class PlayController {
         )
         .join('');
 
-      const adv =
-        forColor === 'w'
-          ? summary.netAdvantageWhite
-          : -summary.netAdvantageWhite;
+      const adv = forColor === 'w' ? summary.netAdvantageWhite : -summary.netAdvantageWhite;
       const advBadge =
-        adv > 0
-          ? `<span class="wc-material-adv" data-testid="material-adv-${forColor}">+${adv}</span>`
-          : '';
+        adv > 0 ? `<span class="wc-material-adv" data-testid="material-adv-${forColor}">+${adv}</span>` : '';
       return icons + advBadge;
     };
 
@@ -1585,13 +1534,9 @@ export class PlayController {
     const hintText = this.hintBtnEl.querySelector('.wc-btn-text');
     if (hintText) setTextIfChanged(hintText, `Hint (${this.hintsRemaining})`);
     this.hintBtnEl.disabled =
-      this.gameOver ||
-      this.hintsRemaining <= 0 ||
-      this.isBotThinking ||
-      this.adapter.turn() !== this.playerColor;
+      this.gameOver || this.hintsRemaining <= 0 || this.isBotThinking || this.adapter.turn() !== this.playerColor;
 
-    this.takebackBtnEl.disabled =
-      !this.allowTakebacks || this.plyHistory.length === 0;
+    this.takebackBtnEl.disabled = !this.allowTakebacks || this.plyHistory.length === 0;
     this.menu.setDisabled('draw', this.gameOver);
     this.menu.setDisabled('resign', this.gameOver);
     // Game over: Review this game takes the action bar's place
@@ -1638,9 +1583,7 @@ export class PlayController {
   }
 
   public getCapturedSummary(): CapturedAndMaterialSummary {
-    return computeCapturedAndMaterial(
-      this.plyHistory.map((p) => p.executedMove),
-    );
+    return computeCapturedAndMaterial(this.plyHistory.map((p) => p.executedMove));
   }
 
   public isGameOver(): boolean {

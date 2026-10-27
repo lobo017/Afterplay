@@ -1,8 +1,4 @@
-import {
-  selectHumanLikeMove,
-  type BotMoveDecision,
-  type HumanLikeSelectionRequest,
-} from './bot';
+import { selectHumanLikeMove, type BotMoveDecision, type HumanLikeSelectionRequest } from './bot';
 
 export interface BotSelectionRequestMessage {
   id: number;
@@ -53,15 +49,11 @@ export class BotSelectionClient {
   private inlineSelections = 0;
 
   constructor(options?: { useWorker?: boolean }) {
-    this.workerUnavailable =
-      options?.useWorker === false || typeof Worker === 'undefined';
+    this.workerUnavailable = options?.useWorker === false || typeof Worker === 'undefined';
   }
 
   /** Selects a move; resolves with exactly what selectHumanLikeMove() would return. */
-  public select(
-    request: HumanLikeSelectionRequest,
-    rng: () => number = Math.random,
-  ): Promise<BotMoveDecision> {
+  public select(request: HumanLikeSelectionRequest, rng: () => number = Math.random): Promise<BotMoveDecision> {
     const run = this.queue.then(() => this.selectNow(request, rng));
     this.queue = run.catch(() => undefined);
     return run;
@@ -83,10 +75,7 @@ export class BotSelectionClient {
     this.rejectAll(new WorkerUnavailableError('Bot selection worker terminated'));
   }
 
-  private async selectNow(
-    request: HumanLikeSelectionRequest,
-    rng: () => number,
-  ): Promise<BotMoveDecision> {
+  private async selectNow(request: HumanLikeSelectionRequest, rng: () => number): Promise<BotMoveDecision> {
     let size = INITIAL_RANDOM_BUFFER;
     while (this.ensureWorker()) {
       const randoms = this.take(rng, size);
@@ -112,10 +101,7 @@ export class BotSelectionClient {
     return this.selectInline(request, rng);
   }
 
-  private selectInline(
-    request: HumanLikeSelectionRequest,
-    rng: () => number,
-  ): BotMoveDecision {
+  private selectInline(request: HumanLikeSelectionRequest, rng: () => number): BotMoveDecision {
     this.inlineSelections++;
     const buffered = () => {
       const spare = this.spare.get(rng);
@@ -142,23 +128,20 @@ export class BotSelectionClient {
     if (this.workerUnavailable) return false;
     if (this.worker) return true;
     try {
-      this.worker = new Worker(
-        new URL('./bot-selection.worker.ts', import.meta.url),
-        { type: 'module', name: 'bot-selection' },
-      );
+      this.worker = new Worker(new URL('./bot-selection.worker.ts', import.meta.url), {
+        type: 'module',
+        name: 'bot-selection',
+      });
     } catch {
       this.workerUnavailable = true;
       return false;
     }
-    this.worker.addEventListener(
-      'message',
-      (e: MessageEvent<BotSelectionResponseMessage>) => {
-        const entry = this.pending.get(e.data.id);
-        if (!entry) return;
-        this.pending.delete(e.data.id);
-        entry.resolve(e.data);
-      },
-    );
+    this.worker.addEventListener('message', (e: MessageEvent<BotSelectionResponseMessage>) => {
+      const entry = this.pending.get(e.data.id);
+      if (!entry) return;
+      this.pending.delete(e.data.id);
+      entry.resolve(e.data);
+    });
     const fail = () => {
       this.workerUnavailable = true;
       this.worker?.terminate();

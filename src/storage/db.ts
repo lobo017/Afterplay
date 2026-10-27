@@ -1,11 +1,4 @@
-import {
-  deleteDB,
-  openDB,
-  type DBSchema,
-  type IDBPDatabase,
-  type IDBPTransaction,
-  type StoreNames,
-} from 'idb';
+import { deleteDB, openDB, type DBSchema, type IDBPDatabase, type IDBPTransaction, type StoreNames } from 'idb';
 import type { Color } from '../core/rules';
 import type { GameTermination, SerializedGameTree } from '../core/game-tree';
 import type { StoredGameSource } from '../capture/game-id';
@@ -247,11 +240,7 @@ export interface SchemaMigrationDefinition {
   description: string;
   migrate: (
     db: IDBPDatabase<WizardChessDBSchema>,
-    tx: IDBPTransaction<
-      WizardChessDBSchema,
-      ArrayLike<StoreNames<WizardChessDBSchema>>,
-      'versionchange'
-    >,
+    tx: IDBPTransaction<WizardChessDBSchema, ArrayLike<StoreNames<WizardChessDBSchema>>, 'versionchange'>,
     oldVersion: number,
   ) => Promise<void> | void;
 }
@@ -279,8 +268,7 @@ export const SCHEMA_MIGRATIONS: readonly SchemaMigrationDefinition[] = [
   },
   {
     version: 2,
-    description:
-      'Add by-accuracy index to games; create puzzles and srs_cards object stores',
+    description: 'Add by-accuracy index to games; create puzzles and srs_cards object stores',
     migrate(db, tx) {
       if (db.objectStoreNames.contains('games')) {
         const gamesStore = tx.objectStore('games');
@@ -304,8 +292,7 @@ export const SCHEMA_MIGRATIONS: readonly SchemaMigrationDefinition[] = [
   },
   {
     version: 3,
-    description:
-      'Create repertoires and endgame_progress stores; backfill v3 fields on existing games',
+    description: 'Create repertoires and endgame_progress stores; backfill v3 fields on existing games',
     async migrate(db, tx) {
       if (!db.objectStoreNames.contains('repertoires')) {
         const repStore = db.createObjectStore('repertoires', { keyPath: 'id' });
@@ -340,8 +327,7 @@ export const SCHEMA_MIGRATIONS: readonly SchemaMigrationDefinition[] = [
   },
   {
     version: 4,
-    description:
-      'Create the reviews store (saved game reviews, kept apart so listing games stays light)',
+    description: 'Create the reviews store (saved game reviews, kept apart so listing games stays light)',
     migrate(db) {
       if (!db.objectStoreNames.contains('reviews')) {
         db.createObjectStore('reviews', { keyPath: 'id' });
@@ -359,9 +345,7 @@ export interface OpenDatabaseOptions {
  * Open the Wizard's Chess IndexedDB database and run all pending versioned migrations
  * up to `options.version` (defaults to `LATEST_SCHEMA_VERSION`).
  */
-export async function openWizardChessDB(
-  options?: OpenDatabaseOptions,
-): Promise<IDBPDatabase<WizardChessDBSchema>> {
+export async function openWizardChessDB(options?: OpenDatabaseOptions): Promise<IDBPDatabase<WizardChessDBSchema>> {
   const dbName = options?.dbName ?? DEFAULT_DB_NAME;
   const targetVersion = options?.version ?? LATEST_SCHEMA_VERSION;
 
@@ -389,9 +373,7 @@ export async function openWizardChessDB(
     const tx = db.transaction('schema_meta', 'readwrite');
     const store = tx.objectStore('schema_meta');
     const existingHistoryRec = await store.get('migration_history');
-    const prevHistory = Array.isArray(existingHistoryRec?.value)
-      ? existingHistoryRec.value
-      : [];
+    const prevHistory = Array.isArray(existingHistoryRec?.value) ? existingHistoryRec.value : [];
     const mergedHistory = [...prevHistory, ...appliedMigrations];
     const now = Date.now();
     await store.put({
@@ -413,9 +395,7 @@ export async function openWizardChessDB(
 /**
  * Delete a Wizard's Chess IndexedDB database by name.
  */
-export async function deleteWizardChessDB(
-  dbName: string = DEFAULT_DB_NAME,
-): Promise<void> {
+export async function deleteWizardChessDB(dbName: string = DEFAULT_DB_NAME): Promise<void> {
   await deleteDB(dbName);
 }
 
@@ -429,9 +409,7 @@ export class WizardChessStorage {
     this.db = db;
   }
 
-  public static async create(
-    options?: OpenDatabaseOptions,
-  ): Promise<WizardChessStorage> {
+  public static async create(options?: OpenDatabaseOptions): Promise<WizardChessStorage> {
     const db = await openWizardChessDB(options);
     return new WizardChessStorage(db);
   }
@@ -524,10 +502,7 @@ export class WizardChessStorage {
       if (filter?.openingEco && g.openingEco !== filter.openingEco) return false;
       if (filter?.fromDate && g.date < filter.fromDate) return false;
       if (filter?.toDate && g.date > filter.toDate) return false;
-      if (
-        filter?.minAccuracy !== undefined &&
-        (g.accuracy === null || g.accuracy < filter.minAccuracy)
-      ) {
+      if (filter?.minAccuracy !== undefined && (g.accuracy === null || g.accuracy < filter.minAccuracy)) {
         return false;
       }
       return true;
@@ -618,9 +593,7 @@ export class WizardChessStorage {
     const cards = deck
       ? await this.db.getAllFromIndex('srs_cards', 'by-deck', deck)
       : await this.db.getAll('srs_cards');
-    return cards
-      .filter((c) => c.dueDate <= asOfTimestamp)
-      .sort((a, b) => a.dueDate - b.dueDate);
+    return cards.filter((c) => c.dueDate <= asOfTimestamp).sort((a, b) => a.dueDate - b.dueDate);
   }
 
   // --- Repertoires & Endgame Progress Stores ---
@@ -640,15 +613,11 @@ export class WizardChessStorage {
     return this.db.getAll('repertoires');
   }
 
-  public async saveEndgameProgress(
-    progress: StoredEndgameProgressRecord,
-  ): Promise<void> {
+  public async saveEndgameProgress(progress: StoredEndgameProgressRecord): Promise<void> {
     await this.db.put('endgame_progress', progress);
   }
 
-  public async getEndgameProgress(
-    id: string,
-  ): Promise<StoredEndgameProgressRecord | undefined> {
+  public async getEndgameProgress(id: string): Promise<StoredEndgameProgressRecord | undefined> {
     return this.db.get('endgame_progress', id);
   }
 
@@ -659,26 +628,15 @@ export class WizardChessStorage {
   // --- JSON Backup & Restore ---
 
   public async exportBackupJson(): Promise<string> {
-    const [games, settings, puzzles, srsCards, repertoires, endgameProgress, reviews] =
-      await Promise.all([
-        this.db.getAll('games'),
-        this.db.getAll('settings'),
-        this.db.objectStoreNames.contains('puzzles')
-          ? this.db.getAll('puzzles')
-          : Promise.resolve([]),
-        this.db.objectStoreNames.contains('srs_cards')
-          ? this.db.getAll('srs_cards')
-          : Promise.resolve([]),
-        this.db.objectStoreNames.contains('repertoires')
-          ? this.db.getAll('repertoires')
-          : Promise.resolve([]),
-        this.db.objectStoreNames.contains('endgame_progress')
-          ? this.db.getAll('endgame_progress')
-          : Promise.resolve([]),
-        this.db.objectStoreNames.contains('reviews')
-          ? this.db.getAll('reviews')
-          : Promise.resolve([]),
-      ]);
+    const [games, settings, puzzles, srsCards, repertoires, endgameProgress, reviews] = await Promise.all([
+      this.db.getAll('games'),
+      this.db.getAll('settings'),
+      this.db.objectStoreNames.contains('puzzles') ? this.db.getAll('puzzles') : Promise.resolve([]),
+      this.db.objectStoreNames.contains('srs_cards') ? this.db.getAll('srs_cards') : Promise.resolve([]),
+      this.db.objectStoreNames.contains('repertoires') ? this.db.getAll('repertoires') : Promise.resolve([]),
+      this.db.objectStoreNames.contains('endgame_progress') ? this.db.getAll('endgame_progress') : Promise.resolve([]),
+      this.db.objectStoreNames.contains('reviews') ? this.db.getAll('reviews') : Promise.resolve([]),
+    ]);
 
     const payload: BackupPayload = {
       format: 'wizards-chess-backup',
@@ -713,12 +671,8 @@ export class WizardChessStorage {
     const settings = Array.isArray(parsed.settings) ? parsed.settings : [];
     const puzzles = Array.isArray(parsed.puzzles) ? parsed.puzzles : [];
     const srsCards = Array.isArray(parsed.srsCards) ? parsed.srsCards : [];
-    const repertoires = Array.isArray(parsed.repertoires)
-      ? parsed.repertoires
-      : [];
-    const endgameProgress = Array.isArray(parsed.endgameProgress)
-      ? parsed.endgameProgress
-      : [];
+    const repertoires = Array.isArray(parsed.repertoires) ? parsed.repertoires : [];
+    const endgameProgress = Array.isArray(parsed.endgameProgress) ? parsed.endgameProgress : [];
 
     for (const g of games) await this.db.put('games', g);
     for (const s of settings) await this.db.put('settings', s);

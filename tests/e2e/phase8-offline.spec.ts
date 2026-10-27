@@ -70,7 +70,10 @@ async function startServer(distDir?: string): Promise<Server> {
 /** Waits until the service worker has cached the whole build (Settings › About says so). */
 async function waitForOfflineReady(page: Page): Promise<string> {
   await expect
-    .poll(() => page.getByTestId('stat-offline').textContent(), { timeout: 60_000, message: 'the service worker should cache the build' })
+    .poll(() => page.getByTestId('stat-offline').textContent(), {
+      timeout: 60_000,
+      message: 'the service worker should cache the build',
+    })
     .toMatch(/^Ready: all \d+ files are cached$/);
   return (await page.getByTestId('stat-offline').textContent())!;
 }
@@ -114,7 +117,10 @@ test.describe('Phase 8 — offline', () => {
     server = null;
   });
 
-  test('after the first load, play, analysis, review, train and the Games list work with no network', async ({ page, context }) => {
+  test('after the first load, play, analysis, review, train and the Games list work with no network', async ({
+    page,
+    context,
+  }) => {
     test.setTimeout(420_000);
     server = await startServer();
     const url = server.url;
@@ -130,7 +136,12 @@ test.describe('Phase 8 — offline', () => {
     // The server goes away and the browser is switched offline: nothing can come from a network
     await server.stop();
     await context.setOffline(true);
-    const probe = await page.evaluate(() => fetch(`/not-in-the-cache-${Date.now()}`).then((r) => `status ${r.status}`, () => 'network error'));
+    const probe = await page.evaluate(() =>
+      fetch(`/not-in-the-cache-${Date.now()}`).then(
+        (r) => `status ${r.status}`,
+        () => 'network error',
+      ),
+    );
     expect(probe).toBe('network error');
 
     const tracked = await noExternalAndNoFailures(page);
@@ -143,7 +154,9 @@ test.describe('Phase 8 — offline', () => {
     // --- Play: a move, and the bot (its own engine and worker) answers
     await clickMove(page, 'play-layout', 'e2', 'e4');
     await expect
-      .poll(() => page.evaluate(() => window.__wizardChessPlay!.controller.getGameTree().getMainLine().length), { timeout: 30_000 })
+      .poll(() => page.evaluate(() => window.__wizardChessPlay!.controller.getGameTree().getMainLine().length), {
+        timeout: 30_000,
+      })
       .toBe(2);
     await page.screenshot({ path: path.join(SCREENSHOT_DIR, 'offline-play.png') });
 
@@ -155,7 +168,11 @@ test.describe('Phase 8 — offline', () => {
       await page.getByTestId('toggle-analysis-engine').click();
     }
     await expect(page.getByTestId('eval-bar')).toHaveAttribute('data-mate', /.+/, { timeout: 60_000 });
-    await expect.poll(async () => Number(/\d+/.exec((await page.getByTestId('analysis-depth').textContent()) ?? '')?.[0] ?? 0), { timeout: 30_000 }).toBeGreaterThanOrEqual(8);
+    await expect
+      .poll(async () => Number(/\d+/.exec((await page.getByTestId('analysis-depth').textContent()) ?? '')?.[0] ?? 0), {
+        timeout: 30_000,
+      })
+      .toBeGreaterThanOrEqual(8);
 
     // --- Review: a game is reviewed start to end by the engine
     await page.evaluate((pgn) => window.__wizardChessAnalysis!.controller.importPgn(pgn), QUEEN_BLUNDER_PGN);
@@ -168,13 +185,17 @@ test.describe('Phase 8 — offline', () => {
     await page.getByTestId('mode-tab-train').click();
     await expect(page.getByTestId('today-screen')).toHaveAttribute('data-state', 'ready', { timeout: 30_000 });
     await page.getByTestId('btn-train-start').click();
-    await expect(page.getByTestId('puzzle-trainer')).toHaveAttribute('data-puzzle-state', 'playing', { timeout: 30_000 });
+    await expect(page.getByTestId('puzzle-trainer')).toHaveAttribute('data-puzzle-state', 'playing', {
+      timeout: 30_000,
+    });
     await page.getByTestId('btn-train-hub').click();
     await page.getByTestId('btn-trainer-repertoire').click();
     await expect(page.getByTestId('repertoire-trainer')).toBeVisible({ timeout: 30_000 });
     await page.getByTestId('btn-train-hub').click();
     await page.getByTestId('btn-trainer-endgames').click();
-    await expect(page.getByTestId('endgame-trainer')).toHaveAttribute('data-endgame-state', 'playing', { timeout: 30_000 });
+    await expect(page.getByTestId('endgame-trainer')).toHaveAttribute('data-endgame-state', 'playing', {
+      timeout: 30_000,
+    });
     // The exact defender answers from its worker: a queen move, then the opponent's king moves
     await clickMove(page, 'endgame-trainer', 'd1', 'd2');
     await expect(page.getByTestId('endgame-moves')).toHaveText('1 move');
@@ -221,7 +242,9 @@ test.describe('Phase 8 — offline', () => {
     });
     expect(manifest).toMatchObject({ name: "Wizard's Chess", start_url: '/', display: 'standalone' });
     for (const size of ['192x192', '512x512']) {
-      expect(manifest.icons.some((i) => i.sizes === size && i.type === 'image/png' && (i.purpose ?? 'any').includes('any'))).toBe(true);
+      expect(
+        manifest.icons.some((i) => i.sizes === size && i.type === 'image/png' && (i.purpose ?? 'any').includes('any')),
+      ).toBe(true);
     }
     expect(manifest.icons.some((i) => i.purpose === 'maskable')).toBe(true);
     // Every icon the manifest lists is really there, and really an image
@@ -232,7 +255,9 @@ test.describe('Phase 8 — offline', () => {
     }
     // Chrome's own installability check finds nothing wrong
     const cdp = await page.context().newCDPSession(page);
-    const result = (await cdp.send('Page.getInstallabilityErrors' as never)) as { installabilityErrors: Array<{ errorId: string }> };
+    const result = (await cdp.send('Page.getInstallabilityErrors' as never)) as {
+      installabilityErrors: Array<{ errorId: string }>;
+    };
     // (A test browser runs in an incognito-like profile, where Chrome never offers installing)
     expect(result.installabilityErrors.map((e) => e.errorId).filter((id) => id !== 'in-incognito')).toEqual([]);
   });
@@ -250,7 +275,12 @@ test.describe('Phase 8 — offline', () => {
 
     // The new build: a changed page and a changed worker
     const indexPath = path.join(copy, 'index.html');
-    fs.writeFileSync(indexPath, fs.readFileSync(indexPath, 'utf8').replace('<title>Wizard\'s Chess</title>', "<title>Wizard's Chess (new build)</title>"));
+    fs.writeFileSync(
+      indexPath,
+      fs
+        .readFileSync(indexPath, 'utf8')
+        .replace("<title>Wizard's Chess</title>", "<title>Wizard's Chess (new build)</title>"),
+    );
     // (a real build also lists the page's new revision in the worker's file list)
     const swPath = path.join(copy, 'sw.js');
     const swText = fs.readFileSync(swPath, 'utf8');
@@ -273,7 +303,9 @@ test.describe('Phase 8 — offline', () => {
     await expect(page.getByTestId('update-banner')).toBeVisible({ timeout: 30_000 });
     await Promise.all([page.waitForEvent('load'), page.getByTestId('btn-update-reload').click()]);
     await expect.poll(() => page.title(), { timeout: 30_000 }).toBe("Wizard's Chess (new build)");
-    expect(await page.evaluate(() => (navigator.serviceWorker.controller as ServiceWorker).scriptURL)).toBe(firstScript);
+    expect(await page.evaluate(() => (navigator.serviceWorker.controller as ServiceWorker).scriptURL)).toBe(
+      firstScript,
+    );
     fs.rmSync(copy, { recursive: true, force: true });
   });
 });

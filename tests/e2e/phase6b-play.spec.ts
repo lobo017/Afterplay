@@ -171,7 +171,12 @@ test.describe('Phase 6b — Play', () => {
     await page.getByTestId('btn-review-game').click();
     await expect(page.getByTestId('mode-tab-review')).toHaveAttribute('aria-current', 'page');
     expect(
-      await page.evaluate(() => window.__wizardChessAnalysis!.controller.getGameTree().getMainLine().map((n) => n.san)),
+      await page.evaluate(() =>
+        window
+          .__wizardChessAnalysis!.controller.getGameTree()
+          .getMainLine()
+          .map((n) => n.san),
+      ),
     ).toHaveLength(2);
     await expect(page.getByTestId('review-panel')).toHaveAttribute('data-state', /running|done/);
   });
@@ -237,7 +242,9 @@ test.describe('Phase 6b — Play', () => {
     await expect(page.getByTestId('input-max-premoves')).toHaveValue('4');
   });
 
-  test('phone: board nearly edge to edge, touch-size actions, moves in one line, no sideways scroll', async ({ page }) => {
+  test('phone: board nearly edge to edge, touch-size actions, moves in one line, no sideways scroll', async ({
+    page,
+  }) => {
     await openPlay(page, 390, 844);
     const frame = (await page.getByTestId('play-layout').getByTestId('chess-board-frame').boundingBox())!;
     expect(frame.width).toBeGreaterThanOrEqual(370);
@@ -247,9 +254,10 @@ test.describe('Phase 6b — Play', () => {
     await clickMove(page, 'g1', 'f3');
     await expect.poll(() => plies(page), { timeout: 15_000 }).toBe(4);
     // Moves in one horizontal line
-    const rows = await page.getByTestId('move-history-list').locator('.wc-move-row').evaluateAll((els) =>
-      els.map((el) => Math.round(el.getBoundingClientRect().top)),
-    );
+    const rows = await page
+      .getByTestId('move-history-list')
+      .locator('.wc-move-row')
+      .evaluateAll((els) => els.map((el) => Math.round(el.getBoundingClientRect().top)));
     expect(new Set(rows).size).toBe(1);
     for (const id of ['btn-hint', 'btn-takeback', 'btn-flip-board', 'play-menu']) {
       const box = (await page.getByTestId(id).boundingBox())!;

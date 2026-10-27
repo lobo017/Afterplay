@@ -39,12 +39,7 @@ describe('Phase 1 — GameTree & Variation Management', () => {
     tree.goForward(1); // enter 1... c5 variation
     expect(tree.currentNode.id).toBe(c5.id);
     tree.goToEnd();
-    expect(tree.getLineToNode(tree.currentNodeId).map((n) => n.san)).toEqual([
-      'e4',
-      'c5',
-      'Nf3',
-      'd6',
-    ]);
+    expect(tree.getLineToNode(tree.currentNodeId).map((n) => n.san)).toEqual(['e4', 'c5', 'Nf3', 'd6']);
     expect(tree.goBack()?.san).toBe('Nf3');
     void e5;
   });

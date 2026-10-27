@@ -94,17 +94,12 @@ export function findLeftoverTestProcesses({ ports = [] } = {}) {
 export function findOtherRepoServers({ ports = [] } = {}) {
   const portRe = ports.length > 0 ? new RegExp(`--port\\s+(${ports.join('|')})\\b`) : null;
   return listProcesses().filter(
-    (p) =>
-      /node/i.test(p.name) &&
-      /scripts[\\/]serve\.mjs/.test(p.cmd) &&
-      !(portRe && portRe.test(p.cmd)),
+    (p) => /node/i.test(p.name) && /scripts[\\/]serve\.mjs/.test(p.cmd) && !(portRe && portRe.test(p.cmd)),
   );
 }
 
 export function formatProcesses(procs) {
-  return procs
-    .map((p) => `  pid ${p.pid} (parent ${p.ppid}) ${p.name}: ${p.cmd.slice(0, 200)}`)
-    .join('\n');
+  return procs.map((p) => `  pid ${p.pid} (parent ${p.ppid}) ${p.name}: ${p.cmd.slice(0, 200)}`).join('\n');
 }
 
 export function killCommandHint(procs) {

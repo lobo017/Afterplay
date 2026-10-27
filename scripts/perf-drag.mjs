@@ -26,9 +26,7 @@ const SCENARIOS = (process.env.PERF_SCENARIOS || 'play,analysis')
 
 // Experiment knobs for scenario 2: PERF_ENGINE_THREADS=n overrides the engine's auto
 // thread count; PERF_GHOSTS=off skips the ghost-preview hovers during the drag sweep.
-const ENGINE_THREADS = process.env.PERF_ENGINE_THREADS
-  ? Number(process.env.PERF_ENGINE_THREADS)
-  : null;
+const ENGINE_THREADS = process.env.PERF_ENGINE_THREADS ? Number(process.env.PERF_ENGINE_THREADS) : null;
 const GHOST_PREVIEWS = process.env.PERF_GHOSTS !== 'off';
 
 // Frame budget: one 60 Hz vsync (16.7 ms) plus 0.5 ms for rAF timestamp jitter.
@@ -132,16 +130,12 @@ function requireNoLeftovers() {
 
 function startStaticServer(port) {
   return new Promise((resolve, reject) => {
-    const child = spawn(
-      process.execPath,
-      ['scripts/serve.mjs', '--port', String(port)],
-      {
-        stdio: ['ignore', 'pipe', 'pipe'],
-        // The server exits by itself if this script is force-killed
-        env: { ...process.env, WC_EXIT_WITH_PARENT_PID: String(process.pid) },
-        windowsHide: true,
-      },
-    );
+    const child = spawn(process.execPath, ['scripts/serve.mjs', '--port', String(port)], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      // The server exits by itself if this script is force-killed
+      env: { ...process.env, WC_EXIT_WITH_PARENT_PID: String(process.pid) },
+      windowsHide: true,
+    });
     let stderr = '';
 
     const timer = setTimeout(() => {
@@ -206,8 +200,7 @@ function installPerfHelpers() {
     summarize(intervals) {
       const samples = [...intervals].sort((a, b) => a - b);
       const count = samples.length;
-      const pick = (q) =>
-        count > 0 ? samples[Math.min(count - 1, Math.floor(count * q))] : 0;
+      const pick = (q) => (count > 0 ? samples[Math.min(count - 1, Math.floor(count * q))] : 0);
       const mean = count > 0 ? samples.reduce((a, v) => a + v, 0) / count : 0;
       const dropped = samples.filter((v) => v > 1.5 * 16.667).length;
       return {
@@ -324,9 +317,7 @@ async function runDragSweep({ ghostHoverEvery, readTelemetry }) {
         if (ghostHoverEvery > 0 && frameIndex % ghostHoverEvery === 0) {
           const line = 1 + (Math.floor(frameIndex / ghostHoverEvery) % 5);
           const ply = Math.floor(frameIndex / (ghostHoverEvery * 5)) % 4;
-          const token = document.querySelector(
-            `[data-testid="engine-pv-move-${line}-${ply}"]`,
-          );
+          const token = document.querySelector(`[data-testid="engine-pv-move-${line}-${ply}"]`);
           if (token) {
             token.dispatchEvent(new window.MouseEvent('mouseover', { bubbles: true }));
             ghostHovers++;
@@ -444,58 +435,60 @@ async function scenarioPlay(page) {
   );
 
   // Premove burst: queue three premoves while the bot thinks and let all of them fire.
-  const premoves = await withMainThread(() => page.evaluate(async () => {
-    const perf = window.__perf;
-    const play = window.__wizardChessPlay;
-    const controller = play.controller;
-    const board = controller.getBoard();
-    controller.setBotDelayRangeMs(350, 350);
-    controller.startNewGame({ playerColor: 'w' });
-    const boardEl = document.querySelector('[data-testid="chess-board"]');
-    perf.clickSquare(boardEl, 'e2', false, 40);
-    perf.clickSquare(boardEl, 'e4', false, 41);
-    const queue = [
-      ['d2', 'd4'],
-      ['g1', 'f3'],
-      ['b1', 'c3'],
-    ];
-    queue.forEach(([from, to], i) => {
-      perf.clickSquare(boardEl, from, false, 50 + i * 2);
-      perf.clickSquare(boardEl, to, false, 51 + i * 2);
-    });
-    const queued = board.getPremoves().length;
+  const premoves = await withMainThread(() =>
+    page.evaluate(async () => {
+      const perf = window.__perf;
+      const play = window.__wizardChessPlay;
+      const controller = play.controller;
+      const board = controller.getBoard();
+      controller.setBotDelayRangeMs(350, 350);
+      controller.startNewGame({ playerColor: 'w' });
+      const boardEl = document.querySelector('[data-testid="chess-board"]');
+      perf.clickSquare(boardEl, 'e2', false, 40);
+      perf.clickSquare(boardEl, 'e4', false, 41);
+      const queue = [
+        ['d2', 'd4'],
+        ['g1', 'f3'],
+        ['b1', 'c3'],
+      ];
+      queue.forEach(([from, to], i) => {
+        perf.clickSquare(boardEl, from, false, 50 + i * 2);
+        perf.clickSquare(boardEl, to, false, 51 + i * 2);
+      });
+      const queued = board.getPremoves().length;
 
-    const frameIntervals = [];
-    let lastPly = controller.getGameTree().getMainLine().length;
-    let lastTime = await perf.frame();
-    const plyFrames = [];
-    perf.startLongTasks();
-    const deadline = performance.now() + 15_000;
-    while (performance.now() < deadline) {
-      const now = await perf.frame();
-      const dt = now - lastTime;
-      lastTime = now;
-      if (dt > 0 && dt < 250) frameIntervals.push(dt);
-      const ply = controller.getGameTree().getMainLine().length;
-      if (ply !== lastPly) {
-        plyFrames.push({ frame: frameIntervals.length, from: lastPly, to: ply });
-        lastPly = ply;
+      const frameIntervals = [];
+      let lastPly = controller.getGameTree().getMainLine().length;
+      let lastTime = await perf.frame();
+      const plyFrames = [];
+      perf.startLongTasks();
+      const deadline = performance.now() + 15_000;
+      while (performance.now() < deadline) {
+        const now = await perf.frame();
+        const dt = now - lastTime;
+        lastTime = now;
+        if (dt > 0 && dt < 250) frameIntervals.push(dt);
+        const ply = controller.getGameTree().getMainLine().length;
+        if (ply !== lastPly) {
+          plyFrames.push({ frame: frameIntervals.length, from: lastPly, to: ply });
+          lastPly = ply;
+        }
+        if (ply >= 7) break;
       }
-      if (ply >= 7) break;
-    }
-    const longTasks = perf.stopLongTasks();
-    // Each bot reply and the premove it releases must land in the same frame (ply jumps by 2).
-    const sameFrameExecutions = plyFrames.filter((p) => p.to - p.from === 2).length;
-    controller.setBotDelayRangeMs(500, 3000);
-    return {
-      queued,
-      finalPly: controller.getGameTree().getMainLine().length,
-      sameFrameExecutions,
-      plyFrames,
-      ...perf.summarize(frameIntervals),
-      ...longTasks,
-    };
-  }));
+      const longTasks = perf.stopLongTasks();
+      // Each bot reply and the premove it releases must land in the same frame (ply jumps by 2).
+      const sameFrameExecutions = plyFrames.filter((p) => p.to - p.from === 2).length;
+      controller.setBotDelayRangeMs(500, 3000);
+      return {
+        queued,
+        finalPly: controller.getGameTree().getMainLine().length,
+        sameFrameExecutions,
+        plyFrames,
+        ...perf.summarize(frameIntervals),
+        ...longTasks,
+      };
+    }),
+  );
 
   await page.evaluate(() => window.__wizardChessPlay.controller.setInfiniteAnalysis(false));
   return { drag, premoves };
@@ -505,10 +498,7 @@ async function scenarioAnalysis(page) {
   if (ENGINE_THREADS !== null) {
     // Same path the app uses: EngineClient.configure() restarts the worker with the new
     // thread count (it never sends setoption Threads to a live engine)
-    await page.evaluate(
-      (threads) => window.__wizardChessPlay.engine.configure({ threads }),
-      ENGINE_THREADS,
-    );
+    await page.evaluate((threads) => window.__wizardChessPlay.engine.configure({ threads }), ENGINE_THREADS);
   }
   await page.getByTestId('mode-tab-review').click();
   await page.getByTestId('analysis-layout').waitFor({ state: 'visible' });
@@ -558,43 +548,44 @@ async function scenarioAnalysis(page) {
   );
 
   // Navigation sweep: rapid arrow-key stepping through a 40-move game, one key per frame.
-  const navigation = await withMainThread(() => page.evaluate(async (pgn) => {
-    const perf = window.__perf;
-    const controller = window.__wizardChessAnalysis.controller;
-    controller.importPgn(pgn);
-    controller.goToStart();
-    const plies = controller.getGameTree().getMainLine().length;
-    await perf.frame();
-    const frameIntervals = [];
-    let lastTime = await perf.frame();
-    perf.startLongTasks();
-    const press = (key) =>
-      window.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
-    for (let i = 0; i < plies; i++) {
-      press('ArrowRight');
-      const now = await perf.frame();
-      if (now - lastTime < 250) frameIntervals.push(now - lastTime);
-      lastTime = now;
-    }
-    const plyAtEnd = controller.getGameTree().currentNode.ply;
-    // Back again at one key every second frame; every frame interval is sampled.
-    for (let i = 0; i < plies; i++) {
-      press('ArrowLeft');
-      for (let f = 0; f < 2; f++) {
+  const navigation = await withMainThread(() =>
+    page.evaluate(async (pgn) => {
+      const perf = window.__perf;
+      const controller = window.__wizardChessAnalysis.controller;
+      controller.importPgn(pgn);
+      controller.goToStart();
+      const plies = controller.getGameTree().getMainLine().length;
+      await perf.frame();
+      const frameIntervals = [];
+      let lastTime = await perf.frame();
+      perf.startLongTasks();
+      const press = (key) => window.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+      for (let i = 0; i < plies; i++) {
+        press('ArrowRight');
         const now = await perf.frame();
         if (now - lastTime < 250) frameIntervals.push(now - lastTime);
         lastTime = now;
       }
-    }
-    const longTasks = perf.stopLongTasks();
-    return {
-      plies,
-      plyAtEnd,
-      plyAfterReturn: controller.getGameTree().currentNode.ply,
-      ...perf.summarize(frameIntervals),
-      ...longTasks,
-    };
-  }, FORTY_MOVE_PGN));
+      const plyAtEnd = controller.getGameTree().currentNode.ply;
+      // Back again at one key every second frame; every frame interval is sampled.
+      for (let i = 0; i < plies; i++) {
+        press('ArrowLeft');
+        for (let f = 0; f < 2; f++) {
+          const now = await perf.frame();
+          if (now - lastTime < 250) frameIntervals.push(now - lastTime);
+          lastTime = now;
+        }
+      }
+      const longTasks = perf.stopLongTasks();
+      return {
+        plies,
+        plyAtEnd,
+        plyAfterReturn: controller.getGameTree().currentNode.ply,
+        ...perf.summarize(frameIntervals),
+        ...longTasks,
+      };
+    }, FORTY_MOVE_PGN),
+  );
 
   return {
     drag: {
@@ -681,7 +672,9 @@ ${formatProcesses(killed)}`,
         );
       }
       p95Limit = Math.max(P95_LIMIT_MS, environmentFloor.p95FrameMs + FRAME_JITTER_ALLOWANCE_MS);
-      log(`[environment] PERF_RELATIVE=1: windows are judged against p95 <= ${p95Limit.toFixed(2)} ms (the floor + jitter), not the spec budget`);
+      log(
+        `[environment] PERF_RELATIVE=1: windows are judged against p95 <= ${p95Limit.toFixed(2)} ms (the floor + jitter), not the spec budget`,
+      );
     }
     const page = await context.newPage();
     page.on('pageerror', (err) => logError('[page error]', err));
@@ -711,7 +704,10 @@ ${formatProcesses(killed)}`,
 
     const report = {
       environmentFloor,
-      mode: environmentFloor.p50FrameMs > ENVIRONMENT_FLOOR_P50_MAX_MS ? 'relative-to-floor (NOT a spec budget result)' : 'spec budget',
+      mode:
+        environmentFloor.p50FrameMs > ENVIRONMENT_FLOOR_P50_MAX_MS
+          ? 'relative-to-floor (NOT a spec budget result)'
+          : 'spec budget',
       startupInteractiveMs,
       idleRafCallbacksIn500Ms,
       p95LimitMs: Number(p95Limit.toFixed(2)),
@@ -753,14 +749,10 @@ ${formatProcesses(killed)}`,
       checkInput('scenario 1', play.drag);
       checkFrames('scenario 1 premove execution', play.premoves);
       if (play.premoves.queued !== 3 || play.premoves.finalPly < 7) {
-        failures.push(
-          `scenario 1 premoves: queued ${play.premoves.queued}, final ply ${play.premoves.finalPly}`,
-        );
+        failures.push(`scenario 1 premoves: queued ${play.premoves.queued}, final ply ${play.premoves.finalPly}`);
       }
       if (play.premoves.sameFrameExecutions !== 3) {
-        failures.push(
-          `scenario 1 premoves: only ${play.premoves.sameFrameExecutions}/3 executed in the bot's frame`,
-        );
+        failures.push(`scenario 1 premoves: only ${play.premoves.sameFrameExecutions}/3 executed in the bot's frame`);
       }
     }
 
@@ -785,10 +777,7 @@ ${formatProcesses(killed)}`,
       if (GHOST_PREVIEWS && analysis.drag.ghostPreviewsShown === 0) {
         failures.push('scenario 2: no ghost previews were shown during the drag');
       }
-      if (
-        analysis.navigation.plyAtEnd !== analysis.navigation.plies ||
-        analysis.navigation.plyAfterReturn !== 0
-      ) {
+      if (analysis.navigation.plyAtEnd !== analysis.navigation.plies || analysis.navigation.plyAfterReturn !== 0) {
         failures.push('scenario 2 navigation: did not land on the expected plies');
       }
     }

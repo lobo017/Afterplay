@@ -19,6 +19,10 @@ scope.addEventListener('message', (e: MessageEvent<PgnImportRequest>) => {
     }
     scope.postMessage({ id: msg.id, kind: 'done' } satisfies PgnImportResponse);
   } catch (err) {
-    scope.postMessage({ id: msg.id, kind: 'error', message: err instanceof Error ? err.message : String(err) } satisfies PgnImportResponse);
+    scope.postMessage({
+      id: msg.id,
+      kind: 'error',
+      message: err instanceof Error ? err.message : String(err),
+    } satisfies PgnImportResponse);
   }
 });

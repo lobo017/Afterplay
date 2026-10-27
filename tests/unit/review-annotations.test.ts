@@ -1,17 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { GameTree } from '../../src/core/game-tree';
 import { parsePgn } from '../../src/core/pgn';
-import {
-  stripEngineAnnotations,
-  stripEngineComment,
-  withReviewComment,
-} from '../../src/review/annotations';
-import {
-  CLASSIFICATION_NAG,
-  buildAnnotatedPgn,
-  buildGameReview,
-  mainLinePlies,
-} from '../../src/review/review-game';
+import { stripEngineAnnotations, stripEngineComment, withReviewComment } from '../../src/review/annotations';
+import { CLASSIFICATION_NAG, buildAnnotatedPgn, buildGameReview, mainLinePlies } from '../../src/review/review-game';
 import type { PositionAnalysis } from '../../src/review/types';
 
 /** As Lichess exports an analysed game (`evals=true&literate=true`), plus a human note. */

@@ -24,7 +24,9 @@ async function openPuzzle(page: Page, id: string): Promise<void> {
 }
 
 test.describe('Phase 6b — Train', () => {
-  test('the hub: one primary Start training saying what it starts; Today cards as the other ways in', async ({ page }) => {
+  test('the hub: one primary Start training saying what it starts; Today cards as the other ways in', async ({
+    page,
+  }) => {
     await openTrain(page);
     const hub = page.getByTestId('train-hub');
     await expect(hub.locator('.wc-btn-primary:visible')).toHaveCount(1);
@@ -42,8 +44,21 @@ test.describe('Phase 6b — Train', () => {
     // A failed attempt 11 minutes ago: the card is due again now (Again → 10 min)
     await page.evaluate(async () => {
       const api = await window.__wizardChessPuzzlesReady!;
-      const entry = { id: 'TstDue1', fen: '7k/6pp/8/8/8/8/6PP/R6K w - - 0 1', moves: ['h8g8', 'a1a8'], rating: 900, themes: ['mateIn1'], popularity: 0, plays: 0 };
-      await api.store.recordAttempt(entry as never, 'lichess', { solved: false, hintUsed: false, mistakes: 1, timeMs: 5000, grade: 1 }, Date.now() - 11 * 60_000);
+      const entry = {
+        id: 'TstDue1',
+        fen: '7k/6pp/8/8/8/8/6PP/R6K w - - 0 1',
+        moves: ['h8g8', 'a1a8'],
+        rating: 900,
+        themes: ['mateIn1'],
+        popularity: 0,
+        plays: 0,
+      };
+      await api.store.recordAttempt(
+        entry as never,
+        'lichess',
+        { solved: false, hintUsed: false, mistakes: 1, timeMs: 5000, grade: 1 },
+        Date.now() - 11 * 60_000,
+      );
     });
     await expect(page.getByTestId('nav-train-count')).toBeVisible();
     await expect(page.getByTestId('nav-train-count')).toHaveText('1');
@@ -55,7 +70,9 @@ test.describe('Phase 6b — Train', () => {
   test('the session panel: Today strip, the puzzle card, ⋯ actions, Next puzzle once it is over', async ({ page }) => {
     await openTrain(page);
     await page.getByTestId('btn-train-start').click();
-    await expect(page.getByTestId('puzzle-trainer')).toHaveAttribute('data-puzzle-state', 'playing', { timeout: 15_000 });
+    await expect(page.getByTestId('puzzle-trainer')).toHaveAttribute('data-puzzle-state', 'playing', {
+      timeout: 15_000,
+    });
     await expect(page.getByTestId('puzzle-mode-rated')).toHaveAttribute('aria-selected', 'true');
     await expect(page.getByTestId('puzzle-today-due')).toHaveText('0');
     await expect(page.getByTestId('puzzle-today-new')).toHaveText('0');
@@ -77,7 +94,9 @@ test.describe('Phase 6b — Train', () => {
     await expect(page.getByTestId('btn-puzzle-retry')).toBeDisabled();
     const flippedBefore = await page.evaluate(() => window.__wizardChessPuzzles!.getTrainer()!.getBoard().isFlipped());
     await page.getByTestId('btn-puzzle-flip').click();
-    expect(await page.evaluate(() => window.__wizardChessPuzzles!.getTrainer()!.getBoard().isFlipped())).toBe(!flippedBefore);
+    expect(await page.evaluate(() => window.__wizardChessPuzzles!.getTrainer()!.getBoard().isFlipped())).toBe(
+      !flippedBefore,
+    );
 
     // Show solution: the puzzle is over, Next puzzle becomes the primary, Retry opens up
     await page.getByTestId('btn-puzzle-solution').click();
@@ -102,7 +121,9 @@ test.describe('Phase 6b — Train', () => {
     const start = (await page.getByTestId('btn-train-start').boundingBox())!;
     expect(start.width).toBeGreaterThan(300);
     await page.getByTestId('btn-train-start').click();
-    await expect(page.getByTestId('puzzle-trainer')).toHaveAttribute('data-puzzle-state', 'playing', { timeout: 15_000 });
+    await expect(page.getByTestId('puzzle-trainer')).toHaveAttribute('data-puzzle-state', 'playing', {
+      timeout: 15_000,
+    });
     const frame = (await page.getByTestId('puzzle-trainer').getByTestId('chess-board-frame').boundingBox())!;
     expect(frame.width).toBeGreaterThanOrEqual(370);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);

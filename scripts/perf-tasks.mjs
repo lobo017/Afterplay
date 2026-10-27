@@ -82,11 +82,16 @@ const gamePgn = (i) =>
 ${i % 2 ? SICILIAN : SCHOLAR} ${i % 3 === 0 ? '1/2-1/2' : '1-0'}`;
 
 async function run() {
-  log(`[run] perf:tasks, ${GAMES} games, node ${process.version}, ${os.cpus().length} CPUs, log ${path.resolve(LOG_PATH)}`);
+  log(
+    `[run] perf:tasks, ${GAMES} games, node ${process.version}, ${os.cpus().length} CPUs, log ${path.resolve(LOG_PATH)}`,
+  );
   const free = freeMemoryBytes();
   log(`[memory] start: ${formatGb(free)} free of ${formatGb(os.totalmem())}`);
   if (free < MIN_FREE_MEMORY_BYTES) {
-    throw new PerfAbort(`Only ${formatGb(free)} of memory is free; perf:tasks needs at least ${formatGb(MIN_FREE_MEMORY_BYTES)}.`, 3);
+    throw new PerfAbort(
+      `Only ${formatGb(free)} of memory is free; perf:tasks needs at least ${formatGb(MIN_FREE_MEMORY_BYTES)}.`,
+      3,
+    );
   }
   installCleanup({
     log: logError,
@@ -102,8 +107,18 @@ async function run() {
   let browser = null;
   try {
     server = await startStaticServer(PORT);
-    browser = await chromium.launch({ channel: 'chrome', headless: true, handleSIGINT: false, handleSIGTERM: false, handleSIGHUP: false });
-    const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, serviceWorkers: 'block', acceptDownloads: true });
+    browser = await chromium.launch({
+      channel: 'chrome',
+      headless: true,
+      handleSIGINT: false,
+      handleSIGTERM: false,
+      handleSIGHUP: false,
+    });
+    const context = await browser.newContext({
+      viewport: { width: 1440, height: 900 },
+      serviceWorkers: 'block',
+      acceptDownloads: true,
+    });
     const page = await context.newPage();
     page.on('pageerror', (err) => logError('[page error]', err.message));
     await page.addInitScript(() => {
@@ -116,7 +131,9 @@ async function run() {
     await page.locator('[data-testid="chess-board"]').waitFor({ state: 'visible' });
     // The one-time audio start happens now, before anything is measured (see the header)
     await page.mouse.move(30, 30);
-    await page.waitForFunction(() => window.__wizardChessPlay?.controller.getAudio().isInitialized(), undefined, { timeout: 10_000 });
+    await page.waitForFunction(() => window.__wizardChessPlay?.controller.getAudio().isInitialized(), undefined, {
+      timeout: 10_000,
+    });
     await page.waitForTimeout(1500);
     await page.evaluate(() => {
       window.__tour.startupEnd = performance.now();
@@ -149,10 +166,22 @@ async function run() {
         const boardEl = document.querySelector('[data-testid="play-layout"] [data-testid="chess-board"]');
         const center = (sq) => {
           const r = boardEl.getBoundingClientRect();
-          return { x: r.left + ('abcdefgh'.indexOf(sq[0]) + 0.5) * (r.width / 8), y: r.top + (8 - Number(sq[1]) + 0.5) * (r.height / 8) };
+          return {
+            x: r.left + ('abcdefgh'.indexOf(sq[0]) + 0.5) * (r.width / 8),
+            y: r.top + (8 - Number(sq[1]) + 0.5) * (r.height / 8),
+          };
         };
         const fire = (t, target, pt) =>
-          target.dispatchEvent(new window.PointerEvent(t, { bubbles: true, pointerId: 1, button: 0, buttons: t === 'pointerup' ? 0 : 1, clientX: pt.x, clientY: pt.y }));
+          target.dispatchEvent(
+            new window.PointerEvent(t, {
+              bubbles: true,
+              pointerId: 1,
+              button: 0,
+              buttons: t === 'pointerup' ? 0 : 1,
+              clientX: pt.x,
+              clientY: pt.y,
+            }),
+          );
         const click = (sq) => {
           const pt = center(sq);
           fire('pointerdown', boardEl, pt);
@@ -162,13 +191,20 @@ async function run() {
         for (let i = 0; i < 6; i++) {
           // (random play can end the game early: nothing more to do then)
           if (c.isGameOver() || c.getAdapter().isGameOver()) break;
-          const opts = c.getAdapter().verboseMoves().filter((m) => !m.promotion);
+          const opts = c
+            .getAdapter()
+            .verboseMoves()
+            .filter((m) => !m.promotion);
           const pick = opts[Math.floor(Math.random() * opts.length)];
           const before = c.getGameTree().getMainLine().length;
           click(pick.from);
           click(pick.to);
           const deadline = performance.now() + 15_000;
-          while (performance.now() < deadline && !(c.getGameTree().getMainLine().length >= before + 2 && c.getAdapter().turn() === 'w')) await sleep(15);
+          while (
+            performance.now() < deadline &&
+            !(c.getGameTree().getMainLine().length >= before + 2 && c.getAdapter().turn() === 'w')
+          )
+            await sleep(15);
           if (i === 3) c.takeback();
         }
         c.resign();
@@ -189,7 +225,10 @@ async function run() {
         rv.panel.setPreset('quick');
       });
       await page.getByTestId('btn-review-start').click();
-      await page.getByTestId('review-progress-text').filter({ hasText: /^Reviewed/ }).waitFor({ timeout: 120_000 });
+      await page
+        .getByTestId('review-progress-text')
+        .filter({ hasText: /^Reviewed/ })
+        .waitFor({ timeout: 120_000 });
       await settle();
     });
     await flow('review: step through with the arrow keys and jump Home / End', async () => {
@@ -226,7 +265,10 @@ async function run() {
         el.value = value;
       }, text);
       await page.getByTestId('btn-games-paste-import').click();
-      await page.getByTestId('games-message').filter({ hasText: `Imported ${GAMES} games` }).waitFor({ timeout: 120_000 });
+      await page
+        .getByTestId('games-message')
+        .filter({ hasText: `Imported ${GAMES} games` })
+        .waitFor({ timeout: 120_000 });
       await settle();
     });
     await flow('games: filters, sort, select all', async () => {
@@ -245,8 +287,13 @@ async function run() {
     await flow(`games: background review queue (${REVIEWED_GAMES} games on Quick)`, async () => {
       const ids = await page.evaluate(async (n) => {
         const api = await window.__wizardChessLibraryReady;
-        const mine = (await api.library.list()).filter((g) => g.white === 'Lobo017' || g.black === 'Lobo017').slice(0, n);
-        api.queue.enqueue(mine.map((g) => g.id), 'quick');
+        const mine = (await api.library.list())
+          .filter((g) => g.white === 'Lobo017' || g.black === 'Lobo017')
+          .slice(0, n);
+        api.queue.enqueue(
+          mine.map((g) => g.id),
+          'quick',
+        );
         return mine.map((g) => g.id);
       }, REVIEWED_GAMES);
       // (the list shows 100 rows at most, so the records themselves say when a game is reviewed)
@@ -297,7 +344,10 @@ async function run() {
     await flow('settings: restore that backup', async () => {
       await page.getByTestId('backup-file-input').setInputFiles(backupFile);
       await page.getByTestId('btn-backup-confirm').click();
-      await page.getByTestId('backup-status').filter({ hasText: /restored/i }).waitFor({ timeout: 120_000 });
+      await page
+        .getByTestId('backup-status')
+        .filter({ hasText: /restored/i })
+        .waitFor({ timeout: 120_000 });
       await settle(800);
     });
     fs.rmSync(backupFile, { force: true });
@@ -307,14 +357,20 @@ async function run() {
     // Page load is reported apart: the browser's one-time audio and font start-up land there (see the header)
     const startup = tour.tasks.filter((t) => t.dur >= LIMIT_MS && t.start < tour.startupEnd);
     const over = tour.tasks.filter((t) => t.dur >= LIMIT_MS && t.start >= tour.startupEnd);
-    const where = (t) => tour.windows.find((w) => t.start >= w.start - 1 && t.start <= w.end + 1)?.label ?? '(between flows)';
+    const where = (t) =>
+      tour.windows.find((w) => t.start >= w.start - 1 && t.start <= w.end + 1)?.label ?? '(between flows)';
     log('\n=== Main-thread task audit (perf:tasks) ===');
-    log(`${startup.length === 0 ? 'ok  ' : 'note'} page load, until the audio context exists${startup.length ? `  → ${startup.map((t) => `${Math.round(t.dur)} ms at ${Math.round(t.start)} ms`).join(', ')} (browser start-up, see the header)` : ''}`);
+    log(
+      `${startup.length === 0 ? 'ok  ' : 'note'} page load, until the audio context exists${startup.length ? `  → ${startup.map((t) => `${Math.round(t.dur)} ms at ${Math.round(t.start)} ms`).join(', ')} (browser start-up, see the header)` : ''}`,
+    );
     for (const w of tour.windows) {
       const mine = tour.tasks.filter((t) => t.dur >= LIMIT_MS && t.start >= w.start - 1 && t.start <= w.end + 1);
-      log(`${mine.length === 0 ? 'ok  ' : 'LONG'} ${w.label}${mine.length ? `  → ${mine.map((t) => `${Math.round(t.dur)} ms`).join(', ')}` : ''}`);
+      log(
+        `${mine.length === 0 ? 'ok  ' : 'LONG'} ${w.label}${mine.length ? `  → ${mine.map((t) => `${Math.round(t.dur)} ms`).join(', ')}` : ''}`,
+      );
     }
-    for (const t of over.filter((t) => where(t) === '(between flows)')) log(`LONG (between flows) ${Math.round(t.dur)} ms at ${Math.round(t.start)}`);
+    for (const t of over.filter((t) => where(t) === '(between flows)'))
+      log(`LONG (between flows) ${Math.round(t.dur)} ms at ${Math.round(t.start)}`);
     log(`tasks of ${LIMIT_MS} ms or more after page load: ${over.length}`);
     log(over.length === 0 ? 'budgetPassed: true' : 'budgetPassed: false');
     if (over.length > 0) process.exitCode = 1;

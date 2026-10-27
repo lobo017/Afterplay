@@ -52,9 +52,7 @@ function context(fenBefore: string, uci: string): MoveContext | null {
 
 /** The opponent can win the piece on `square` right now (a legal capture that nets material). */
 function opponentWinsOn(fenAfter: string, square: number): boolean {
-  return captureThreats(fenAfter).some(
-    (t) => squareIndex(t.move.to) === square && t.gain > 0,
-  );
+  return captureThreats(fenAfter).some((t) => squareIndex(t.move.to) === square && t.gain > 0);
 }
 
 /**
@@ -74,8 +72,7 @@ export function detectHangingPiece(fenBefore: string, uci: string): Motif | null
     const better =
       !best ||
       threat.gain > best.gain ||
-      (threat.gain === best.gain &&
-        PIECE_VALUE[threat.move.captured ?? 'p'] > PIECE_VALUE[best.move.captured ?? 'p']);
+      (threat.gain === best.gain && PIECE_VALUE[threat.move.captured ?? 'p'] > PIECE_VALUE[best.move.captured ?? 'p']);
     if (better) best = threat;
   }
   if (!best) return null;
@@ -168,10 +165,7 @@ export function detectPinOrSkewer(fenBefore: string, uci: string): Motif | null 
       (back.type === 'k' || PIECE_VALUE[back.type] > PIECE_VALUE[front.type])
     ) {
       kind = 'pin';
-    } else if (
-      (front.type === 'k' || PIECE_VALUE[front.type] > PIECE_VALUE[back.type]) &&
-      back.type !== 'p'
-    ) {
+    } else if ((front.type === 'k' || PIECE_VALUE[front.type] > PIECE_VALUE[back.type]) && back.type !== 'p') {
       const withoutFront = ctx.after.slice();
       withoutFront[a] = null;
       const backDefended = attackersOf(withoutFront, b, back.color).length > 0;

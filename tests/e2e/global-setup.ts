@@ -32,9 +32,7 @@ export default function globalSetup(): void {
     log: (msg) => process.stderr.write(`[e2e process guard] ${msg}\n`),
     cleanup: (reason) => {
       const killed = killAllChildTrees();
-      process.stderr.write(
-        `[e2e process guard] ${reason}: killed ${killed.length} child process tree(s)\n`,
-      );
+      process.stderr.write(`[e2e process guard] ${reason}: killed ${killed.length} child process tree(s)\n`);
     },
   });
 }

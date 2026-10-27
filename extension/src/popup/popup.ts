@@ -231,7 +231,10 @@ function renderRejected(entries: readonly QueueEntry[]): void {
     const reason = document.createElement('span');
     reason.setAttribute('data-testid', 'popup-rejected-reason');
     reason.textContent = rejectLabel(e);
-    sub.append(...[playedText(e), e.method ? (METHOD_LABEL[e.method] ?? e.method) : ''].filter(Boolean).map((t) => `${t} · `), reason);
+    sub.append(
+      ...[playedText(e), e.method ? (METHOD_LABEL[e.method] ?? e.method) : ''].filter(Boolean).map((t) => `${t} · `),
+      reason,
+    );
     who.appendChild(sub);
     who.title = [who.firstChild?.textContent, sub.textContent].filter(Boolean).join('\n');
     const actions = document.createElement('div');
@@ -290,7 +293,8 @@ function syncText(site: CaptureSite, state: AutoSyncSiteState, settings: Extensi
   if (!settings.autoCapture) return 'Off (automatic capture is off in Settings).';
   const username = site === 'lichess' ? settings.lichessUsername : settings.chesscomUsername;
   if (username === '') return 'Set your username in Settings to check your recent games.';
-  if (state.lastRunAt === null) return `Not checked yet. ${state.lastResult.startsWith('Skipped') ? state.lastResult : ''}`.trim();
+  if (state.lastRunAt === null)
+    return `Not checked yet. ${state.lastResult.startsWith('Skipped') ? state.lastResult : ''}`.trim();
   return `Checked ${shortTime(state.lastRunAt)} · ${state.lastResult}`;
 }
 
@@ -333,7 +337,8 @@ function render(s: StatusReply): void {
   els.autoSummary.textContent = s.settings.autoCapture
     ? 'On. Games of mine are captured when they end on the page, when I leave a game page, and by checking my recent games every 3 minutes while a Lichess or Chess.com tab is open.'
     : 'Off: only the Save button, links and imports add games. Switch it on in Settings.';
-  els.syncNow.disabled = !s.settings.autoCapture || (s.settings.lichessUsername === '' && s.settings.chesscomUsername === '');
+  els.syncNow.disabled =
+    !s.settings.autoCapture || (s.settings.lichessUsername === '' && s.settings.chesscomUsername === '');
 
   if (s.lastFailure) {
     failureUrl = s.lastFailure.url;
@@ -432,12 +437,20 @@ function renderDebug(
     ]);
   } else {
     const st = content.status;
-    rows.push(['Capture script', `running since ${clockTime(content.scriptStartedAt)} (v${content.extensionVersion})`, 'ok']);
+    rows.push([
+      'Capture script',
+      `running since ${clockTime(content.scriptStartedAt)} (v${content.extensionVersion})`,
+      'ok',
+    ]);
     rows.push([
       'Page',
       st.kind === 'game' ? 'game page' : st.kind === 'play' ? 'play page (no game ID in the URL)' : 'not a game page',
     ]);
-    rows.push(['Game ID', st.ref ? `${st.ref.gameId} (from ${st.refSource ?? '?'})` : 'none detected', st.ref ? 'ok' : undefined]);
+    rows.push([
+      'Game ID',
+      st.ref ? `${st.ref.gameId} (from ${st.refSource ?? '?'})` : 'none detected',
+      st.ref ? 'ok' : undefined,
+    ]);
     rows.push([
       'Game state',
       st.state ? `${STATE_TEXT[st.state] ?? st.state}${st.stateSource ? ` (${st.stateSource})` : ''}` : '—',
@@ -467,7 +480,11 @@ function renderDebug(
         bg.sync.enabled ? undefined : 'bad',
       ]);
     }
-    if (bg.tracked) rows.push(['Background sees', `${bg.tracked.url} (${bg.tracked.state ?? 'state unknown'}, updated ${clockTime(bg.tracked.updatedAt)})`]);
+    if (bg.tracked)
+      rows.push([
+        'Background sees',
+        `${bg.tracked.url} (${bg.tracked.state ?? 'state unknown'}, updated ${clockTime(bg.tracked.updatedAt)})`,
+      ]);
     if (content?.status.ref || bg.entry) {
       const e = bg.entry;
       rows.push([
@@ -478,7 +495,8 @@ function renderDebug(
         e ? 'ok' : undefined,
       ]);
     }
-    if (bg.lastLeave) rows.push(['Last game page left', `${clockTime(bg.lastLeave.at)} ${bg.lastLeave.url} → ${bg.lastLeave.result}`]);
+    if (bg.lastLeave)
+      rows.push(['Last game page left', `${clockTime(bg.lastLeave.at)} ${bg.lastLeave.url} → ${bg.lastLeave.result}`]);
     for (const r of bg.retrying) rows.push(['Retrying', `${r.url}: ${r.description}`]);
     rows.push(['Analysis site', bg.siteTabOpen ? `open in a tab (${s.siteUrl})` : `not open (${s.siteUrl})`]);
   }
@@ -556,7 +574,11 @@ els.debugCopy.addEventListener('click', () => {
 els.debugInject.addEventListener('click', () => {
   if (!debugTarget) return;
   els.debugInject.disabled = true;
-  void sendToBackground<{ ok: boolean; error?: string }>({ kind: 'inject-tab', tabId: debugTarget.id, url: debugTarget.url })
+  void sendToBackground<{ ok: boolean; error?: string }>({
+    kind: 'inject-tab',
+    tabId: debugTarget.id,
+    url: debugTarget.url,
+  })
     .then(async (reply) => {
       if (!reply.ok) {
         setResult(els.debugResult, reply.error ?? 'Couldn’t start it.', 'bad');
@@ -590,7 +612,9 @@ els.openSite.addEventListener('click', () => {
 els.syncNow.addEventListener('click', () => {
   els.syncNow.disabled = true;
   setResult(els.syncResult, 'Checking…');
-  void sendToBackground<{ ok: boolean; states: Partial<Record<CaptureSite, AutoSyncSiteState | null>> }>({ kind: 'sync-now' })
+  void sendToBackground<{ ok: boolean; states: Partial<Record<CaptureSite, AutoSyncSiteState | null>> }>({
+    kind: 'sync-now',
+  })
     .then(async (reply) => {
       const parts = (['lichess', 'chesscom'] as const)
         .map((site) => (reply.states[site] ? `${SITE_NAME[site]}: ${reply.states[site]!.lastResult}` : null))

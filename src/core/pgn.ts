@@ -1,7 +1,4 @@
-import {
-  DEFAULT_POSITION,
-  type Square,
-} from './rules';
+import { DEFAULT_POSITION, type Square } from './rules';
 import {
   GameTree,
   resolveNagCode,
@@ -20,15 +17,7 @@ export interface WritePgnOptions {
   symbolicMoveSuffixes?: boolean;
 }
 
-type TokenType =
-  | 'HEADER'
-  | 'COMMENT'
-  | 'LPAREN'
-  | 'RPAREN'
-  | 'NAG'
-  | 'MOVE_NUMBER'
-  | 'RESULT'
-  | 'SAN';
+type TokenType = 'HEADER' | 'COMMENT' | 'LPAREN' | 'RPAREN' | 'NAG' | 'MOVE_NUMBER' | 'RESULT' | 'SAN';
 
 interface PgnToken {
   type: TokenType;
@@ -38,15 +27,7 @@ interface PgnToken {
   nagCode?: number;
 }
 
-const SEVEN_TAG_ORDER = [
-  'Event',
-  'Site',
-  'Date',
-  'Round',
-  'White',
-  'Black',
-  'Result',
-] as const;
+const SEVEN_TAG_ORDER = ['Event', 'Site', 'Date', 'Round', 'White', 'Black', 'Result'] as const;
 
 const SUFFIX_SORT_ORDER: Record<number, string> = {
   1: '!',
@@ -64,14 +45,7 @@ function isWhitespace(ch: string): boolean {
 function isTokenBoundary(ch: string | undefined): boolean {
   if (ch === undefined) return true;
   return (
-    isWhitespace(ch) ||
-    ch === '(' ||
-    ch === ')' ||
-    ch === '{' ||
-    ch === '}' ||
-    ch === ';' ||
-    ch === '[' ||
-    ch === '$'
+    isWhitespace(ch) || ch === '(' || ch === ')' || ch === '{' || ch === '}' || ch === ';' || ch === '[' || ch === '$'
   );
 }
 
@@ -187,18 +161,12 @@ function tokenizePgn(input: string): PgnToken[] {
     }
 
     // Check game termination markers ('1/2-1/2', '1-0', '0-1', '*') before move numbers/castling
-    if (
-      input.startsWith('1/2-1/2', i) &&
-      isTokenBoundary(input[i + 7])
-    ) {
+    if (input.startsWith('1/2-1/2', i) && isTokenBoundary(input[i + 7])) {
       tokens.push({ type: 'RESULT', value: '1/2-1/2' });
       i += 7;
       continue;
     }
-    if (
-      (input.startsWith('1-0', i) || input.startsWith('0-1', i)) &&
-      isTokenBoundary(input[i + 3])
-    ) {
+    if ((input.startsWith('1-0', i) || input.startsWith('0-1', i)) && isTokenBoundary(input[i + 3])) {
       const res = input.slice(i, i + 3);
       tokens.push({ type: 'RESULT', value: res });
       i += 3;
@@ -247,11 +215,7 @@ function tokenizePgn(input: string): PgnToken[] {
           numToken += '.';
           consumedDots = true;
           cursor++;
-        } else if (
-          (input[cursor] === ' ' || input[cursor] === '\t') &&
-          cursor + 1 < len &&
-          input[cursor + 1] === '.'
-        ) {
+        } else if ((input[cursor] === ' ' || input[cursor] === '\t') && cursor + 1 < len && input[cursor + 1] === '.') {
           cursor++;
         } else {
           break;
@@ -288,10 +252,7 @@ function tokenizePgn(input: string): PgnToken[] {
 
     // Check if the token is a standalone annotation symbol (e.g. `!`, `?!`, `±`, `+=`, `N`)
     const standaloneNag = resolveNagCode(sanToken);
-    if (
-      standaloneNag !== null &&
-      /^(?:[?!]{1,2}|[±∓∞=□N]|\+=|=\+|\+-|-\+|=\/∞|⨀|↑|→|⇆)$/.test(sanToken)
-    ) {
+    if (standaloneNag !== null && /^(?:[?!]{1,2}|[±∓∞=□N]|\+=|=\+|\+-|-\+|=\/∞|⨀|↑|→|⇆)$/.test(sanToken)) {
       tokens.push({
         type: 'NAG',
         value: sanToken,
@@ -381,8 +342,7 @@ export function parseCommentAnnotations(rawComment: string): {
     const parts = inner.trim().split(',');
     const scorePart = (parts[0] ?? '').trim();
     const depthPart = parts[1]?.trim();
-    const depth =
-      depthPart && /^\d+$/.test(depthPart) ? Number(depthPart) : undefined;
+    const depth = depthPart && /^\d+$/.test(depthPart) ? Number(depthPart) : undefined;
 
     if (scorePart.startsWith('#')) {
       const mateVal = Number(scorePart.slice(1));
@@ -417,11 +377,7 @@ export function parseCommentAnnotations(rawComment: string): {
         const color = match[1]!.toUpperCase() as AnnotationColor;
         const from = match[2]!.toLowerCase() as Square;
         const to = match[3]!.toLowerCase() as Square;
-        if (
-          !arrows.some(
-            (a) => a.color === color && a.from === from && a.to === to,
-          )
-        ) {
+        if (!arrows.some((a) => a.color === color && a.from === from && a.to === to)) {
           arrows.push({ color, from, to });
         }
       }
@@ -440,9 +396,7 @@ export function parseCommentAnnotations(rawComment: string): {
       if (match) {
         const color = match[1]!.toUpperCase() as AnnotationColor;
         const square = match[2]!.toLowerCase() as Square;
-        if (
-          !highlights.some((h) => h.color === color && h.square === square)
-        ) {
+        if (!highlights.some((h) => h.color === color && h.square === square)) {
           highlights.push({ color, square });
         }
       }
@@ -503,45 +457,26 @@ function splitSanAndInlineNags(rawSan: string): {
   return { sanCore: s, inlineNags };
 }
 
-function mergeParsedCommentIntoNode(
-  node: GameNode,
-  rawComment: string,
-  targetField: 'comment' | 'preComment',
-): void {
+function mergeParsedCommentIntoNode(node: GameNode, rawComment: string, targetField: 'comment' | 'preComment'): void {
   const parsed = parseCommentAnnotations(rawComment);
   if (parsed.eval) {
     node.eval = parsed.eval;
   }
   for (const arrow of parsed.arrows) {
-    if (
-      !node.arrows.some(
-        (a) =>
-          a.color === arrow.color &&
-          a.from === arrow.from &&
-          a.to === arrow.to,
-      )
-    ) {
+    if (!node.arrows.some((a) => a.color === arrow.color && a.from === arrow.from && a.to === arrow.to)) {
       node.arrows.push(arrow);
     }
   }
   for (const hl of parsed.highlights) {
-    if (
-      !node.highlights.some(
-        (h) => h.color === hl.color && h.square === hl.square,
-      )
-    ) {
+    if (!node.highlights.some((h) => h.color === hl.color && h.square === hl.square)) {
       node.highlights.push(hl);
     }
   }
   if (parsed.text) {
     if (targetField === 'preComment') {
-      node.preComment = node.preComment
-        ? `${node.preComment} ${parsed.text}`
-        : parsed.text;
+      node.preComment = node.preComment ? `${node.preComment} ${parsed.text}` : parsed.text;
     } else {
-      node.comment = node.comment
-        ? `${node.comment} ${parsed.text}`
-        : parsed.text;
+      node.comment = node.comment ? `${node.comment} ${parsed.text}` : parsed.text;
     }
   }
 }
@@ -576,11 +511,7 @@ export function parsePgnGames(pgn: string): GameTree[] {
     if (tok.type === 'LPAREN') parenDepth++;
     if (tok.type === 'RPAREN' && parenDepth > 0) parenDepth--;
 
-    if (
-      tok.type === 'HEADER' &&
-      sawMovetextInCurrent &&
-      parenDepth === 0
-    ) {
+    if (tok.type === 'HEADER' && sawMovetextInCurrent && parenDepth === 0) {
       gameTokenSlices.push(currentSlice);
       currentSlice = [tok];
       sawMovetextInCurrent = false;
@@ -618,10 +549,7 @@ function parseSingleGameTokens(tokens: PgnToken[]): GameTree {
     if (k.toLowerCase() === 'fen' && v.trim()) {
       initialFen = v.trim();
     }
-    if (
-      k.toLowerCase() === 'variant' &&
-      /^(?:chess960|fischerandom|fischer\s*random)$/i.test(v.trim())
-    ) {
+    if (k.toLowerCase() === 'variant' && /^(?:chess960|fischerandom|fischer\s*random)$/i.test(v.trim())) {
       isChess960 = true;
     }
   }
@@ -631,10 +559,7 @@ function parseSingleGameTokens(tokens: PgnToken[]): GameTree {
     headers,
   });
 
-  const parseVariationSequence = (
-    startParentId: string,
-    isVariation: boolean,
-  ): void => {
+  const parseVariationSequence = (startParentId: string, isVariation: boolean): void => {
     let currentParentId = startParentId;
     let lastMoveNode: GameNode | null = null;
     let sawMoveNumberSinceLastMove = false;
@@ -774,15 +699,11 @@ function formatNodePostCommentBlock(node: GameNode): string | null {
     parts.push(formatEvalTag(node.eval));
   }
   if (node.arrows.length > 0) {
-    const calBody = node.arrows
-      .map((a) => `${a.color}${a.from}${a.to}`)
-      .join(',');
+    const calBody = node.arrows.map((a) => `${a.color}${a.from}${a.to}`).join(',');
     parts.push(`[%cal ${calBody}]`);
   }
   if (node.highlights.length > 0) {
-    const cslBody = node.highlights
-      .map((h) => `${h.color}${h.square}`)
-      .join(',');
+    const cslBody = node.highlights.map((h) => `${h.color}${h.square}`).join(',');
     parts.push(`[%csl ${cslBody}]`);
   }
   if (node.comment.trim()) {
@@ -802,15 +723,11 @@ function formatPreCommentBlock(preComment: string): string | null {
  * Serialize a `GameTree` to canonical PGN format, preserving headers, nested variations,
  * pre-move and post-move comments, NAGs, `[%eval]`, `[%cal]`, `[%csl]`, and Chess960 tags.
  */
-export function writePgn(
-  tree: GameTree,
-  options?: WritePgnOptions,
-): string {
+export function writePgn(tree: GameTree, options?: WritePgnOptions): string {
   const headers = tree.getHeaders();
   const hasHeaders = Object.keys(headers).length > 0;
   const includeHeaders =
-    options?.includeHeaders ??
-    (hasHeaders || tree.root.fen !== DEFAULT_POSITION || tree.isChess960());
+    options?.includeHeaders ?? (hasHeaders || tree.root.fen !== DEFAULT_POSITION || tree.isChess960());
 
   const headerLines: string[] = [];
   if (includeHeaders) {
@@ -858,11 +775,7 @@ export function writePgn(
     moveTokens.push(rootPostBlock);
   }
 
-  const serializeLine = (
-    firstMove: GameNode | undefined,
-    parentNode: GameNode,
-    isVariation: boolean,
-  ): void => {
+  const serializeLine = (firstMove: GameNode | undefined, parentNode: GameNode, isVariation: boolean): void => {
     let currMove = firstMove;
     let currParent = parentNode;
     let forceMoveNumber = true;
@@ -877,15 +790,10 @@ export function writePgn(
         moveTokens.push(preBlock);
       }
 
-      const needsMoveNumber =
-        isWhiteMove ||
-        forceMoveNumber ||
-        preBlock !== null;
+      const needsMoveNumber = isWhiteMove || forceMoveNumber || preBlock !== null;
 
       if (needsMoveNumber) {
-        const moveNumStr = isWhiteMove
-          ? `${currMove.moveNumber}.`
-          : `${currMove.moveNumber}...`;
+        const moveNumStr = isWhiteMove ? `${currMove.moveNumber}.` : `${currMove.moveNumber}...`;
         moveTokens.push(moveNumStr);
       }
 
@@ -917,10 +825,7 @@ export function writePgn(
 
       // If this is the first move of the main line (or a continuation), any alternative children
       // on `currParent` (when `!isVariation || !isFirstInLine`) are sibling variations to `currMove`!
-      const siblingVariations =
-        !isVariation || !isFirstInLine
-          ? currParent.children.slice(1)
-          : [];
+      const siblingVariations = !isVariation || !isFirstInLine ? currParent.children.slice(1) : [];
 
       for (const sibling of siblingVariations) {
         moveTokens.push('(');
@@ -933,8 +838,7 @@ export function writePgn(
       }
 
       // If we emitted a post-comment or any variations after a White move, the next Black move must repeat `N...`
-      forceMoveNumber =
-        postBlock !== null || siblingVariations.length > 0;
+      forceMoveNumber = postBlock !== null || siblingVariations.length > 0;
       isFirstInLine = false;
       currParent = currMove;
       currMove = currMove.children[0];

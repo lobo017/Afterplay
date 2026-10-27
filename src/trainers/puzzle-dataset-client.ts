@@ -12,7 +12,11 @@ export type DatasetResponseMessage =
   | { id: number; kind: 'error'; message: string };
 
 /** A request without its id (distributes over the union). */
-type DatasetRequestBody = DatasetRequestMessage extends infer M ? (M extends DatasetRequestMessage ? Omit<M, 'id'> : never) : never;
+type DatasetRequestBody = DatasetRequestMessage extends infer M
+  ? M extends DatasetRequestMessage
+    ? Omit<M, 'id'>
+    : never
+  : never;
 
 export interface DatasetInfo {
   size: number;
@@ -26,7 +30,10 @@ export interface DatasetInfo {
 export class PuzzleDatasetClient {
   private worker: Worker | null = null;
   private nextId = 1;
-  private readonly pending = new Map<number, { resolve: (msg: DatasetResponseMessage) => void; reject: (err: Error) => void }>();
+  private readonly pending = new Map<
+    number,
+    { resolve: (msg: DatasetResponseMessage) => void; reject: (err: Error) => void }
+  >();
   private infoPromise: Promise<DatasetInfo> | null = null;
 
   /** Whether the worker has been started. */
@@ -42,7 +49,11 @@ export class PuzzleDatasetClient {
     return this.infoPromise;
   }
 
-  public async pick(theme: string | null, targetRating: number, exclude: readonly string[]): Promise<PuzzleEntry | null> {
+  public async pick(
+    theme: string | null,
+    targetRating: number,
+    exclude: readonly string[],
+  ): Promise<PuzzleEntry | null> {
     const msg = await this.request({ kind: 'pick', theme, targetRating, exclude: [...exclude] });
     if (msg.kind !== 'puzzle') throw new Error('Unexpected answer from the puzzle worker');
     return msg.puzzle;

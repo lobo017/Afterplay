@@ -155,10 +155,7 @@ export class DevOverlayController {
     this.cacheTotal++;
     if (hit) this.cacheHits++;
     if (this.visible) {
-      const rate =
-        this.cacheTotal > 0
-          ? ((this.cacheHits / this.cacheTotal) * 100).toFixed(1)
-          : '0.0';
+      const rate = this.cacheTotal > 0 ? ((this.cacheHits / this.cacheTotal) * 100).toFixed(1) : '0.0';
       const nextText = `${rate}%`;
       if (this.cacheValEl.textContent !== nextText) {
         this.cacheValEl.textContent = nextText;
@@ -189,8 +186,7 @@ export class DevOverlayController {
     let p95FrameMs = 16.7;
 
     if (this.frameSamples.length > 0) {
-      const avg =
-        this.frameSamples.reduce((acc, v) => acc + v, 0) / this.frameSamples.length;
+      const avg = this.frameSamples.reduce((acc, v) => acc + v, 0) / this.frameSamples.length;
       fps = avg > 0 ? Math.round(1000 / avg) : 60;
 
       const sorted = [...this.frameSamples].sort((a, b) => a - b);
@@ -198,8 +194,7 @@ export class DevOverlayController {
       p95FrameMs = Number((sorted[idx] ?? 16.7).toFixed(1));
     }
 
-    const cacheHitRate =
-      this.cacheTotal > 0 ? Number(((this.cacheHits / this.cacheTotal) * 100).toFixed(1)) : 0;
+    const cacheHitRate = this.cacheTotal > 0 ? Number(((this.cacheHits / this.cacheTotal) * 100).toFixed(1)) : 0;
 
     return {
       fps,

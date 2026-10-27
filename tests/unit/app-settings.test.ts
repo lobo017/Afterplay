@@ -5,7 +5,12 @@ import {
   DEFAULT_NEW_GAME,
   sanitizeAppSettings,
 } from '../../src/ui/app-settings';
-import { BOARD_FEEL_STORAGE_KEY, BoardFeelStore, DEFAULT_BOARD_FEEL, type FeelStorage } from '../../src/render/board-feel';
+import {
+  BOARD_FEEL_STORAGE_KEY,
+  BoardFeelStore,
+  DEFAULT_BOARD_FEEL,
+  type FeelStorage,
+} from '../../src/render/board-feel';
 import { BOARD_SIZE_STORAGE_KEY } from '../../src/render/board-size';
 import {
   APP_SETTINGS_STORAGE_KEY,
@@ -50,7 +55,14 @@ describe('Phase 6b — app settings', () => {
       maxPremoves: 99,
       volume: -4,
       navigationAnimation: 'slow',
-      newGame: { color: 'purple', timeControlId: '10+0', botRating: 9999, minThinkMs: 2000, maxThinkMs: 100, takebacks: 'yes' },
+      newGame: {
+        color: 'purple',
+        timeControlId: '10+0',
+        botRating: 9999,
+        minThinkMs: 2000,
+        maxThinkMs: 100,
+        takebacks: 'yes',
+      },
     });
     expect(s.boardTheme).toBe(DEFAULT_APP_SETTINGS.boardTheme);
     expect(s.pieceSet).toBe('staunton');
@@ -147,7 +159,12 @@ describe('Phase 6b — remembering settings and the backup record', () => {
     const feel = new BoardFeelStore(storage);
     const prefs = new Preferences({ appSettings: app, boardFeel: feel, storage, mirrorDelayMs: 0 });
     const backend = new MemoryBackend();
-    backend.settings.set(PREFERENCES_SETTING_KEY, { version: 1, app: DEFAULT_APP_SETTINGS, boardFeel: DEFAULT_BOARD_FEEL, boardSize: null });
+    backend.settings.set(PREFERENCES_SETTING_KEY, {
+      version: 1,
+      app: DEFAULT_APP_SETTINGS,
+      boardFeel: DEFAULT_BOARD_FEEL,
+      boardSize: null,
+    });
     await prefs.attach(backend);
     expect(feel.get().liftScale).toBe(1.25);
     // And the record catches up with the device

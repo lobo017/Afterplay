@@ -34,8 +34,14 @@ import { FRAME_FLOOR_P50_MAX_MS, measureFrameFloor } from './lib/frame-floor.mjs
 
 const PORT = Number(process.env.PERF_PORT || 4180);
 const BASE_URL = `http://127.0.0.1:${PORT}`;
-const THREADS = (process.env.PERF_REVIEW_THREADS || '1,2,4').split(',').map(Number).filter((n) => n > 0);
-const SCENARIOS = (process.env.PERF_REVIEW_SCENARIOS || 'alone,live').split(',').map((s) => s.trim()).filter(Boolean);
+const THREADS = (process.env.PERF_REVIEW_THREADS || '1,2,4')
+  .split(',')
+  .map(Number)
+  .filter((n) => n > 0);
+const SCENARIOS = (process.env.PERF_REVIEW_SCENARIOS || 'alone,live')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
 const ROUNDS = Number(process.env.PERF_REVIEW_ROUNDS || 2);
 const PRESET = process.env.PERF_REVIEW_PRESET || 'quick';
 const MAX_RUN_MS = Number(process.env.PERF_MAX_RUN_MS) || 30 * 60 * 1000;
@@ -367,7 +373,9 @@ async function main() {
     server?.kill();
   }
 
-  log('\n| Scenario | Threads | Review time | Mean / min depth | Review kN/s (kN per position) | Verified | Live kN/s before → during | Blank-page floor | p95 / p99 frame | Dropped | Long tasks | Free mem before → min |');
+  log(
+    '\n| Scenario | Threads | Review time | Mean / min depth | Review kN/s (kN per position) | Verified | Live kN/s before → during | Blank-page floor | p95 / p99 frame | Dropped | Long tasks | Free mem before → min |',
+  );
   log('|---|---|---|---|---|---|---|---|---|---|---|---|');
   for (const r of runs) {
     const live = r.liveKnpsBefore !== null ? `${r.liveKnpsBefore} → ${r.liveKnpsDuring}` : '—';
@@ -383,7 +391,9 @@ async function main() {
       (PRESET === 'quick' && r.reviewThreads === 1 && r.reviewMs > REVIEW_TIME_BUDGET_MS),
   );
   if (failures.length > 0) {
-    logError(`[fail] ${failures.length} run(s) missed the budget (state, 81 moves, no long tasks, 1-thread review ≤ 30 s)`);
+    logError(
+      `[fail] ${failures.length} run(s) missed the budget (state, 81 moves, no long tasks, 1-thread review ≤ 30 s)`,
+    );
     process.exitCode = 1;
   }
 }

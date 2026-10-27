@@ -18,15 +18,23 @@ const lichessLines = fs
   .split('\n')
   .filter(Boolean)
   .map((l) => JSON.parse(l) as { id: string; createdAt: number; pgn: string });
-const ccGames = (JSON.parse(fs.readFileSync(path.join(FIX, 'chesscom', 'archive-hikaru-2026-10.json'), 'utf8')) as { games: ArchiveGame[] })
-  .games;
+const ccGames = (
+  JSON.parse(fs.readFileSync(path.join(FIX, 'chesscom', 'archive-hikaru-2026-10.json'), 'utf8')) as {
+    games: ArchiveGame[];
+  }
+).games;
 
 /** n Lichess history lines starting at `from` (ms), one minute apart, from the recorded lines. */
 function lichessHistory(n: number, from: number) {
   return Array.from({ length: n }, (_, i) => {
     const base = lichessLines[i % lichessLines.length]!;
     const id = `g${String(from / 60_000 + i).padStart(7, '0')}`.slice(-8);
-    return { ...base, id, createdAt: from + i * 60_000, pgn: base.pgn.replace(/lichess\.org\/\w{8}/, `lichess.org/${id}`) };
+    return {
+      ...base,
+      id,
+      createdAt: from + i * 60_000,
+      pgn: base.pgn.replace(/lichess\.org\/\w{8}/, `lichess.org/${id}`),
+    };
   });
 }
 
@@ -93,13 +101,23 @@ describe('Phase 5b — history import: Lichess', () => {
     expect(t.requests).toHaveLength(3);
     const params = t.requests.map((r) => new URL(r.url).searchParams);
     expect(params.map((p) => Number(p.get('since')))).toEqual([0, all[199]!.createdAt + 1, all[399]!.createdAt + 1]);
-    expect(params.every((p) => p.get('sort') === 'dateAsc' && p.get('clocks') === 'true' && p.get('pgnInJson') === 'true')).toBe(true);
+    expect(
+      params.every((p) => p.get('sort') === 'dateAsc' && p.get('clocks') === 'true' && p.get('pgnInJson') === 'true'),
+    ).toBe(true);
     expect(t.requests[0]!.url).toContain('/api/games/user/Lobo017?');
     expect(t.requests[0]!.headers.Accept).toBe('application/x-ndjson');
     expect((await t.queue.counts()).ready).toBe(450);
     const entry = await t.queue.get(`lichess:${all[0]!.id}`);
-    expect(entry).toMatchObject({ method: 'lichess-history', source: 'lichess', url: `https://lichess.org/${all[0]!.id}` });
-    expect(await t.runner.state('lichess')).toMatchObject({ status: 'done', imported: 450, message: 'Up to date · 450 new games imported' });
+    expect(entry).toMatchObject({
+      method: 'lichess-history',
+      source: 'lichess',
+      url: `https://lichess.org/${all[0]!.id}`,
+    });
+    expect(await t.runner.state('lichess')).toMatchObject({
+      status: 'done',
+      imported: 450,
+      message: 'Up to date · 450 new games imported',
+    });
 
     // Later: two new games
     all.push(...lichessHistory(2, all.at(-1)!.createdAt + 3_600_000));
@@ -162,7 +180,10 @@ describe('Phase 5b — history import: Lichess', () => {
     const t = setup(() => response('', 404));
     await t.runner.start('lichess', 'nobody');
     await t.runner.step('lichess');
-    expect(await t.runner.state('lichess')).toMatchObject({ status: 'error', message: 'Lichess has no user "nobody".' });
+    expect(await t.runner.state('lichess')).toMatchObject({
+      status: 'error',
+      message: 'Lichess has no user "nobody".',
+    });
     const u = setup(() => response(JSON.stringify(lichessLines[0]) + '\n'));
     await u.runner.start('lichess', 'lobo017');
     await u.runner.stop('lichess');
@@ -173,7 +194,9 @@ describe('Phase 5b — history import: Lichess', () => {
 
 describe('Phase 5b — history import: Chess.com', () => {
   const MONTHS = ['2026/08', '2026/09', '2026/10'];
-  const listBody = JSON.stringify({ archives: MONTHS.map((m) => `https://api.chess.com/pub/player/hikaru/games/${m}`).reverse() });
+  const listBody = JSON.stringify({
+    archives: MONTHS.map((m) => `https://api.chess.com/pub/player/hikaru/games/${m}`).reverse(),
+  });
 
   it('fetches the archive list, then each month oldest first, with ETags; next time only the current month', async () => {
     const etags: Record<string, string> = {};

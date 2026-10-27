@@ -1,10 +1,4 @@
-import {
-  RulesAdapter,
-  type Color,
-  type ExecutedMove,
-  type PieceSymbol,
-  type Square,
-} from '../core/rules';
+import { RulesAdapter, type Color, type ExecutedMove, type PieceSymbol, type Square } from '../core/rules';
 
 /**
  * A small board model for the motif detectors and the sacrifice check. Squares are
@@ -80,16 +74,36 @@ export function fenTurn(fen: string): Color {
 }
 
 const KNIGHT_STEPS: ReadonlyArray<[number, number]> = [
-  [1, 2], [2, 1], [2, -1], [1, -2], [-1, -2], [-2, -1], [-2, 1], [-1, 2],
+  [1, 2],
+  [2, 1],
+  [2, -1],
+  [1, -2],
+  [-1, -2],
+  [-2, -1],
+  [-2, 1],
+  [-1, 2],
 ];
 const KING_STEPS: ReadonlyArray<[number, number]> = [
-  [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1],
+  [1, 0],
+  [1, 1],
+  [0, 1],
+  [-1, 1],
+  [-1, 0],
+  [-1, -1],
+  [0, -1],
+  [1, -1],
 ];
 export const ORTHOGONAL: ReadonlyArray<[number, number]> = [
-  [1, 0], [-1, 0], [0, 1], [0, -1],
+  [1, 0],
+  [-1, 0],
+  [0, 1],
+  [0, -1],
 ];
 export const DIAGONAL: ReadonlyArray<[number, number]> = [
-  [1, 1], [1, -1], [-1, 1], [-1, -1],
+  [1, 1],
+  [1, -1],
+  [-1, 1],
+  [-1, -1],
 ];
 
 function step(from: number, df: number, dr: number): number {
@@ -171,10 +185,7 @@ export function exchangeGain(squares: Squares, target: number, side: Color): num
   const next = squares.slice();
   next[target] = squares[capturer]!;
   next[capturer] = null;
-  if (
-    squares[capturer]!.type === 'k' &&
-    attackersOf(next, target, opposite(side)).length > 0
-  ) {
+  if (squares[capturer]!.type === 'k' && attackersOf(next, target, opposite(side)).length > 0) {
     return 0;
   }
   return Math.max(0, PIECE_VALUE[victim.type] - exchangeGain(next, target, opposite(side)));
@@ -285,12 +296,7 @@ export function lineBetween(a: number, b: number): number[] | null {
 }
 
 /** First two pieces met walking from `from` in direction (df, dr). */
-export function firstTwoOnRay(
-  squares: Squares,
-  from: number,
-  df: number,
-  dr: number,
-): [number, number | null] | null {
+export function firstTwoOnRay(squares: Squares, from: number, df: number, dr: number): [number, number | null] | null {
   let cur = step(from, df, dr);
   let first: number | null = null;
   while (cur >= 0) {

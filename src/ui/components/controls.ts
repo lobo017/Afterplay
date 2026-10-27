@@ -15,7 +15,13 @@ export interface Choice {
  * A segmented control (radio group): one button per choice, `aria-checked` on the chosen one.
  * Buttons are `${testIdPrefix}-${value}`.
  */
-export function segmentedHtml(name: string, testIdPrefix: string, choices: readonly Choice[], selected: string, label: string): string {
+export function segmentedHtml(
+  name: string,
+  testIdPrefix: string,
+  choices: readonly Choice[],
+  selected: string,
+  label: string,
+): string {
   return `<div class="wc-seg" role="radiogroup" aria-label="${esc(label)}" data-seg="${name}">${choices
     .map(
       (c) =>
@@ -27,7 +33,13 @@ export function segmentedHtml(name: string, testIdPrefix: string, choices: reado
 }
 
 /** Chips (radio group) with an optional second line. */
-export function chipsHtml(name: string, testIdPrefix: string, choices: readonly Choice[], selected: string, label: string): string {
+export function chipsHtml(
+  name: string,
+  testIdPrefix: string,
+  choices: readonly Choice[],
+  selected: string,
+  label: string,
+): string {
   return `<div class="wc-chips" role="radiogroup" aria-label="${esc(label)}" data-seg="${name}">${choices
     .map(
       (c) =>

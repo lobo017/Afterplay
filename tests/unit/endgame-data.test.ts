@@ -34,7 +34,15 @@ const WON_DEPTH = 24;
 const DRAW_DEPTH = 32;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const stockfishJsPath = path.resolve(__dirname, '..', '..', 'node_modules', 'stockfish', 'src', SINGLE_THREADED_STOCKFISH_FILE);
+const stockfishJsPath = path.resolve(
+  __dirname,
+  '..',
+  '..',
+  'node_modules',
+  'stockfish',
+  'src',
+  SINGLE_THREADED_STOCKFISH_FILE,
+);
 
 interface Score {
   type: 'cp' | 'mate';
@@ -150,7 +158,11 @@ class Engine {
   }
 
   /** The side to move's score at the end of a fixed-depth search, with the best move. */
-  public async search(fen: string, depth: number, searchMoves?: string): Promise<{ score: Score; bestMove: string; depth: number }> {
+  public async search(
+    fen: string,
+    depth: number,
+    searchMoves?: string,
+  ): Promise<{ score: Score; bestMove: string; depth: number }> {
     this.send('ucinewgame');
     this.send('isready');
     await this.until((l) => l === 'readyok', `readyok before searching ${fen}`);
@@ -160,7 +172,8 @@ class Engine {
     let last: { score: Score; depth: number } | null = null;
     for (const line of out) {
       const m = /^info depth (\d+) .*?score (cp|mate) (-?\d+)(?: (?:lowerbound|upperbound))? .* pv /.exec(line);
-      if (m && !/(lowerbound|upperbound)/.test(line)) last = { depth: Number(m[1]), score: { type: m[2] as 'cp' | 'mate', value: Number(m[3]) } };
+      if (m && !/(lowerbound|upperbound)/.test(line))
+        last = { depth: Number(m[1]), score: { type: m[2] as 'cp' | 'mate', value: Number(m[3]) } };
     }
     if (!last) throw new Error(`no score for ${fen}`);
     return { ...last, bestMove: out[out.length - 1]!.split(' ')[1]! };
@@ -180,7 +193,9 @@ class Engine {
 
 const engine = new Engine();
 afterAll(() => {
-  console.log(`[endgame-data] longest wait between two lines of engine output: ${(engine.maxGapMs / 1000).toFixed(1)} s (limit ${ENGINE_SILENCE_MS / 1000} s)`);
+  console.log(
+    `[endgame-data] longest wait between two lines of engine output: ${(engine.maxGapMs / 1000).toFixed(1)} s (limit ${ENGINE_SILENCE_MS / 1000} s)`,
+  );
   engine.quit();
 });
 
@@ -188,11 +203,19 @@ describe('the endgame positions (checked with the engine)', () => {
   // A test that timed out leaves the engine mid-search; the next test would read its stale output.
   // (The engine's own failures, hung or dead, already stop it; a wrong answer leaves it healthy.)
   afterEach(({ task }) => {
-    if (task.result?.errors?.some((e) => /timed out/i.test(e.message))) engine.abort('an earlier test timed out while the engine was busy');
+    if (task.result?.errors?.some((e) => /timed out/i.test(e.message)))
+      engine.abort('an earlier test timed out while the engine was busy');
   });
 
   it('has the six positions of the spec, each a legal position with the player to move', () => {
-    expect(ENDGAMES.map((e) => e.category)).toEqual(['K+Q v K', 'K+R v K', 'K+P opposition', 'Lucena', 'Philidor', 'R+P v R']);
+    expect(ENDGAMES.map((e) => e.category)).toEqual([
+      'K+Q v K',
+      'K+R v K',
+      'K+P opposition',
+      'Lucena',
+      'Philidor',
+      'R+P v R',
+    ]);
     expect(new Set(ENDGAMES.map((e) => e.id)).size).toBe(ENDGAMES.length);
     for (const e of ENDGAMES) {
       const adapter = new RulesAdapter(e.fen);
@@ -206,7 +229,11 @@ describe('the endgame positions (checked with the engine)', () => {
       if (e.optimalMoves !== null) expect(e.targetResult, e.id).not.toBe('1/2-1/2');
     }
     // Lucena, Philidor and R+P v R track the result only; the others count moves
-    expect(ENDGAMES.filter((e) => e.optimalMoves === null).map((e) => e.category)).toEqual(['Lucena', 'Philidor', 'R+P v R']);
+    expect(ENDGAMES.filter((e) => e.optimalMoves === null).map((e) => e.category)).toEqual([
+      'Lucena',
+      'Philidor',
+      'R+P v R',
+    ]);
   });
 
   it('the retrograde solver is right: the longest mates are the known ones (10, 16 and 28 moves)', async () => {
@@ -224,43 +251,34 @@ describe('the endgame positions (checked with the engine)', () => {
     const goal = endgameGoal(e);
     if (goal === 'mate') {
       const depth = MATE_DEPTH[e.id]!;
-      it(
-        `${e.title}: the engine's mate distance is optimalMoves (${e.optimalMoves}), and stays there deeper`,
-        async () => {
-          expect(depth, `a search depth for ${e.id}`).toBeGreaterThan(0);
-          const deep = await engine.search(e.fen, depth);
-          expect(deep.score, `${e.id} at depth ${depth}`).toEqual({ type: 'mate', value: e.optimalMoves });
-          const deeper = await engine.search(e.fen, depth + MATE_RECHECK_EXTRA);
-          expect(deeper.score, `${e.id} at depth ${depth + MATE_RECHECK_EXTRA}`).toEqual({ type: 'mate', value: e.optimalMoves });
-          // The target result is achievable, and for the side with the move
-          expect(e.targetResult === '1-0' ? e.sideToMove === 'w' : e.sideToMove === 'b').toBe(true);
-        },
-        150_000,
-      );
+      it(`${e.title}: the engine's mate distance is optimalMoves (${e.optimalMoves}), and stays there deeper`, async () => {
+        expect(depth, `a search depth for ${e.id}`).toBeGreaterThan(0);
+        const deep = await engine.search(e.fen, depth);
+        expect(deep.score, `${e.id} at depth ${depth}`).toEqual({ type: 'mate', value: e.optimalMoves });
+        const deeper = await engine.search(e.fen, depth + MATE_RECHECK_EXTRA);
+        expect(deeper.score, `${e.id} at depth ${depth + MATE_RECHECK_EXTRA}`).toEqual({
+          type: 'mate',
+          value: e.optimalMoves,
+        });
+        // The target result is achievable, and for the side with the move
+        expect(e.targetResult === '1-0' ? e.sideToMove === 'w' : e.sideToMove === 'b').toBe(true);
+      }, 150_000);
       it(`${e.title}: optimalMoves is also the exact distance to mate (retrograde analysis)`, async () => {
         await ensureOracle();
         expect(exactMateDistance(e.fen), e.id).toBe(e.optimalMoves);
       });
     } else if (goal === 'convert') {
-      it(
-        `${e.title}: the win is achievable (a mate or at least +${WON_CP / 100} for the player)`,
-        async () => {
-          const r = await engine.search(e.fen, WON_DEPTH);
-          const cp = r.score.type === 'mate' ? Math.sign(r.score.value) * 100_000 : r.score.value;
-          expect(cp, `${e.id}: ${r.score.type} ${r.score.value}`).toBeGreaterThanOrEqual(WON_CP);
-        },
-        90_000,
-      );
+      it(`${e.title}: the win is achievable (a mate or at least +${WON_CP / 100} for the player)`, async () => {
+        const r = await engine.search(e.fen, WON_DEPTH);
+        const cp = r.score.type === 'mate' ? Math.sign(r.score.value) * 100_000 : r.score.value;
+        expect(cp, `${e.id}: ${r.score.type} ${r.score.value}`).toBeGreaterThanOrEqual(WON_CP);
+      }, 90_000);
     } else {
-      it(
-        `${e.title}: the draw is achievable and the position is no worse (within ±${DRAW_CP / 100})`,
-        async () => {
-          const r = await engine.search(e.fen, DRAW_DEPTH);
-          expect(r.score.type, e.id).toBe('cp');
-          expect(Math.abs(r.score.value), `${e.id}: ${r.score.value}`).toBeLessThanOrEqual(DRAW_CP);
-        },
-        90_000,
-      );
+      it(`${e.title}: the draw is achievable and the position is no worse (within ±${DRAW_CP / 100})`, async () => {
+        const r = await engine.search(e.fen, DRAW_DEPTH);
+        expect(r.score.type, e.id).toBe('cp');
+        expect(Math.abs(r.score.value), `${e.id}: ${r.score.value}`).toBeLessThanOrEqual(DRAW_CP);
+      }, 90_000);
     }
   }
 

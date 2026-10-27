@@ -22,7 +22,10 @@ export class Sheet {
   private readonly panel: HTMLElement;
   private returnFocus: HTMLElement | null = null;
 
-  constructor(parent: HTMLElement, private readonly options: SheetOptions) {
+  constructor(
+    parent: HTMLElement,
+    private readonly options: SheetOptions,
+  ) {
     this.root = document.createElement('div');
     this.root.className = 'wc-sheet-root';
     this.root.hidden = true;
@@ -39,9 +42,7 @@ export class Sheet {
     this.panel = this.root.querySelector('.wc-sheet') as HTMLElement;
     this.body = this.root.querySelector('.wc-sheet-body') as HTMLElement;
     this.root.querySelector('.wc-sheet-backdrop')?.addEventListener('click', () => this.close());
-    this.root
-      .querySelector(`[data-testid="${options.testId}-close"]`)
-      ?.addEventListener('click', () => this.close());
+    this.root.querySelector(`[data-testid="${options.testId}-close"]`)?.addEventListener('click', () => this.close());
     this.root.addEventListener('keydown', this.handleKeyDown);
   }
 
@@ -92,9 +93,7 @@ export class Sheet {
     }
     if (e.key !== 'Tab') return;
     // Keep focus inside the sheet
-    const items = [...this.panel.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
-      (el) => el.offsetParent !== null,
-    );
+    const items = [...this.panel.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => el.offsetParent !== null);
     const first = items[0];
     const last = items[items.length - 1];
     if (!first || !last) return;

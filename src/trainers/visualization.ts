@@ -5,7 +5,10 @@ import { sameMove } from './puzzle-format';
 
 const FILES = 'abcdefgh';
 
-export const ALL_SQUARES: readonly Square[] = Array.from({ length: 64 }, (_, i) => `${FILES[i % 8]}${Math.floor(i / 8) + 1}` as Square);
+export const ALL_SQUARES: readonly Square[] = Array.from(
+  { length: 64 },
+  (_, i) => `${FILES[i % 8]}${Math.floor(i / 8) + 1}` as Square,
+);
 
 /** The target of each drill: its card in the `visualization` deck. */
 export type VisualizationKind = 'coordinates' | 'blindfold' | 'guess';
@@ -72,7 +75,14 @@ export const BLINDFOLD_MAX_PLIES = 60;
 export const BLINDFOLD_START_PLIES = 8;
 export const BLINDFOLD_QUESTIONS = 5;
 
-const PIECE_NAME: Record<PieceSymbol, string> = { p: 'pawn', n: 'knight', b: 'bishop', r: 'rook', q: 'queen', k: 'king' };
+const PIECE_NAME: Record<PieceSymbol, string> = {
+  p: 'pawn',
+  n: 'knight',
+  b: 'bishop',
+  r: 'rook',
+  q: 'queen',
+  k: 'king',
+};
 const COLOR_NAME: Record<Color, string> = { w: 'white', b: 'black' };
 
 export function pieceName(piece: PieceSymbol): string {
@@ -162,8 +172,14 @@ export function buildBlindfoldDrill(
     }
   }
   const all = [...groups.entries()];
-  const first = shuffled(all.filter(([k]) => moved.has(k)), random);
-  const rest = shuffled(all.filter(([k]) => !moved.has(k)), random);
+  const first = shuffled(
+    all.filter(([k]) => moved.has(k)),
+    random,
+  );
+  const rest = shuffled(
+    all.filter(([k]) => !moved.has(k)),
+    random,
+  );
   const questions = [...first, ...rest].slice(0, questionCount).map(([, q]) => q);
   return { label: source.label, moves, questions, finalFen: adapter.fen() };
 }

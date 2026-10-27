@@ -35,7 +35,11 @@ export class PgnImportClient {
   private readonly runs = new Map<number, Run>();
 
   /** Reads `text`, calling `onBatch` for each group of games, in order; resolves when the last batch is handled. */
-  public async run(text: string, known: ReadonlySet<string>, onBatch: (batch: ImportBatch) => Promise<void>): Promise<void> {
+  public async run(
+    text: string,
+    known: ReadonlySet<string>,
+    onBatch: (batch: ImportBatch) => Promise<void>,
+  ): Promise<void> {
     const worker = this.ensureWorker();
     if (!worker) {
       const { readPgnBatches } = await import('./pgn-import-core');
@@ -63,7 +67,10 @@ export class PgnImportClient {
     if (this.worker) return this.worker;
     if (this.unavailable) return null;
     try {
-      const worker = new Worker(new URL('./pgn-import.worker.ts', import.meta.url), { type: 'module', name: 'pgn-import' });
+      const worker = new Worker(new URL('./pgn-import.worker.ts', import.meta.url), {
+        type: 'module',
+        name: 'pgn-import',
+      });
       worker.addEventListener('message', (e: MessageEvent<PgnImportResponse>) => this.onMessage(e.data));
       worker.addEventListener('error', (e) => {
         const err = new Error(`The import worker failed: ${e.message || 'could not load'}`);

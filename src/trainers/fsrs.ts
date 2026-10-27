@@ -32,8 +32,8 @@ export interface SrsCard {
 }
 
 export const FSRS5_DEFAULT_WEIGHTS: readonly number[] = [
-  0.40255, 1.18385, 3.173, 15.69105, 7.1949, 0.5345, 1.4604, 0.0046, 1.54575, 0.1192, 1.01925, 1.9395, 0.11,
-  0.29605, 2.2698, 0.2315, 2.9898, 0.51655, 0.6621,
+  0.40255, 1.18385, 3.173, 15.69105, 7.1949, 0.5345, 1.4604, 0.0046, 1.54575, 0.1192, 1.01925, 1.9395, 0.11, 0.29605,
+  2.2698, 0.2315, 2.9898, 0.51655, 0.6621,
 ];
 
 export const DECAY = -0.5;
@@ -81,10 +81,19 @@ export function nextDifficulty(d: number, grade: Grade, w: readonly number[] = F
   return clampDifficulty(reverted);
 }
 
-export function recallStability(d: number, s: number, r: number, grade: Grade, w: readonly number[] = FSRS5_DEFAULT_WEIGHTS): number {
+export function recallStability(
+  d: number,
+  s: number,
+  r: number,
+  grade: Grade,
+  w: readonly number[] = FSRS5_DEFAULT_WEIGHTS,
+): number {
   const hardPenalty = grade === 2 ? w[15]! : 1;
   const easyBonus = grade === 4 ? w[16]! : 1;
-  return s * (Math.exp(w[8]!) * (11 - d) * Math.pow(s, -w[9]!) * (Math.exp(w[10]! * (1 - r)) - 1) * hardPenalty * easyBonus + 1);
+  return (
+    s *
+    (Math.exp(w[8]!) * (11 - d) * Math.pow(s, -w[9]!) * (Math.exp(w[10]! * (1 - r)) - 1) * hardPenalty * easyBonus + 1)
+  );
 }
 
 export function forgetStability(d: number, s: number, r: number, w: readonly number[] = FSRS5_DEFAULT_WEIGHTS): number {
@@ -132,7 +141,10 @@ function scheduleOnce(card: SrsCard, grade: Grade, now: number, w: readonly numb
       stability = sameDayStability(card.stability, grade, w);
     } else {
       const r = retrievability(elapsedDays, card.stability);
-      stability = grade === 1 ? forgetStability(card.difficulty, card.stability, r, w) : recallStability(card.difficulty, card.stability, r, grade, w);
+      stability =
+        grade === 1
+          ? forgetStability(card.difficulty, card.stability, r, w)
+          : recallStability(card.difficulty, card.stability, r, grade, w);
     }
   }
   stability = Math.max(0.1, stability);
@@ -150,5 +162,13 @@ function scheduleOnce(card: SrsCard, grade: Grade, now: number, w: readonly numb
     };
   }
   const days = Math.min(MAX_INTERVAL_DAYS, Math.max(1, Math.round(intervalDays(stability, retention))));
-  return { state: 'review', stability, difficulty, reps, lapses: card.lapses, dueDate: now + days * DAY_MS, lastReviewDate: now };
+  return {
+    state: 'review',
+    stability,
+    difficulty,
+    reps,
+    lapses: card.lapses,
+    dueDate: now + days * DAY_MS,
+    lastReviewDate: now,
+  };
 }

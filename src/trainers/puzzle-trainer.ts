@@ -84,7 +84,11 @@ export function puzzlePgn(prepared: PreparedPuzzle, title: string): string {
 
 function playUci(fen: string, uci: string): { adapter: RulesAdapter; move: ExecutedMove } {
   const adapter = new RulesAdapter(fen);
-  const move = adapter.move({ from: uci.slice(0, 2), to: uci.slice(2, 4), ...(uci.length > 4 ? { promotion: uci[4] } : {}) });
+  const move = adapter.move({
+    from: uci.slice(0, 2),
+    to: uci.slice(2, 4),
+    ...(uci.length > 4 ? { promotion: uci[4] } : {}),
+  });
   return { adapter, move };
 }
 
@@ -159,7 +163,11 @@ export class PuzzleTrainer {
         this.info = info;
         this.renderThemes();
       },
-      (err: unknown) => this.setStatus(`The bundled puzzles could not be loaded: ${err instanceof Error ? err.message : String(err)}`, 'error'),
+      (err: unknown) =>
+        this.setStatus(
+          `The bundled puzzles could not be loaded: ${err instanceof Error ? err.message : String(err)}`,
+          'error',
+        ),
     );
   }
 
@@ -172,7 +180,9 @@ export class PuzzleTrainer {
   }
 
   public getLoaded(): { id: string; source: StoredPuzzleRecord['source']; playerColor: Color } | null {
-    return this.loaded ? { id: this.loaded.entry.id, source: this.loaded.source, playerColor: this.loaded.prepared.playerColor } : null;
+    return this.loaded
+      ? { id: this.loaded.entry.id, source: this.loaded.source, playerColor: this.loaded.prepared.playerColor }
+      : null;
   }
 
   public getLastResult(): AttemptResult | null {
@@ -235,9 +245,27 @@ export class PuzzleTrainer {
     this.menu = new Menu(
       this.root.querySelector('[data-testid="puzzle-actions"]') as HTMLElement,
       [
-        { id: 'retry', label: 'Retry this puzzle', testId: 'btn-puzzle-retry', icon: 'undo', onSelect: () => this.retry() },
-        { id: 'analyze', label: 'Analyze the position', testId: 'btn-puzzle-analyze', icon: 'review', onSelect: () => this.analyze() },
-        { id: 'flip', label: 'Flip board', testId: 'btn-puzzle-flip', icon: 'flip', onSelect: () => this.board.setFlipped(!this.board.isFlipped()) },
+        {
+          id: 'retry',
+          label: 'Retry this puzzle',
+          testId: 'btn-puzzle-retry',
+          icon: 'undo',
+          onSelect: () => this.retry(),
+        },
+        {
+          id: 'analyze',
+          label: 'Analyze the position',
+          testId: 'btn-puzzle-analyze',
+          icon: 'review',
+          onSelect: () => this.analyze(),
+        },
+        {
+          id: 'flip',
+          label: 'Flip board',
+          testId: 'btn-puzzle-flip',
+          icon: 'flip',
+          onSelect: () => this.board.setFlipped(!this.board.isFlipped()),
+        },
       ],
       { testId: 'puzzle-menu', label: 'More puzzle actions' },
     );
@@ -313,11 +341,15 @@ export class PuzzleTrainer {
       }
       this.load(pick.entry, pick.source, false);
     } catch (err) {
-      if (seq === this.loadSeq) this.setStatus(`Could not load a puzzle: ${err instanceof Error ? err.message : String(err)}`, 'error');
+      if (seq === this.loadSeq)
+        this.setStatus(`Could not load a puzzle: ${err instanceof Error ? err.message : String(err)}`, 'error');
     }
   }
 
-  private async pickNext(): Promise<{ entry: PuzzleEntry | StoredPuzzleRecord; source: StoredPuzzleRecord['source'] } | null> {
+  private async pickNext(): Promise<{
+    entry: PuzzleEntry | StoredPuzzleRecord;
+    source: StoredPuzzleRecord['source'];
+  } | null> {
     const store = this.options.store;
     const current = this.loaded?.entry.id;
     if (this.mode === 'rated') {
@@ -473,7 +505,10 @@ export class PuzzleTrainer {
             return;
           }
           this.root.setAttribute('data-puzzle-state', 'wrong');
-          this.setStatus(verdict.error ? `Couldn't check that move (${verdict.error}). Try again.` : 'That’s not it. Try again.', 'wrong');
+          this.setStatus(
+            verdict.error ? `Couldn't check that move (${verdict.error}). Try again.` : 'That’s not it. Try again.',
+            'wrong',
+          );
           this.guard(this.record());
           this.later(() => {
             if (seq !== this.loadSeq || l.session.status !== 'playing') return;
@@ -526,7 +561,13 @@ export class PuzzleTrainer {
     this.root.setAttribute('data-puzzle-state', 'solved');
     const clean = l.session.outcome?.solved;
     this.setStatus(
-      alternative ? (clean ? 'Solved! That also wins.' : 'That also wins — solved on a later try.') : clean ? 'Solved!' : 'Solved on a later try.',
+      alternative
+        ? clean
+          ? 'Solved! That also wins.'
+          : 'That also wins — solved on a later try.'
+        : clean
+          ? 'Solved!'
+          : 'Solved on a later try.',
       'solved',
     );
     this.options.audio.playGameOver(true);
@@ -560,13 +601,16 @@ export class PuzzleTrainer {
     this.updateButtons();
     let fen = l.session.fen;
     rest.forEach((uci, i) => {
-      this.later(() => {
-        if (seq !== this.loadSeq) return;
-        const r = playUci(fen, uci);
-        fen = r.adapter.fen();
-        this.board.setPosition(r.adapter, { lastMove: r.move, animate: true });
-        this.playSound(r.move, r.adapter.inCheck());
-      }, 200 + i * 600);
+      this.later(
+        () => {
+          if (seq !== this.loadSeq) return;
+          const r = playUci(fen, uci);
+          fen = r.adapter.fen();
+          this.board.setPosition(r.adapter, { lastMove: r.move, animate: true });
+          this.playSound(r.move, r.adapter.inCheck());
+        },
+        200 + i * 600,
+      );
     });
   }
 
@@ -581,7 +625,10 @@ export class PuzzleTrainer {
   private analyze(): void {
     const l = this.loaded;
     if (!l) return;
-    const title = l.source === 'personal' ? `Puzzle from my game ${(l.entry as StoredPuzzleRecord).gameLabel ?? ''}` : `Lichess puzzle ${l.entry.id}`;
+    const title =
+      l.source === 'personal'
+        ? `Puzzle from my game ${(l.entry as StoredPuzzleRecord).gameLabel ?? ''}`
+        : `Lichess puzzle ${l.entry.id}`;
     this.options.onAnalyze(puzzlePgn(l.prepared, title), 1);
   }
 
@@ -710,6 +757,8 @@ export class PuzzleTrainer {
   }
 
   private guard(p: Promise<unknown>): void {
-    p.catch((err: unknown) => this.setStatus(`Could not save progress: ${err instanceof Error ? err.message : String(err)}`, 'error'));
+    p.catch((err: unknown) =>
+      this.setStatus(`Could not save progress: ${err instanceof Error ? err.message : String(err)}`, 'error'),
+    );
   }
 }

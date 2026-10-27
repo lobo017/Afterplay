@@ -70,7 +70,9 @@ const adapter: PageRunnerAdapter = {
   watchForEnd(ref, _game, onEnd, log) {
     const untyped = untypedUrl(ref);
     const { id } = chessComParts(ref);
-    const stopDom = watchForSelector(GAME_OVER_SELECTOR, () => onEnd({ source: 'the game-over dialog appeared', fromData: false }));
+    const stopDom = watchForSelector(GAME_OVER_SELECTOR, () =>
+      onEnd({ source: 'the game-over dialog appeared', fromData: false }),
+    );
     let rateLimited = false;
     let lastAnswer = '';
     const poller = startPoller({
@@ -87,12 +89,17 @@ const adapter: PageRunnerAdapter = {
         if (answer !== lastAnswer) log(`Game data check: ${answer}.`);
         lastAnswer = answer;
         if (!got.ok) {
-          if (got.status === 429 && !rateLimited) log('Game data check: rate limited by Chess.com; trying again later.');
+          if (got.status === 429 && !rateLimited)
+            log('Game data check: rate limited by Chess.com; trying again later.');
           rateLimited = got.status === 429;
           return 'continue';
         }
         if (got.data.game.isFinished) {
-          onEnd({ source: 'game data (callback): finished', fromData: true, game: gameFromCallback(got.ref, got.data, 'game data (callback)') });
+          onEnd({
+            source: 'game data (callback): finished',
+            fromData: true,
+            game: gameFromCallback(got.ref, got.data, 'game data (callback)'),
+          });
         }
         // Stopped by the runner once it has confirmed the end
         return 'continue';
@@ -155,7 +162,8 @@ const adapter: PageRunnerAdapter = {
       let found: { ref: SiteGameRef; at: number; path: string } | null = null;
       for (const e of entries) {
         const ref = chessComRefFromRequest(e.name);
-        if (ref && (!found || e.startTime >= found.at)) found = { ref, at: e.startTime, path: new URL(e.name).pathname };
+        if (ref && (!found || e.startTime >= found.at))
+          found = { ref, at: e.startTime, path: new URL(e.name).pathname };
       }
       if (!found || (best && found.at < best.at)) return;
       const key = found.ref.gameId;

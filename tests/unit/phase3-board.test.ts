@@ -3,41 +3,24 @@ import { RulesAdapter } from '../../src/core/rules';
 import { CathedralAudio } from '../../src/render/audio';
 import { computePremoveTargets } from '../../src/render/board-renderer';
 import { squareToBoardCoords } from '../../src/render/overlay';
-import {
-  PARTICLE_POOL_SIZE,
-  SHARDS_PER_CAPTURE,
-} from '../../src/render/particles';
+import { PARTICLE_POOL_SIZE, SHARDS_PER_CAPTURE } from '../../src/render/particles';
 import { getPieceSvgMarkup } from '../../src/render/piece-sets';
 import { BOARD_THEMES, PIECE_SETS } from '../../src/render/themes';
-import {
-  ChessClock,
-  TIME_CONTROL_PRESETS,
-  formatClockMs,
-} from '../../src/ui/clock';
+import { ChessClock, TIME_CONTROL_PRESETS, formatClockMs } from '../../src/ui/clock';
 import { computeCapturedAndMaterial } from '../../src/ui/play-controller';
 
 describe('Phase 3 — 2D Board, Themes, Audio, Clocks & Legacy Regression Unit Tests', () => {
   it('provides 3 board themes (including marble-obsidian and high-contrast) and 3 SVG piece sets', () => {
-    expect(Object.keys(BOARD_THEMES)).toEqual([
-      'marble-obsidian',
-      'imperial-walnut',
-      'high-contrast',
-    ]);
+    expect(Object.keys(BOARD_THEMES)).toEqual(['marble-obsidian', 'imperial-walnut', 'high-contrast']);
     expect(BOARD_THEMES['marble-obsidian'].lightSquareBase).toBe('#f2ede4');
     expect(BOARD_THEMES['marble-obsidian'].darkSquareBase).toBe('#121620');
     expect(BOARD_THEMES['high-contrast'].lightSquareBase).toBe('#ffffff');
 
-    expect(Object.keys(PIECE_SETS)).toEqual([
-      'cathedral',
-      'staunton',
-      'high-contrast',
-    ]);
+    expect(Object.keys(PIECE_SETS)).toEqual(['cathedral', 'staunton', 'high-contrast']);
 
     const pieces = ['p', 'n', 'b', 'r', 'q', 'k'] as const;
     const colors = ['w', 'b'] as const;
-    for (const setId of Object.keys(PIECE_SETS) as Array<
-      keyof typeof PIECE_SETS
-    >) {
+    for (const setId of Object.keys(PIECE_SETS) as Array<keyof typeof PIECE_SETS>) {
       for (const color of colors) {
         for (const piece of pieces) {
           const svg1 = getPieceSvgMarkup(setId, color, piece);

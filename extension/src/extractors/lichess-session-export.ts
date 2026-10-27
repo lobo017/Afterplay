@@ -31,7 +31,11 @@ export function classifyLichessExport(
   } catch {
     path = '';
   }
-  if (res.status === 401 || (res.redirected && /^\/(signup|login)\b/.test(path)) || /"error"\s*:\s*"Login required"/i.test(body)) {
+  if (
+    res.status === 401 ||
+    (res.redirected && /^\/(signup|login)\b/.test(path)) ||
+    /"error"\s*:\s*"Login required"/i.test(body)
+  ) {
     return fail('Lichess wants a login for this export.', { loginRequired: true });
   }
   if (res.status === 429) return fail('Rate limited by Lichess.', { retryAfterMs: 60_000 });

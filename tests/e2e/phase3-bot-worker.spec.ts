@@ -1,13 +1,11 @@
 import fs from 'node:fs';
 import { expect, test } from '@playwright/test';
-import {
-  SHARED_STREAM_SEED,
-  buildBotGoldenCases,
-} from '../helpers/bot-golden-cases';
+import { SHARED_STREAM_SEED, buildBotGoldenCases } from '../helpers/bot-golden-cases';
 
-const golden = JSON.parse(
-  fs.readFileSync('tests/fixtures/bot-selection-golden.json', 'utf8'),
-) as { independent: string[]; sharedStream: string[] };
+const golden = JSON.parse(fs.readFileSync('tests/fixtures/bot-selection-golden.json', 'utf8')) as {
+  independent: string[];
+  sharedStream: string[];
+};
 
 test.describe('Phase 3 — bot move selection in a worker', () => {
   test('the worker picks the golden move for all 860 cases, with per-case seeds and one shared seeded stream', async ({
@@ -48,9 +46,9 @@ test.describe('Phase 3 — bot move selection in a worker', () => {
 
         const t0 = performance.now();
         // Independent seeds, issued all at once: the client must still serve them in order
-        const independent = (
-          await Promise.all(cases.map((c) => client.select(req(c), mulberry32(c.seed))))
-        ).map((d) => d.uci);
+        const independent = (await Promise.all(cases.map((c) => client.select(req(c), mulberry32(c.seed))))).map(
+          (d) => d.uci,
+        );
         const shared = mulberry32(sharedSeed);
         const sharedStream: string[] = [];
         for (const c of cases) {
@@ -65,9 +63,7 @@ test.describe('Phase 3 — bot move selection in a worker', () => {
       { cases, sharedSeed: SHARED_STREAM_SEED },
     );
 
-    console.log(
-      `[bot-worker] 1720 selections in ${result.elapsedMs.toFixed(0)} ms, long tasks: ${result.longTasks}`,
-    );
+    console.log(`[bot-worker] 1720 selections in ${result.elapsedMs.toFixed(0)} ms, long tasks: ${result.longTasks}`);
     expect(result.independent).toEqual(golden.independent);
     expect(result.sharedStream).toEqual(golden.sharedStream);
     expect(result.stats).toEqual({ worker: 1720, inline: 0, workerActive: true });
@@ -82,9 +78,7 @@ test.describe('Phase 3 — bot move selection in a worker', () => {
     await page.getByTestId('square-e2').click();
     await page.getByTestId('square-e4').click();
     await expect(page.getByTestId('move-ply-2')).not.toHaveText('', { timeout: 20_000 });
-    const stats = await page.evaluate(() =>
-      window.__wizardChessPlay!.controller.getBotSelection().getStats(),
-    );
+    const stats = await page.evaluate(() => window.__wizardChessPlay!.controller.getBotSelection().getStats());
     expect(stats.worker).toBeGreaterThanOrEqual(1);
     expect(stats.inline).toBe(0);
     expect(stats.workerActive).toBe(true);

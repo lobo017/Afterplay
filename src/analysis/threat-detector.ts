@@ -1,13 +1,5 @@
-import {
-  RulesAdapter,
-  type Color,
-  type PieceSymbol,
-  type Square,
-} from '../core/rules';
-import {
-  EngineCancelledError,
-  type EngineClient,
-} from '../engine/engine-client';
+import { RulesAdapter, type Color, type PieceSymbol, type Square } from '../core/rules';
+import { EngineCancelledError, type EngineClient } from '../engine/engine-client';
 import type { UciScore } from '../engine/uci-parser';
 
 export interface ThreatDetectionResult {
@@ -35,10 +27,7 @@ export interface ThreatDetectOptions {
  * Returns `null` if the side to move is currently in check, the game is over, or the opponent
  * has no legal moves after passing.
  */
-export function buildNullMoveFen(
-  fen: string,
-  chess960?: boolean,
-): string | null {
+export function buildNullMoveFen(fen: string, chess960?: boolean): string | null {
   try {
     const adapter = new RulesAdapter(fen, { chess960 });
     if (adapter.inCheck() || adapter.isGameOver()) {
@@ -79,10 +68,7 @@ export async function detectOpponentThreat(
     });
 
     const topLine = res.lines[0];
-    const bestMove =
-      res.bestMove && res.bestMove !== '(none)'
-        ? res.bestMove
-        : topLine?.pv[0] ?? '';
+    const bestMove = res.bestMove && res.bestMove !== '(none)' ? res.bestMove : (topLine?.pv[0] ?? '');
 
     if (!bestMove || bestMove.length < 4) {
       return null;

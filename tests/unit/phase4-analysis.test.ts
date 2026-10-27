@@ -12,20 +12,10 @@ import {
   scoreToEvalBarPercent,
   scoreToWhiteWinPercent,
 } from '../../src/analysis/eval-bar';
-import {
-  buildNullMoveFen,
-  detectOpponentThreat,
-} from '../../src/analysis/threat-detector';
+import { buildNullMoveFen, detectOpponentThreat } from '../../src/analysis/threat-detector';
 import { formatPvMovesToSan } from '../../src/analysis/engine-lines-panel';
-import {
-  parseFenForEditor,
-  serializeEditorBoardToFen,
-} from '../../src/analysis/position-editor';
-import {
-  ANNOTATION_COLOR_HEX,
-  hexToAnnotationColor,
-  resolveModifierAnnotationColor,
-} from '../../src/render/overlay';
+import { parseFenForEditor, serializeEditorBoardToFen } from '../../src/analysis/position-editor';
+import { ANNOTATION_COLOR_HEX, hexToAnnotationColor, resolveModifierAnnotationColor } from '../../src/render/overlay';
 import { DEFAULT_POSITION, validateChessFen } from '../../src/core/rules';
 import { GameTree } from '../../src/core/game-tree';
 import type { EngineAnalysisResult, EngineClient } from '../../src/engine/engine-client';
@@ -35,8 +25,7 @@ describe('Phase 4 — Opening Lookup (data/openings.json)', () => {
     expect(Object.keys(OPENINGS_BY_EPD).length).toBeGreaterThan(3000);
 
     // Italian Game: 1.e4 e5 2.Nf3 Nc6 3.Bc4
-    const italianFen =
-      'r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R b KQkq - 3 3';
+    const italianFen = 'r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R b KQkq - 3 3';
     const italian = lookupOpeningByFen(italianFen);
     expect(italian).not.toBeNull();
     expect(italian?.eco).toBe('C50');
@@ -44,8 +33,7 @@ describe('Phase 4 — Opening Lookup (data/openings.json)', () => {
     expect(formatOpeningBadge(italian)).toBe(`${italian?.eco} · ${italian?.name}`);
 
     // Sicilian Defense: 1.e4 c5
-    const sicilianFen =
-      'rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR w KQkq c6 0 2';
+    const sicilianFen = 'rnbqkbnr/pp1ppppp/8/2p5/4P3/8/PPPP1PPP/RNBQKBNR w KQkq c6 0 2';
     const sicilian = lookupOpeningByFen(sicilianFen);
     expect(sicilian).not.toBeNull();
     expect(sicilian?.eco).toBe('B20');
@@ -116,27 +104,20 @@ describe('Phase 4 — EvalBar Math & Formatting', () => {
 describe('Phase 4 — Null-Move Threat Detection', () => {
   it('builds a valid null-move FEN when not in check and rejects in-check positions', () => {
     const startNull = buildNullMoveFen(DEFAULT_POSITION);
-    expect(startNull).toBe(
-      'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 1 1',
-    );
+    expect(startNull).toBe('rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR b KQkq - 1 1');
 
     // Black to move -> White to move, ep square cleared, fullmove increments
-    const afterE4 =
-      'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1';
-    expect(buildNullMoveFen(afterE4)).toBe(
-      'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 1 2',
-    );
+    const afterE4 = 'rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1';
+    expect(buildNullMoveFen(afterE4)).toBe('rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 1 2');
 
     // Position where White is in check -> cannot null-move
-    const whiteInCheckFen =
-      'rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3';
+    const whiteInCheckFen = 'rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3';
     expect(buildNullMoveFen(whiteInCheckFen)).toBeNull();
   });
 
   it('detects the opponent threat via null-move search', async () => {
     // Scholar's Mate setup where White threatens Qxf7# if Black passes their turn
-    const scholarsSetupFen =
-      'r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5Q2/PPPP1PPP/RNB1K1NR b KQkq - 3 3';
+    const scholarsSetupFen = 'r1bqkbnr/pppp1ppp/2n5/4p3/2B1P3/5Q2/PPPP1PPP/RNB1K1NR b KQkq - 3 3';
     const fakeEngine = {
       analyze: async (req: { fen: string }): Promise<EngineAnalysisResult> => {
         expect(req.fen).toContain(' w KQkq - 4 4');
@@ -189,9 +170,7 @@ describe('Phase 4 — Engine PV Formatting & Ghost Target Calculation', () => {
     expect(moves[0]?.prefix).toBe('1.');
     expect(moves[1]?.prefix).toBe('');
     expect(moves[2]?.prefix).toBe('2.');
-    expect(moves[4]?.fenAfter).toBe(
-      'r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R b KQkq - 3 3',
-    );
+    expect(moves[4]?.fenAfter).toBe('r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R b KQkq - 3 3');
   });
 });
 
@@ -225,9 +204,7 @@ describe('Phase 4 — Arrow & Circle Modifier Colors', () => {
     expect(resolveModifierAnnotationColor({ shiftKey: true }).code).toBe('R');
     expect(resolveModifierAnnotationColor({ altKey: true }).code).toBe('B');
     expect(resolveModifierAnnotationColor({ ctrlKey: true }).code).toBe('Y');
-    expect(
-      resolveModifierAnnotationColor({ shiftKey: true, altKey: true }).code,
-    ).toBe('Y');
+    expect(resolveModifierAnnotationColor({ shiftKey: true, altKey: true }).code).toBe('Y');
 
     expect(hexToAnnotationColor(ANNOTATION_COLOR_HEX.G)).toBe('G');
     expect(hexToAnnotationColor(ANNOTATION_COLOR_HEX.R)).toBe('R');

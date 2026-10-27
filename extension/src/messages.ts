@@ -116,7 +116,8 @@ export interface LeaveRecord {
 }
 
 /** `reason`: why a game isn't imported (outcome not-importable / already-rejected). */
-export type CaptureReply = { ok: true; key: string; outcome: AddOutcome; reason?: string } | { ok: false; error: string };
+export type CaptureReply =
+  { ok: true; key: string; outcome: AddOutcome; reason?: string } | { ok: false; error: string };
 
 export interface SaveTextResult {
   /** What was saved: "GEU3 vs Lobo017", or the link. */

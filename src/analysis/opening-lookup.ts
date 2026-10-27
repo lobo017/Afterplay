@@ -1,9 +1,5 @@
 import openingsJson from '../../data/openings.json';
-import {
-  normalizeFenToEpd,
-  type OpeningEntry,
-  type OpeningsMap,
-} from '../core/datasets';
+import { normalizeFenToEpd, type OpeningEntry, type OpeningsMap } from '../core/datasets';
 import type { GameTree } from '../core/game-tree';
 
 export const OPENINGS_BY_EPD: OpeningsMap = openingsJson as OpeningsMap;
@@ -33,10 +29,7 @@ export function lookupOpeningByFen(fen: string): OpeningEntry | null {
  * Resolves the most specific (deepest) opening reached along the path from the root
  * to `targetNodeId` (defaults to `tree.currentNodeId`).
  */
-export function lookupGameOpening(
-  tree: GameTree,
-  targetNodeId?: string,
-): OpeningEntry | null {
+export function lookupGameOpening(tree: GameTree, targetNodeId?: string): OpeningEntry | null {
   const nodeId = targetNodeId ?? tree.currentNodeId;
   const rootMatch = lookupOpeningByFen(tree.root.fen);
   let latestOpening: OpeningEntry | null = rootMatch;

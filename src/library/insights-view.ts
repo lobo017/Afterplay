@@ -30,8 +30,18 @@ const escapeHtml = (text: string): string =>
   text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 const GLYPH: Record<string, string> = {
-  K: '♔', Q: '♕', R: '♖', B: '♗', N: '♘', P: '♙',
-  k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟',
+  K: '♔',
+  Q: '♕',
+  R: '♖',
+  B: '♗',
+  N: '♘',
+  P: '♙',
+  k: '♚',
+  q: '♛',
+  r: '♜',
+  b: '♝',
+  n: '♞',
+  p: '♟',
 };
 
 /** A small static board for a FEN, from `from`'s side. */
@@ -45,15 +55,31 @@ export function miniBoardHtml(fen: string, from: Color = 'w'): string {
         f += Number(ch);
         continue;
       }
-      cells.push(`<text x="${f * 10 + 5}" y="${r * 10 + 8}" class="wc-mini-piece wc-mini-${ch === ch.toUpperCase() ? 'w' : 'b'}">${GLYPH[ch] ?? ''}</text>`);
+      cells.push(
+        `<text x="${f * 10 + 5}" y="${r * 10 + 8}" class="wc-mini-piece wc-mini-${ch === ch.toUpperCase() ? 'w' : 'b'}">${GLYPH[ch] ?? ''}</text>`,
+      );
       f++;
     }
   });
   const squares: string[] = [];
-  for (let r = 0; r < 8; r++) for (let f = 0; f < 8; f++) squares.push(`<rect x="${f * 10}" y="${r * 10}" width="10" height="10" class="wc-mini-sq-${(r + f) % 2 === 0 ? 'l' : 'd'}"/>`);
+  for (let r = 0; r < 8; r++)
+    for (let f = 0; f < 8; f++)
+      squares.push(
+        `<rect x="${f * 10}" y="${r * 10}" width="10" height="10" class="wc-mini-sq-${(r + f) % 2 === 0 ? 'l' : 'd'}"/>`,
+      );
   const flip = from === 'b' ? ' transform="rotate(180 40 40)"' : '';
   // Pieces are drawn upright even when the board is turned round
-  const pieces = from === 'b' ? cells.map((c) => c.replace(/x="([\d.]+)" y="([\d.]+)"/, (_m, x: string, y: string) => `x="${80 - Number(x)}" y="${80 - Number(y) + 6}"`)).join('') : cells.join('');
+  const pieces =
+    from === 'b'
+      ? cells
+          .map((c) =>
+            c.replace(
+              /x="([\d.]+)" y="([\d.]+)"/,
+              (_m, x: string, y: string) => `x="${80 - Number(x)}" y="${80 - Number(y) + 6}"`,
+            ),
+          )
+          .join('')
+      : cells.join('');
   return `<svg class="wc-mini-board" viewBox="0 0 80 80" aria-hidden="true" focusable="false"><g${flip}>${squares.join('')}</g>${pieces}</svg>`;
 }
 
@@ -65,7 +91,10 @@ interface LinePoint {
 }
 
 /** A line chart with one clickable dot per point. x and y are in data units; the axes are drawn from the ranges given. */
-function lineChartSvg(points: LinePoint[], opts: { yMin: number; yMax: number; yTicks: number[]; xLabels: [string, string]; testId: string; ariaLabel: string }): string {
+function lineChartSvg(
+  points: LinePoint[],
+  opts: { yMin: number; yMax: number; yTicks: number[]; xLabels: [string, string]; testId: string; ariaLabel: string },
+): string {
   const W = 640;
   const H = 220;
   const L = 44;
@@ -78,7 +107,10 @@ function lineChartSvg(points: LinePoint[], opts: { yMin: number; yMax: number; y
   const sx = (x: number) => L + (x1 === x0 ? (W - L - R) / 2 : ((x - x0) / (x1 - x0)) * (W - L - R));
   const sy = (y: number) => T + (1 - (y - opts.yMin) / (opts.yMax - opts.yMin || 1)) * (H - T - B);
   const grid = opts.yTicks
-    .map((t) => `<line x1="${L}" x2="${W - R}" y1="${sy(t)}" y2="${sy(t)}" class="wc-chart-grid"/><text x="${L - 6}" y="${sy(t) + 4}" text-anchor="end" class="wc-chart-axis">${t}</text>`)
+    .map(
+      (t) =>
+        `<line x1="${L}" x2="${W - R}" y1="${sy(t)}" y2="${sy(t)}" class="wc-chart-grid"/><text x="${L - 6}" y="${sy(t) + 4}" text-anchor="end" class="wc-chart-axis">${t}</text>`,
+    )
     .join('');
   const path = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${sx(p.x).toFixed(1)} ${sy(p.y).toFixed(1)}`).join(' ');
   const dots = points
@@ -160,7 +192,9 @@ export class InsightsView {
 
     const empty = (text: string) => `<p class="wc-insight-empty" data-empty="true">${text}</p>`;
     const needReviews = `Review some of your games (Games › Analyze) to see this. ${
-      mine.length === 0 && rows.length > 0 ? 'None of your games are marked yours yet: set your usernames in Settings › Your games.' : ''
+      mine.length === 0 && rows.length > 0
+        ? 'None of your games are marked yours yet: set your usernames in Settings › Your games.'
+        : ''
     }`.trim();
 
     const phaseChart = phases.every((p) => p.moves === 0)
@@ -183,8 +217,20 @@ export class InsightsView {
       for (const b of blunders) this.positions.set(`game:${b.gameId}`, b.positions);
       const max = Math.max(2, Math.ceil(Math.max(...blunders.map((b) => b.per10))));
       blunderChart = lineChartSvg(
-        blunders.map((b) => ({ id: `game:${b.gameId}`, x: b.at, y: b.per10, label: `${b.gameLabel}: ${b.blunders} blunder${b.blunders === 1 ? '' : 's'} in ${b.moves} moves (${b.per10.toFixed(1)} per 10)` })),
-        { yMin: 0, yMax: max, yTicks: [0, Math.round(max / 2), max], xLabels: [day(blunders[0]!.at), day(blunders[blunders.length - 1]!.at)], testId: 'chart-blunders', ariaLabel: 'Blunders per 10 moves, game by game' },
+        blunders.map((b) => ({
+          id: `game:${b.gameId}`,
+          x: b.at,
+          y: b.per10,
+          label: `${b.gameLabel}: ${b.blunders} blunder${b.blunders === 1 ? '' : 's'} in ${b.moves} moves (${b.per10.toFixed(1)} per 10)`,
+        })),
+        {
+          yMin: 0,
+          yMax: max,
+          yTicks: [0, Math.round(max / 2), max],
+          xLabels: [day(blunders[0]!.at), day(blunders[blunders.length - 1]!.at)],
+          testId: 'chart-blunders',
+          ariaLabel: 'Blunders per 10 moves, game by game',
+        },
       );
     }
 
@@ -220,8 +266,20 @@ export class InsightsView {
       const lo = Math.floor(Math.min(...series.map((s) => s.rating)) / 100) * 100;
       const hi = Math.max(lo + 100, Math.ceil(Math.max(...series.map((s) => s.rating)) / 100) * 100);
       ratingChart = lineChartSvg(
-        series.map((s, i) => ({ id: `puzzle:${s.puzzleId}`, x: i, y: s.rating, label: `${day(s.at)}: ${Math.round(s.rating)} after ${s.solved ? 'solving' : 'missing'} puzzle ${s.puzzleId}` })),
-        { yMin: lo, yMax: hi, yTicks: [lo, (lo + hi) / 2, hi], xLabels: [day(series[0]!.at), day(series[series.length - 1]!.at)], testId: 'chart-rating', ariaLabel: 'Puzzle rating over time' },
+        series.map((s, i) => ({
+          id: `puzzle:${s.puzzleId}`,
+          x: i,
+          y: s.rating,
+          label: `${day(s.at)}: ${Math.round(s.rating)} after ${s.solved ? 'solving' : 'missing'} puzzle ${s.puzzleId}`,
+        })),
+        {
+          yMin: lo,
+          yMax: hi,
+          yTicks: [lo, (lo + hi) / 2, hi],
+          xLabels: [day(series[0]!.at), day(series[series.length - 1]!.at)],
+          testId: 'chart-rating',
+          ariaLabel: 'Puzzle rating over time',
+        },
       );
     }
 
@@ -275,7 +333,10 @@ export class InsightsView {
       ${shown.length === 0 ? '<p class="wc-insight-empty">No positions behind this point.</p>' : ''}
       <ul class="wc-insight-positions">${shown
         .map(
-          (p, i) => `<li class="wc-insight-position" data-testid="insight-position"><button type="button" class="wc-insight-position-btn" data-open="${i}" aria-label="Open ${escapeHtml(p.moveLabel)} in ${escapeHtml(p.gameLabel)}">
+          (
+            p,
+            i,
+          ) => `<li class="wc-insight-position" data-testid="insight-position"><button type="button" class="wc-insight-position-btn" data-open="${i}" aria-label="Open ${escapeHtml(p.moveLabel)} in ${escapeHtml(p.gameLabel)}">
             ${miniBoardHtml(p.fen, p.color)}
             <span class="wc-insight-position-text"><strong>${escapeHtml(p.moveLabel)}</strong> <span class="wc-insight-class">${escapeHtml(p.classification)}</span>
             <span class="wc-insight-position-game">${escapeHtml(p.gameLabel)}</span>${p.note ? `<span class="wc-insight-position-note">${escapeHtml(p.note)}</span>` : ''}</span></button></li>`,

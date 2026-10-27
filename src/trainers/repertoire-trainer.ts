@@ -125,7 +125,16 @@ export class RepertoireTrainer {
       boardMountTestId: 'rep-board-mount',
       head: tabListHtml('rep', tabList, 'build', 'Repertoire'),
       body: `
-        ${segmentedHtml('color', 'rep-color', [{ value: 'w', label: 'White repertoire' }, { value: 'b', label: 'Black repertoire' }], 'w', 'Repertoire colour')}
+        ${segmentedHtml(
+          'color',
+          'rep-color',
+          [
+            { value: 'w', label: 'White repertoire' },
+            { value: 'b', label: 'Black repertoire' },
+          ],
+          'w',
+          'Repertoire colour',
+        )}
         <section class="wc-tab-panel" ${tabPanelAttrs('rep', 'build', 'build')}>
           <p class="wc-trainer-text" data-testid="rep-summary"></p>
           <div class="wc-rep-moves" data-testid="rep-moves" aria-label="Moves of the repertoire"></div>
@@ -180,7 +189,15 @@ export class RepertoireTrainer {
     const q = <T extends HTMLElement>(id: string) => this.root.querySelector(`[data-testid="${id}"]`) as T;
     this.menu = new Menu(
       q('rep-foot-build'),
-      [{ id: 'export', label: 'Export as PGN', testId: 'btn-rep-export', icon: 'download', onSelect: () => this.exportPgn() }],
+      [
+        {
+          id: 'export',
+          label: 'Export as PGN',
+          testId: 'btn-rep-export',
+          icon: 'download',
+          onSelect: () => this.exportPgn(),
+        },
+      ],
       { testId: 'rep-menu', label: 'More repertoire actions' },
     );
     this.els = {
@@ -329,7 +346,9 @@ export class RepertoireTrainer {
     if (color !== this.color) return;
     this.index = index;
     this.cursor = index.tree.root.id;
-    this.els.colors.querySelectorAll<HTMLElement>('[role="radio"]').forEach((el) => el.setAttribute('aria-checked', String(el.dataset.value === color)));
+    this.els.colors
+      .querySelectorAll<HTMLElement>('[role="radio"]')
+      .forEach((el) => el.setAttribute('aria-checked', String(el.dataset.value === color)));
     this.board.clearUserAnnotations();
     this.board.setFlipped(color === 'b');
     this.showBuildPosition(false);
@@ -472,7 +491,8 @@ export class RepertoireTrainer {
     const index = this.index!;
     const result = importRepertoirePgn(index.tree, text);
     const parts: string[] = [];
-    if (result.imported > 0) parts.push(`Imported ${plural(result.imported, 'game')}: ${plural(result.added, 'new move')}.`);
+    if (result.imported > 0)
+      parts.push(`Imported ${plural(result.imported, 'game')}: ${plural(result.added, 'new move')}.`);
     if (result.skipped.length > 0) parts.push(`Left out: ${result.skipped.join(' ')}`);
     this.els.importResult.textContent = parts.join(' ') || 'Nothing to import.';
     if (result.imported > 0) {
@@ -526,7 +546,8 @@ export class RepertoireTrainer {
     if (!current) return;
     const top = current.offsetTop - box.offsetTop;
     if (top < box.scrollTop) box.scrollTop = top - 4;
-    else if (top + current.offsetHeight > box.scrollTop + box.clientHeight) box.scrollTop = top + current.offsetHeight - box.clientHeight + 4;
+    else if (top + current.offsetHeight > box.scrollTop + box.clientHeight)
+      box.scrollTop = top + current.offsetHeight - box.clientHeight + 4;
   }
 
   /** The tree as a move list: the main line, with variations in brackets. */
@@ -535,7 +556,8 @@ export class RepertoireTrainer {
     if (kids.length === 0) return '';
     const [main, ...variations] = kids as [GameNode, ...GameNode[]];
     let html = this.moveHtml(main, needNumber);
-    for (const v of variations) html += ` <span class="wc-rep-var">(${this.moveHtml(v, true)}${this.movesHtml(v, false)})</span>`;
+    for (const v of variations)
+      html += ` <span class="wc-rep-var">(${this.moveHtml(v, true)}${this.movesHtml(v, false)})</span>`;
     const rest = this.movesHtml(main, variations.length > 0);
     return rest ? `${html} ${rest}` : html;
   }
@@ -597,7 +619,8 @@ export class RepertoireTrainer {
     this.els.start.textContent = this.drillState === 'done' ? 'Next line' : 'Start drill';
     this.els.practise.classList.toggle('wc-btn-primary', canPractise);
     this.els.practise.classList.toggle('wc-btn-secondary', !canPractise);
-    this.els.practise.textContent = this.drillState === 'done' && this.practising ? 'Practise another line' : 'Practise anyway';
+    this.els.practise.textContent =
+      this.drillState === 'done' && this.practising ? 'Practise another line' : 'Practise anyway';
   }
 
   /** The trainer's screen went away: a drill under way is dropped (answers already given stay graded). */
@@ -705,7 +728,10 @@ export class RepertoireTrainer {
     soundForNode(this.options.audio, res.node);
     this.board.setInteractiveColor('none');
     this.setDrillState('playing');
-    this.setDrillStatus(grade === 3 ? 'Correct!' : this.practising ? 'Correct, but not first time.' : 'Correct, but it will come back.', 'correct');
+    this.setDrillStatus(
+      grade === 3 ? 'Correct!' : this.practising ? 'Correct, but not first time.' : 'Correct, but it will come back.',
+      'correct',
+    );
     this.timers.later(() => this.step(seq), AFTER_ANSWER_MS);
   }
 
@@ -715,7 +741,8 @@ export class RepertoireTrainer {
     if (grade === 3) this.right++;
     if (this.practising) return; // practice never touches the schedule
     void this.options.store.grade(this.color, key, grade).catch((err: unknown) => {
-      if (seq === this.seq) this.els.result.textContent = `Progress could not be saved: ${err instanceof Error ? err.message : String(err)}`;
+      if (seq === this.seq)
+        this.els.result.textContent = `Progress could not be saved: ${err instanceof Error ? err.message : String(err)}`;
     });
   }
 
@@ -753,7 +780,9 @@ export class RepertoireTrainer {
     this.els.prompt.textContent = '';
     this.els.line.textContent = '';
     this.els.result.textContent =
-      this.asked === 0 ? 'The line ended without a question.' : `${this.right} of ${plural(this.asked, 'position')} right first time.`;
+      this.asked === 0
+        ? 'The line ended without a question.'
+        : `${this.right} of ${plural(this.asked, 'position')} right first time.`;
     void this.refreshDue().then(() => this.updateDrillButtons());
   }
 

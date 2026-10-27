@@ -108,7 +108,8 @@ export interface PendingInput {
  * - already-queued: already ready (kept as it was).
  * - already-delivered: the website already has it.
  */
-export type AddOutcome = 'added' | 'updated' | 'already-queued' | 'already-delivered' | 'not-importable' | 'already-rejected';
+export type AddOutcome =
+  'added' | 'updated' | 'already-queued' | 'already-delivered' | 'not-importable' | 'already-rejected';
 
 /**
  * Triggers that save a game on purpose: they may queue a game rejected before again (the
@@ -176,7 +177,8 @@ export class CaptureQueue {
         const existing = index[input.key];
         if (existing?.status === 'delivered') return 'already-delivered';
         if (existing?.status === 'ready') return 'already-queued';
-        if (existing?.status === 'rejected' && !(input.trigger && EXPLICIT_TRIGGERS.has(input.trigger))) return 'already-rejected';
+        if (existing?.status === 'rejected' && !(input.trigger && EXPLICIT_TRIGGERS.has(input.trigger)))
+          return 'already-rejected';
         const h = pgnHeaderValues(input.pgn);
         changed = true;
         const problem = importProblemOf(input.pgn);
@@ -255,7 +257,9 @@ export class CaptureQueue {
 
   /** Every entry, newest capture first. */
   public list(): Promise<QueueEntry[]> {
-    return this.exclusive(async () => Object.values(await this.readIndex()).sort((a, b) => b.capturedAt - a.capturedAt));
+    return this.exclusive(async () =>
+      Object.values(await this.readIndex()).sort((a, b) => b.capturedAt - a.capturedAt),
+    );
   }
 
   public counts(): Promise<QueueCounts> {
@@ -270,7 +274,10 @@ export class CaptureQueue {
   }
 
   /** Ready games for the website, oldest capture first, skipping `exclude`. */
-  public takeBatch(max: number, exclude: ReadonlySet<string> = new Set()): Promise<{ games: BridgeGame[]; remaining: number }> {
+  public takeBatch(
+    max: number,
+    exclude: ReadonlySet<string> = new Set(),
+  ): Promise<{ games: BridgeGame[]; remaining: number }> {
     return this.exclusive(async () => {
       const ready = Object.values(await this.readIndex())
         .filter((e) => e.status === 'ready' && !exclude.has(e.key))
@@ -330,7 +337,14 @@ export class CaptureQueue {
       for (const item of items) {
         const e = index[item.key];
         if (!e || e.status !== 'ready') continue;
-        index[item.key] = { ...e, status: 'rejected', updatedAt: now, rejectKind: item.kind, rejectReason: item.reason, dismissed: false };
+        index[item.key] = {
+          ...e,
+          status: 'rejected',
+          updatedAt: now,
+          rejectKind: item.kind,
+          rejectReason: item.reason,
+          dismissed: false,
+        };
         if (item.kind !== 'invalid') dropped.push(pgnStorageKey(item.key));
         changed++;
       }
@@ -350,7 +364,14 @@ export class CaptureQueue {
       if (!e || e.status !== 'rejected') return false;
       const pgn = (await this.store.get([pgnStorageKey(key)]))[pgnStorageKey(key)];
       if (typeof pgn !== 'string') return false;
-      index[key] = { ...e, status: 'ready', updatedAt: this.now(), rejectKind: null, rejectReason: null, dismissed: false };
+      index[key] = {
+        ...e,
+        status: 'ready',
+        updatedAt: this.now(),
+        rejectKind: null,
+        rejectReason: null,
+        dismissed: false,
+      };
       await this.writeIndex(index);
       return true;
     });
@@ -385,7 +406,14 @@ export class CaptureQueue {
         const pgn = stored[pgnStorageKey(e.key)];
         const problem = typeof pgn === 'string' ? importProblemOf(pgn) : null;
         if (!problem) continue;
-        index[e.key] = { ...e, status: 'rejected', updatedAt: now, rejectKind: problem.kind, rejectReason: describeImportProblem(problem), dismissed: false };
+        index[e.key] = {
+          ...e,
+          status: 'rejected',
+          updatedAt: now,
+          rejectKind: problem.kind,
+          rejectReason: describeImportProblem(problem),
+          dismissed: false,
+        };
         dropped.push(pgnStorageKey(e.key));
       }
       if (dropped.length > 0) {

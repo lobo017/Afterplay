@@ -179,11 +179,8 @@ async function runCalibration() {
   });
 
   const { RulesAdapter } = await vite.ssrLoadModule('/src/core/rules.ts');
-  const { EngineClient } = await vite.ssrLoadModule(
-    '/src/engine/engine-client.ts',
-  );
-  const { ChessBot, computeBotEngineParams } =
-    await vite.ssrLoadModule('/src/engine/bot.ts');
+  const { EngineClient } = await vite.ssrLoadModule('/src/engine/engine-client.ts');
+  const { ChessBot, computeBotEngineParams } = await vite.ssrLoadModule('/src/engine/bot.ts');
 
   // Three isolated Stockfish worker processes:
   // 1. Tested Bot Engine (isolated)
@@ -205,11 +202,7 @@ async function runCalibration() {
     transportFactory: () => createNodeStockfishTransport(),
   });
 
-  await Promise.all([
-    testedEngine.init(),
-    refBotEngine.init(),
-    oracleEngine.init(),
-  ]);
+  await Promise.all([testedEngine.init(), refBotEngine.init(), oracleEngine.init()]);
 
   const oracleCache = new Map();
   async function evaluatePositionOracle(fen) {
@@ -233,15 +226,9 @@ async function runCalibration() {
     return entry;
   }
 
-  console.log(
-    '\n========================================================================================',
-  );
-  console.log(
-    ' Wizard Chess — Bot Strength Self-Play Calibration (400–2400 Elo vs Reference Levels)',
-  );
-  console.log(
-    '========================================================================================\n',
-  );
+  console.log('\n========================================================================================');
+  console.log(' Wizard Chess — Bot Strength Self-Play Calibration (400–2400 Elo vs Reference Levels)');
+  console.log('========================================================================================\n');
 
   const summaryRows = [];
   let allPassed = true;
@@ -288,9 +275,7 @@ async function runCalibration() {
             const beforeOracle = await evaluatePositionOracle(currentFen);
 
             const decision = await testedBot.chooseMove(currentFen, { rng });
-            const chosenCand = decision.candidates.find(
-              (c) => c.uci === decision.uci,
-            );
+            const chosenCand = decision.candidates.find((c) => c.uci === decision.uci);
             if (chosenCand?.isHumanBlunder) {
               humanBlunderChosenCount++;
             }
@@ -300,20 +285,14 @@ async function runCalibration() {
             // Measure centipawn loss in undecided positions with >= 2 legal moves
             if (legalCount >= 2 && Math.abs(beforeOracle.bestEvalCp) <= 650) {
               let cpLoss = 0;
-              if (
-                beforeOracle.bestMove &&
-                moved.uci === beforeOracle.bestMove
-              ) {
+              if (beforeOracle.bestMove && moved.uci === beforeOracle.bestMove) {
                 cpLoss = 0;
               } else if (adapter.isCheckmate()) {
                 cpLoss = 0;
               } else {
                 const afterOracle = await evaluatePositionOracle(adapter.fen());
                 const playedEvalCp = -afterOracle.bestEvalCp;
-                cpLoss = Math.min(
-                  420,
-                  Math.max(0, beforeOracle.bestEvalCp - playedEvalCp),
-                );
+                cpLoss = Math.min(420, Math.max(0, beforeOracle.bestEvalCp - playedEvalCp));
               }
 
               cpLosses.push(cpLoss);
@@ -330,27 +309,19 @@ async function runCalibration() {
 
         // Estimate game outcome from final position eval
         const finalOracle = await evaluatePositionOracle(adapter.fen());
-        const finalTestedCp =
-          adapter.turn() === testedColor
-            ? finalOracle.bestEvalCp
-            : -finalOracle.bestEvalCp;
+        const finalTestedCp = adapter.turn() === testedColor ? finalOracle.bestEvalCp : -finalOracle.bestEvalCp;
         if (finalTestedCp > 120) matchScore += 1;
         else if (finalTestedCp < -120) matchScore += 0;
         else matchScore += 0.5;
       }
 
       const movesEvaluated = cpLosses.length || 1;
-      const acpl =
-        cpLosses.reduce((sum, x) => sum + x, 0) / movesEvaluated;
+      const acpl = cpLosses.reduce((sum, x) => sum + x, 0) / movesEvaluated;
       const blunderRatePct = (blunderCount / movesEvaluated) * 100;
-      const mistakePlusBlunderPct =
-        (mistakeOrBlunderCount / movesEvaluated) * 100;
+      const mistakePlusBlunderPct = (mistakeOrBlunderCount / movesEvaluated) * 100;
 
-      const acplOk =
-        acpl >= cfg.targetAcplMin && acpl <= cfg.targetAcplMax;
-      const blunderOk =
-        blunderRatePct >= cfg.targetBlunderMin &&
-        blunderRatePct <= cfg.targetBlunderMax;
+      const acplOk = acpl >= cfg.targetAcplMin && acpl <= cfg.targetAcplMax;
+      const blunderOk = blunderRatePct >= cfg.targetBlunderMin && blunderRatePct <= cfg.targetBlunderMax;
       const levelPassed = acplOk && blunderOk;
       if (!levelPassed) allPassed = false;
 

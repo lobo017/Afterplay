@@ -48,7 +48,10 @@ function buildSavedReview(secondLineLoss: number | null): SavedReview {
   const positions: PositionAnalysis[] = lichessPositions(tree).map((p) => {
     const best = p.lines[0];
     if (secondLineLoss === null || !best || best.score.type !== 'cp') return p;
-    return { ...p, lines: [best, { multipv: 2, score: { type: 'cp', value: best.score.value - secondLineLoss }, pv: ['a2a3'] }] };
+    return {
+      ...p,
+      lines: [best, { multipv: 2, score: { type: 'cp', value: best.score.value - secondLineLoss }, pv: ['a2a3'] }],
+    };
   });
   const plies = mainLinePlies(tree);
   const review = buildGameReview({
@@ -60,14 +63,27 @@ function buildSavedReview(secondLineLoss: number | null): SavedReview {
     isBookPosition: isBookFen,
   });
   const saved = toSavedReview(
-    { review, positions, plies, cancelled: false, stats: { timeMs: 1, meanDepth: 20, minDepth: 20, searches: 1, verifiedPositions: 0 } },
+    {
+      review,
+      positions,
+      plies,
+      cancelled: false,
+      stats: { timeMs: 1, meanDepth: 20, minDepth: 20, searches: 1, verifiedPositions: 0 },
+    },
     NOW,
   );
   if (!saved) throw new Error('incomplete review');
   return saved;
 }
 
-const outcome = (o: Partial<AttemptOutcome>): AttemptOutcome => ({ solved: true, hintUsed: false, mistakes: 0, timeMs: 20_000, grade: 3, ...o });
+const outcome = (o: Partial<AttemptOutcome>): AttemptOutcome => ({
+  solved: true,
+  hintUsed: false,
+  mistakes: 0,
+  timeMs: 20_000,
+  grade: 3,
+  ...o,
+});
 
 describe('Phase 6 — puzzles from my mistakes', () => {
   const record = gameRecord();
@@ -81,7 +97,9 @@ describe('Phase 6 — puzzles from my mistakes', () => {
     const saved = savedReview(600);
     const scan = scanPersonalPuzzles(record, saved, ME);
     expect(scan.color).toBe('b');
-    const mine = saved.review.moves.filter((m) => m.color === 'b' && ['Mistake', 'Blunder', 'Miss'].includes(m.classification));
+    const mine = saved.review.moves.filter(
+      (m) => m.color === 'b' && ['Mistake', 'Blunder', 'Miss'].includes(m.classification),
+    );
     expect(mine.length).toBeGreaterThan(0);
     expect(scan.puzzles.map((p) => p.ply)).toEqual(mine.map((m) => m.ply));
     for (const p of scan.puzzles) {
@@ -102,7 +120,9 @@ describe('Phase 6 — puzzles from my mistakes', () => {
 
   it('never makes puzzles of the opponent’s errors', () => {
     const saved = savedReview(600);
-    const whiteErrors = saved.review.moves.filter((m) => m.color === 'w' && ['Mistake', 'Blunder', 'Miss'].includes(m.classification));
+    const whiteErrors = saved.review.moves.filter(
+      (m) => m.color === 'w' && ['Mistake', 'Blunder', 'Miss'].includes(m.classification),
+    );
     const plies = scanPersonalPuzzles(record, saved, ME).puzzles.map((p) => p.ply!);
     for (const m of whiteErrors) expect(plies).not.toContain(m.ply);
     expect(plies.every((ply) => ply % 2 === 0)).toBe(true);

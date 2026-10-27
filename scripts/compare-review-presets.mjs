@@ -66,7 +66,14 @@ async function main() {
 
   const out = {
     engine: '',
-    settings: { referenceDepth: REFERENCE_DEPTH, quickMovetimeMs: 200, quickRuns: QUICK_RUNS, multipv: 2, hashMb: HASH_MB, threads: 1 },
+    settings: {
+      referenceDepth: REFERENCE_DEPTH,
+      quickMovetimeMs: 200,
+      quickRuns: QUICK_RUNS,
+      multipv: 2,
+      hashMb: HASH_MB,
+      threads: 1,
+    },
     games: [],
   };
 
@@ -130,7 +137,9 @@ async function main() {
   const classes = out.games[0] ? Object.keys(out.games[0].perClass) : [];
   const pct = (a, b) => (b > 0 ? `${((100 * a) / b).toFixed(0)}%` : '—');
   const table = (rows) => {
-    console.log('| Class (depth 18) | Moves | Quick labels that agree | Quick labels of this class | of which depth 18 agrees |');
+    console.log(
+      '| Class (depth 18) | Moves | Quick labels that agree | Quick labels of this class | of which depth 18 agrees |',
+    );
     console.log('|---|---|---|---|---|');
     for (const c of classes) {
       const r = rows(c);
@@ -142,11 +151,15 @@ async function main() {
   const precisionAgree = (g, c) =>
     g.moves.reduce((a, m) => a + m.quick.filter((q) => q === c && m.reference === c).length, 0);
   for (const g of out.games) {
-    console.log(`\n### ${g.name}: overall ${g.agreement.agree}/${g.agreement.labels} (${pct(g.agreement.agree, g.agreement.labels)})`);
+    console.log(
+      `\n### ${g.name}: overall ${g.agreement.agree}/${g.agreement.labels} (${pct(g.agreement.agree, g.agreement.labels)})`,
+    );
     table((c) => ({ ...g.perClass[c], precisionAgree: precisionAgree(g, c) }));
     console.log('\nMoves where any Quick run differs from depth 18:');
     for (const m of g.moves.filter((x) => x.quick.some((q) => q !== x.reference))) {
-      console.log(`  ply ${m.ply} ${m.san}: depth 18 ${m.reference} (drop ${m.referenceWinDrop}) · Quick ${m.quick.join(' / ')} (drops ${m.quickWinDrop.join(' / ')})`);
+      console.log(
+        `  ply ${m.ply} ${m.san}: depth 18 ${m.reference} (drop ${m.referenceWinDrop}) · Quick ${m.quick.join(' / ')} (drops ${m.quickWinDrop.join(' / ')})`,
+      );
     }
   }
   console.log('\n### Both games');

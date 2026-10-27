@@ -96,25 +96,37 @@ describe('Phase 6 — alternative moves', () => {
       accepted: true,
       reason: 'mate',
     });
-    expect(judgeAlternative({ givesMate: false, altScore: mate(3), solutionScore: mate(2), matePuzzle: true })).toMatchObject({
+    expect(
+      judgeAlternative({ givesMate: false, altScore: mate(3), solutionScore: mate(2), matePuzzle: true }),
+    ).toMatchObject({
       reason: 'forced-mate',
     });
-    expect(judgeAlternative({ givesMate: false, altScore: cp(700), solutionScore: cp(900), matePuzzle: false })).toMatchObject({
+    expect(
+      judgeAlternative({ givesMate: false, altScore: cp(700), solutionScore: cp(900), matePuzzle: false }),
+    ).toMatchObject({
       reason: 'decisive',
     });
-    expect(judgeAlternative({ givesMate: false, altScore: cp(240), solutionScore: cp(250), matePuzzle: false })).toMatchObject({
+    expect(
+      judgeAlternative({ givesMate: false, altScore: cp(240), solutionScore: cp(250), matePuzzle: false }),
+    ).toMatchObject({
       reason: 'as-good',
     });
   });
 
   it('rejects a move that gives the advantage away, and non-mates in a mate puzzle', () => {
-    expect(judgeAlternative({ givesMate: false, altScore: cp(100), solutionScore: cp(400), matePuzzle: false })).toEqual({
+    expect(
+      judgeAlternative({ givesMate: false, altScore: cp(100), solutionScore: cp(400), matePuzzle: false }),
+    ).toEqual({
       accepted: false,
     });
-    expect(judgeAlternative({ givesMate: false, altScore: cp(2000), solutionScore: mate(2), matePuzzle: true })).toEqual({
+    expect(
+      judgeAlternative({ givesMate: false, altScore: cp(2000), solutionScore: mate(2), matePuzzle: true }),
+    ).toEqual({
       accepted: false,
     });
-    expect(judgeAlternative({ givesMate: false, altScore: mate(-2), solutionScore: cp(300), matePuzzle: false })).toEqual({
+    expect(
+      judgeAlternative({ givesMate: false, altScore: mate(-2), solutionScore: cp(300), matePuzzle: false }),
+    ).toEqual({
       accepted: false,
     });
     expect(judgeAlternative({ givesMate: false, altScore: null, solutionScore: cp(300), matePuzzle: false })).toEqual({

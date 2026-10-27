@@ -41,8 +41,7 @@ export class Tabs {
         e.stopPropagation();
         const i = this.tabs.indexOf(tab);
         const n = this.tabs.length;
-        const next =
-          e.key === 'Home' ? 0 : e.key === 'End' ? n - 1 : (i + (e.key === 'ArrowRight' ? 1 : -1) + n) % n;
+        const next = e.key === 'Home' ? 0 : e.key === 'End' ? n - 1 : (i + (e.key === 'ArrowRight' ? 1 : -1) + n) % n;
         const target = this.tabs[next];
         if (target) {
           this.select(target.dataset.tab ?? '');

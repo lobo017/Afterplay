@@ -58,27 +58,46 @@ export interface SettingsProblem {
 }
 
 /** The settings as they will be stored, or the first problem with them. */
-export function validateSettings(input: ExtensionSettings): { settings: ExtensionSettings } | { problem: SettingsProblem } {
+export function validateSettings(
+  input: ExtensionSettings,
+): { settings: ExtensionSettings } | { problem: SettingsProblem } {
   const lichess = normalizeUsername(input.lichessUsername, 'lichess');
-  if (lichess === null) return { problem: { field: 'lichessUsername', message: 'That is not a valid Lichess username.' } };
+  if (lichess === null)
+    return { problem: { field: 'lichessUsername', message: 'That is not a valid Lichess username.' } };
   const chesscom = normalizeUsername(input.chesscomUsername, 'chesscom');
-  if (chesscom === null) return { problem: { field: 'chesscomUsername', message: 'That is not a valid Chess.com username.' } };
+  if (chesscom === null)
+    return { problem: { field: 'chesscomUsername', message: 'That is not a valid Chess.com username.' } };
   const siteUrl = normalizeSiteUrl(input.siteUrl);
   if (siteUrl === null) {
     return {
-      problem: { field: 'siteUrl', message: 'The site URL must be http on localhost or 127.0.0.1, e.g. http://127.0.0.1:4173.' },
+      problem: {
+        field: 'siteUrl',
+        message: 'The site URL must be http on localhost or 127.0.0.1, e.g. http://127.0.0.1:4173.',
+      },
     };
   }
-  return { settings: { lichessUsername: lichess, chesscomUsername: chesscom, siteUrl, autoCapture: Boolean(input.autoCapture) } };
+  return {
+    settings: {
+      lichessUsername: lichess,
+      chesscomUsername: chesscom,
+      siteUrl,
+      autoCapture: Boolean(input.autoCapture),
+    },
+  };
 }
 
 export async function loadSettings(store: KeyValueStore): Promise<ExtensionSettings> {
   const raw = (await store.get([SETTINGS_KEY]))[SETTINGS_KEY];
   const stored = raw && typeof raw === 'object' ? (raw as Partial<ExtensionSettings>) : {};
   return {
-    lichessUsername: typeof stored.lichessUsername === 'string' ? stored.lichessUsername : DEFAULT_SETTINGS.lichessUsername,
-    chesscomUsername: typeof stored.chesscomUsername === 'string' ? stored.chesscomUsername : DEFAULT_SETTINGS.chesscomUsername,
-    siteUrl: typeof stored.siteUrl === 'string' && normalizeSiteUrl(stored.siteUrl) ? stored.siteUrl : DEFAULT_SETTINGS.siteUrl,
+    lichessUsername:
+      typeof stored.lichessUsername === 'string' ? stored.lichessUsername : DEFAULT_SETTINGS.lichessUsername,
+    chesscomUsername:
+      typeof stored.chesscomUsername === 'string' ? stored.chesscomUsername : DEFAULT_SETTINGS.chesscomUsername,
+    siteUrl:
+      typeof stored.siteUrl === 'string' && normalizeSiteUrl(stored.siteUrl)
+        ? stored.siteUrl
+        : DEFAULT_SETTINGS.siteUrl,
     autoCapture: typeof stored.autoCapture === 'boolean' ? stored.autoCapture : DEFAULT_SETTINGS.autoCapture,
   };
 }

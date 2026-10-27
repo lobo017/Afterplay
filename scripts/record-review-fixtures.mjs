@@ -105,9 +105,7 @@ async function main() {
         positions,
       };
       const last = positions[positions.length - 2];
-      console.log(
-        `${fixture.id.padEnd(48)} before: ${JSON.stringify(last?.lines?.[0]?.score ?? last?.terminal)}`,
-      );
+      console.log(`${fixture.id.padEnd(48)} before: ${JSON.stringify(last?.lines?.[0]?.score ?? last?.terminal)}`);
     }
   } finally {
     engine.terminate();

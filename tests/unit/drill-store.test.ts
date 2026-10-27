@@ -66,7 +66,13 @@ describe('Phase 7 — endgame progress', () => {
     expect(hinted.newBest).toBe(false);
     expect(hinted.grade).toBe(2);
     const miss = await drills.endgames.record(kq, { reached: false, moves: 30, hintsUsed: 0 }, NOW + 1000);
-    expect(miss.progress).toMatchObject({ completed: 1, attempts: 2, completions: 1, lastReached: false, lastMoves: null });
+    expect(miss.progress).toMatchObject({
+      completed: 1,
+      attempts: 2,
+      completions: 1,
+      lastReached: false,
+      lastMoves: null,
+    });
     expect(miss.grade).toBe(1);
     expect(miss.card.dueDate).toBe(NOW + 1000 + RELEARN_DELAY_MS);
   });
@@ -121,7 +127,8 @@ describe('Phase 7 — visualization progress', () => {
     expect(b.newBest).toBe(false);
     expect(b.stats).toMatchObject({ rounds: 2, best: 22 });
     expect(b.stats.history.map((h) => h.correct)).toEqual([22, 15]);
-    for (let i = 0; i < COORDINATE_HISTORY_LIMIT + 5; i++) await drills.visualization.recordCoordinates({ correct: i, wrong: 0 }, NOW + 2 + i);
+    for (let i = 0; i < COORDINATE_HISTORY_LIMIT + 5; i++)
+      await drills.visualization.recordCoordinates({ correct: i, wrong: 0 }, NOW + 2 + i);
     expect((await drills.visualization.coordinateStats()).history).toHaveLength(COORDINATE_HISTORY_LIMIT);
   });
 
@@ -176,12 +183,27 @@ describe('Phase 7 — what is due, across the trainers', () => {
     expect(s.nextDueAt).not.toBeNull();
 
     s = await drills.summary(NOW + 400 * DAY);
-    expect(s).toMatchObject({ endgame: { due: 2 }, visualization: { due: 1 }, repertoire: { due: 0, fresh: 2 }, nextDueAt: null });
+    expect(s).toMatchObject({
+      endgame: { due: 2 },
+      visualization: { due: 1 },
+      repertoire: { due: 0, fresh: 2 },
+      nextDueAt: null,
+    });
   });
 
   it('summarizeCards on its own', () => {
-    const card = (state: 'new' | 'review', due: number) =>
-      ({ id: `x${due}${state}`, deck: 'endgame' as const, targetId: 'x', state, stability: 1, difficulty: 1, reps: 1, lapses: 0, dueDate: due, updatedAt: 0 });
+    const card = (state: 'new' | 'review', due: number) => ({
+      id: `x${due}${state}`,
+      deck: 'endgame' as const,
+      targetId: 'x',
+      state,
+      stability: 1,
+      difficulty: 1,
+      reps: 1,
+      lapses: 0,
+      dueDate: due,
+      updatedAt: 0,
+    });
     expect(summarizeCards([card('new', 0), card('review', 5), card('review', 50)], 10)).toEqual({
       deck: { due: 1, fresh: 1, total: 3 },
       nextDueAt: 50,

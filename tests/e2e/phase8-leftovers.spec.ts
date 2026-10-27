@@ -30,7 +30,9 @@ async function review(page: Page, pgn: string): Promise<void> {
 const details = (page: Page) => page.getByTestId('review-status-tooltip').textContent();
 
 test.describe('Phase 8 — leftovers', () => {
-  test('"replaced N earlier engine annotations" counts imported ones only, not the app’s own evals', async ({ page }) => {
+  test('"replaced N earlier engine annotations" counts imported ones only, not the app’s own evals', async ({
+    page,
+  }) => {
     test.setTimeout(240_000);
     await openReview(page, 1440, 900);
     // Live analysis writes its own evals on the moves it looks at; none of them were imported
@@ -41,7 +43,13 @@ test.describe('Phase 8 — leftovers', () => {
     }
     for (let i = 0; i < 3; i++) {
       await page.keyboard.press('ArrowRight');
-      await expect.poll(() => page.evaluate(() => window.__wizardChessAnalysis!.controller.getGameTree().currentNode.eval?.app === true), { timeout: 30_000 }).toBe(true);
+      await expect
+        .poll(
+          () =>
+            page.evaluate(() => window.__wizardChessAnalysis!.controller.getGameTree().currentNode.eval?.app === true),
+          { timeout: 30_000 },
+        )
+        .toBe(true);
     }
     await page.getByTestId('btn-review-start').click();
     await expect(page.getByTestId('review-panel')).toHaveAttribute('data-state', 'done', { timeout: 90_000 });
@@ -82,19 +90,24 @@ test.describe('Phase 8 — leftovers', () => {
     // Every sentence of a key moment fits its box: nothing is clipped by an ellipsis or a line clamp
     const clipped = await page.evaluate(() => {
       const out: string[] = [];
-      for (const el of document.querySelectorAll<HTMLElement>('.wc-review-moment-text, .wc-review-moment-move, .wc-review-card-text, [data-testid="review-card-text"]')) {
+      for (const el of document.querySelectorAll<HTMLElement>(
+        '.wc-review-moment-text, .wc-review-moment-move, .wc-review-card-text, [data-testid="review-card-text"]',
+      )) {
         if (el.offsetParent === null) continue;
         const style = getComputedStyle(el);
         // Visually hidden helper text is clipped on purpose
         if (el.clientWidth <= 1) continue;
-        if (el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1) out.push(`${el.className}: ${el.textContent?.slice(0, 60)} (${style.overflow})`);
+        if (el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1)
+          out.push(`${el.className}: ${el.textContent?.slice(0, 60)} (${style.overflow})`);
       }
       return out;
     });
     expect(clipped).toEqual([]);
   });
 
-  test('Settings holds the analysis lines and the review depth, in step with the panels and remembered', async ({ page }) => {
+  test('Settings holds the analysis lines and the review depth, in step with the panels and remembered', async ({
+    page,
+  }) => {
     await openReview(page, 1440, 900);
     await page.getByTestId('review-shell-tab-analysis').click();
     await expect(page.getByTestId('select-multipv')).toHaveValue('3');

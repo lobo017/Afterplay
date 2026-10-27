@@ -38,7 +38,9 @@ test.describe('Phase 8 — library', () => {
     await page.getByTestId('play-layout').getByTestId('square-e2').click();
     await page.getByTestId('play-layout').getByTestId('square-e4').click();
     await expect
-      .poll(() => page.evaluate(() => window.__wizardChessPlay!.controller.getGameTree().getMainLine().length), { timeout: 30_000 })
+      .poll(() => page.evaluate(() => window.__wizardChessPlay!.controller.getGameTree().getMainLine().length), {
+        timeout: 30_000,
+      })
       .toBe(2);
     await page.evaluate(() => window.__wizardChessPlay!.controller.resign());
     await page.getByTestId('mode-tab-games').click();
@@ -99,7 +101,10 @@ test.describe('Phase 8 — library', () => {
       const [first] = (await api.library.list()).filter((g) => g.white === 'Me');
       // (the list reads the summary on the game record)
       const storage = (api.library as unknown as { storage: { saveGame: (r: unknown) => Promise<unknown> } }).storage;
-      await storage.saveGame({ ...first, analysis: { preset: 'quick', savedAt: 1, whiteAccuracy: 91, blackAccuracy: 60 } });
+      await storage.saveGame({
+        ...first,
+        analysis: { preset: 'quick', savedAt: 1, whiteAccuracy: 91, blackAccuracy: 60 },
+      });
     });
     await page.reload();
     await expect(rows).toHaveCount(3);
@@ -133,11 +138,18 @@ test.describe('Phase 8 — library', () => {
     await page.evaluate(() => {
       (window as unknown as { __longTasks: number[] }).__longTasks = [];
       new PerformanceObserver((list) => {
-        for (const e of list.getEntries()) (window as unknown as { __longTasks: number[] }).__longTasks.push(e.duration);
+        for (const e of list.getEntries())
+          (window as unknown as { __longTasks: number[] }).__longTasks.push(e.duration);
       }).observe({ entryTypes: ['longtask'] });
     });
     const games = Array.from({ length: 400 }, (_, i) =>
-      game(`Player${i}`, `Rival${i % 7}`, i % 3 === 0 ? '1/2-1/2' : '1-0', `2026.0${1 + (i % 9)}.1${i % 9}`, i % 2 ? SICILIAN : SCHOLAR),
+      game(
+        `Player${i}`,
+        `Rival${i % 7}`,
+        i % 3 === 0 ? '1/2-1/2' : '1-0',
+        `2026.0${1 + (i % 9)}.1${i % 9}`,
+        i % 2 ? SICILIAN : SCHOLAR,
+      ),
     ).join('\n\n');
     const started = Date.now();
     await paste(page, games);
@@ -145,7 +157,9 @@ test.describe('Phase 8 — library', () => {
     console.log(`[library] 400 games imported in ${Date.now() - started} ms`);
     await expect(page.getByTestId('games-summary')).toContainText('400 games');
     const longTasks = await page.evaluate(() => (window as unknown as { __longTasks: number[] }).__longTasks);
-    console.log(`[library] bulk import of 400 games: long tasks ${JSON.stringify(longTasks.map((d) => Math.round(d)))}`);
+    console.log(
+      `[library] bulk import of 400 games: long tasks ${JSON.stringify(longTasks.map((d) => Math.round(d)))}`,
+    );
     // The worker did the reading (on the page it is ~600 ms of work for these 400 games): the page only
     // stores and lists them (its biggest step is the ~20 ms list render). The spec's limit: no task over 50 ms
     expect(Math.max(0, ...longTasks)).toBeLessThan(50);

@@ -42,7 +42,9 @@ export function scanPersonalPuzzles(
   const moves = saved.review.moves;
   const opponent = color === 'w' ? record.black : record.white;
   const me = color === 'w' ? record.white : record.black;
-  const label = [`${me} vs ${opponent}`, record.date ? record.date.replace(/\./g, '-') : null].filter(Boolean).join(' · ');
+  const label = [`${me} vs ${opponent}`, record.date ? record.date.replace(/\./g, '-') : null]
+    .filter(Boolean)
+    .join(' · ');
 
   for (const move of moves) {
     if (move.color !== color) continue;
@@ -79,7 +81,11 @@ export function scanPersonalPuzzles(
       continue;
     }
     const motifs = [
-      ...new Set(move.motifs.filter((m) => m.role === 'missed' || m.role === 'refutation' || m.role === undefined).map((m) => m.kind)),
+      ...new Set(
+        move.motifs
+          .filter((m) => m.role === 'missed' || m.role === 'refutation' || m.role === undefined)
+          .map((m) => m.kind),
+      ),
     ];
     out.puzzles.push({
       ...source,

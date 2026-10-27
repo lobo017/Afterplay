@@ -34,11 +34,14 @@ async function squareBox(page: Page, sq: string, root = 'play-layout') {
 }
 
 async function pieceState(page: Page, sq: string) {
-  return page.getByTestId('play-layout').getByTestId(`piece-${sq}`).evaluate((el) => ({
-    transform: (el as HTMLElement).style.transform,
-    lifted: el.classList.contains('wc-piece-dragging'),
-    animations: el.getAnimations().length,
-  }));
+  return page
+    .getByTestId('play-layout')
+    .getByTestId(`piece-${sq}`)
+    .evaluate((el) => ({
+      transform: (el as HTMLElement).style.transform,
+      lifted: el.classList.contains('wc-piece-dragging'),
+      animations: el.getAnimations().length,
+    }));
 }
 
 async function hasPiece(page: Page, sq: string): Promise<boolean> {
@@ -114,7 +117,9 @@ test.describe('Phase 6b — board feel', () => {
     await expect.poll(() => hasPiece(page, 'e4')).toBe(true);
   });
 
-  test('a drag highlights the drop square; a drop just past a legal square lands on it and glides in', async ({ page }) => {
+  test('a drag highlights the drop square; a drop just past a legal square lands on it and glides in', async ({
+    page,
+  }) => {
     await openPlay(page);
     await setFeel(page, { snapMs: 300 });
     const g1 = await squareBox(page, 'g1');
@@ -133,7 +138,10 @@ test.describe('Phase 6b — board feel', () => {
     await page.mouse.move(nearF3.x, nearF3.y, { steps: 6 });
     await expect(hover).toHaveAttribute('data-square', 'f3');
     await expect(hover).toHaveAttribute('data-target', 'true');
-    await page.screenshot({ path: path.join(SCREENSHOT_DIR, 'desktop-drag-target.png'), clip: { x: f3.x - f3.width * 2, y: f3.y - f3.height * 2, width: f3.width * 5, height: f3.height * 4 } });
+    await page.screenshot({
+      path: path.join(SCREENSHOT_DIR, 'desktop-drag-target.png'),
+      clip: { x: f3.x - f3.width * 2, y: f3.y - f3.height * 2, width: f3.width * 5, height: f3.height * 4 },
+    });
     await page.mouse.up();
 
     // The knight landed on f3 and is gliding in from where it was released
@@ -163,7 +171,9 @@ test.describe('Phase 6b — board feel', () => {
     await expect(page.getByTestId('overlay-selected-square')).toHaveCount(0);
   });
 
-  test('touch: the dragged piece is drawn above the finger and drops on the square under it; a tap selects', async ({ page }) => {
+  test('touch: the dragged piece is drawn above the finger and drops on the square under it; a tap selects', async ({
+    page,
+  }) => {
     await openPlay(page);
     await setFeel(page, { touchOffset: 0.8 });
     const e2 = await squareBox(page, 'e2');
@@ -296,32 +306,37 @@ test.describe('Phase 5 — board badges', () => {
     'Blunder',
   ] as const;
 
-  test('the current move’s class icon sits on its destination square’s corner, every class, both orientations', async ({ page }) => {
+  test('the current move’s class icon sits on its destination square’s corner, every class, both orientations', async ({
+    page,
+  }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.goto('/');
     await page.getByTestId('mode-tab-review').click();
     await expect(page.getByTestId('analysis-layout')).toBeVisible();
 
     // The sample game, with one class on each of its first ten moves (as a review writes them)
-    const moves = await page.evaluate((classes) => {
-      const api = window.__wizardChessAnalysis!;
-      const review = window.__wizardChessReview!;
-      if (!api.controller.importPgn(review.SAMPLE_GAME_PGN)) throw new Error('import failed');
-      const line = api.controller.getGameTree().getMainLine().slice(0, classes.length);
-      api.controller.applyReview(
-        line.map((node, i) => ({ nodeId: node.id, classification: classes[i]! })),
-        true,
-      );
-      return line.map((node) => ({ id: node.id, to: node.to!, san: node.san }));
-    }, [...CLASSES]);
+    const moves = await page.evaluate(
+      (classes) => {
+        const api = window.__wizardChessAnalysis!;
+        const review = window.__wizardChessReview!;
+        if (!api.controller.importPgn(review.SAMPLE_GAME_PGN)) throw new Error('import failed');
+        const line = api.controller.getGameTree().getMainLine().slice(0, classes.length);
+        api.controller.applyReview(
+          line.map((node, i) => ({ nodeId: node.id, classification: classes[i]! })),
+          true,
+        );
+        return line.map((node) => ({ id: node.id, to: node.to!, san: node.san }));
+      },
+      [...CLASSES],
+    );
 
     const board = page.getByTestId('analysis-layout').getByTestId('chess-board');
     const badge = board.getByTestId('board-badge');
 
     // The start position has no move, so no badge
-    await page.evaluate(() => window.__wizardChessAnalysis!.controller.goToNode(
-      window.__wizardChessAnalysis!.controller.getGameTree().root.id,
-    ));
+    await page.evaluate(() =>
+      window.__wizardChessAnalysis!.controller.goToNode(window.__wizardChessAnalysis!.controller.getGameTree().root.id),
+    );
     await expect(badge).toHaveCount(0);
 
     for (const flipped of [false, true]) {
@@ -337,9 +352,7 @@ test.describe('Phase 5 — board badges', () => {
         await expect(badge.locator('.wc-class-badge')).toHaveAttribute('data-class', CLASSES[i]!);
 
         // Inside the destination square, in its top-right corner, never clipped by the board
-        await badge
-          .locator('.wc-class-badge')
-          .evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished)));
+        await badge.locator('.wc-class-badge').evaluate((el) => Promise.all(el.getAnimations().map((a) => a.finished)));
         const sq = (await board.getByTestId(`square-${move.to}`).boundingBox())!;
         const icon = (await badge.locator('.wc-class-badge').boundingBox())!;
         const b = (await board.boundingBox())!;
@@ -350,7 +363,9 @@ test.describe('Phase 5 — board badges', () => {
         expect(icon.x + icon.width).toBeLessThanOrEqual(b.x + b.width);
         expect(icon.width).toBeGreaterThan(sq.width * 0.3);
       }
-      await board.screenshot({ path: path.join(SCREENSHOT_DIR, `desktop-board-badge-${flipped ? 'black' : 'white'}.png`) });
+      await board.screenshot({
+        path: path.join(SCREENSHOT_DIR, `desktop-board-badge-${flipped ? 'black' : 'white'}.png`),
+      });
     }
 
     // A move with no classification (past the first ten) shows none

@@ -20,7 +20,14 @@ import type { PageStatus } from '../../extension/src/messages';
 import { chessComRefFromRequest, classifyPage, pageKey } from '../../extension/src/pages';
 import { CaptureQueue, MemoryStore } from '../../extension/src/queue';
 import { DEFAULT_SETTINGS, type ExtensionSettings } from '../../extension/src/settings';
-import { hasLeft, leaveAction, leaveCaptureCheck, tabFromReport, tabFromUrl, type TrackedTab } from '../../extension/src/tab-tracker';
+import {
+  hasLeft,
+  leaveAction,
+  leaveCaptureCheck,
+  tabFromReport,
+  tabFromUrl,
+  type TrackedTab,
+} from '../../extension/src/tab-tracker';
 
 const FIX = path.join(__dirname, '..', 'fixtures', 'capture', 'lichess');
 const LIVE_STREAM = fs.readFileSync(path.join(FIX, 'stream-7hMjEFmU-live.ndjson'), 'utf8');
@@ -86,9 +93,21 @@ function status(patch: Partial<PageStatus> = {}): PageStatus {
 describe('Phase 5b live capture — Lichess game stream', () => {
   it('classifies the recorded lines: description, positions, and the final line with the status', () => {
     const lines = LIVE_STREAM.split('\n').filter(Boolean).map(classifyStreamLine);
-    expect(lines[0]).toMatchObject({ kind: 'game', ended: false, status: null, white: 'Pasebri', black: 'Fitimiti123' });
+    expect(lines[0]).toMatchObject({
+      kind: 'game',
+      ended: false,
+      status: null,
+      white: 'Pasebri',
+      black: 'Fitimiti123',
+    });
     expect(lines.slice(1, -1).every((l) => l.kind === 'move')).toBe(true);
-    expect(lines[lines.length - 1]).toMatchObject({ kind: 'game', ended: true, aborted: false, status: 'outoftime', winner: 'white' });
+    expect(lines[lines.length - 1]).toMatchObject({
+      kind: 'game',
+      ended: true,
+      aborted: false,
+      status: 'outoftime',
+      winner: 'white',
+    });
     expect(classifyStreamLine('not json')).toEqual({ kind: 'other' });
     expect(classifyStreamLine('{"id":"x","players":{},"status":{"id":25,"name":"aborted"}}')).toMatchObject({
       ended: true,
@@ -99,10 +118,20 @@ describe('Phase 5b live capture — Lichess game stream', () => {
   it('reads a streamed response line by line, however the chunks fall', async () => {
     for (const chunk of [1, 7, 37, 4096]) {
       const seen: StreamLine[] = [];
-      const outcome = await readGameStream('Bjl39T9x', async () => streamed(FINISHED_STREAM, chunk), (l) => seen.push(l));
+      const outcome = await readGameStream(
+        'Bjl39T9x',
+        async () => streamed(FINISHED_STREAM, chunk),
+        (l) => seen.push(l),
+      );
       expect(outcome).toEqual({ kind: 'closed', lines: 49 });
       expect(seen.filter((l) => l.kind === 'move')).toHaveLength(47);
-      expect(seen[seen.length - 1]).toMatchObject({ kind: 'game', ended: true, status: 'mate', winner: 'black', black: 'Lobo017' });
+      expect(seen[seen.length - 1]).toMatchObject({
+        kind: 'game',
+        ended: true,
+        status: 'mate',
+        winner: 'black',
+        black: 'Lobo017',
+      });
     }
   });
 
@@ -233,7 +262,9 @@ describe('Phase 5b live capture — pages', () => {
       site: 'chesscom',
       gameId: 'live-185518487990',
     });
-    expect(chessComRefFromRequest('https://www.chess.com/callback/daily/game/1033338800?x=1')?.gameId).toBe('daily-1033338800');
+    expect(chessComRefFromRequest('https://www.chess.com/callback/daily/game/1033338800?x=1')?.gameId).toBe(
+      'daily-1033338800',
+    );
     expect(chessComRefFromRequest('https://www.chess.com/game/live/42/whatever')?.gameId).toBe('live-42');
     expect(chessComRefFromRequest('https://www.chess.com/live/game/42')?.gameId).toBe('live-42');
     expect(chessComRefFromRequest('https://www.chess.com/callback/user/popup/hikaru')).toBeNull();
@@ -258,19 +289,30 @@ describe('Phase 5b live capture — leaving a game page', () => {
     expect(hasLeft(tab, 'https://lichess.org/')).toBe(true);
     expect(hasLeft(tab, undefined)).toBe(true);
     expect(tabFromUrl(1, 'https://example.com/', now)).toBeNull();
-    expect(tabFromUrl(1, 'https://www.chess.com/play/online', now)).toMatchObject({ kind: 'play', ref: null, reported: false });
+    expect(tabFromUrl(1, 'https://www.chess.com/play/online', now)).toMatchObject({
+      kind: 'play',
+      ref: null,
+      reported: false,
+    });
   });
 
   it('captures and syncs, or only syncs, or does nothing, by what the page showed', () => {
     expect(leaveAction(tracked())).toMatchObject({ capture: true, sync: true });
-    expect(leaveAction(tracked({ captured: true }))).toMatchObject({ capture: false, sync: true, reason: 'already captured' });
+    expect(leaveAction(tracked({ captured: true }))).toMatchObject({
+      capture: false,
+      sync: true,
+      reason: 'already captured',
+    });
     expect(leaveAction(tracked({ mine: false }))).toMatchObject({ capture: false, sync: true, reason: 'not my game' });
     expect(leaveAction(tracked({ state: 'aborted' }))).toMatchObject({ capture: false, sync: true });
     expect(leaveAction(tracked({ kind: 'play', ref: null, url: 'https://www.chess.com/play/online' }))).toMatchObject({
       capture: false,
       sync: true,
     });
-    expect(leaveAction(tracked({ kind: 'other', ref: null, url: 'https://lichess.org/' }))).toMatchObject({ capture: false, sync: false });
+    expect(leaveAction(tracked({ kind: 'other', ref: null, url: 'https://lichess.org/' }))).toMatchObject({
+      capture: false,
+      sync: false,
+    });
     // Known from the URL only (no script reported): still worth a try
     expect(leaveAction(tabFromUrl(3, 'https://lichess.org/Bjl39T9x', now)!)).toMatchObject({ capture: true });
   });
@@ -286,7 +328,9 @@ describe('Phase 5b live capture — leaving a game page', () => {
     // Not seen in progress: only a recent game
     const opened = tracked({ sawInProgress: false, state: 'finished' });
     expect(leaveCaptureCheck(opened, mineByName, now)(facts)).toBeNull();
-    expect(leaveCaptureCheck(opened, mineByName, now)({ ...facts, playedAt: now - RECENT_GAME_MS - 60_000 })).toBe('not a recent game');
+    expect(leaveCaptureCheck(opened, mineByName, now)({ ...facts, playedAt: now - RECENT_GAME_MS - 60_000 })).toBe(
+      'not a recent game',
+    );
   });
 
   it('captureFinished queues a finished game of mine with its trigger, and skips the rest', async () => {
@@ -295,7 +339,11 @@ describe('Phase 5b live capture — leaving a game page', () => {
     const changed = vi.fn();
     const service = new CaptureService({ queue, store, now: () => now, resolvers: {}, onQueueChanged: changed });
     const ref = { site: 'lichess' as const, gameId: 'Bjl39T9x' };
-    const resolver = vi.fn(async (): Promise<LinkResolution> => ({ kind: 'pgn', pgn: EXPORT_PGN, method: 'lichess-ids-export' }));
+    const resolver = vi.fn(async (): Promise<LinkResolution> => ({
+      kind: 'pgn',
+      pgn: EXPORT_PGN,
+      method: 'lichess-ids-export',
+    }));
     const accept = () => null;
 
     expect(await service.captureFinished(ref, 'u', resolver, () => 'not my game', 'left-page')).toMatchObject({
@@ -306,9 +354,13 @@ describe('Phase 5b live capture — leaving a game page', () => {
 
     const running = EXPORT_PGN.replace('[Result "0-1"]', '[Result "*"]').replace(/0-1\s*$/, '*');
     resolver.mockResolvedValueOnce({ kind: 'pgn', pgn: running, method: 'lichess-ids-export' });
-    expect(await service.captureFinished(ref, 'u', resolver, accept, 'left-page')).toMatchObject({ outcome: 'skipped' });
+    expect(await service.captureFinished(ref, 'u', resolver, accept, 'left-page')).toMatchObject({
+      outcome: 'skipped',
+    });
     resolver.mockResolvedValueOnce({ kind: 'in-progress', reason: 'The game is still in progress.' });
-    expect(await service.captureFinished(ref, 'u', resolver, accept, 'left-page')).toMatchObject({ outcome: 'skipped' });
+    expect(await service.captureFinished(ref, 'u', resolver, accept, 'left-page')).toMatchObject({
+      outcome: 'skipped',
+    });
 
     expect(await service.captureFinished(ref, 'https://lichess.org/Bjl39T9x', resolver, accept, 'left-page')).toEqual({
       outcome: 'added',
@@ -324,13 +376,24 @@ describe('Phase 5b live capture — leaving a game page', () => {
 
     // Already queued: nothing is fetched
     resolver.mockClear();
-    expect(await service.captureFinished(ref, 'u', resolver, accept, 'left-page')).toEqual({ outcome: 'known', key: 'lichess:Bjl39T9x' });
+    expect(await service.captureFinished(ref, 'u', resolver, accept, 'left-page')).toEqual({
+      outcome: 'known',
+      key: 'lichess:Bjl39T9x',
+    });
     expect(resolver).not.toHaveBeenCalled();
 
     // Not in Chess.com's archive yet: pending, keeping the trigger when it later resolves
     const cc = { site: 'chesscom' as const, gameId: 'live-1' };
-    const pending = async (): Promise<LinkResolution> => ({ kind: 'pending', reason: 'not yet', retryAt: now + 1, white: 'a', black: 'b' });
-    expect(await service.captureFinished(cc, 'https://www.chess.com/game/live/1', pending, accept, 'left-page')).toMatchObject({
+    const pending = async (): Promise<LinkResolution> => ({
+      kind: 'pending',
+      reason: 'not yet',
+      retryAt: now + 1,
+      white: 'a',
+      black: 'b',
+    });
+    expect(
+      await service.captureFinished(cc, 'https://www.chess.com/game/live/1', pending, accept, 'left-page'),
+    ).toMatchObject({
       outcome: 'pending',
     });
     expect(await queue.get('chesscom:live-1')).toMatchObject({ status: 'pending', trigger: 'left-page' });
@@ -373,7 +436,10 @@ describe('Phase 5b — Chess.com games in progress (404 until the end)', () => {
     game: Record<string, unknown>;
   };
   const json = (body: unknown, status = 200) =>
-    new Response(typeof body === 'string' ? body : JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+    new Response(typeof body === 'string' ? body : JSON.stringify(body), {
+      status,
+      headers: { 'content-type': 'application/json' },
+    });
 
   it('the recorded answer for a running game is a 404 "Game is not found."', () => {
     expect(JSON.parse(NOT_FOUND)).toEqual({ message: 'Game is not found.' });
@@ -449,8 +515,14 @@ describe('Phase 5b — Chess.com games in progress (404 until the end)', () => {
     const queue = new CaptureQueue(store, () => 1);
     const service = new CaptureService({ queue, store, now: () => 1, resolvers: {}, onQueueChanged: () => undefined });
     const ref = { site: 'chesscom' as const, gameId: 'live-185558711264' };
-    const notYet = async (): Promise<LinkResolution> => ({ kind: 'in-progress', reason: 'Chess.com has no data for this game yet.' });
-    expect(await service.captureFinished(ref, 'u', notYet, () => null, 'left-page')).toMatchObject({ outcome: 'skipped', retry: true });
+    const notYet = async (): Promise<LinkResolution> => ({
+      kind: 'in-progress',
+      reason: 'Chess.com has no data for this game yet.',
+    });
+    expect(await service.captureFinished(ref, 'u', notYet, () => null, 'left-page')).toMatchObject({
+      outcome: 'skipped',
+      retry: true,
+    });
     const broken = async (): Promise<LinkResolution> => ({ kind: 'error', error: 'boom' });
     expect(await service.captureFinished(ref, 'u', broken, () => null, 'left-page')).toEqual({
       outcome: 'error',
@@ -462,7 +534,15 @@ describe('Phase 5b — Chess.com games in progress (404 until the end)', () => {
 
 describe('Phase 5b — retries of games left before their data was there', () => {
   const tab = (n: string) =>
-    tabFromReport(1, status({ url: `https://www.chess.com/game/${n}`, ref: { site: 'chesscom', gameId: `live-${n}` }, state: 'not-available' }), 0)!;
+    tabFromReport(
+      1,
+      status({
+        url: `https://www.chess.com/game/${n}`,
+        ref: { site: 'chesscom', gameId: `live-${n}` },
+        state: 'not-available',
+      }),
+      0,
+    )!;
 
   function setup(answers: Array<'retry' | 'done'>) {
     const clock = { now: 1_000_000 };
@@ -487,7 +567,12 @@ describe('Phase 5b — retries of games left before their data was there', () =>
   it('tries again after 10 s, 30 s, 1, 2 and 5 min, then leaves the game to the archive check', async () => {
     const s = setup([]);
     const retries = s.make();
-    const item = await retries.add({ key: 'chesscom:live-1', ref: { site: 'chesscom', gameId: 'live-1' }, url: 'u', tab: tab('1') });
+    const item = await retries.add({
+      key: 'chesscom:live-1',
+      ref: { site: 'chesscom', gameId: 'live-1' },
+      url: 'u',
+      tab: tab('1'),
+    });
     expect(item.nextAt).toBe(s.clock.now + GAME_RETRY_DELAYS_MS[0]);
     expect(s.schedule).toEqual([item.nextAt]);
     expect(GameRetries.describe(item, s.clock.now)).toBe('trying again in 10 s (retry 1 of 5)');
@@ -514,7 +599,12 @@ describe('Phase 5b — retries of games left before their data was there', () =>
   it('stops as soon as a try captures the game, keeps one schedule per game, and survives the worker restarting', async () => {
     const s = setup(['retry', 'done']);
     const first = s.make();
-    const entry = { key: 'chesscom:live-2', ref: { site: 'chesscom' as const, gameId: 'live-2' }, url: 'u2', tab: tab('2') };
+    const entry = {
+      key: 'chesscom:live-2',
+      ref: { site: 'chesscom' as const, gameId: 'live-2' },
+      url: 'u2',
+      tab: tab('2'),
+    };
     const a = await first.add(entry);
     expect(await first.add(entry)).toEqual(a);
     s.clock.now = a.nextAt;

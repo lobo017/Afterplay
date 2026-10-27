@@ -11,20 +11,7 @@ import { getPieceSvgMarkup } from '../render/piece-sets';
 import { DEFAULT_PIECE_SET, type PieceSetId } from '../render/themes';
 
 export type EditorTool =
-  | 'pointer'
-  | 'trash'
-  | 'wK'
-  | 'wQ'
-  | 'wR'
-  | 'wB'
-  | 'wN'
-  | 'wP'
-  | 'bK'
-  | 'bQ'
-  | 'bR'
-  | 'bB'
-  | 'bN'
-  | 'bP';
+  'pointer' | 'trash' | 'wK' | 'wQ' | 'wR' | 'wB' | 'wN' | 'wP' | 'bK' | 'bQ' | 'bR' | 'bB' | 'bN' | 'bP';
 
 const FILES = 'abcdefgh';
 
@@ -49,12 +36,8 @@ export function parseFenForEditor(fen: string): ParsedEditorBoard | null {
   const turn: Color = tokens[1] === 'b' ? 'b' : 'w';
   const castling = tokens[2] ?? '-';
   const epSquare = tokens[3] ?? '-';
-  const halfMoves = Number.isFinite(Number(tokens[4]))
-    ? Math.max(0, Number(tokens[4]))
-    : 0;
-  const fullMoves = Number.isFinite(Number(tokens[5]))
-    ? Math.max(1, Number(tokens[5]))
-    : 1;
+  const halfMoves = Number.isFinite(Number(tokens[4])) ? Math.max(0, Number(tokens[4])) : 0;
+  const fullMoves = Number.isFinite(Number(tokens[5])) ? Math.max(1, Number(tokens[5])) : 1;
 
   const rows = boardPart.split('/');
   if (rows.length !== 8) return null;
@@ -109,10 +92,7 @@ export function serializeEditorBoardToFen(board: ParsedEditorBoard): string {
           rankStr += String(emptyCount);
           emptyCount = 0;
         }
-        rankStr +=
-          piece.color === 'w'
-            ? piece.type.toUpperCase()
-            : piece.type.toLowerCase();
+        rankStr += piece.color === 'w' ? piece.type.toUpperCase() : piece.type.toLowerCase();
       }
     }
     if (emptyCount > 0) {
@@ -157,9 +137,7 @@ export class PositionEditor {
   private lastValidation: FenValidationResult;
 
   private readonly onApplyPosition?: (fen: string) => void;
-  private readonly onPreviewSquaresChange?: (
-    squares: Map<Square, Piece>,
-  ) => void;
+  private readonly onPreviewSquaresChange?: (squares: Map<Square, Piece>) => void;
   private readonly onToolChange?: (tool: EditorTool) => void;
 
   constructor(parent: HTMLElement, options?: PositionEditorOptions) {
@@ -246,36 +224,16 @@ export class PositionEditor {
       </div>
     `;
 
-    this.fenInputEl = this.rootEl.querySelector(
-      '[data-testid="editor-fen-input"]',
-    ) as HTMLInputElement;
-    this.statusEl = this.rootEl.querySelector(
-      '[data-testid="editor-fen-status"]',
-    ) as HTMLElement;
-    this.applyBtnEl = this.rootEl.querySelector(
-      '[data-testid="btn-apply-fen"]',
-    ) as HTMLButtonElement;
-    this.turnSelectEl = this.rootEl.querySelector(
-      '[data-testid="editor-select-turn"]',
-    ) as HTMLSelectElement;
-    this.castleKCheckEl = this.rootEl.querySelector(
-      '[data-testid="editor-castle-K"]',
-    ) as HTMLInputElement;
-    this.castleQCheckEl = this.rootEl.querySelector(
-      '[data-testid="editor-castle-Q"]',
-    ) as HTMLInputElement;
-    this.castlekCheckEl = this.rootEl.querySelector(
-      '[data-testid="editor-castle-k"]',
-    ) as HTMLInputElement;
-    this.castleqCheckEl = this.rootEl.querySelector(
-      '[data-testid="editor-castle-q"]',
-    ) as HTMLInputElement;
-    this.epInputEl = this.rootEl.querySelector(
-      '[data-testid="editor-ep-square"]',
-    ) as HTMLInputElement;
-    this.paletteContainerEl = this.rootEl.querySelector(
-      '[data-testid="editor-piece-palette"]',
-    ) as HTMLElement;
+    this.fenInputEl = this.rootEl.querySelector('[data-testid="editor-fen-input"]') as HTMLInputElement;
+    this.statusEl = this.rootEl.querySelector('[data-testid="editor-fen-status"]') as HTMLElement;
+    this.applyBtnEl = this.rootEl.querySelector('[data-testid="btn-apply-fen"]') as HTMLButtonElement;
+    this.turnSelectEl = this.rootEl.querySelector('[data-testid="editor-select-turn"]') as HTMLSelectElement;
+    this.castleKCheckEl = this.rootEl.querySelector('[data-testid="editor-castle-K"]') as HTMLInputElement;
+    this.castleQCheckEl = this.rootEl.querySelector('[data-testid="editor-castle-Q"]') as HTMLInputElement;
+    this.castlekCheckEl = this.rootEl.querySelector('[data-testid="editor-castle-k"]') as HTMLInputElement;
+    this.castleqCheckEl = this.rootEl.querySelector('[data-testid="editor-castle-q"]') as HTMLInputElement;
+    this.epInputEl = this.rootEl.querySelector('[data-testid="editor-ep-square"]') as HTMLInputElement;
+    this.paletteContainerEl = this.rootEl.querySelector('[data-testid="editor-piece-palette"]') as HTMLElement;
 
     parent.appendChild(this.rootEl);
     this.renderPalette();
@@ -348,9 +306,7 @@ export class PositionEditor {
 
     this.paletteContainerEl.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
-      const btn = target.closest(
-        '[data-editor-tool]',
-      ) as HTMLButtonElement | null;
+      const btn = target.closest('[data-editor-tool]') as HTMLButtonElement | null;
       if (!btn) return;
       const tool = btn.getAttribute('data-editor-tool') as EditorTool;
       this.setTool(tool);
@@ -377,25 +333,19 @@ export class PositionEditor {
     this.castleqCheckEl.addEventListener('change', syncMetadataToFen);
     this.epInputEl.addEventListener('change', syncMetadataToFen);
 
-    this.rootEl
-      .querySelector('[data-testid="btn-editor-startpos"]')
-      ?.addEventListener('click', () => {
-        this.setFen(DEFAULT_POSITION, true);
-        this.applyCurrentFen();
-      });
+    this.rootEl.querySelector('[data-testid="btn-editor-startpos"]')?.addEventListener('click', () => {
+      this.setFen(DEFAULT_POSITION, true);
+      this.applyCurrentFen();
+    });
 
-    this.rootEl
-      .querySelector('[data-testid="btn-editor-kings-only"]')
-      ?.addEventListener('click', () => {
-        this.setFen('4k3/8/8/8/8/8/8/4K3 w - - 0 1', true);
-        this.applyCurrentFen();
-      });
+    this.rootEl.querySelector('[data-testid="btn-editor-kings-only"]')?.addEventListener('click', () => {
+      this.setFen('4k3/8/8/8/8/8/8/4K3 w - - 0 1', true);
+      this.applyCurrentFen();
+    });
 
-    this.rootEl
-      .querySelector('[data-testid="btn-editor-clear"]')
-      ?.addEventListener('click', () => {
-        this.setFen('8/8/8/8/8/8/8/8 w - - 0 1', true);
-      });
+    this.rootEl.querySelector('[data-testid="btn-editor-clear"]')?.addEventListener('click', () => {
+      this.setFen('8/8/8/8/8/8/8/8 w - - 0 1', true);
+    });
   }
 
   public setTool(tool: EditorTool): void {
@@ -499,9 +449,7 @@ export class PositionEditor {
     }
 
     if (validation.ok) {
-      this.statusEl.textContent = validation.isChess960
-        ? 'Valid Chess960 FEN'
-        : 'Valid FEN';
+      this.statusEl.textContent = validation.isChess960 ? 'Valid Chess960 FEN' : 'Valid FEN';
       this.statusEl.setAttribute('data-valid', 'true');
       this.applyBtnEl.disabled = false;
     } else {

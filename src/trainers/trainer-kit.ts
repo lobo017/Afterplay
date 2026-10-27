@@ -23,9 +23,16 @@ export function playMoveSound(audio: CathedralAudio, move: MoveSoundInfo, check:
 }
 
 /** The same for a node of a game tree (its SAN says check and capture). */
-export function soundForNode(audio: CathedralAudio, node: { piece?: PieceSymbol; captured?: PieceSymbol; san: string; moveColor?: 'w' | 'b' }): void {
+export function soundForNode(
+  audio: CathedralAudio,
+  node: { piece?: PieceSymbol; captured?: PieceSymbol; san: string; moveColor?: 'w' | 'b' },
+): void {
   announce(`${node.moveColor === 'b' ? 'Black' : 'White'} plays ${node.san}`);
-  playMoveSound(audio, { piece: node.piece ?? 'p', isCapture: node.captured !== undefined || node.san.includes('x') }, /[+#]$/.test(node.san));
+  playMoveSound(
+    audio,
+    { piece: node.piece ?? 'p', isCapture: node.captured !== undefined || node.san.includes('x') },
+    /[+#]$/.test(node.san),
+  );
 }
 
 export function fromExecuted(move: ExecutedMove): MoveSoundInfo {

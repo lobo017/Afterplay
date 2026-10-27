@@ -33,7 +33,10 @@ async function openGames(page: Page, width = 1440, height = 900): Promise<void> 
 
 async function paste(page: Page, pgn: string): Promise<void> {
   await page.getByTestId('btn-games-import').click();
-  await expect(page.getByTestId('btn-games-import-list').getByRole('menuitem')).toHaveText(['Paste PGN…', 'Open PGN file…']);
+  await expect(page.getByTestId('btn-games-import-list').getByRole('menuitem')).toHaveText([
+    'Paste PGN…',
+    'Open PGN file…',
+  ]);
   await page.getByTestId('btn-games-paste').click();
   await page.getByTestId('games-paste-text').fill(pgn);
   await page.getByTestId('btn-games-paste-import').click();
@@ -79,7 +82,11 @@ test.describe('Phase 6b — Games', () => {
     await page.getByTestId('games-analyze-preset').selectOption('quick');
     await page.getByTestId('btn-games-analyze').click();
     await expect(bar).toBeHidden();
-    await expect.poll(() => page.evaluate(async () => (await window.__wizardChessLibraryReady!).queue.pending().length), { timeout: 5000 }).toBeGreaterThan(0);
+    await expect
+      .poll(() => page.evaluate(async () => (await window.__wizardChessLibraryReady!).queue.pending().length), {
+        timeout: 5000,
+      })
+      .toBeGreaterThan(0);
   });
 
   test('phone: nothing sideways, the selection bar above the tab bar', async ({ page }) => {

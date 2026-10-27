@@ -1,17 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { MoveClassification } from '../../src/core/game-tree';
-import {
-  CLASS_THRESHOLDS,
-  DECIDED_WIN_PERCENT,
-  classFromWinDrop,
-  classifyMove,
-} from '../../src/review/classification';
-import {
-  classificationFixtures,
-  classifyInputFor,
-  recordedLine,
-  resolveStartFen,
-} from '../helpers/review-fixtures';
+import { CLASS_THRESHOLDS, DECIDED_WIN_PERCENT, classFromWinDrop, classifyMove } from '../../src/review/classification';
+import { classificationFixtures, classifyInputFor, recordedLine, resolveStartFen } from '../helpers/review-fixtures';
 
 const ALL_CLASSES: MoveClassification[] = [
   'Best',
@@ -36,9 +26,7 @@ describe('Phase 5 — move classification fixtures', () => {
     for (const fixture of classificationFixtures) {
       const line = recordedLine(fixture);
       expect(line, fixture.id).toBeDefined();
-      expect(line!.key, fixture.id).toBe(
-        `${resolveStartFen(fixture)}|${fixture.moves.join(' ')}`,
-      );
+      expect(line!.key, fixture.id).toBe(`${resolveStartFen(fixture)}|${fixture.moves.join(' ')}`);
     }
   });
 
@@ -56,8 +44,7 @@ describe('Phase 5 — move classification fixtures', () => {
   it('decided positions never produce a Mistake or Blunder unless the result changes', () => {
     for (const fixture of classificationFixtures.filter((f) => f.id.startsWith('decided-'))) {
       const result = classifyMove(classifyInputFor(fixture))!;
-      const decidedBefore =
-        result.winBefore >= DECIDED_WIN_PERCENT || result.winBefore <= 100 - DECIDED_WIN_PERCENT;
+      const decidedBefore = result.winBefore >= DECIDED_WIN_PERCENT || result.winBefore <= 100 - DECIDED_WIN_PERCENT;
       expect(decidedBefore, `${fixture.id} should start from a decided position`).toBe(true);
       const sameSideStillDecided =
         (result.winBefore >= DECIDED_WIN_PERCENT && result.winAfter >= DECIDED_WIN_PERCENT) ||
@@ -98,7 +85,10 @@ describe('Phase 5 — classification rule edges (hand-set engine scores)', () =>
     const result = classifyMove({
       fenBefore: legalFen,
       uci: 'f3e5',
-      before: analysis(legalFen, [['f3e5', 150], ['d2d4', 90]]),
+      before: analysis(legalFen, [
+        ['f3e5', 150],
+        ['d2d4', 90],
+      ]),
       after: analysis(legalAfter, [['d6e5', -150]]),
       isBook: false,
     });
@@ -109,7 +99,10 @@ describe('Phase 5 — classification rule edges (hand-set engine scores)', () =>
     const result = classifyMove({
       fenBefore: legalFen,
       uci: 'f3e5',
-      before: analysis(legalFen, [['f3e5', 1500], ['d2d4', 900]]),
+      before: analysis(legalFen, [
+        ['f3e5', 1500],
+        ['d2d4', 900],
+      ]),
       after: analysis(legalAfter, [['d6e5', -1500]]),
       isBook: false,
     });
@@ -120,7 +113,10 @@ describe('Phase 5 — classification rule edges (hand-set engine scores)', () =>
     const result = classifyMove({
       fenBefore: legalFen,
       uci: 'f3e5',
-      before: analysis(legalFen, [['f3e5', -60], ['d2d4', -120]]),
+      before: analysis(legalFen, [
+        ['f3e5', -60],
+        ['d2d4', -120],
+      ]),
       after: analysis(legalAfter, [['d6e5', 60]]),
       isBook: false,
     });
@@ -134,7 +130,10 @@ describe('Phase 5 — classification rule edges (hand-set engine scores)', () =>
     const result = classifyMove({
       fenBefore: fen,
       uci: 'd1b3',
-      before: analysis(fen, [['d1b3', 100], ['d1d4', 60]]),
+      before: analysis(fen, [
+        ['d1b3', 100],
+        ['d1d4', 60],
+      ]),
       after: analysis(after, [['e3f1', -90]]),
       isBook: false,
     });
@@ -147,7 +146,10 @@ describe('Phase 5 — classification rule edges (hand-set engine scores)', () =>
     const tie = classifyMove({
       fenBefore: fen,
       uci: 'h2h3',
-      before: analysis(fen, [['a2a4', 25], ['h2h3', 25]]),
+      before: analysis(fen, [
+        ['a2a4', 25],
+        ['h2h3', 25],
+      ]),
       after: analysis(after, [['a7a6', -25]]),
       isBook: false,
     });
@@ -155,7 +157,10 @@ describe('Phase 5 — classification rule edges (hand-set engine scores)', () =>
     const below = classifyMove({
       fenBefore: fen,
       uci: 'h2h3',
-      before: analysis(fen, [['a2a4', 25], ['h2h3', 24]]),
+      before: analysis(fen, [
+        ['a2a4', 25],
+        ['h2h3', 24],
+      ]),
       after: analysis(after, [['a7a6', -24]]),
       isBook: false,
     });

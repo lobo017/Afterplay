@@ -37,10 +37,13 @@ export function addRepertoireMove(
   const parent = tree.getNode(parentId);
   if (!parent) throw new Error(`Node not found: ${parentId}`);
   const before = parent.children.length;
-  const node = tree.addMove(typeof move === 'string' && /^[a-h][1-8][a-h][1-8][qrbn]?$/.test(move) ? uciInput(move) : move, {
-    ...options,
-    fromNodeId: parentId,
-  });
+  const node = tree.addMove(
+    typeof move === 'string' && /^[a-h][1-8][a-h][1-8][qrbn]?$/.test(move) ? uciInput(move) : move,
+    {
+      ...options,
+      fromNodeId: parentId,
+    },
+  );
   return { node, created: parent.children.length > before };
 }
 

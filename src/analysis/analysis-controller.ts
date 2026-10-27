@@ -23,21 +23,9 @@ import {
 import type { UciScore } from '../engine/uci-parser';
 import { CathedralAudio } from '../render/audio';
 import { BoardRenderer } from '../render/board-renderer';
-import {
-  EngineLinesPanel,
-  type GhostLinePreviewPayload,
-  type SelectLineVariationPayload,
-} from './engine-lines-panel';
-import {
-  EvalBar,
-  formatEvalBarScore,
-  pgnEvalToUciScore,
-} from './eval-bar';
-import {
-  formatOpeningBadge,
-  lookupGameOpening,
-  lookupOpeningByFen,
-} from './opening-lookup';
+import { EngineLinesPanel, type GhostLinePreviewPayload, type SelectLineVariationPayload } from './engine-lines-panel';
+import { EvalBar, formatEvalBarScore, pgnEvalToUciScore } from './eval-bar';
+import { formatOpeningBadge, lookupGameOpening, lookupOpeningByFen } from './opening-lookup';
 import { PositionEditor } from './position-editor';
 import { classBadgeHtml, type ReviewTreeEntry } from '../review/review-panel';
 import { stripEngineAnnotations } from '../review/annotations';
@@ -47,10 +35,7 @@ import { switchRowHtml } from '../ui/components/controls';
 import { icon } from '../ui/components/icons';
 import { Sheet } from '../ui/components/sheet';
 import { Tabs, tabListHtml, tabPanelAttrs } from '../ui/components/tabs';
-import {
-  detectOpponentThreat,
-  type ThreatDetectionResult,
-} from './threat-detector';
+import { detectOpponentThreat, type ThreatDetectionResult } from './threat-detector';
 
 export type NavAnimationMode = 'off' | 'fast' | 'normal';
 
@@ -200,11 +185,9 @@ export class AnalysisController {
     this.showBestMoveArrow = options.showBestMoveArrow ?? true;
     this.showThreatArrow = options.showThreatArrow ?? true;
     this.settings = options.settings ?? null;
-    this.navAnimation =
-      options.initialNavAnimation ?? this.settings?.get().navigationAnimation ?? 'normal';
+    this.navAnimation = options.initialNavAnimation ?? this.settings?.get().navigationAnimation ?? 'normal';
 
-    this.audio =
-      options.audio ?? new CathedralAudio({ enabled: true, volume: 0.75 });
+    this.audio = options.audio ?? new CathedralAudio({ enabled: true, volume: 0.75 });
 
     if (options.initialPgn) {
       this.gameTree = parsePgn(options.initialPgn);
@@ -357,64 +340,26 @@ export class AnalysisController {
         </div>
       </div>`;
 
-    this.openingEcoEl = this.container.querySelector(
-      '[data-testid="opening-eco"]',
-    ) as HTMLElement;
-    this.openingNameEl = this.container.querySelector(
-      '[data-testid="opening-name"]',
-    ) as HTMLElement;
-    this.statusTextEl = this.container.querySelector(
-      '[data-testid="analysis-status-banner"]',
-    ) as HTMLElement;
-    this.evalPillEl = this.container.querySelector(
-      '[data-testid="analysis-eval-pill"]',
-    ) as HTMLElement;
-    this.threatBadgeEl = this.container.querySelector(
-      '[data-testid="threat-move-badge"]',
-    ) as HTMLElement;
-    this.fenDisplayEl = this.container.querySelector(
-      '[data-testid="analysis-current-fen"]',
-    ) as HTMLElement;
-    this.treeContainerEl = this.container.querySelector(
-      '[data-testid="analysis-move-tree"]',
-    ) as HTMLElement;
-    this.commentInputEl = this.container.querySelector(
-      '[data-testid="input-move-comment"]',
-    ) as HTMLInputElement;
-    this.pgnTextareaEl = this.container.querySelector(
-      '[data-testid="textarea-pgn"]',
-    ) as HTMLTextAreaElement;
-    this.pgnStatusEl = this.container.querySelector(
-      '[data-testid="pgn-status"]',
-    ) as HTMLElement;
-    this.editorMountEl = this.container.querySelector(
-      '[data-testid="position-editor-mount"]',
-    ) as HTMLElement;
-    this.toggleEditorBtnEl = this.container.querySelector(
-      '[data-testid="btn-toggle-editor"]',
-    ) as HTMLButtonElement;
-    this.promoteVarBtnEl = this.container.querySelector(
-      '[data-testid="btn-promote-variation"]',
-    ) as HTMLButtonElement;
-    this.promoteMainBtnEl = this.container.querySelector(
-      '[data-testid="btn-promote-mainline"]',
-    ) as HTMLButtonElement;
-    this.demoteVarBtnEl = this.container.querySelector(
-      '[data-testid="btn-demote-variation"]',
-    ) as HTMLButtonElement;
-    this.deleteVarBtnEl = this.container.querySelector(
-      '[data-testid="btn-delete-variation"]',
-    ) as HTMLButtonElement;
+    this.openingEcoEl = this.container.querySelector('[data-testid="opening-eco"]') as HTMLElement;
+    this.openingNameEl = this.container.querySelector('[data-testid="opening-name"]') as HTMLElement;
+    this.statusTextEl = this.container.querySelector('[data-testid="analysis-status-banner"]') as HTMLElement;
+    this.evalPillEl = this.container.querySelector('[data-testid="analysis-eval-pill"]') as HTMLElement;
+    this.threatBadgeEl = this.container.querySelector('[data-testid="threat-move-badge"]') as HTMLElement;
+    this.fenDisplayEl = this.container.querySelector('[data-testid="analysis-current-fen"]') as HTMLElement;
+    this.treeContainerEl = this.container.querySelector('[data-testid="analysis-move-tree"]') as HTMLElement;
+    this.commentInputEl = this.container.querySelector('[data-testid="input-move-comment"]') as HTMLInputElement;
+    this.pgnTextareaEl = this.container.querySelector('[data-testid="textarea-pgn"]') as HTMLTextAreaElement;
+    this.pgnStatusEl = this.container.querySelector('[data-testid="pgn-status"]') as HTMLElement;
+    this.editorMountEl = this.container.querySelector('[data-testid="position-editor-mount"]') as HTMLElement;
+    this.toggleEditorBtnEl = this.container.querySelector('[data-testid="btn-toggle-editor"]') as HTMLButtonElement;
+    this.promoteVarBtnEl = this.container.querySelector('[data-testid="btn-promote-variation"]') as HTMLButtonElement;
+    this.promoteMainBtnEl = this.container.querySelector('[data-testid="btn-promote-mainline"]') as HTMLButtonElement;
+    this.demoteVarBtnEl = this.container.querySelector('[data-testid="btn-demote-variation"]') as HTMLButtonElement;
+    this.deleteVarBtnEl = this.container.querySelector('[data-testid="btn-delete-variation"]') as HTMLButtonElement;
 
-    const evalBarMount = this.container.querySelector(
-      '[data-testid="eval-bar-mount"]',
-    ) as HTMLElement;
-    const boardMount = this.container.querySelector(
-      '[data-testid="analysis-board-mount"]',
-    ) as HTMLElement;
-    const linesMount = this.container.querySelector(
-      '[data-testid="engine-lines-mount"]',
-    ) as HTMLElement;
+    const evalBarMount = this.container.querySelector('[data-testid="eval-bar-mount"]') as HTMLElement;
+    const boardMount = this.container.querySelector('[data-testid="analysis-board-mount"]') as HTMLElement;
+    const linesMount = this.container.querySelector('[data-testid="engine-lines-mount"]') as HTMLElement;
 
     this.evalBar = new EvalBar(evalBarMount, {
       flipped: false,
@@ -428,9 +373,7 @@ export class AnalysisController {
       autoQueen: false,
       confirmMove: false,
       captureEffects: this.settings?.get().captureEffects ?? true,
-      ...(this.settings
-        ? { boardTheme: this.settings.get().boardTheme, pieceSet: this.settings.get().pieceSet }
-        : {}),
+      ...(this.settings ? { boardTheme: this.settings.get().boardTheme, pieceSet: this.settings.get().pieceSet } : {}),
       onMove: (move, wasDragged) => {
         this.handleBoardMove(move, wasDragged);
       },
@@ -481,9 +424,7 @@ export class AnalysisController {
       },
     });
 
-    this.shellTabs = new Tabs(
-      this.container.querySelector('[data-testid="review-tabs-view"]') as HTMLElement,
-    );
+    this.shellTabs = new Tabs(this.container.querySelector('[data-testid="review-tabs-view"]') as HTMLElement);
     this.bindUiEvents();
     if (this.settings) {
       this.unsubscribeSettings = this.settings.subscribe((next, prev) => this.applySettings(next, prev));
@@ -558,45 +499,31 @@ export class AnalysisController {
   }
 
   private bindUiEvents(): void {
-    this.container
-      .querySelector('[data-testid="btn-nav-start"]')
-      ?.addEventListener('click', () => {
-        this.goToStart();
-      });
+    this.container.querySelector('[data-testid="btn-nav-start"]')?.addEventListener('click', () => {
+      this.goToStart();
+    });
 
-    this.container
-      .querySelector('[data-testid="btn-nav-prev"]')
-      ?.addEventListener('click', () => {
-        this.goBack();
-      });
+    this.container.querySelector('[data-testid="btn-nav-prev"]')?.addEventListener('click', () => {
+      this.goBack();
+    });
 
-    this.container
-      .querySelector('[data-testid="btn-nav-next"]')
-      ?.addEventListener('click', () => {
-        this.goForward();
-      });
+    this.container.querySelector('[data-testid="btn-nav-next"]')?.addEventListener('click', () => {
+      this.goForward();
+    });
 
-    this.container
-      .querySelector('[data-testid="btn-nav-end"]')
-      ?.addEventListener('click', () => {
-        this.goToEnd();
-      });
+    this.container.querySelector('[data-testid="btn-nav-end"]')?.addEventListener('click', () => {
+      this.goToEnd();
+    });
 
-    this.container
-      .querySelector('[data-testid="btn-flip-board"]')
-      ?.addEventListener('click', () => {
-        this.flipBoard();
-      });
+    this.container.querySelector('[data-testid="btn-flip-board"]')?.addEventListener('click', () => {
+      this.flipBoard();
+    });
 
-    this.container
-      .querySelector('[data-testid="btn-clear-arrows"]')
-      ?.addEventListener('click', () => {
-        this.board.clearUserAnnotations();
-      });
+    this.container.querySelector('[data-testid="btn-clear-arrows"]')?.addEventListener('click', () => {
+      this.board.clearUserAnnotations();
+    });
 
-    const bestArrowCheck = this.container.querySelector(
-      '[data-testid="toggle-best-arrow"]',
-    ) as HTMLInputElement | null;
+    const bestArrowCheck = this.container.querySelector('[data-testid="toggle-best-arrow"]') as HTMLInputElement | null;
     bestArrowCheck?.addEventListener('change', () => {
       this.setShowBestMoveArrow(bestArrowCheck.checked);
     });
@@ -685,49 +612,35 @@ export class AnalysisController {
     this.toggleEditorBtnEl.addEventListener('click', () => {
       this.setEditorVisible(!this.editorVisible);
     });
-    this.container
-      .querySelector('[data-testid="btn-editor-done"]')
-      ?.addEventListener('click', () => {
-        this.setEditorVisible(false);
-      });
+    this.container.querySelector('[data-testid="btn-editor-done"]')?.addEventListener('click', () => {
+      this.setEditorVisible(false);
+    });
 
     // New board: the starting position, nothing from the last game, the engine lines in view
-    this.container
-      .querySelector('[data-testid="btn-reset-analysis"]')
-      ?.addEventListener('click', () => {
-        this.loadFen(DEFAULT_POSITION);
-        this.showTab('analysis');
-      });
+    this.container.querySelector('[data-testid="btn-reset-analysis"]')?.addEventListener('click', () => {
+      this.loadFen(DEFAULT_POSITION);
+      this.showTab('analysis');
+    });
 
-    this.container
-      .querySelector('[data-testid="btn-load-pgn"]')
-      ?.addEventListener('click', () => {
-        this.openLoadSheet();
-      });
+    this.container.querySelector('[data-testid="btn-load-pgn"]')?.addEventListener('click', () => {
+      this.openLoadSheet();
+    });
 
-    this.container
-      .querySelector('[data-testid="btn-copy-fen"]')
-      ?.addEventListener('click', () => {
-        this.copyText(this.adapter.fen(), null);
-      });
+    this.container.querySelector('[data-testid="btn-copy-fen"]')?.addEventListener('click', () => {
+      this.copyText(this.adapter.fen(), null);
+    });
 
-    this.container
-      .querySelector('[data-testid="btn-copy-pgn"]')
-      ?.addEventListener('click', () => {
-        this.copyText(this.pgnTextareaEl.value, this.pgnStatusEl);
-      });
+    this.container.querySelector('[data-testid="btn-copy-pgn"]')?.addEventListener('click', () => {
+      this.copyText(this.pgnTextareaEl.value, this.pgnStatusEl);
+    });
 
-    this.container
-      .querySelector('[data-testid="btn-import-pgn"]')
-      ?.addEventListener('click', () => {
-        if (this.loadText(this.pgnTextareaEl.value)) this.loadSheet.close();
-      });
+    this.container.querySelector('[data-testid="btn-import-pgn"]')?.addEventListener('click', () => {
+      if (this.loadText(this.pgnTextareaEl.value)) this.loadSheet.close();
+    });
 
-    this.container
-      .querySelector('[data-testid="btn-export-pgn"]')
-      ?.addEventListener('click', () => {
-        this.exportPgn();
-      });
+    this.container.querySelector('[data-testid="btn-export-pgn"]')?.addEventListener('click', () => {
+      this.exportPgn();
+    });
   }
 
   private readonly handleWindowKeyDown = (e: KeyboardEvent): void => {
@@ -825,8 +738,7 @@ export class AnalysisController {
    * changes (used by the perf benchmark to keep the engine busy).
    */
   public setAnalysisDepth(depth: number | 'infinite'): void {
-    this.analysisDepth =
-      depth === 'infinite' ? Infinity : Math.max(1, Math.floor(depth));
+    this.analysisDepth = depth === 'infinite' ? Infinity : Math.max(1, Math.floor(depth));
     if (this.engineEnabled && this.isActive) {
       this.startPositionAnalysis();
     }
@@ -939,9 +851,7 @@ export class AnalysisController {
 
   public setShowBestMoveArrow(show: boolean): void {
     this.showBestMoveArrow = show;
-    const checkbox = this.container.querySelector(
-      '[data-testid="toggle-best-arrow"]',
-    ) as HTMLInputElement | null;
+    const checkbox = this.container.querySelector('[data-testid="toggle-best-arrow"]') as HTMLInputElement | null;
     if (checkbox && checkbox.checked !== show) {
       checkbox.checked = show;
     }
@@ -950,17 +860,12 @@ export class AnalysisController {
 
   public setShowThreatArrow(show: boolean): void {
     this.showThreatArrow = show;
-    const checkbox = this.container.querySelector(
-      '[data-testid="toggle-threat-arrow"]',
-    ) as HTMLInputElement | null;
+    const checkbox = this.container.querySelector('[data-testid="toggle-threat-arrow"]') as HTMLInputElement | null;
     if (checkbox && checkbox.checked !== show) {
       checkbox.checked = show;
     }
     if (show && !this.latestThreat && this.engineEnabled) {
-      void this.runThreatSearchForCurrentNode(
-        this.analysisGeneration,
-        this.adapter.fen(),
-      );
+      void this.runThreatSearchForCurrentNode(this.analysisGeneration, this.adapter.fen());
     } else {
       this.syncAnalysisArrows();
     }
@@ -980,9 +885,7 @@ export class AnalysisController {
     );
   }
 
-  private getLastMoveCoords(
-    node: GameNode,
-  ): { from: Square; to: Square } | null {
+  private getLastMoveCoords(node: GameNode): { from: Square; to: Square } | null {
     if (node.from && node.to) {
       return { from: node.from, to: node.to };
     }
@@ -1014,10 +917,7 @@ export class AnalysisController {
     this.moveInterceptor?.(added, !childIdsBefore.has(added.id));
   }
 
-  private handleBoardAnnotationsChange(
-    arrows: PgnArrowAnnotation[],
-    highlights: PgnHighlightAnnotation[],
-  ): void {
+  private handleBoardAnnotationsChange(arrows: PgnArrowAnnotation[], highlights: PgnHighlightAnnotation[]): void {
     const curr = this.gameTree.currentNode;
     this.gameTree.setArrows(curr.id, arrows);
     this.gameTree.setHighlights(curr.id, highlights);
@@ -1035,9 +935,7 @@ export class AnalysisController {
     });
   }
 
-  public handleSelectEngineLineVariation(
-    selection: SelectLineVariationPayload,
-  ): void {
+  public handleSelectEngineLineVariation(selection: SelectLineVariationPayload): void {
     if (selection.moves.length === 0) return;
 
     const anchorNodeId = this.gameTree.currentNodeId;
@@ -1066,9 +964,7 @@ export class AnalysisController {
   public goToNode(nodeId: string): GameNode {
     const curr = this.gameTree.currentNode;
     const target = this.gameTree.getNode(nodeId);
-    const adjacent =
-      target !== undefined &&
-      (target.parentId === curr.id || curr.parentId === target.id);
+    const adjacent = target !== undefined && (target.parentId === curr.id || curr.parentId === target.id);
     const node = this.gameTree.goToNode(nodeId);
     this.syncAllFromCurrentNode({
       animationMs: adjacent ? this.stepAnimationMs(false) : this.jumpAnimationMs(),
@@ -1099,10 +995,7 @@ export class AnalysisController {
     return node;
   }
 
-  public goForward(
-    variationIndex = 0,
-    options?: { repeat?: boolean },
-  ): GameNode | null {
+  public goForward(variationIndex = 0, options?: { repeat?: boolean }): GameNode | null {
     const node = this.gameTree.goForward(variationIndex);
     if (node) {
       this.syncAllFromCurrentNode({
@@ -1127,8 +1020,7 @@ export class AnalysisController {
       const parent = this.gameTree.getNode(cursor.parentId);
       if (parent && parent.children.length > 1) {
         const idx = parent.children.indexOf(cursor);
-        const nextIdx =
-          (idx + direction + parent.children.length) % parent.children.length;
+        const nextIdx = (idx + direction + parent.children.length) % parent.children.length;
         const targetSibling = parent.children[nextIdx];
         if (targetSibling && targetSibling.id !== cursor.id) {
           return this.goToNode(targetSibling.id);
@@ -1218,8 +1110,7 @@ export class AnalysisController {
       this.syncAllFromCurrentNode({ treeChanged: true });
       return true;
     } catch (err) {
-      this.pgnStatusEl.textContent =
-        err instanceof Error ? err.message : 'Invalid PGN';
+      this.pgnStatusEl.textContent = err instanceof Error ? err.message : 'Invalid PGN';
       this.pgnStatusEl.setAttribute('data-status', 'error');
       return false;
     }
@@ -1288,17 +1179,17 @@ export class AnalysisController {
    * - `treeChanged`: the move tree's structure changed and must be re-rendered. Plain
    *   navigation only moves the active-node highlight, so nothing in the list reflows.
    */
-  private syncAllFromCurrentNode(opts: {
-    wasDragged?: boolean;
-    animationMs?: number;
-    treeChanged?: boolean;
-  }): void {
+  private syncAllFromCurrentNode(opts: { wasDragged?: boolean; animationMs?: number; treeChanged?: boolean }): void {
     const node = this.gameTree.currentNode;
     this.adapter = new RulesAdapter(node.fen, {
       chess960: this.gameTree.isChess960(),
     });
     if (this.isActive) {
-      announce(node.ply === 0 ? 'Start position' : `Move ${node.moveNumber}, ${node.moveColor === 'b' ? 'Black' : 'White'}: ${node.san}`);
+      announce(
+        node.ply === 0
+          ? 'Start position'
+          : `Move ${node.moveNumber}, ${node.moveColor === 'b' ? 'Black' : 'White'}: ${node.san}`,
+      );
     }
 
     const animationMs = opts.animationMs ?? 0;
@@ -1323,16 +1214,13 @@ export class AnalysisController {
     this.fenDisplayEl.textContent = node.fen;
 
     // Sync Opening Lookup
-    const opening =
-      lookupOpeningByFen(node.fen) ??
-      lookupGameOpening(this.gameTree, node.id);
+    const opening = lookupOpeningByFen(node.fen) ?? lookupGameOpening(this.gameTree, node.id);
     if (opening) {
       this.openingEcoEl.textContent = opening.eco;
       this.openingNameEl.textContent = opening.name;
     } else {
       this.openingEcoEl.textContent = 'A00';
-      this.openingNameEl.textContent =
-        node.ply === 0 ? 'Starting Position' : formatOpeningBadge(null);
+      this.openingNameEl.textContent = node.ply === 0 ? 'Starting Position' : formatOpeningBadge(null);
     }
 
     // Sync status banner
@@ -1344,9 +1232,7 @@ export class AnalysisController {
       this.statusTextEl.textContent = 'Draw position';
     } else {
       const side = this.adapter.turn() === 'w' ? 'White' : 'Black';
-      this.statusTextEl.textContent = `${side} to move${
-        status.inCheck ? ' — Check!' : ''
-      }`;
+      this.statusTextEl.textContent = `${side} to move${status.inCheck ? ' — Check!' : ''}`;
     }
 
     // Seed eval bar from node.eval if present before live Stockfish results arrive
@@ -1408,9 +1294,7 @@ export class AnalysisController {
     const activeId = this.gameTree.currentNodeId;
     if (this.activeTreeNodeId !== activeId) {
       if (this.activeTreeNodeId) {
-        this.treeNodeEls
-          .get(this.activeTreeNodeId)
-          ?.classList.remove('wc-tree-node-active');
+        this.treeNodeEls.get(this.activeTreeNodeId)?.classList.remove('wc-tree-node-active');
       }
       this.treeNodeEls.get(activeId)?.classList.add('wc-tree-node-active');
       this.activeTreeNodeId = activeId;
@@ -1438,9 +1322,7 @@ export class AnalysisController {
       this.treeScrollTop = container.scrollTop;
     }
 
-    const offsets = this.activeTreeNodeId
-      ? this.treeNodeOffsets.get(this.activeTreeNodeId)
-      : undefined;
+    const offsets = this.activeTreeNodeId ? this.treeNodeOffsets.get(this.activeTreeNodeId) : undefined;
     const margin = 6;
     let next = this.treeScrollTop;
     if (!offsets) {
@@ -1463,9 +1345,7 @@ export class AnalysisController {
     }
 
     if (this.nagButtonEls.length === 0) {
-      this.nagButtonEls = Array.from(
-        this.container.querySelectorAll<HTMLButtonElement>('[data-nag-code]'),
-      );
+      this.nagButtonEls = Array.from(this.container.querySelectorAll<HTMLButtonElement>('[data-nag-code]'));
     }
     for (const btn of this.nagButtonEls) {
       const code = Number(btn.getAttribute('data-nag-code'));
@@ -1504,16 +1384,9 @@ export class AnalysisController {
       );
     }
 
-    const renderNodeMoveToken = (
-      node: GameNode,
-      forceMoveNumber: boolean,
-    ): string => {
+    const renderNodeMoveToken = (node: GameNode, forceMoveNumber: boolean): string => {
       const isWhite = node.moveColor === 'w';
-      const prefix = isWhite
-        ? `${node.moveNumber}.`
-        : forceMoveNumber
-          ? `${node.moveNumber}...`
-          : '';
+      const prefix = isWhite ? `${node.moveNumber}.` : forceMoveNumber ? `${node.moveNumber}...` : '';
       const nagsText = node.nags.map((n) => nagToGlyph(n)).join('');
       const evalTag = node.eval
         ? `<span class="wc-tree-eval-tag">${formatEvalBarScore(pgnEvalToUciScore(node.eval))}</span>`
@@ -1533,22 +1406,14 @@ export class AnalysisController {
       }${evalTag}</button>${postCommentHtml}`;
     };
 
-    const renderBranch = (
-      startNode: GameNode,
-      forceFirstMoveNum: boolean,
-    ): string => {
+    const renderBranch = (startNode: GameNode, forceFirstMoveNum: boolean): string => {
       const segments: string[] = [];
       let curr: GameNode | undefined = startNode;
       let forceNum = forceFirstMoveNum;
 
       while (curr) {
-        const parent = curr.parentId
-          ? this.gameTree.getNode(curr.parentId)
-          : undefined;
-        const siblings =
-          parent && parent.children[0]?.id === curr.id
-            ? parent.children.slice(1)
-            : [];
+        const parent = curr.parentId ? this.gameTree.getNode(curr.parentId) : undefined;
+        const siblings = parent && parent.children[0]?.id === curr.id ? parent.children.slice(1) : [];
 
         segments.push(renderNodeMoveToken(curr, forceNum));
         forceNum = false;
@@ -1576,23 +1441,17 @@ export class AnalysisController {
     this.treeContainerEl.innerHTML = htmlParts.join(' ');
 
     this.treeNodeEls.clear();
-    this.treeContainerEl
-      .querySelectorAll<HTMLElement>('[data-node-id]')
-      .forEach((el) => {
-        const id = el.getAttribute('data-node-id');
-        if (id) this.treeNodeEls.set(id, el);
-      });
+    this.treeContainerEl.querySelectorAll<HTMLElement>('[data-node-id]').forEach((el) => {
+      const id = el.getAttribute('data-node-id');
+      if (id) this.treeNodeEls.set(id, el);
+    });
     this.activeTreeNodeId = activeId;
     this.treeNodeOffsets = null;
     this.keepActiveTreeNodeInView();
   }
 
   private escapeHtml(str: string): string {
-    return str
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;');
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
   private cancelActiveSearches(): void {
@@ -1671,9 +1530,7 @@ export class AnalysisController {
     void this.engine
       .analyze({
         fen,
-        ...(Number.isFinite(this.analysisDepth)
-          ? { depth: this.analysisDepth }
-          : { infinite: true }),
+        ...(Number.isFinite(this.analysisDepth) ? { depth: this.analysisDepth } : { infinite: true }),
         multipv: this.multipv,
         chess960,
         priority: 'live',
@@ -1704,10 +1561,7 @@ export class AnalysisController {
       });
   }
 
-  private async runThreatSearchForCurrentNode(
-    gen: number,
-    fen: string,
-  ): Promise<void> {
+  private async runThreatSearchForCurrentNode(gen: number, fen: string): Promise<void> {
     if (this.threatAbortController) {
       this.threatAbortController.abort();
     }
@@ -1734,11 +1588,7 @@ export class AnalysisController {
     this.syncAnalysisArrows();
   }
 
-  private scheduleUiUpdateFromEngine(
-    nodeId: string,
-    fen: string,
-    chess960: boolean,
-  ): void {
+  private scheduleUiUpdateFromEngine(nodeId: string, fen: string, chess960: boolean): void {
     if (this.pendingRafId !== null) return;
     this.pendingRafId = requestAnimationFrame(() => {
       this.pendingRafId = null;
@@ -1746,11 +1596,7 @@ export class AnalysisController {
     });
   }
 
-  private applyEngineSnapshotImmediate(
-    nodeId: string,
-    fen: string,
-    chess960: boolean,
-  ): void {
+  private applyEngineSnapshotImmediate(nodeId: string, fen: string, chess960: boolean): void {
     if (this.gameTree.currentNodeId !== nodeId) return;
 
     const topLine = this.latestLines[0];
@@ -1792,12 +1638,7 @@ export class AnalysisController {
   private syncAnalysisArrows(): void {
     const topLine = this.latestLines[0];
     const bestUci = topLine?.pv[0];
-    if (
-      this.engineEnabled &&
-      this.showBestMoveArrow &&
-      bestUci &&
-      bestUci.length >= 4
-    ) {
+    if (this.engineEnabled && this.showBestMoveArrow && bestUci && bestUci.length >= 4) {
       const from = bestUci.slice(0, 2) as Square;
       const to = bestUci.slice(2, 4) as Square;
       this.board.setBestMoveArrow({ from, to });
@@ -1805,11 +1646,7 @@ export class AnalysisController {
       this.board.setBestMoveArrow(null);
     }
 
-    if (
-      this.engineEnabled &&
-      this.showThreatArrow &&
-      this.latestThreat
-    ) {
+    if (this.engineEnabled && this.showThreatArrow && this.latestThreat) {
       this.board.setThreatMoveArrow({
         from: this.latestThreat.from,
         to: this.latestThreat.to,
@@ -1848,11 +1685,7 @@ export class AnalysisController {
    * Adds `ucis` as a line from `fromNodeId` (as a variation where needed), without
    * navigating. `forceNewVariation` branches off even if the first move already exists.
    */
-  public addLine(
-    fromNodeId: string,
-    ucis: readonly string[],
-    options?: { forceNewVariation?: boolean },
-  ): GameNode[] {
+  public addLine(fromNodeId: string, ucis: readonly string[], options?: { forceNewVariation?: boolean }): GameNode[] {
     const currentId = this.gameTree.currentNodeId;
     const added: GameNode[] = [];
     let from = fromNodeId;

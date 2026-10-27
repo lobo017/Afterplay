@@ -34,8 +34,7 @@ export const BOT_TIERS: Record<BotTierId, BotTierPreset> = {
     defaultRating: 600,
     minRating: 400,
     maxRating: 799,
-    description:
-      'Makes natural beginner inaccuracies and occasional tactical oversights.',
+    description: 'Makes natural beginner inaccuracies and occasional tactical oversights.',
   },
   Casual: {
     id: 'Casual',
@@ -43,8 +42,7 @@ export const BOT_TIERS: Record<BotTierId, BotTierPreset> = {
     defaultRating: 1000,
     minRating: 800,
     maxRating: 1199,
-    description:
-      'Plays club-casual developing moves with human-like positional slips.',
+    description: 'Plays club-casual developing moves with human-like positional slips.',
   },
   Club: {
     id: 'Club',
@@ -60,8 +58,7 @@ export const BOT_TIERS: Record<BotTierId, BotTierPreset> = {
     defaultRating: 1800,
     minRating: 1600,
     maxRating: 1999,
-    description:
-      'Strong tournament player; rarely drops material and punishes mistakes.',
+    description: 'Strong tournament player; rarely drops material and punishes mistakes.',
   },
   Master: {
     id: 'Master',
@@ -69,8 +66,7 @@ export const BOT_TIERS: Record<BotTierId, BotTierPreset> = {
     defaultRating: 2200,
     minRating: 2000,
     maxRating: 2400,
-    description:
-      'Near-optimal engine precision with subtle stylistic preferences.',
+    description: 'Near-optimal engine precision with subtle stylistic preferences.',
   },
 };
 
@@ -78,20 +74,17 @@ export const BOT_STYLE_PRESETS: Record<BotStyleId, BotStylePreset> = {
   aggressive: {
     id: 'aggressive',
     label: 'Aggressive',
-    description:
-      'Favors checks, captures, king-side attacks, and forward piece activity.',
+    description: 'Favors checks, captures, king-side attacks, and forward piece activity.',
   },
   solid: {
     id: 'solid',
     label: 'Solid',
-    description:
-      'Prioritizes king safety, central control, and low-risk positional accuracy.',
+    description: 'Prioritizes king safety, central control, and low-risk positional accuracy.',
   },
   gambiteer: {
     id: 'gambiteer',
     label: 'Gambiteer',
-    description:
-      'Embraces pawn sacrifices, open files, and sharp dynamic initiative.',
+    description: 'Embraces pawn sacrifices, open files, and sharp dynamic initiative.',
   },
 };
 
@@ -197,14 +190,8 @@ export function getTierForRating(rating: number): BotTierId {
  * - Uses MultiPV 6–8 at low/club levels so candidate sampling sees beyond top engine moves.
  * - Includes a rating-dependent `blunderChance` for plausible human tactical oversights.
  */
-export function computeBotEngineParams(
-  ratingOrTier: number | BotTierId,
-  style: BotStyleId = 'solid',
-): BotEngineParams {
-  const rawRating =
-    typeof ratingOrTier === 'string'
-      ? BOT_TIERS[ratingOrTier].defaultRating
-      : ratingOrTier;
+export function computeBotEngineParams(ratingOrTier: number | BotTierId, style: BotStyleId = 'solid'): BotEngineParams {
+  const rawRating = typeof ratingOrTier === 'string' ? BOT_TIERS[ratingOrTier].defaultRating : ratingOrTier;
   const rating = clampBotRating(rawRating);
   const tier = getTierForRating(rating);
 
@@ -216,18 +203,7 @@ export function computeBotEngineParams(
   const uciElo = Math.max(1320, Math.min(2400, rating));
 
   // MultiPV 6–8 at low levels so the bot explores a wide set of candidate moves
-  const multipv =
-    rating < 800
-      ? 8
-      : rating < 1200
-        ? 7
-        : rating < 1600
-          ? 6
-          : rating < 2000
-            ? 4
-            : rating < 2350
-              ? 3
-              : 2;
+  const multipv = rating < 800 ? 8 : rating < 1200 ? 7 : rating < 1600 ? 6 : rating < 2000 ? 4 : rating < 2350 ? 3 : 2;
 
   // Node budget (`go nodes`) accounts for MultiPV root splitting so each tier searches
   // the appropriate depth per candidate line:
@@ -253,17 +229,11 @@ export function computeBotEngineParams(
     nodes = Math.round(15500 * Math.pow(60000 / 15500, t));
   }
 
-  const depth =
-    rating <= 450
-      ? 1
-      : rating <= 700
-        ? 3
-        : Math.max(4, Math.min(13, Math.round(2 + normalized * 11)));
+  const depth = rating <= 450 ? 1 : rating <= 700 ? 3 : Math.max(4, Math.min(13, Math.round(2 + normalized * 11)));
 
   // Temperature in centipawns: high at 400 Elo (~145 cp), near-zero at 2400 Elo (~1.8 cp)
   const baseTemp = 142 * Math.pow(1 - normalized, 2.05) + 1.8;
-  const styleTempFactor =
-    style === 'solid' ? 0.78 : style === 'gambiteer' ? 1.12 : 1.0;
+  const styleTempFactor = style === 'solid' ? 0.78 : style === 'gambiteer' ? 1.12 : 1.0;
   const temperatureCp = Number((baseTemp * styleTempFactor).toFixed(2));
 
   // Maximum centipawn drop considered a "plausible human mistake" at this rating
@@ -293,9 +263,7 @@ export function computeBotEngineParams(
     const t = (rating - 2200) / 150;
     rawBlunderChance = 0.004 * Math.max(0, 1 - t);
   }
-  const blunderChance = Number(
-    Math.max(0, Math.min(0.5, rawBlunderChance)).toFixed(4),
-  );
+  const blunderChance = Number(Math.max(0, Math.min(0.5, rawBlunderChance)).toFixed(4));
 
   return {
     rating,
@@ -328,11 +296,7 @@ export function computeStyleBonusCp(
   const fromRank = Number(move.from[1] ?? 1);
   const forwardAdvance = us === 'w' ? toRank - fromRank : fromRank - toRank;
   const isCheckMove = move.san.includes('+') || move.san.includes('#');
-  const isCentralFile =
-    move.to[0] === 'c' ||
-    move.to[0] === 'd' ||
-    move.to[0] === 'e' ||
-    move.to[0] === 'f';
+  const isCentralFile = move.to[0] === 'c' || move.to[0] === 'd' || move.to[0] === 'e' || move.to[0] === 'f';
 
   if (style === 'aggressive') {
     let bonus = 0;
@@ -357,17 +321,11 @@ export function computeStyleBonusCp(
     if (!move.isCapture && !isCheckMove) {
       bonus += 14;
     }
-    if (
-      isCentralFile &&
-      (toRank === 3 || toRank === 4 || toRank === 5 || toRank === 6)
-    ) {
+    if (isCentralFile && (toRank === 3 || toRank === 4 || toRank === 5 || toRank === 6)) {
       bonus += 12;
     }
     // Solid bots dislike walking onto attacked squares with valuable pieces
-    if (
-      PIECE_VALUE_CP[move.piece] >= 320 &&
-      adapter.isAttacked(move.to, them)
-    ) {
+    if (PIECE_VALUE_CP[move.piece] >= 320 && adapter.isAttacked(move.to, them)) {
       bonus -= 18;
     }
     return bonus;
@@ -377,11 +335,7 @@ export function computeStyleBonusCp(
   let bonus = 0;
   // Gambiteer loves pawn sacrifices, contested squares within a playable eval window, and pawn breaks
   const isAttackedDest = adapter.isAttacked(move.to, them);
-  if (
-    isAttackedDest &&
-    dropCp <= 160 &&
-    (move.piece === 'p' || PIECE_VALUE_CP[move.piece] <= 330)
-  ) {
+  if (isAttackedDest && dropCp <= 160 && (move.piece === 'p' || PIECE_VALUE_CP[move.piece] <= 330)) {
     bonus += 44;
   }
   if (move.piece === 'p' && forwardAdvance > 0) {
@@ -400,10 +354,7 @@ export function computeStyleBonusCp(
  *
  * Returns a plausibility score > 0 for natural human moves, or 0 if the move looks random.
  */
-export function scoreMoveHumanPlausibility(
-  adapter: RulesAdapter,
-  move: ExecutedMove,
-): number {
+export function scoreMoveHumanPlausibility(adapter: RulesAdapter, move: ExecutedMove): number {
   const us = move.color;
   const them: Color = us === 'w' ? 'b' : 'w';
   const fromFile = move.from[0] ?? 'a';
@@ -413,10 +364,8 @@ export function scoreMoveHumanPlausibility(
   const homeRank = us === 'w' ? 1 : 8;
   const forwardAdvance = us === 'w' ? toRank - fromRank : fromRank - toRank;
   const isCheckMove = move.san.includes('+') || move.san.includes('#');
-  const isCentralFile =
-    toFile === 'c' || toFile === 'd' || toFile === 'e' || toFile === 'f';
-  const isCentralRank =
-    toRank === 3 || toRank === 4 || toRank === 5 || toRank === 6;
+  const isCentralFile = toFile === 'c' || toFile === 'd' || toFile === 'e' || toFile === 'f';
+  const isCentralRank = toRank === 3 || toRank === 4 || toRank === 5 || toRank === 6;
 
   // Count non-king pieces to detect opening/middlegame vs endgame
   let nonKingPieces = 0;
@@ -426,13 +375,7 @@ export function scoreMoveHumanPlausibility(
   }
 
   // 1. Reject non-castling King walks in opening/middlegame unless in check or capturing
-  if (
-    move.piece === 'k' &&
-    !move.isCastle &&
-    !adapter.inCheck() &&
-    !move.isCapture &&
-    nonKingPieces >= 8
-  ) {
+  if (move.piece === 'k' && !move.isCastle && !adapter.inCheck() && !move.isCapture && nonKingPieces >= 8) {
     return 0;
   }
 
@@ -466,12 +409,7 @@ export function scoreMoveHumanPlausibility(
   }
 
   // 5. Reject rim Knight moves to the 1st/8th or a3/h3/a6/h6 when central development exists unless capturing
-  if (
-    move.piece === 'n' &&
-    (toFile === 'a' || toFile === 'h') &&
-    !move.isCapture &&
-    !isCheckMove
-  ) {
+  if (move.piece === 'n' && (toFile === 'a' || toFile === 'h') && !move.isCapture && !isCheckMove) {
     return 8; // Low plausibility compared to central moves
   }
 
@@ -488,19 +426,10 @@ export function scoreMoveHumanPlausibility(
   if (move.isCastle) {
     score += 45;
   }
-  if (
-    (move.piece === 'n' || move.piece === 'b') &&
-    fromRank === homeRank &&
-    forwardAdvance > 0
-  ) {
+  if ((move.piece === 'n' || move.piece === 'b') && fromRank === homeRank && forwardAdvance > 0) {
     // Developing a minor piece off the back rank
     score += isCentralFile ? 44 : 32;
-  } else if (
-    (move.piece === 'n' || move.piece === 'b') &&
-    isCentralFile &&
-    isCentralRank &&
-    forwardAdvance >= 0
-  ) {
+  } else if ((move.piece === 'n' || move.piece === 'b') && isCentralFile && isCentralRank && forwardAdvance >= 0) {
     score += 34;
   }
   if (move.piece === 'p' && forwardAdvance > 0) {
@@ -542,9 +471,7 @@ function computeWorstHangingLossForSide(
 
     // An empty target square on a pawn capture is en passant: the victim is a pawn
     const victimType = postMoveAdapter.get(to)?.type ?? 'p';
-    const moverType: PieceSymbol = /^[KQRBN]/.test(san)
-      ? (san[0]!.toLowerCase() as PieceSymbol)
-      : 'p';
+    const moverType: PieceSymbol = /^[KQRBN]/.test(san) ? (san[0]!.toLowerCase() as PieceSymbol) : 'p';
     const victimCp = PIECE_VALUE_CP[victimType] ?? 100;
     const attackerCp = PIECE_VALUE_CP[moverType] ?? 100;
 
@@ -553,9 +480,7 @@ function computeWorstHangingLossForSide(
     try {
       afterOppCapture.move(san);
       const isRecapturable = afterOppCapture.isAttacked(to, us);
-      const netLoss = isRecapturable
-        ? Math.max(0, victimCp - attackerCp)
-        : victimCp;
+      const netLoss = isRecapturable ? Math.max(0, victimCp - attackerCp) : victimCp;
       if (netLoss > maxLossCp) {
         maxLossCp = netLoss;
         hangingSquare = to;
@@ -632,17 +557,12 @@ export function findPlausibleHumanBlunderCandidates(
     const { maxLossCp } = computeWorstHangingLossForSide(post, us);
 
     // Net tactical oversight relative to the best move's baseline exposure
-    const tacticalOversightCp = Math.max(
-      0,
-      maxLossCp - immediateGainCp - baselineExposureCp,
-    );
+    const tacticalOversightCp = Math.max(0, maxLossCp - immediateGainCp - baselineExposureCp);
 
     // Even if there isn't an immediate 1-ply hanging piece, a natural move not in the engine's
     // top 6–8 MultiPV lines typically drops at least ~95–190 cp positionally/tactically.
     const positionalSlipCp =
-      tacticalOversightCp >= 85
-        ? tacticalOversightCp
-        : 105 + Math.max(0, 50 - Math.round(plausibility * 0.45));
+      tacticalOversightCp >= 85 ? tacticalOversightCp : 105 + Math.max(0, 50 - Math.round(plausibility * 0.45));
 
     // Reject catastrophic blunders (> 520 cp, e.g. hanging a Queen or walking into mate)
     if (positionalSlipCp < 85 || positionalSlipCp > 520) {
@@ -658,8 +578,7 @@ export function findPlausibleHumanBlunderCandidates(
 
     results.push({
       move,
-      plausibility:
-        tacticalOversightCp >= 95 ? plausibility + 65 : plausibility,
+      plausibility: tacticalOversightCp >= 95 ? plausibility + 65 : plausibility,
       estimatedDropCp: positionalSlipCp,
       line: {
         multipv: 99,
@@ -690,9 +609,7 @@ export function findPlausibleHumanBlunderCandidates(
  * rating-scaled temperature, plausible-mistake filtering, human blunder probability,
  * and style preset.
  */
-export function selectHumanLikeMove(
-  options: HumanLikeSelectionRequest & { rng?: () => number },
-): BotMoveDecision {
+export function selectHumanLikeMove(options: HumanLikeSelectionRequest & { rng?: () => number }): BotMoveDecision {
   const fen = options.fen?.trim() || DEFAULT_POSITION;
   const style = options.style ?? 'solid';
   const params = computeBotEngineParams(options.ratingOrTier, style);
@@ -713,9 +630,7 @@ export function selectHumanLikeMove(
   }> = [];
   const seenUci = new Set<string>();
 
-  const sortedLines = [...options.lines]
-    .filter((l) => l.pv.length > 0)
-    .sort((a, b) => b.evalCp - a.evalCp);
+  const sortedLines = [...options.lines].filter((l) => l.pv.length > 0).sort((a, b) => b.evalCp - a.evalCp);
 
   for (const line of sortedLines) {
     const rawUci = line.pv[0]!;
@@ -754,15 +669,10 @@ export function selectHumanLikeMove(
 
   const bestEvalCp = matchedCandidates[0]!.line.evalCp;
   const bestScore = matchedCandidates[0]!.line.score;
-  const isForcedShortMate =
-    bestScore.type === 'mate' && bestScore.value > 0 && bestScore.value <= 3;
+  const isForcedShortMate = bestScore.type === 'mate' && bestScore.value > 0 && bestScore.value <= 3;
 
   // Augment with plausible human blunders (missed threats / hanging pieces) when enabled
-  if (
-    options.enableHumanBlunders &&
-    params.blunderChance > 0 &&
-    !isForcedShortMate
-  ) {
+  if (options.enableHumanBlunders && params.blunderChance > 0 && !isForcedShortMate) {
     const extraBlunders = findPlausibleHumanBlunderCandidates(
       adapter,
       legalMoves,
@@ -783,57 +693,39 @@ export function selectHumanLikeMove(
 
   // Influence of style scales modestly so style shapes choices among comparable moves
   // without causing outright blunders.
-  const styleScale =
-    params.rating >= 2350
-      ? 0.05
-      : Math.min(1, params.temperatureCp / 55 + 0.35);
+  const styleScale = params.rating >= 2350 ? 0.05 : Math.min(1, params.temperatureCp / 55 + 0.35);
 
-  const scoredCandidates = matchedCandidates.map(
-    ({ move, line, isSyntheticBlunder, plausibility }, idx) => {
-      const dropCp = Math.max(0, bestEvalCp - line.evalCp);
-      const styleBonusCp =
-        dropCp <= params.maxPlausibleDropCp
-          ? computeStyleBonusCp(adapter, move, dropCp, style)
-          : 0;
-      const utilityCp = -dropCp + styleBonusCp * styleScale;
-      const humanPlausibility =
-        plausibility ?? scoreMoveHumanPlausibility(adapter, move);
-      // A candidate is a plausible human blunder if it loses 85–520 cp (never a catastrophic 890cp Queen giveaway)
-      // and looks like a natural human move (plausibility >= 20).
-      const isHumanBlunder =
-        Boolean(isSyntheticBlunder) ||
-        (dropCp >= 85 && dropCp <= 520 && humanPlausibility >= 20);
+  const scoredCandidates = matchedCandidates.map(({ move, line, isSyntheticBlunder, plausibility }, idx) => {
+    const dropCp = Math.max(0, bestEvalCp - line.evalCp);
+    const styleBonusCp = dropCp <= params.maxPlausibleDropCp ? computeStyleBonusCp(adapter, move, dropCp, style) : 0;
+    const utilityCp = -dropCp + styleBonusCp * styleScale;
+    const humanPlausibility = plausibility ?? scoreMoveHumanPlausibility(adapter, move);
+    // A candidate is a plausible human blunder if it loses 85–520 cp (never a catastrophic 890cp Queen giveaway)
+    // and looks like a natural human move (plausibility >= 20).
+    const isHumanBlunder = Boolean(isSyntheticBlunder) || (dropCp >= 85 && dropCp <= 520 && humanPlausibility >= 20);
 
-      return {
-        idx,
-        move,
-        line,
-        dropCp,
-        styleBonusCp,
-        utilityCp,
-        humanPlausibility,
-        isHumanBlunder,
-        isSyntheticBlunder: Boolean(isSyntheticBlunder),
-      };
-    },
-  );
+    return {
+      idx,
+      move,
+      line,
+      dropCp,
+      styleBonusCp,
+      utilityCp,
+      humanPlausibility,
+      isHumanBlunder,
+      isSyntheticBlunder: Boolean(isSyntheticBlunder),
+    };
+  });
 
   const nonSynthetic = scoredCandidates.filter((c) => !c.isSyntheticBlunder);
-  const maxUtilityCp = Math.max(
-    ...(nonSynthetic.length > 0 ? nonSynthetic : scoredCandidates).map(
-      (c) => c.utilityCp,
-    ),
-  );
+  const maxUtilityCp = Math.max(...(nonSynthetic.length > 0 ? nonSynthetic : scoredCandidates).map((c) => c.utilityCp));
 
   // Compute standard Boltzmann temperature weights for the non-blunder MultiPV moves
   const boltzmannRaw = scoredCandidates.map((c) => {
     if (isForcedShortMate && params.rating >= 1200) {
       return c.idx === 0 ? 1 : 0.00001;
     }
-    if (
-      c.isSyntheticBlunder ||
-      (options.enableHumanBlunders && c.isHumanBlunder && c.idx > 0)
-    ) {
+    if (c.isSyntheticBlunder || (options.enableHumanBlunders && c.isHumanBlunder && c.idx > 0)) {
       return 0;
     }
 
@@ -856,40 +748,30 @@ export function selectHumanLikeMove(
     return Math.max(1e-9, w);
   });
 
-  const boltzmannSum =
-    boltzmannRaw.reduce((a, b) => a + b, 0) || 1;
+  const boltzmannSum = boltzmannRaw.reduce((a, b) => a + b, 0) || 1;
 
   // Compute human-blunder distribution over plausible blunder candidates when enableHumanBlunders is active
   const blunderPool =
-    options.enableHumanBlunders && !isForcedShortMate
-      ? scoredCandidates.filter((c) => c.isHumanBlunder)
-      : [];
+    options.enableHumanBlunders && !isForcedShortMate ? scoredCandidates.filter((c) => c.isHumanBlunder) : [];
 
   // Target blunder drop sweet-spot scales with rating (larger oversights at 400–600, smaller tactical slips at 1400–1800)
-  const targetBlunderDropCp =
-    115 + 165 * Math.max(0, (2000 - params.rating) / 1600);
+  const targetBlunderDropCp = 115 + 165 * Math.max(0, (2000 - params.rating) / 1600);
 
   const blunderRaw = scoredCandidates.map((c) => {
     if (!options.enableHumanBlunders || !c.isHumanBlunder || blunderPool.length === 0) {
       return 0;
     }
     const distFromSweetSpot = Math.abs(c.dropCp - targetBlunderDropCp);
-    return (
-      Math.max(1, c.humanPlausibility) *
-      Math.exp(-distFromSweetSpot / 120)
-    );
+    return Math.max(1, c.humanPlausibility) * Math.exp(-distFromSweetSpot / 120);
   });
   const blunderSum = blunderRaw.reduce((a, b) => a + b, 0);
 
-  const effectiveBlunderChance =
-    blunderSum > 0 ? params.blunderChance : 0;
+  const effectiveBlunderChance = blunderSum > 0 ? params.blunderChance : 0;
 
   const rawWeights = scoredCandidates.map((c, i) => {
     const pBoltzmann = boltzmannRaw[i]! / boltzmannSum;
     const pBlunder = blunderSum > 0 ? blunderRaw[i]! / blunderSum : 0;
-    const combined =
-      (1 - effectiveBlunderChance) * pBoltzmann +
-      effectiveBlunderChance * pBlunder;
+    const combined = (1 - effectiveBlunderChance) * pBoltzmann + effectiveBlunderChance * pBlunder;
 
     return {
       move: c.move,
@@ -962,11 +844,7 @@ export function computeBotThinkTimeMs(options: BotThinkTimeOptions): number {
   let effectiveMax = maxDelayMs;
 
   // Respect the bot's own clock in timed games
-  if (
-    !options.unlimitedClock &&
-    typeof options.botRemainingMs === 'number' &&
-    options.botRemainingMs > 0
-  ) {
+  if (!options.unlimitedClock && typeof options.botRemainingMs === 'number' && options.botRemainingMs > 0) {
     const rem = options.botRemainingMs;
     const inc = Math.max(0, options.incrementMs ?? 0);
 
@@ -975,18 +853,10 @@ export function computeBotThinkTimeMs(options: BotThinkTimeOptions): number {
 
     // Never spend more than ~6.5% of remaining time + 60% of increment (or 3% under 5s)
     const clockBudgetMs =
-      rem < 5_000
-        ? Math.max(25, Math.floor(rem * 0.03))
-        : Math.max(80, Math.floor(rem * 0.065 + inc * 0.6));
+      rem < 5_000 ? Math.max(25, Math.floor(rem * 0.03)) : Math.max(80, Math.floor(rem * 0.065 + inc * 0.6));
 
-    effectiveMax = Math.max(
-      25,
-      Math.min(Math.round(maxDelayMs * tcScale), clockBudgetMs),
-    );
-    effectiveMin = Math.min(
-      Math.round(minDelayMs * tcScale),
-      Math.floor(effectiveMax * 0.45),
-    );
+    effectiveMax = Math.max(25, Math.min(Math.round(maxDelayMs * tcScale), clockBudgetMs));
+    effectiveMin = Math.min(Math.round(minDelayMs * tcScale), Math.floor(effectiveMax * 0.45));
   }
 
   // 1. Forced move (only 1 legal reply) -> quick reply near effectiveMin
@@ -1002,11 +872,8 @@ export function computeBotThinkTimeMs(options: BotThinkTimeOptions): number {
     chosenMove.isCapture &&
     chosenMove.to === options.lastOpponentMove.to
   ) {
-    const quickRecapture =
-      effectiveMin + (effectiveMax - effectiveMin) * 0.14;
-    return Math.round(
-      Math.max(effectiveMin, Math.min(effectiveMax, quickRecapture)),
-    );
+    const quickRecapture = effectiveMin + (effectiveMax - effectiveMin) * 0.14;
+    return Math.round(Math.max(effectiveMin, Math.min(effectiveMax, quickRecapture)));
   }
 
   // 3. Forced mate-in-1 -> quick reply
@@ -1017,19 +884,11 @@ export function computeBotThinkTimeMs(options: BotThinkTimeOptions): number {
 
   // 4. Position complexity: legal moves, captures, checks, and top-2 MultiPV tension
   const captureCount = legalMoves.filter((m) => m.isCapture).length;
-  const checkCount = legalMoves.filter(
-    (m) => m.san.includes('+') || m.san.includes('#'),
-  ).length;
+  const checkCount = legalMoves.filter((m) => m.san.includes('+') || m.san.includes('#')).length;
   const inCheck = adapter.inCheck();
 
-  const branchingScore = Math.min(
-    1,
-    Math.max(0, (legalMoves.length - 5) / 30),
-  );
-  const tacticalSharpness = Math.min(
-    1,
-    captureCount * 0.15 + checkCount * 0.18 + (inCheck ? 0.24 : 0),
-  );
+  const branchingScore = Math.min(1, Math.max(0, (legalMoves.length - 5) / 30));
+  const tacticalSharpness = Math.min(1, captureCount * 0.15 + checkCount * 0.18 + (inCheck ? 0.24 : 0));
 
   let evalTension = 0;
   const cands = options.decision?.candidates;
@@ -1048,12 +907,7 @@ export function computeBotThinkTimeMs(options: BotThinkTimeOptions): number {
     const p = adapter.get(sq);
     if (p && p.type !== 'k') nonKingPieces++;
   }
-  const ply =
-    options.ply ??
-    Math.max(
-      0,
-      (adapter.moveNumber() - 1) * 2 + (adapter.turn() === 'b' ? 1 : 0),
-    );
+  const ply = options.ply ?? Math.max(0, (adapter.moveNumber() - 1) * 2 + (adapter.turn() === 'b' ? 1 : 0));
 
   let phaseFactor = 1.0;
   if (ply < 8 && captureCount <= 1 && !inCheck) {
@@ -1066,11 +920,7 @@ export function computeBotThinkTimeMs(options: BotThinkTimeOptions): number {
 
   const rawComplexity = Math.max(
     0.05,
-    Math.min(
-      1,
-      (branchingScore * 0.42 + tacticalSharpness * 0.58 + evalTension) *
-        phaseFactor,
-    ),
+    Math.min(1, (branchingScore * 0.42 + tacticalSharpness * 0.58 + evalTension) * phaseFactor),
   );
 
   const jitter = (rng() - 0.5) * 0.1;
@@ -1079,11 +929,7 @@ export function computeBotThinkTimeMs(options: BotThinkTimeOptions): number {
   return Math.round(effectiveMin + normalized * (effectiveMax - effectiveMin));
 }
 
-function matchLegalMove(
-  adapter: RulesAdapter,
-  legalMoves: ExecutedMove[],
-  uci: string,
-): ExecutedMove | null {
+function matchLegalMove(adapter: RulesAdapter, legalMoves: ExecutedMove[], uci: string): ExecutedMove | null {
   const clean = uci.trim().toLowerCase();
   const exact = legalMoves.find((m) => m.uci.toLowerCase() === clean);
   if (exact) return exact;
@@ -1097,11 +943,7 @@ function matchLegalMove(
         to: clean.slice(2, 4),
         promotion: clean[4],
       });
-      return (
-        legalMoves.find((m) => m.san === moved.san) ??
-        legalMoves.find((m) => m.uci === moved.uci) ??
-        moved
-      );
+      return legalMoves.find((m) => m.san === moved.san) ?? legalMoves.find((m) => m.uci === moved.uci) ?? moved;
     } catch {
       return null;
     }
@@ -1124,10 +966,7 @@ export interface HumanLikeSelectionRequest {
  * selectHumanLikeMove() would, so a seeded stream produces the same moves wherever the
  * selection runs (see BotSelectionClient, which moves it into a worker).
  */
-export type BotMoveSelector = (
-  request: HumanLikeSelectionRequest,
-  rng: () => number,
-) => Promise<BotMoveDecision>;
+export type BotMoveSelector = (request: HumanLikeSelectionRequest, rng: () => number) => Promise<BotMoveDecision>;
 
 /** Default selector: runs on the calling thread (Node scripts and unit tests). */
 export const selectHumanLikeMoveInline: BotMoveSelector = (request, rng) =>
@@ -1178,10 +1017,7 @@ export class ChessBot {
   }
 
   public setRating(ratingOrTier: number | BotTierId): void {
-    const next =
-      typeof ratingOrTier === 'string'
-        ? BOT_TIERS[ratingOrTier].defaultRating
-        : ratingOrTier;
+    const next = typeof ratingOrTier === 'string' ? BOT_TIERS[ratingOrTier].defaultRating : ratingOrTier;
     this.rating = clampBotRating(next);
   }
 

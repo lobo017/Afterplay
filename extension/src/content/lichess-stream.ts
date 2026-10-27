@@ -88,7 +88,11 @@ export async function readGameStream(
 ): Promise<StreamOutcome> {
   let res: Response;
   try {
-    res = await doFetch(gameStreamUrl(gameId), { headers: { Accept: 'application/x-ndjson' }, credentials: 'omit', signal });
+    res = await doFetch(gameStreamUrl(gameId), {
+      headers: { Accept: 'application/x-ndjson' },
+      credentials: 'omit',
+      signal,
+    });
   } catch (err) {
     if (signal?.aborted) return { kind: 'aborted' };
     return { kind: 'failed', reason: err instanceof Error ? err.message : String(err) };
@@ -188,7 +192,9 @@ export function watchGameStream(options: {
         if (line.kind === 'move') positions++;
         if (line.kind === 'game' && line.ended && !ended && !stopped) {
           ended = true;
-          log(`Lichess game stream: the game ended (${line.status ?? 'over'}${line.winner ? `, ${line.winner} won` : ''}).`);
+          log(
+            `Lichess game stream: the game ended (${line.status ?? 'over'}${line.winner ? `, ${line.winner} won` : ''}).`,
+          );
           options.onEnd(line);
         }
       },
@@ -200,7 +206,10 @@ export function watchGameStream(options: {
     let delay: number;
     if (outcome.kind === 'http-error') {
       why = `answered ${outcome.status}`;
-      delay = outcome.status === 429 ? STREAM_RATE_LIMIT_MS : STREAM_RETRY_MS[Math.min(failures, STREAM_RETRY_MS.length - 1)]!;
+      delay =
+        outcome.status === 429
+          ? STREAM_RATE_LIMIT_MS
+          : STREAM_RETRY_MS[Math.min(failures, STREAM_RETRY_MS.length - 1)]!;
     } else if (outcome.kind === 'failed') {
       why = `failed: ${outcome.reason}`;
       delay = STREAM_RETRY_MS[Math.min(failures, STREAM_RETRY_MS.length - 1)]!;
@@ -231,7 +240,9 @@ export function watchGameStream(options: {
     },
     describe() {
       if (ended) return 'Lichess game stream: ended';
-      return status === 'connected' ? `Lichess game stream: connected, ${positions} positions` : `Lichess game stream: ${status}`;
+      return status === 'connected'
+        ? `Lichess game stream: connected, ${positions} positions`
+        : `Lichess game stream: ${status}`;
     },
   };
 }

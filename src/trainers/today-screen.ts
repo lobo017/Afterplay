@@ -33,9 +33,24 @@ const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? o
 
 /** The Today cards of the three trainers beside the puzzles. */
 const DRILL_CARDS: ReadonlyArray<{ kind: DrillKind; label: string; idle: string; button: string }> = [
-  { kind: 'repertoire', label: 'Repertoire positions', idle: 'Build a repertoire in Train, then drill it here.', button: 'Drill repertoire' },
-  { kind: 'endgame', label: 'Endgame drills due', idle: 'Drill the six endgames in Train.', button: 'Practise endgames' },
-  { kind: 'visualization', label: 'Visualization drills due', idle: 'Coordinates, blindfold and guess the move.', button: 'Start a drill' },
+  {
+    kind: 'repertoire',
+    label: 'Repertoire positions',
+    idle: 'Build a repertoire in Train, then drill it here.',
+    button: 'Drill repertoire',
+  },
+  {
+    kind: 'endgame',
+    label: 'Endgame drills due',
+    idle: 'Drill the six endgames in Train.',
+    button: 'Practise endgames',
+  },
+  {
+    kind: 'visualization',
+    label: 'Visualization drills due',
+    idle: 'Coordinates, blindfold and guess the move.',
+    button: 'Start a drill',
+  },
 ];
 
 interface DrillCardEls {
@@ -133,7 +148,11 @@ export class TodayScreen {
     const q = <T extends HTMLElement>(id: string) => this.root.querySelector(`[data-testid="${id}"]`) as T;
     const drills = {} as Record<DrillKind, DrillCardEls>;
     for (const c of DRILL_CARDS) {
-      drills[c.kind] = { count: q(`today-${c.kind}-count`), detail: q(`today-${c.kind}-detail`), start: q(`btn-today-${c.kind}`) };
+      drills[c.kind] = {
+        count: q(`today-${c.kind}-count`),
+        detail: q(`today-${c.kind}-detail`),
+        start: q(`btn-today-${c.kind}`),
+      };
     }
     this.els = {
       reviews: q('today-reviews-count'),
@@ -154,7 +173,8 @@ export class TodayScreen {
     this.els.startMistakes.addEventListener('click', () => this.options.onStartPuzzles('mistakes'));
     q<HTMLButtonElement>('btn-today-rated').addEventListener('click', () => this.options.onStartPuzzles('rated'));
     this.els.openGames.addEventListener('click', () => this.options.onOpenGames());
-    for (const c of DRILL_CARDS) drills[c.kind].start.addEventListener('click', () => this.options.onStartDrill(c.kind));
+    for (const c of DRILL_CARDS)
+      drills[c.kind].start.addEventListener('click', () => this.options.onStartDrill(c.kind));
   }
 
   /** Re-counts everything (personal puzzles are synced with the reviewed games first). */
@@ -190,7 +210,8 @@ export class TodayScreen {
 
   /** The trainers' cards: what is due now, or when the next one comes. */
   private renderDrills(s: DrillSummary, now: number): void {
-    const next = (fallback: string) => (s.nextDueAt !== null ? `All caught up. Next ${formatDueIn(s.nextDueAt, now)}.` : fallback);
+    const next = (fallback: string) =>
+      s.nextDueAt !== null ? `All caught up. Next ${formatDueIn(s.nextDueAt, now)}.` : fallback;
     const rep = this.els.drills.repertoire;
     const waiting = s.repertoire.due + s.repertoire.fresh;
     rep.count.textContent = String(waiting);

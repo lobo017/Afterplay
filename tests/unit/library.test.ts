@@ -23,7 +23,8 @@ import { isBookFen } from '../helpers/review-fixtures';
 
 const DB = 'wizards-chess-library-test';
 
-const PLAIN = '[Event "Casual"]\n[White "Alice"]\n[Black "Bob"]\n[Result "1-0"]\n[Date "2026.01.02"]\n\n1. e4 e5 2. Qh5 Nc6 3. Bc4 Nf6 4. Qxf7# 1-0';
+const PLAIN =
+  '[Event "Casual"]\n[White "Alice"]\n[Black "Bob"]\n[Result "1-0"]\n[Date "2026.01.02"]\n\n1. e4 e5 2. Qh5 Nc6 3. Bc4 Nf6 4. Qxf7# 1-0';
 
 async function openLibrary() {
   const storage = await WizardChessStorage.create({ dbName: DB });
@@ -79,7 +80,7 @@ describe('Phase 5b — game records', () => {
     expect(record.playedAt).toBe(Date.UTC(2026, 9, 4, 5, 33, 38));
   });
 
-  it('works out my color from my accounts on the game\'s site', () => {
+  it("works out my color from my accounts on the game's site", () => {
     const accounts = accountsFromSettings({ lichess: 'lobo017', chesscom: 'LoboCC' });
     expect(myColor({ white: 'GEU3', black: 'Lobo017', source: 'lichess' }, accounts)).toBe('b');
     // A Lichess name doesn't make me a player on Chess.com
@@ -137,7 +138,13 @@ describe('Phase 5b — game library', () => {
     const batch: BridgeGame[] = [
       { key: 'lichess:Bjl39T9x', source: 'lichess', pgn: lichessGame.pgn, capturedAt: 7, method: 'lichess-page-data' },
       { key: plain!.key, source: 'paste', pgn: PLAIN, capturedAt: 7, method: 'pasted-pgn' },
-      { key: 'chesscom:live-1', source: 'chesscom', pgn: '[Event "x"]\n\n1. e4 e5 2. Ke3 *', capturedAt: 7, method: 'm' },
+      {
+        key: 'chesscom:live-1',
+        source: 'chesscom',
+        pgn: '[Event "x"]\n\n1. e4 e5 2. Ke3 *',
+        capturedAt: 7,
+        method: 'm',
+      },
       { key: 'chesscom:live-2', source: 'chesscom', pgn: `${PLAIN}\n\n${PLAIN}`, capturedAt: 7, method: 'm' },
     ];
     const outcome = await library.saveBridgeGames(batch);
@@ -147,7 +154,10 @@ describe('Phase 5b — game library', () => {
     expect(outcome.failed[1]!.reason).toBe('Expected exactly one game.');
     const stored = await library.get('lichess:Bjl39T9x');
     expect(stored).toMatchObject({ source: 'lichess', capturedAt: 7, captureMethod: 'lichess-page-data' });
-    expect(changes.at(-1)).toMatchObject({ added: ['lichess:Bjl39T9x'], methods: { 'lichess:Bjl39T9x': 'lichess-page-data' } });
+    expect(changes.at(-1)).toMatchObject({
+      added: ['lichess:Bjl39T9x'],
+      methods: { 'lichess:Bjl39T9x': 'lichess-page-data' },
+    });
     // Saving the same batch again stores nothing new
     expect((await library.saveBridgeGames(batch.slice(0, 1))).duplicates).toEqual(['lichess:Bjl39T9x']);
     storage.close();
@@ -191,7 +201,9 @@ describe('Phase 5b — game library', () => {
     const restored = restoreSavedReview(fromDb!, tree)!;
     const plies = mainLinePlies(tree);
     expect(restored.review.moves.map((m) => m.nodeId)).toEqual(plies.map((p) => p.nodeId));
-    expect(restored.review.moves.map((m) => m.classification)).toEqual(result.review.moves.map((m) => m.classification));
+    expect(restored.review.moves.map((m) => m.classification)).toEqual(
+      result.review.moves.map((m) => m.classification),
+    );
     expect(restored.review.keyMoments.every((k) => plies.some((p) => p.nodeId === k.nodeId))).toBe(true);
     expect(restored.positions).toHaveLength(47);
     storage.close();

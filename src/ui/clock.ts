@@ -1,16 +1,7 @@
 import type { Color } from '../core/rules';
 
 export type TimeControlPresetId =
-  | 'unlimited'
-  | '1+0'
-  | '2+1'
-  | '3+0'
-  | '3+2'
-  | '5+0'
-  | '5+3'
-  | '10+0'
-  | '10+5'
-  | '15+10';
+  'unlimited' | '1+0' | '2+1' | '3+0' | '3+2' | '5+0' | '5+3' | '10+0' | '10+5' | '15+10';
 
 export interface TimeControlConfig {
   id: TimeControlPresetId | 'custom';
@@ -20,10 +11,7 @@ export interface TimeControlConfig {
   unlimited: boolean;
 }
 
-export const TIME_CONTROL_PRESETS: Record<
-  TimeControlPresetId,
-  TimeControlConfig
-> = {
+export const TIME_CONTROL_PRESETS: Record<TimeControlPresetId, TimeControlConfig> = {
   unlimited: {
     id: 'unlimited',
     label: 'Unlimited (∞)',
@@ -138,12 +126,8 @@ export class ChessClock {
   private lastEmittedKey = '';
 
   private readonly nowFn: () => number;
-  private readonly onTickCallback:
-    | ((snapshot: ClockSnapshot) => void)
-    | undefined;
-  private readonly onFlagCallback:
-    | ((flaggedColor: Color, snapshot: ClockSnapshot) => void)
-    | undefined;
+  private readonly onTickCallback: ((snapshot: ClockSnapshot) => void) | undefined;
+  private readonly onFlagCallback: ((flaggedColor: Color, snapshot: ClockSnapshot) => void) | undefined;
 
   constructor(options?: {
     config?: TimeControlConfig;
@@ -202,10 +186,7 @@ export class ChessClock {
    * Deducts elapsed time since `lastStamp`, applies increment if remaining > 0,
    * and starts the opponent's clock.
    */
-  public switchTurn(
-    completedByColor: Color,
-    now = this.nowFn(),
-  ): ClockSnapshot {
+  public switchTurn(completedByColor: Color, now = this.nowFn()): ClockSnapshot {
     if (this.flaggedColor) return this.getSnapshot();
 
     if (this.config.unlimited) {

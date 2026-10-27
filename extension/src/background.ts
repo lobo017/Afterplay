@@ -110,7 +110,8 @@ const resolveChessComLink: LinkResolver = async (ref): Promise<LinkResolution> =
     username = me && (names.white === me.toLowerCase() || names.black === me.toLowerCase()) ? me : names.white;
     months = [monthOf(meta.data.game.endTime ? meta.data.game.endTime * 1000 : Date.now())];
   } else {
-    if (!me) return { kind: 'error', error: 'Set your Chess.com username in Settings to find this game in your archive.' };
+    if (!me)
+      return { kind: 'error', error: 'Set your Chess.com username in Settings to find this game in your archive.' };
     username = me;
     const now = monthOf(Date.now());
     months = [now, previousMonth(now)];
@@ -138,13 +139,20 @@ const resolvers: Partial<Record<CaptureSite, LinkResolver>> = {
 const leaveResolvers: Record<CaptureSite, LinkResolver> = {
   lichess: resolvers.lichess!,
   chesscom: async (ref) => {
-    const { result, attempts } = await runExtractors([chessComCallbackExtractor], { ref, fetch: (i, init) => fetch(i, init) });
+    const { result, attempts } = await runExtractors([chessComCallbackExtractor], {
+      ref,
+      fetch: (i, init) => fetch(i, init),
+    });
     if (result.ok) return { kind: 'pgn', pgn: result.pgn, method: result.method };
     if (result.inProgress) return { kind: 'in-progress', reason: result.reason };
     if (result.notFound) {
-      return { kind: 'in-progress', reason: "Chess.com has no data for this game yet (it shares a live game's data once it has ended)." };
+      return {
+        kind: 'in-progress',
+        reason: "Chess.com has no data for this game yet (it shares a live game's data once it has ended).",
+      };
     }
-    if (result.retryAfterMs !== undefined) return { kind: 'in-progress', reason: describeAttempts(attempts) || result.reason };
+    if (result.retryAfterMs !== undefined)
+      return { kind: 'in-progress', reason: describeAttempts(attempts) || result.reason };
     return resolveChessComLink(ref);
   },
 };
@@ -333,7 +341,8 @@ async function pumpBackfill(): Promise<void> {
       }
       onQueueChanged();
       if (!progressed) {
-        if (Number.isFinite(wakeAt)) await chrome.alarms.create(BACKFILL_ALARM, { when: Math.max(wakeAt, Date.now() + 30_000) });
+        if (Number.isFinite(wakeAt))
+          await chrome.alarms.create(BACKFILL_ALARM, { when: Math.max(wakeAt, Date.now() + 30_000) });
         return;
       }
       await new Promise((r) => setTimeout(r, BACKFILL_PAUSE_MS));
@@ -397,10 +406,13 @@ function scheduleRetryWake(nextAt: number | null): void {
     void chrome.alarms.clear(GAME_RETRY_ALARM);
     return;
   }
-  retryTimer = setTimeout(() => {
-    retryTimer = null;
-    void runRetries();
-  }, Math.max(0, nextAt - Date.now()));
+  retryTimer = setTimeout(
+    () => {
+      retryTimer = null;
+      void runRetries();
+    },
+    Math.max(0, nextAt - Date.now()),
+  );
   // Chrome runs alarms 30 s from now at the soonest
   void chrome.alarms.create(GAME_RETRY_ALARM, { when: Math.max(nextAt, Date.now() + 30_000) });
 }
@@ -417,7 +429,10 @@ async function captureLeftGame(tab: TrackedTab): Promise<RetryOutcome & { reason
     'left-page',
   );
   if (r.outcome === 'skipped' || r.outcome === 'error') {
-    return { retry: r.outcome === 'skipped' && r.retry === true, result: `${r.outcome === 'skipped' ? 'not captured' : 'failed'}: ${r.reason}` };
+    return {
+      retry: r.outcome === 'skipped' && r.retry === true,
+      result: `${r.outcome === 'skipped' ? 'not captured' : 'failed'}: ${r.reason}`,
+    };
   }
   return { retry: false, result: r.outcome === 'known' ? 'already captured' : `captured (${r.outcome})` };
 }
@@ -466,7 +481,8 @@ function editTabs<T>(fn: (tabs: TrackedTabs) => T): Promise<T> {
 }
 
 async function recordLeave(site: CaptureSite, record: LeaveRecord): Promise<void> {
-  const all = ((await sessionStore.get([LAST_LEAVE_KEY]))[LAST_LEAVE_KEY] as Partial<Record<CaptureSite, LeaveRecord>>) ?? {};
+  const all =
+    ((await sessionStore.get([LAST_LEAVE_KEY]))[LAST_LEAVE_KEY] as Partial<Record<CaptureSite, LeaveRecord>>) ?? {};
   await sessionStore.set({ [LAST_LEAVE_KEY]: { ...all, [site]: record } });
 }
 
@@ -600,7 +616,8 @@ async function debugBackground(tabId: number | null, url: string | null): Promis
     retrying = (await retries.list())
       .filter((r) => r.ref.site === site)
       .map((r) => ({ key: r.key, url: r.url, description: GameRetries.describe(r, Date.now()) }));
-    const leaves = ((await sessionStore.get([LAST_LEAVE_KEY]))[LAST_LEAVE_KEY] as Partial<Record<CaptureSite, LeaveRecord>>) ?? {};
+    const leaves =
+      ((await sessionStore.get([LAST_LEAVE_KEY]))[LAST_LEAVE_KEY] as Partial<Record<CaptureSite, LeaveRecord>>) ?? {};
     lastLeave = leaves[site] ?? null;
   }
   const ref = tracked?.ref ?? page?.ref ?? null;
@@ -649,7 +666,8 @@ async function handle(msg: ExtRequest, sender: chrome.runtime.MessageSender): Pr
     case 'bridge-rejected': {
       const settings = await loadSettings(chromeLocalStore);
       const origin = senderOrigin(sender);
-      if (origin === null || !siteOrigins(settings.siteUrl).includes(origin)) return { error: 'Not the configured site.' };
+      if (origin === null || !siteOrigins(settings.siteUrl).includes(origin))
+        return { error: 'Not the configured site.' };
       if (msg.kind === 'bridge-rejected') {
         const items = (Array.isArray(msg.items) ? msg.items : []).filter(
           (i) =>
@@ -658,7 +676,11 @@ async function handle(msg: ExtRequest, sender: chrome.runtime.MessageSender): Pr
             (i.kind === 'variant' || i.kind === 'no-moves' || i.kind === 'invalid') &&
             typeof i.reason === 'string',
         );
-        return { rejected: await service.markRejected(items.map((i) => ({ key: i.key, kind: i.kind, reason: i.reason.slice(0, 200) }))) };
+        return {
+          rejected: await service.markRejected(
+            items.map((i) => ({ key: i.key, kind: i.kind, reason: i.reason.slice(0, 200) })),
+          ),
+        };
       }
       if (msg.kind === 'bridge-hello') {
         return { extensionVersion: chrome.runtime.getManifest().version, accounts: accountsOf(settings) };

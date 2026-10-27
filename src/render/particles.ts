@@ -106,12 +106,7 @@ export class CaptureParticleSystem {
    * Triggers a 54-shard shatter burst at the captured square using directional impulse from the attacker square.
    * Zero object allocations.
    */
-  public triggerCapture(
-    targetSquare: Square,
-    capturedColor: Color,
-    attackerSquare?: Square,
-    flipped = false,
-  ): number {
+  public triggerCapture(targetSquare: Square, capturedColor: Color, attackerSquare?: Square, flipped = false): number {
     if (!this.enabled) return 0;
 
     const target = squareToBoardCoords(targetSquare, flipped);
@@ -129,11 +124,7 @@ export class CaptureParticleSystem {
     }
 
     let spawned = 0;
-    for (
-      let i = 0;
-      i < PARTICLE_POOL_SIZE && spawned < SHARDS_PER_CAPTURE;
-      i++
-    ) {
+    for (let i = 0; i < PARTICLE_POOL_SIZE && spawned < SHARDS_PER_CAPTURE; i++) {
       const s = this.pool[i]!;
       if (s.active) continue;
 
@@ -142,9 +133,7 @@ export class CaptureParticleSystem {
       s.isEmber = spawned % 3 === 0;
       s.life = 0;
       s.maxLife = 0.65 + Math.random() * 0.55; // Crisp 0.65-1.20s visual shatter
-      s.scale = s.isEmber
-        ? 0.6 + Math.random() * 0.8
-        : 0.55 + Math.random() * 0.95;
+      s.scale = s.isEmber ? 0.6 + Math.random() * 0.8 : 0.55 + Math.random() * 0.95;
 
       s.x = target.cx + (Math.random() - 0.5) * 42;
       s.y = target.cy + (Math.random() - 0.5) * 42;
@@ -215,10 +204,7 @@ export class CaptureParticleSystem {
 
       // Smooth shrink in final 35% of life
       const lifeRatio = s.life / s.maxLife;
-      const currentScale =
-        lifeRatio > 0.65
-          ? s.scale * (1 - (lifeRatio - 0.65) / 0.35)
-          : s.scale;
+      const currentScale = lifeRatio > 0.65 ? s.scale * (1 - (lifeRatio - 0.65) / 0.35) : s.scale;
 
       if (ctx && currentScale > 0.02) {
         const screenY = s.y - s.z * 0.45;

@@ -95,7 +95,8 @@ export function leaveCaptureCheck(tab: TrackedTab, settings: ExtensionSettings, 
   return (facts) => {
     const mine = isMyGame(facts, settings, tab.site, tab.mine);
     if (mine === false) return 'not my game';
-    if (mine === null) return `can't tell whether it's my game: set my ${tab.site === 'lichess' ? 'Lichess' : 'Chess.com'} username`;
+    if (mine === null)
+      return `can't tell whether it's my game: set my ${tab.site === 'lichess' ? 'Lichess' : 'Chess.com'} username`;
     if (tab.sawInProgress) return null;
     if (isRecentGame({ startedAt: facts.playedAt ?? tab.startedAt, endedAt: tab.endedAt }, now)) return null;
     return 'not a recent game';

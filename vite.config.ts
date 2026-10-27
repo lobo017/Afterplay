@@ -31,11 +31,7 @@ function stockfishAssetsPlugin(): Plugin {
         }
         const rawPath = req.url.split('?')[0]?.split('#')[0] ?? '';
         const filename = path.basename(rawPath);
-        if (
-          !STOCKFISH_LITE_FILES.includes(
-            filename as (typeof STOCKFISH_LITE_FILES)[number],
-          )
-        ) {
+        if (!STOCKFISH_LITE_FILES.includes(filename as (typeof STOCKFISH_LITE_FILES)[number])) {
           next();
           return;
         }
@@ -49,9 +45,7 @@ function stockfishAssetsPlugin(): Plugin {
         res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
         res.setHeader(
           'Content-Type',
-          filename.endsWith('.wasm')
-            ? 'application/wasm'
-            : 'text/javascript; charset=utf-8',
+          filename.endsWith('.wasm') ? 'application/wasm' : 'text/javascript; charset=utf-8',
         );
         fs.createReadStream(fullPath).pipe(res);
       });
@@ -124,4 +118,3 @@ export default defineConfig({
     }),
   ],
 });
-

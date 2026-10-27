@@ -64,7 +64,10 @@ export const GOOD_EXTRA_MOVES = 4;
  * drill is Easy at the best possible count or better, Good within `GOOD_EXTRA_MOVES` of it and
  * Hard beyond; Lucena, Philidor and R+P v R are Good when reached.
  */
-export function gradeEndgame(entry: Pick<EndgamePositionEntry, 'targetResult' | 'optimalMoves'>, outcome: EndgameOutcome): Grade {
+export function gradeEndgame(
+  entry: Pick<EndgamePositionEntry, 'targetResult' | 'optimalMoves'>,
+  outcome: EndgameOutcome,
+): Grade {
   if (!outcome.reached) return 1;
   if (outcome.hintsUsed > 0) return 2;
   if (entry.optimalMoves === null) return 3;

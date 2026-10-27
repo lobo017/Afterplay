@@ -132,11 +132,18 @@ export class GameLibrary {
       outcome.saved.push(...stored);
       const storedSet = new Set(stored);
       // A game that turned up in the store meanwhile counts as a duplicate too
-      outcome.duplicates.push(...batch.duplicates, ...batch.records.filter((r) => !storedSet.has(r.id)).map((r) => r.id));
+      outcome.duplicates.push(
+        ...batch.duplicates,
+        ...batch.records.filter((r) => !storedSet.has(r.id)).map((r) => r.id),
+      );
       outcome.errors.push(...batch.errors);
       onProgress?.({ done: batch.gamesRead, total: batch.totalGames });
     });
-    this.emit({ added: outcome.saved, methods: Object.fromEntries(outcome.saved.map((id) => [id, null])), updated: [] });
+    this.emit({
+      added: outcome.saved,
+      methods: Object.fromEntries(outcome.saved.map((id) => [id, null])),
+      updated: [],
+    });
     return outcome;
   }
 
@@ -198,11 +205,17 @@ export class GameLibrary {
         outcome.saved.push(g.key);
       } catch (err) {
         // Storage trouble: worth another try on the next sync
-        outcome.failed.push({ key: g.key, kind: 'error', reason: (err instanceof Error ? err.message : String(err)).slice(0, 200) });
+        outcome.failed.push({
+          key: g.key,
+          kind: 'error',
+          reason: (err instanceof Error ? err.message : String(err)).slice(0, 200),
+        });
       }
       await yieldToEventLoop();
     }
-    const methods = Object.fromEntries(batch.filter((g) => outcome.saved.includes(g.key)).map((g) => [g.key, g.method]));
+    const methods = Object.fromEntries(
+      batch.filter((g) => outcome.saved.includes(g.key)).map((g) => [g.key, g.method]),
+    );
     this.emit({ added: outcome.saved, methods, updated: [] });
     return outcome;
   }

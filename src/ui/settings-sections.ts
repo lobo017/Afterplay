@@ -79,8 +79,7 @@ export function mountAppSettingsSections(panel: SettingsPanel, store: AppSetting
     })}
     ${switchRowHtml('toggle-capture-particles', 'Capture shards', s.captureEffects, 'Marble shards fly when a piece is taken')}`;
 
-  const q = <T extends HTMLElement>(root: HTMLElement, id: string) =>
-    root.querySelector(`[data-testid="${id}"]`) as T;
+  const q = <T extends HTMLElement>(root: HTMLElement, id: string) => root.querySelector(`[data-testid="${id}"]`) as T;
   const theme = q<HTMLSelectElement>(board, 'select-board-theme');
   const pieces = q<HTMLSelectElement>(board, 'select-piece-set');
   const autoQueen = q<HTMLInputElement>(moves, 'toggle-auto-queen');
@@ -103,7 +102,9 @@ export function mountAppSettingsSections(panel: SettingsPanel, store: AppSetting
     store.set({ navigationAnimation: navAnimation.value as AppSettings['navigationAnimation'] }),
   );
   lines.addEventListener('change', () => store.set({ analysisLines: Number(lines.value) }));
-  reviewDepth.addEventListener('change', () => store.set({ reviewPreset: reviewDepth.value as AppSettings['reviewPreset'] }));
+  reviewDepth.addEventListener('change', () =>
+    store.set({ reviewPreset: reviewDepth.value as AppSettings['reviewPreset'] }),
+  );
   soundOn.addEventListener('change', () => store.set({ sound: soundOn.checked }));
   volume.addEventListener('input', () => store.set({ volume: Number(volume.value) }));
   shards.addEventListener('change', () => store.set({ captureEffects: shards.checked }));

@@ -144,7 +144,11 @@ function pickArchiveGames(games, mustInclude, extra) {
 }
 
 async function recordChessCom() {
-  const archives = await request(`https://api.chess.com/pub/player/${CHESSCOM_LIVE.player}/games/archives`, {}, SCRIPT_UA);
+  const archives = await request(
+    `https://api.chess.com/pub/player/${CHESSCOM_LIVE.player}/games/archives`,
+    {},
+    SCRIPT_UA,
+  );
   write(
     `chesscom/archives-${CHESSCOM_LIVE.player}.json`,
     `${JSON.stringify({ archives: JSON.parse(archives.body).archives.slice(-3) }, null, 2)}\n`,
@@ -167,7 +171,10 @@ async function recordChessCom() {
             lastModified: m.res.headers.get('last-modified'),
             totalGames: all.length,
           },
-          games: type === 'live' ? pickArchiveGames(all, games, 40) : all.filter((g) => games.some((id) => g.url.endsWith(`/${id}`))),
+          games:
+            type === 'live'
+              ? pickArchiveGames(all, games, 40)
+              : all.filter((g) => games.some((id) => g.url.endsWith(`/${id}`))),
         },
         null,
         2,

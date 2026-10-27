@@ -8,7 +8,15 @@ import {
   WARN_BELOW_CP,
   WARN_HOLD_CP,
 } from '../../src/trainers/endgame-session';
-import { ENDGAMES, GOOD_EXTRA_MOVES, endgameGoal, endgamePlayer, getEndgame, gradeEndgame, goalText } from '../../src/trainers/endgames';
+import {
+  ENDGAMES,
+  GOOD_EXTRA_MOVES,
+  endgameGoal,
+  endgamePlayer,
+  getEndgame,
+  gradeEndgame,
+  goalText,
+} from '../../src/trainers/endgames';
 
 function entry(partial: Partial<EndgamePositionEntry> & Pick<EndgamePositionEntry, 'fen'>): EndgamePositionEntry {
   return {
@@ -23,7 +31,11 @@ function entry(partial: Partial<EndgamePositionEntry> & Pick<EndgamePositionEntr
   };
 }
 
-const move = (uci: string) => ({ from: uci.slice(0, 2), to: uci.slice(2, 4), ...(uci.length > 4 ? { promotion: uci[4]! } : {}) });
+const move = (uci: string) => ({
+  from: uci.slice(0, 2),
+  to: uci.slice(2, 4),
+  ...(uci.length > 4 ? { promotion: uci[4]! } : {}),
+});
 
 describe('Phase 7 — the endgame drills', () => {
   it('the six positions: how each one ends, and who plays', () => {
@@ -52,7 +64,9 @@ describe('Phase 7 — the endgame drills', () => {
     expect(gradeEndgame(mate, { reached: true, moves: 7 + GOOD_EXTRA_MOVES + 1, hintsUsed: 0 })).toBe(2);
     // No move count to compare with: Good when the result was reached
     expect(gradeEndgame(open, { reached: true, moves: 40, hintsUsed: 0 })).toBe(3);
-    expect(gradeEndgame({ targetResult: '1/2-1/2', optimalMoves: null }, { reached: true, moves: 25, hintsUsed: 0 })).toBe(3);
+    expect(
+      gradeEndgame({ targetResult: '1/2-1/2', optimalMoves: null }, { reached: true, moves: 25, hintsUsed: 0 }),
+    ).toBe(3);
   });
 });
 
@@ -63,7 +77,10 @@ describe('Phase 7 — playing a mate drill', () => {
     const s = new EndgameSession(MATE_IN_ONE);
     expect(s.goal).toBe('mate');
     expect(s.player).toBe('w');
-    expect(s.playerMove(move('g2g7'))).toMatchObject({ kind: 'ended', end: { reached: true, result: '1-0', how: 'checkmate' } });
+    expect(s.playerMove(move('g2g7'))).toMatchObject({
+      kind: 'ended',
+      end: { reached: true, result: '1-0', how: 'checkmate' },
+    });
     expect(s.over).toBe(true);
     expect(s.moves).toBe(1);
     expect(s.outcome).toEqual({ reached: true, moves: 1, hintsUsed: 0 });
@@ -87,7 +104,10 @@ describe('Phase 7 — playing a mate drill', () => {
   it('winning the last piece into insufficient material throws the win away', () => {
     // Nxc3 takes the bishop that checks the king, and K+N v K cannot win
     const s = new EndgameSession(entry({ fen: 'k7/8/8/8/8/2b5/8/1N2K3 w - - 0 1' }));
-    expect(s.playerMove(move('b1c3'))).toMatchObject({ kind: 'ended', end: { reached: false, result: '1/2-1/2', how: 'insufficient' } });
+    expect(s.playerMove(move('b1c3'))).toMatchObject({
+      kind: 'ended',
+      end: { reached: false, result: '1/2-1/2', how: 'insufficient' },
+    });
   });
 
   it('a stalemate throws the win away; for a drawn target it is the result', () => {
@@ -106,7 +126,10 @@ describe('Phase 7 — playing a mate drill', () => {
     const s = new EndgameSession(entry({ fen: '7k/Q7/5K2/8/8/8/8/8 b - - 0 1', targetResult: '0-1' }));
     expect(s.player).toBe('b');
     expect(s.playerMove(move('h8g8'))).toMatchObject({ kind: 'continue' });
-    expect(s.opponentMove('a7g7')).toMatchObject({ kind: 'ended', end: { reached: false, result: '1-0', how: 'mated' } });
+    expect(s.opponentMove('a7g7')).toMatchObject({
+      kind: 'ended',
+      end: { reached: false, result: '1-0', how: 'mated' },
+    });
     expect(s.outcome.reached).toBe(false);
   });
 
@@ -194,12 +217,21 @@ describe('Phase 7 — holding a draw', () => {
   });
 
   it('is not offered in a win drill', () => {
-    expect(new EndgameSession(entry({ fen: '8/4P1k1/8/8/8/8/8/4K3 w - - 0 1' })).offerDraw({ type: 'cp', value: 0 })).toEqual({ kind: 'not-a-draw' });
+    expect(
+      new EndgameSession(entry({ fen: '8/4P1k1/8/8/8/8/8/4K3 w - - 0 1' })).offerDraw({ type: 'cp', value: 0 }),
+    ).toEqual({ kind: 'not-a-draw' });
   });
 
   it('a draw by repetition is the result', () => {
     const s = new EndgameSession(entry({ fen: '4k3/8/8/8/8/8/8/R3K3 b - - 0 1', targetResult: '1/2-1/2' }));
-    const cycle = [['e8d8', 'e1e2'], ['d8e8', 'e2e1'], ['e8d8', 'e1e2'], ['d8e8', 'e2e1'], ['e8d8', 'e1e2'], ['d8e8', 'e2e1']];
+    const cycle = [
+      ['e8d8', 'e1e2'],
+      ['d8e8', 'e2e1'],
+      ['e8d8', 'e1e2'],
+      ['d8e8', 'e2e1'],
+      ['e8d8', 'e1e2'],
+      ['d8e8', 'e2e1'],
+    ];
     let ended = null;
     for (const [mine, theirs] of cycle) {
       const r = s.playerMove(move(mine!));
@@ -215,7 +247,6 @@ describe('Phase 7 — holding a draw', () => {
     }
     expect(ended).toMatchObject({ reached: true, how: 'repetition' });
   });
-
 });
 
 describe('Phase 7 — warning when the target slips', () => {

@@ -23,7 +23,10 @@ const MY_GAME = `[Event "Casual blitz"]
 1. e4 d5 2. Qg4 e6 3. Qd1 dxe4 4. Nc3 Nf6 1/2-1/2`;
 
 /** The same moves on Chess.com, where none of my usernames is set: not my game, no puzzles. */
-const NOT_MINE = MY_GAME.replace('https://lichess.org/Pz6Test1', 'Chess.com').replace('[Event "Casual blitz"]', '[Event "Live Chess"]');
+const NOT_MINE = MY_GAME.replace('https://lichess.org/Pz6Test1', 'Chess.com').replace(
+  '[Event "Casual blitz"]',
+  '[Event "Live Chess"]',
+);
 
 interface Tracked {
   external: string[];
@@ -92,7 +95,9 @@ test.describe('Phase 6 — puzzles', () => {
 
     // A session starts from Train's hub ("Start training" picks the one with the most to do)
     await page.getByTestId('btn-train-start').click();
-    await expect(page.getByTestId('puzzle-trainer')).toHaveAttribute('data-puzzle-state', 'playing', { timeout: 15_000 });
+    await expect(page.getByTestId('puzzle-trainer')).toHaveAttribute('data-puzzle-state', 'playing', {
+      timeout: 15_000,
+    });
     expect(t.requests.some((p) => p.includes('puzzle-dataset.worker'))).toBe(true);
     expect(t.requests.some((p) => p.includes('puzzle-trainer'))).toBe(true);
     // A fresh profile has nothing due: the first open goes to rated puzzles, with themes
@@ -101,7 +106,9 @@ test.describe('Phase 6 — puzzles', () => {
     expect(t.external).toEqual([]);
   });
 
-  test('solves a multi-move bundled puzzle by clicking: the opponent moves first, the rating goes up', async ({ page }) => {
+  test('solves a multi-move bundled puzzle by clicking: the opponent moves first, the rating goes up', async ({
+    page,
+  }) => {
     const t = track(page);
     await page.goto('/');
     // 1yy9U: White plays Rxc1 (the setup move); I am Black: Rxc1+ Qe1 Rxe1#
@@ -129,7 +136,11 @@ test.describe('Phase 6 — puzzles', () => {
 
     const stored = await page.evaluate(async () => {
       const api = window.__wizardChessPuzzles!;
-      return { puzzle: await api.store.getPuzzle('1yy9U'), card: await api.store.getCard('1yy9U'), rating: await api.store.getRating() };
+      return {
+        puzzle: await api.store.getPuzzle('1yy9U'),
+        card: await api.store.getCard('1yy9U'),
+        rating: await api.store.getRating(),
+      };
     });
     expect(stored.puzzle).toMatchObject({ attempts: 1, solvedCount: 1, source: 'lichess' });
     expect(stored.card).toBeUndefined(); // a clean solve of a bundled puzzle needs no review
@@ -177,11 +188,15 @@ test.describe('Phase 6 — puzzles', () => {
     await expect(page.getByTestId('today-reviews-detail')).toHaveText('All caught up. Next review in 10 min.');
     await expect(page.getByTestId('today-rated-count')).toHaveText('1');
     // Ten minutes later it is due
-    const later = await page.evaluate(async () => (await window.__wizardChessPuzzles!.store.todaySummary(Date.now() + 11 * 60_000)).dueReviews);
+    const later = await page.evaluate(
+      async () => (await window.__wizardChessPuzzles!.store.todaySummary(Date.now() + 11 * 60_000)).dueReviews,
+    );
     expect(later).toEqual({ personal: 0, lichess: 1 });
   });
 
-  test('puzzles from my mistakes: a captured game reviewed on Quick, my side only, solved from Today', async ({ page }) => {
+  test('puzzles from my mistakes: a captured game reviewed on Quick, my side only, solved from Today', async ({
+    page,
+  }) => {
     test.setTimeout(180_000);
     const t = track(page);
     await page.goto('/');
@@ -191,8 +206,20 @@ test.describe('Phase 6 — puzzles', () => {
         await lib.library.setMyAccounts({ lichess: 'Lobo017', chesscom: '' });
         // As the capture extension delivers them
         const outcome = await lib.library.saveBridgeGames([
-          { key: 'lichess:Pz6Test1', source: 'lichess', pgn: mine, capturedAt: Date.now(), method: 'lichess-page-data' },
-          { key: 'chesscom:live-424242', source: 'chesscom', pgn: notMine, capturedAt: Date.now(), method: 'chesscom-callback' },
+          {
+            key: 'lichess:Pz6Test1',
+            source: 'lichess',
+            pgn: mine,
+            capturedAt: Date.now(),
+            method: 'lichess-page-data',
+          },
+          {
+            key: 'chesscom:live-424242',
+            source: 'chesscom',
+            pgn: notMine,
+            capturedAt: Date.now(),
+            method: 'chesscom-callback',
+          },
         ]);
         if (outcome.saved.length !== 2) throw new Error(JSON.stringify(outcome));
         lib.queue.enqueue(['lichess:Pz6Test1', 'chesscom:live-424242'], 'quick');
@@ -226,7 +253,9 @@ test.describe('Phase 6 — puzzles', () => {
       const id = await trainer.getAttribute('data-puzzle-id');
       const p = personal.find((x) => x.id === id)!;
       if (p.id === missed.id) {
-        await expect(page.getByTestId('puzzle-prompt')).toHaveText(`In the game I played e6 (${p.classification}). What was better?`);
+        await expect(page.getByTestId('puzzle-prompt')).toHaveText(
+          `In the game I played e6 (${p.classification}). What was better?`,
+        );
         await expect(page.getByTestId('puzzle-source')).toContainText('From my game Lobo017 vs Opponent1 · 2026-10-18');
       }
       await clickMove(page, p.moves[1]!.slice(0, 2), p.moves[1]!.slice(2, 4));
@@ -254,7 +283,8 @@ test.describe('Phase 6 — puzzles', () => {
     await openPuzzle(page, '1yy9U');
     fs.mkdirSync(SCREENSHOT_DIR, { recursive: true });
     await page.screenshot({ path: path.join(SCREENSHOT_DIR, 'puzzle-phone.png'), fullPage: true });
-    const overflow = () => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+    const overflow = () =>
+      page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     expect(await overflow()).toBeLessThanOrEqual(0);
     await page.getByTestId('mode-tab-train').click();
     await expect(page.getByTestId('today-screen')).toHaveAttribute('data-state', 'ready');

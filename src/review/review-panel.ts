@@ -8,12 +8,7 @@ import { lookupOpeningByFen } from '../analysis/opening-lookup';
 import { describeHintedMoves, hintedMoves } from './hints';
 import { CLASS_THRESHOLDS, classFromWinDrop, isErrorClass } from './classification';
 import { formatBotLevel, winPercentFromScore } from './formulas';
-import {
-  buildAnnotatedPgn,
-  evalAnnotation,
-  mainLinePlies,
-  type ReviewPly,
-} from './review-game';
+import { buildAnnotatedPgn, evalAnnotation, mainLinePlies, type ReviewPly } from './review-game';
 import { restoreSavedReview, type SavedReview } from '../library/saved-review';
 import {
   DEFAULT_USER_ACCOUNTS,
@@ -173,11 +168,7 @@ function moveLabel(move: ReviewedMove): string {
 }
 
 function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
 /** A SAN line with move numbers, starting from `fen`: "15. Bxd7+ Nxd7 16. Qb8+". */
@@ -470,8 +461,7 @@ export class ReviewPanel {
       { testId: 'review-menu', label: 'More review tools' },
     );
 
-    const q = <T extends Element>(id: string) =>
-      this.root.querySelector(`[data-testid="${id}"]`) as T;
+    const q = <T extends Element>(id: string) => this.root.querySelector(`[data-testid="${id}"]`) as T;
     const chart = q<SVGSVGElement>('review-chart');
     const sideEls = (c: 'w' | 'b') => ({
       card: q<HTMLElement>(`review-side-${c}`),
@@ -553,7 +543,10 @@ export class ReviewPanel {
     this.els.counts.addEventListener('click', (e) => {
       const btn = (e.target as HTMLElement).closest<HTMLElement>('button[data-class]');
       if (!btn) return;
-      this.stepThroughClass(btn.getAttribute('data-color') as 'w' | 'b', btn.getAttribute('data-class') as MoveClassification);
+      this.stepThroughClass(
+        btn.getAttribute('data-color') as 'w' | 'b',
+        btn.getAttribute('data-class') as MoveClassification,
+      );
     });
     this.els.errorPrev.addEventListener('click', () => this.stepError(-1));
     this.els.errorNext.addEventListener('click', () => this.stepError(1));
@@ -898,7 +891,9 @@ export class ReviewPanel {
           this.strippedAnnotations > 0
             ? `replaced ${this.strippedAnnotations} earlier engine annotation${this.strippedAnnotations === 1 ? '' : 's'}`
             : '',
-          hinted.length > 0 ? `${hinted.length} move${hinted.length === 1 ? '' : 's'} played after a hint (${describeHintedMoves(hinted)})` : '',
+          hinted.length > 0
+            ? `${hinted.length} move${hinted.length === 1 ? '' : 's'} played after a hint (${describeHintedMoves(hinted)})`
+            : '',
         ]
           .filter(Boolean)
           .join(' · ');
@@ -935,7 +930,9 @@ export class ReviewPanel {
       // Name, then "rating · color"; on a narrow panel the second part gets its own line
       const meta = playerMeta(info);
       els.heading.innerHTML = `<span class="wc-review-player-name">${escapeHtml(info.name)}</span>${
-        meta ? `<span class="wc-review-player-sep"> · </span><span class="wc-review-player-meta">${escapeHtml(meta)}</span>` : ''
+        meta
+          ? `<span class="wc-review-player-sep"> · </span><span class="wc-review-player-meta">${escapeHtml(meta)}</span>`
+          : ''
       }`;
       els.heading.title = playerHeading(info);
       els.botName.textContent = info.name;
@@ -1040,10 +1037,7 @@ export class ReviewPanel {
       this.els.chartLine.setAttribute('d', '');
     } else {
       this.els.chartLine.setAttribute('d', `M${points.join(' L')}`);
-      this.els.chartArea.setAttribute(
-        'd',
-        `M0,${CHART_H} L${points.join(' L')} L${x(last).toFixed(1)},${CHART_H} Z`,
-      );
+      this.els.chartArea.setAttribute('d', `M0,${CHART_H} L${points.join(' L')} L${x(last).toFixed(1)},${CHART_H} Z`);
     }
     this.els.chart.setAttribute('data-analyzed', String(last + 1));
 
@@ -1076,7 +1070,8 @@ export class ReviewPanel {
           ? `Key moment ${index + 1} of ${n}`
           : `${n} key moment${n === 1 ? '' : 's'}`;
     const curPly = current?.ply ?? this.plyOfNode(this.host.getCurrentNode()) ?? 0;
-    this.els.coachNextLabel.textContent = index < 0 && moments.every((k) => k.ply > curPly) ? 'First moment' : 'Next moment';
+    this.els.coachNextLabel.textContent =
+      index < 0 && moments.every((k) => k.ply > curPly) ? 'First moment' : 'Next moment';
     this.els.coachPrev.disabled = n === 0;
     this.els.coachNext.disabled = n === 0;
     for (const el of this.els.moments.querySelectorAll<HTMLElement>('[data-node-id]')) {
@@ -1415,8 +1410,7 @@ export class ReviewPanel {
       matched++;
     }
     const mainLine = new Set(tree.getMainLine().map((n) => n.id));
-    const extendsGame =
-      matched < move.refutationUci.length && cursor.children.length === 0 && mainLine.has(cursor.id);
+    const extendsGame = matched < move.refutationUci.length && cursor.children.length === 0 && mainLine.has(cursor.id);
     const added = this.host.addLine(move.nodeId, move.refutationUci, {
       forceNewVariation: extendsGame,
     });

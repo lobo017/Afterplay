@@ -95,7 +95,11 @@ function isShortString(value: unknown, max = MAX_TEXT): value is string {
 }
 
 function isKeyList(value: unknown): value is string[] {
-  return Array.isArray(value) && value.length <= BRIDGE_MAX_BATCH && value.every((k) => typeof k === 'string' && isGameKey(k));
+  return (
+    Array.isArray(value) &&
+    value.length <= BRIDGE_MAX_BATCH &&
+    value.every((k) => typeof k === 'string' && isGameKey(k))
+  );
 }
 
 const BATCH_ID = /^[A-Za-z0-9-]{1,40}$/;
@@ -145,7 +149,11 @@ export function parsePageMessage(data: unknown): PageMessage | null {
       batchId: data.batchId,
       saved: [...data.saved],
       duplicates: [...data.duplicates],
-      failed: (failed as FailedDelivery[]).map((f) => ({ key: f.key, reason: f.reason, ...(f.kind ? { kind: f.kind } : {}) })),
+      failed: (failed as FailedDelivery[]).map((f) => ({
+        key: f.key,
+        reason: f.reason,
+        ...(f.kind ? { kind: f.kind } : {}),
+      })),
     };
   }
   return null;
@@ -171,7 +179,8 @@ export function parseBridgeMessage(data: unknown): BridgeMessage | null {
     }
     case 'games': {
       if (typeof data.batchId !== 'string' || !BATCH_ID.test(data.batchId)) return null;
-      if (!Array.isArray(data.games) || data.games.length > BRIDGE_MAX_BATCH || !data.games.every(isBridgeGame)) return null;
+      if (!Array.isArray(data.games) || data.games.length > BRIDGE_MAX_BATCH || !data.games.every(isBridgeGame))
+        return null;
       if (typeof data.remaining !== 'number' || !Number.isInteger(data.remaining) || data.remaining < 0) return null;
       return {
         ...base,
@@ -193,7 +202,10 @@ export function pageMessage<T extends PageMessage['type']>(
   type: T,
   body: Omit<Extract<PageMessage, { type: T }>, 'source' | 'type' | 'version'>,
 ): Extract<PageMessage, { type: T }> {
-  return { source: PAGE_MESSAGE_SOURCE, type, version: BRIDGE_PROTOCOL_VERSION, ...body } as Extract<PageMessage, { type: T }>;
+  return { source: PAGE_MESSAGE_SOURCE, type, version: BRIDGE_PROTOCOL_VERSION, ...body } as Extract<
+    PageMessage,
+    { type: T }
+  >;
 }
 
 export function bridgeMessage<T extends BridgeMessage['type']>(

@@ -9,9 +9,19 @@ export type TrainerKind = 'puzzles' | 'repertoire' | 'endgames' | 'visualization
 
 export const TRAINERS: ReadonlyArray<{ kind: TrainerKind; title: string; icon: IconName; idle: string }> = [
   { kind: 'puzzles', title: 'Puzzles', icon: 'hint', idle: 'Rated puzzles, and puzzles from your own mistakes.' },
-  { kind: 'repertoire', title: 'Repertoire', icon: 'book', idle: 'Build your White and Black openings and drill them.' },
+  {
+    kind: 'repertoire',
+    title: 'Repertoire',
+    icon: 'book',
+    idle: 'Build your White and Black openings and drill them.',
+  },
   { kind: 'endgames', title: 'Endgames', icon: 'flag', idle: 'Mate, Lucena, Philidor and more, against the engine.' },
-  { kind: 'visualization', title: 'Visualization', icon: 'eye', idle: 'Coordinates, blindfold, and guess the move in your games.' },
+  {
+    kind: 'visualization',
+    title: 'Visualization',
+    icon: 'eye',
+    idle: 'Coordinates, blindfold, and guess the move in your games.',
+  },
 ];
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
@@ -50,7 +60,9 @@ export class TrainerTiles {
     options.container.appendChild(this.root);
     for (const t of TRAINERS) {
       this.details.set(t.kind, this.root.querySelector(`[data-testid="trainer-tile-${t.kind}-detail"]`) as HTMLElement);
-      this.root.querySelector(`[data-testid="btn-trainer-${t.kind}"]`)?.addEventListener('click', () => options.onOpen(t.kind));
+      this.root
+        .querySelector(`[data-testid="btn-trainer-${t.kind}"]`)
+        ?.addEventListener('click', () => options.onOpen(t.kind));
     }
   }
 
@@ -85,10 +97,15 @@ export class TrainerTiles {
       const waiting = drills.repertoire.due + drills.repertoire.fresh;
       this.set(
         'repertoire',
-        moves === 0 ? TRAINERS[1]!.idle : `${plural(moves, 'move')} in your repertoires · ${waiting} ${waiting === 1 ? 'position' : 'positions'} to answer`,
+        moves === 0
+          ? TRAINERS[1]!.idle
+          : `${plural(moves, 'move')} in your repertoires · ${waiting} ${waiting === 1 ? 'position' : 'positions'} to answer`,
       );
       const completed = ENDGAMES.filter((e) => progress.get(e.id)?.completed === 1).length;
-      this.set('endgames', `${completed} of ${ENDGAMES.length} completed${drills.endgame.due > 0 ? ` · ${drills.endgame.due} due` : ''}`);
+      this.set(
+        'endgames',
+        `${completed} of ${ENDGAMES.length} completed${drills.endgame.due > 0 ? ` · ${drills.endgame.due} due` : ''}`,
+      );
       this.set(
         'visualization',
         coords.rounds === 0 && blind.drills === 0

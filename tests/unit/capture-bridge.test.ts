@@ -207,7 +207,10 @@ describe('Phase 5b — bridge sync', () => {
     await vi.waitFor(() => expect(win.sentOfType('games')).toHaveLength(1));
     const batch = win.sentOfType('games')[0]!;
     // An answer naming another batch is ignored
-    win.postMessage(pageMessage('saved', { batchId: 'b-other', saved: ['chesscom:live-0'], duplicates: [], failed: [] }), ORIGIN);
+    win.postMessage(
+      pageMessage('saved', { batchId: 'b-other', saved: ['chesscom:live-0'], duplicates: [], failed: [] }),
+      ORIGIN,
+    );
     await new Promise((r) => setTimeout(r, 20));
     expect(await queue.counts()).toMatchObject({ delivered: 0 });
     // A key that wasn't in the batch is ignored, the batch's key is delivered
@@ -226,7 +229,11 @@ describe('Phase 5b — bridge sync', () => {
 
   it('checks the sender: other origins and other windows are ignored on both sides', async () => {
     const queue = await makeQueue(1);
-    const { bridge, client, win } = wire(queue, async (games) => ({ saved: games.map((g) => g.key), duplicates: [], failed: [] }));
+    const { bridge, client, win } = wire(queue, async (games) => ({
+      saved: games.map((g) => g.key),
+      duplicates: [],
+      failed: [],
+    }));
     bridge.start();
     // Spoofed hello from another origin, and from another window
     win.dispatch({ data: pageMessage('hello', {}), origin: 'https://evil.example', source: win });
@@ -244,7 +251,11 @@ describe('Phase 5b — bridge sync', () => {
     });
     spoofClient.start();
     const game: BridgeGame = { key: 'lichess:Bjl39T9x', source: 'lichess', pgn: pgn(1), capturedAt: 1, method: 'm' };
-    win.dispatch({ data: bridgeMessage('games', { batchId: 'b-1', games: [game], remaining: 0 }), origin: 'https://evil.example', source: win });
+    win.dispatch({
+      data: bridgeMessage('games', { batchId: 'b-1', games: [game], remaining: 0 }),
+      origin: 'https://evil.example',
+      source: win,
+    });
     await new Promise((r) => setTimeout(r, 20));
     expect(stored).not.toContain('lichess:Bjl39T9x');
     spoofClient.stop();
@@ -339,7 +350,10 @@ describe('Phase 5b — delivery without focus (bridge nudge)', () => {
     bridge.nudge();
     bridge.nudge();
     release();
-    await vi.waitFor(() => expect(win.sentOfType('sync-done').length).toBeGreaterThanOrEqual(2), { timeout: 3000, interval: 5 });
+    await vi.waitFor(() => expect(win.sentOfType('sync-done').length).toBeGreaterThanOrEqual(2), {
+      timeout: 3000,
+      interval: 5,
+    });
     await settle(bridge, client);
     expect(stored.sort()).toEqual(['chesscom:live-0', 'chesscom:live-1']);
     // One sync from the page's own hello(s), one more from the nudges (not one per nudge)

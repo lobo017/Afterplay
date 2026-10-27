@@ -21,7 +21,12 @@ body {
   max-height: 580px;
   background: var(--bg);
   color: var(--text);
-  font: 13px/1.4 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font:
+    13px/1.4 system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
 }
 
 .top {

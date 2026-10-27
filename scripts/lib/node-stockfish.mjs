@@ -5,10 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const stockfishJsPath = path.join(
-  rootDir,
-  'node_modules/stockfish/src/stockfish-17.1-lite-single-03e3232.js',
-);
+const stockfishJsPath = path.join(rootDir, 'node_modules/stockfish/src/stockfish-17.1-lite-single-03e3232.js');
 
 export function createNodeStockfishTransport() {
   const proc = spawn(process.execPath, [stockfishJsPath], { stdio: 'pipe', windowsHide: true });

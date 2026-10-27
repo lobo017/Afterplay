@@ -19,14 +19,20 @@ describe('Phase 5b — capture queue', () => {
 
   it('adds ready games once, keeps their PGN apart from the index, and counts them', async () => {
     const { store, queue, tick } = setup();
-    expect(await queue.addReady([{ key: 'lichess:Bjl39T9x', source: 'lichess', pgn: pgn('GEU3', 'Lobo017'), method: 'm' }])).toEqual([
-      'added',
-    ]);
+    expect(
+      await queue.addReady([{ key: 'lichess:Bjl39T9x', source: 'lichess', pgn: pgn('GEU3', 'Lobo017'), method: 'm' }]),
+    ).toEqual(['added']);
     tick(10);
     expect(
       await queue.addReady([
         { key: 'lichess:Bjl39T9x', source: 'lichess', pgn: pgn('GEU3', 'Lobo017'), method: 'm' },
-        { key: 'chesscom:live-1', source: 'chesscom', pgn: pgn('X', 'Y'), method: 'n', url: 'https://www.chess.com/game/live/1' },
+        {
+          key: 'chesscom:live-1',
+          source: 'chesscom',
+          pgn: pgn('X', 'Y'),
+          method: 'n',
+          url: 'https://www.chess.com/game/live/1',
+        },
       ]),
     ).toEqual(['already-queued', 'added']);
     expect(await queue.counts()).toEqual({ pending: 0, ready: 2, delivered: 0, rejected: 0 });
@@ -63,9 +69,9 @@ describe('Phase 5b — capture queue', () => {
     expect(store.data.has('queue:pgn:lichess:bbbbbbbb')).toBe(true);
     expect((await queue.get('lichess:aaaaaaaa'))?.status).toBe('delivered');
     expect(await queue.markDelivered(['lichess:aaaaaaaa'])).toBe(0);
-    expect(await queue.addReady([{ key: 'lichess:aaaaaaaa', source: 'lichess', pgn: pgn('A', 'B'), method: 'm' }])).toEqual([
-      'already-delivered',
-    ]);
+    expect(
+      await queue.addReady([{ key: 'lichess:aaaaaaaa', source: 'lichess', pgn: pgn('A', 'B'), method: 'm' }]),
+    ).toEqual(['already-delivered']);
     expect((await queue.takeBatch(50)).games.map((g) => g.key)).toEqual(['lichess:bbbbbbbb']);
     expect(await queue.counts()).toEqual({ pending: 0, ready: 1, delivered: 1, rejected: 0 });
   });
@@ -73,18 +79,35 @@ describe('Phase 5b — capture queue', () => {
   it('keeps pending games until their PGN arrives, with retry times', async () => {
     const { queue, tick } = setup();
     expect(
-      await queue.addPending({ key: 'chesscom:live-9', source: 'chesscom', url: 'u', error: 'not yet', nextRetryAt: 2000 }),
+      await queue.addPending({
+        key: 'chesscom:live-9',
+        source: 'chesscom',
+        url: 'u',
+        error: 'not yet',
+        nextRetryAt: 2000,
+      }),
     ).toBe('added');
     expect(await queue.dueRetries()).toEqual([]);
     tick(1000);
     expect((await queue.dueRetries()).map((e) => e.key)).toEqual(['chesscom:live-9']);
-    await queue.addPending({ key: 'chesscom:live-9', source: 'chesscom', url: 'u', error: 'still not', nextRetryAt: 9000 });
+    await queue.addPending({
+      key: 'chesscom:live-9',
+      source: 'chesscom',
+      url: 'u',
+      error: 'still not',
+      nextRetryAt: 9000,
+    });
     expect(await queue.get('chesscom:live-9')).toMatchObject({ attempts: 1, error: 'still not', capturedAt: 1000 });
     expect((await queue.takeBatch(50)).games).toEqual([]);
-    expect(await queue.addReady([{ key: 'chesscom:live-9', source: 'chesscom', pgn: pgn('A', 'B'), method: 'archive' }])).toEqual([
-      'updated',
-    ]);
-    expect(await queue.get('chesscom:live-9')).toMatchObject({ status: 'ready', error: null, nextRetryAt: null, url: 'u' });
+    expect(
+      await queue.addReady([{ key: 'chesscom:live-9', source: 'chesscom', pgn: pgn('A', 'B'), method: 'archive' }]),
+    ).toEqual(['updated']);
+    expect(await queue.get('chesscom:live-9')).toMatchObject({
+      status: 'ready',
+      error: null,
+      nextRetryAt: null,
+      url: 'u',
+    });
     expect(await queue.remove('chesscom:live-9')).toBe(true);
     expect(await queue.counts()).toEqual({ pending: 0, ready: 0, delivered: 0, rejected: 0 });
   });

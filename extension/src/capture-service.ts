@@ -109,11 +109,19 @@ export class CaptureService {
     const results: SaveTextResult[] = errors.map((error) => ({ label: 'PGN', ok: false, error }));
     if (games.length > 0) {
       const outcomes = await this.deps.queue.addReady(
-        games.map((g) => ({ key: g.key, source: g.source, pgn: g.pgn, method: 'pasted-pgn', url: null, trigger: 'paste' as const })),
+        games.map((g) => ({
+          key: g.key,
+          source: g.source,
+          pgn: g.pgn,
+          method: 'pasted-pgn',
+          url: null,
+          trigger: 'paste' as const,
+        })),
       );
       for (const [i, g] of games.entries()) {
         const outcome = outcomes[i]!;
-        const entry = outcome === 'not-importable' || outcome === 'already-rejected' ? await this.deps.queue.get(g.key) : null;
+        const entry =
+          outcome === 'not-importable' || outcome === 'already-rejected' ? await this.deps.queue.get(g.key) : null;
         results.push({ label: gameLabel(g.headers), ok: true, outcome, reason: entry?.rejectReason ?? undefined });
       }
       this.deps.onQueueChanged();
@@ -210,8 +218,14 @@ export class CaptureService {
     const { games, errors } = checkPgnText(resolution.pgn);
     if (games.length !== 1) return { outcome: 'error', key, reason: errors[0] ?? 'Expected exactly one game.' };
     const h = readPgnHeaders(games[0]!.pgn);
-    if ((h.Result ?? '*') === '*') return { outcome: 'skipped', key, reason: 'The game is still in progress.', retry: true };
-    const skip = check({ white: h.White ?? '', black: h.Black ?? '', result: h.Result ?? '', playedAt: playedAtFromHeaders(h) });
+    if ((h.Result ?? '*') === '*')
+      return { outcome: 'skipped', key, reason: 'The game is still in progress.', retry: true };
+    const skip = check({
+      white: h.White ?? '',
+      black: h.Black ?? '',
+      result: h.Result ?? '',
+      playedAt: playedAtFromHeaders(h),
+    });
     if (skip) return { outcome: 'skipped', key, reason: skip };
     const [outcome] = await this.deps.queue.addReady([
       { key, source: ref.site, pgn: games[0]!.pgn, method: resolution.method, url, trigger },

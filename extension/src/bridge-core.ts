@@ -16,7 +16,9 @@ export interface BridgeBackend {
   takeBatch(max: number, exclude: readonly string[]): Promise<{ games: BridgeGame[]; remaining: number }>;
   markDelivered(keys: readonly string[]): Promise<number>;
   /** Games the site won't take (a variant, no moves, a PGN it can't read): not offered again. */
-  markRejected(items: ReadonlyArray<{ key: string; kind: 'variant' | 'no-moves' | 'invalid'; reason: string }>): Promise<number>;
+  markRejected(
+    items: ReadonlyArray<{ key: string; kind: 'variant' | 'no-moves' | 'invalid'; reason: string }>,
+  ): Promise<number>;
 }
 
 /**
@@ -25,7 +27,9 @@ export interface BridgeBackend {
  * sync, and so is a failure without a kind (an older page; the queue itself already rejects
  * variants and games without moves).
  */
-export function rejectionOf(f: FailedDelivery): { key: string; kind: 'variant' | 'no-moves' | 'invalid'; reason: string } | null {
+export function rejectionOf(
+  f: FailedDelivery,
+): { key: string; kind: 'variant' | 'no-moves' | 'invalid'; reason: string } | null {
   if (!f.kind || f.kind === 'error') return null;
   return { key: f.key, kind: f.kind, reason: f.reason };
 }
@@ -58,7 +62,8 @@ export class ExtensionBridge {
   constructor(
     private readonly win: MessageWindow,
     private readonly backend: BridgeBackend,
-    private readonly newBatchId: () => string = () => `b-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+    private readonly newBatchId: () => string = () =>
+      `b-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
     // Wrapped: browsers throw "Illegal invocation" when setTimeout is called as a method of another object
     private readonly timers: {
       set: (fn: () => void, ms: number) => ReturnType<typeof setTimeout>;
@@ -116,7 +121,10 @@ export class ExtensionBridge {
     sync.timer = null;
     // Stored now, or already on the site: delivered
     const acked = [...msg.saved, ...msg.duplicates].filter((k) => batchKeys.has(k));
-    const rejected = msg.failed.filter((f) => batchKeys.has(f.key)).map(rejectionOf).filter((r) => r !== null);
+    const rejected = msg.failed
+      .filter((f) => batchKeys.has(f.key))
+      .map(rejectionOf)
+      .filter((r) => r !== null);
     // Anything else (couldn't store, or not answered) is tried again on the next sync, not now
     for (const k of batchKeys) if (!acked.includes(k) && !rejected.some((r) => r.key === k)) sync.failed.add(k);
     try {

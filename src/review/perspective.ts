@@ -37,10 +37,7 @@ export function defaultPerspective(
 ): ReviewPerspective {
   const isMe = (name: string | undefined) => {
     const n = (name ?? '').trim().toLowerCase();
-    return (
-      n !== '' &&
-      accounts.some((a) => a.username.toLowerCase() === n && siteMatches(headers.Site, a))
-    );
+    return n !== '' && accounts.some((a) => a.username.toLowerCase() === n && siteMatches(headers.Site, a));
   };
   const white = isMe(headers.White);
   const black = isMe(headers.Black);
@@ -88,10 +85,7 @@ export function coversMove(perspective: ReviewPerspective, move: ReviewedMove): 
 }
 
 /** The errors (Inaccuracy, Mistake, Blunder, Miss) a perspective covers, in game order. */
-export function perspectiveErrors(
-  moves: readonly ReviewedMove[],
-  perspective: ReviewPerspective,
-): ReviewedMove[] {
+export function perspectiveErrors(moves: readonly ReviewedMove[], perspective: ReviewPerspective): ReviewedMove[] {
   return moves.filter((m) => coversMove(perspective, m) && isErrorClass(m.classification));
 }
 
@@ -120,11 +114,7 @@ export function perspectiveSeries(
  * The next (dir 1) or previous (dir −1) entry after the current ply, wrapping around
  * the ends. Null for an empty list.
  */
-export function stepCycle<T extends { ply: number }>(
-  items: readonly T[],
-  currentPly: number,
-  dir: 1 | -1,
-): T | null {
+export function stepCycle<T extends { ply: number }>(items: readonly T[], currentPly: number, dir: 1 | -1): T | null {
   if (items.length === 0) return null;
   if (dir === 1) return items.find((m) => m.ply > currentPly) ?? items[0]!;
   for (let i = items.length - 1; i >= 0; i--) {

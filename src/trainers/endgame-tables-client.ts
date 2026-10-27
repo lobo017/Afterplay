@@ -28,7 +28,10 @@ export class EndgameTablesClient implements EndgameDefender {
   private worker: Worker | null = null;
   private inline: EndgameTables | null = null;
   private nextId = 1;
-  private readonly pending = new Map<number, { resolve: (msg: TablesResponseMessage) => void; reject: (err: Error) => void }>();
+  private readonly pending = new Map<
+    number,
+    { resolve: (msg: TablesResponseMessage) => void; reject: (err: Error) => void }
+  >();
 
   public warm(): void {
     void this.request({ kind: 'warm' }).catch(() => undefined);
@@ -50,7 +53,10 @@ export class EndgameTablesClient implements EndgameDefender {
   private ensureWorker(): Worker | null {
     if (this.worker) return this.worker;
     if (typeof Worker === 'undefined') return null;
-    const worker = new Worker(new URL('./endgame-tables.worker.ts', import.meta.url), { type: 'module', name: 'endgame-tables' });
+    const worker = new Worker(new URL('./endgame-tables.worker.ts', import.meta.url), {
+      type: 'module',
+      name: 'endgame-tables',
+    });
     worker.addEventListener('message', (e: MessageEvent<TablesResponseMessage>) => {
       const entry = this.pending.get(e.data.id);
       if (!entry) return;

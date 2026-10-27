@@ -114,9 +114,21 @@ export class EndgameTrainer {
     this.menu = new Menu(
       q('endgame-actions'),
       [
-        { id: 'restart', label: 'Restart this position', testId: 'btn-endgame-restart', icon: 'undo', onSelect: () => this.restart() },
+        {
+          id: 'restart',
+          label: 'Restart this position',
+          testId: 'btn-endgame-restart',
+          icon: 'undo',
+          onSelect: () => this.restart(),
+        },
         { id: 'giveup', label: 'Give up', testId: 'btn-endgame-giveup', icon: 'flag', onSelect: () => this.giveUp() },
-        { id: 'flip', label: 'Flip board', testId: 'btn-endgame-flip', icon: 'flip', onSelect: () => this.board.setFlipped(!this.board.isFlipped()) },
+        {
+          id: 'flip',
+          label: 'Flip board',
+          testId: 'btn-endgame-flip',
+          icon: 'flip',
+          onSelect: () => this.board.setFlipped(!this.board.isFlipped()),
+        },
       ],
       { testId: 'endgame-menu', label: 'More endgame actions' },
     );
@@ -208,7 +220,9 @@ export class EndgameTrainer {
 
   /** Opens a position that is due now (for the Today screen). False when none is. */
   public async openDue(now: number = Date.now()): Promise<boolean> {
-    const cards = (await this.options.store.listCards()).filter((c) => c.dueDate <= now).sort((a, b) => a.dueDate - b.dueDate);
+    const cards = (await this.options.store.listCards())
+      .filter((c) => c.dueDate <= now)
+      .sort((a, b) => a.dueDate - b.dueDate);
     const entry = cards.map((c) => getEndgame(c.targetId)).find((e): e is EndgamePositionEntry => e !== undefined);
     if (!entry) return false;
     this.load(entry);
@@ -296,7 +310,10 @@ export class EndgameTrainer {
     }
   }
 
-  private async analyze(fen: string, movetime: number): Promise<{ bestMove: string | null; score: UciScore | null } | null> {
+  private async analyze(
+    fen: string,
+    movetime: number,
+  ): Promise<{ bestMove: string | null; score: UciScore | null } | null> {
     try {
       const res = await this.options.engine.analyze({ fen, movetime, multipv: 1, priority: 'live' });
       return { bestMove: res.bestMove, score: res.lines[0]?.score ?? null };
@@ -376,7 +393,11 @@ export class EndgameTrainer {
       this.setState('playing');
       if (slipping) {
         this.setStatus(
-          exact ? 'Careful: the win is gone with best play.' : s.goal === 'hold' ? 'Careful: the engine is pressing. Find the defence.' : 'Careful: the engine sees only equality now.',
+          exact
+            ? 'Careful: the win is gone with best play.'
+            : s.goal === 'hold'
+              ? 'Careful: the engine is pressing. Find the defence.'
+              : 'Careful: the engine sees only equality now.',
           'warn',
         );
       } else {
@@ -476,7 +497,10 @@ export class EndgameTrainer {
     this.board.setBestMoveArrow(null);
     this.setState(end.reached ? 'reached' : 'failed');
     this.setStatus(end.reached ? 'Target reached!' : 'Not this time', end.reached ? 'solved' : 'wrong');
-    const moveText = endgameGoal(entry) === 'mate' && end.reached ? ` Mate in ${plural(s.moves, 'move')}; best possible is ${entry.optimalMoves}.` : '';
+    const moveText =
+      endgameGoal(entry) === 'mate' && end.reached
+        ? ` Mate in ${plural(s.moves, 'move')}; best possible is ${entry.optimalMoves}.`
+        : '';
     this.els.result.textContent = `${end.message}${moveText}`;
     this.options.audio.playGameOver(end.reached);
     this.updateButtons();
@@ -488,7 +512,8 @@ export class EndgameTrainer {
         void this.renderList();
       },
       (err: unknown) => {
-        if (this.session === s) this.els.result.textContent = `${this.els.result.textContent} (Progress could not be saved: ${err instanceof Error ? err.message : String(err)})`;
+        if (this.session === s)
+          this.els.result.textContent = `${this.els.result.textContent} (Progress could not be saved: ${err instanceof Error ? err.message : String(err)})`;
       },
     );
   }

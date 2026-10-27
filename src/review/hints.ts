@@ -28,7 +28,12 @@ export function hintedMoves(tree: GameTree): HintedMove[] {
   const out: HintedMove[] = [];
   for (const node of tree.getMainLine()) {
     if (node.comment.trimStart().startsWith(HINT_COMMENT_PREFIX)) {
-      out.push({ ply: node.ply, moveNumber: node.moveNumber, color: node.moveColor ?? (node.ply % 2 === 1 ? 'w' : 'b'), san: node.san });
+      out.push({
+        ply: node.ply,
+        moveNumber: node.moveNumber,
+        color: node.moveColor ?? (node.ply % 2 === 1 ? 'w' : 'b'),
+        san: node.san,
+      });
     }
   }
   return out;

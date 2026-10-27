@@ -56,7 +56,15 @@ function move(ply: number, color: 'w' | 'b', patch: Partial<ReviewedMove> = {}):
 function reviewed(white: string, black: string, result: string, moves: ReviewedMove[], at: number): ReviewedGameInput {
   const pgn = `[White "${white}"]\n[Black "${black}"]\n[Result "${result}"]\n[Date "2026.01.0${at}"]\n\n1. e4 c5 2. Nf3 d6 3. d4 cxd4 4. Nxd4 Nf6 5. Nc3 a6 ${result}`;
   const valid = checkPgnText(pgn).games[0]!;
-  const record: StoredGameRecord = { ...buildGameRecord(valid), id: `g${at}`, playedAt: at * 1000, schemaVersion: 4, createdAt: at, updatedAt: at, source: 'paste' };
+  const record: StoredGameRecord = {
+    ...buildGameRecord(valid),
+    id: `g${at}`,
+    playedAt: at * 1000,
+    schemaVersion: 4,
+    createdAt: at,
+    updatedAt: at,
+    source: 'paste',
+  };
   return { row: toRow(record, ACCOUNTS), review: { review: { moves } } as unknown as SavedReview };
 }
 
@@ -73,13 +81,19 @@ describe('Phase 8 — insights: phases', () => {
   });
 
   it('accuracy by phase counts only my moves, worst first', () => {
-    const g = reviewed('Me', 'Opp', '1-0', [
-      move(1, 'w', { accuracy: 100 }),
-      move(2, 'b', { accuracy: 10 }), // not mine
-      move(3, 'w', { accuracy: 60, classification: 'Inaccuracy' }),
-      move(41, 'w', { accuracy: 80, fenBefore: ENDING }),
-      move(43, 'w', { accuracy: 40, fenBefore: START }),
-    ], 1);
+    const g = reviewed(
+      'Me',
+      'Opp',
+      '1-0',
+      [
+        move(1, 'w', { accuracy: 100 }),
+        move(2, 'b', { accuracy: 10 }), // not mine
+        move(3, 'w', { accuracy: 60, classification: 'Inaccuracy' }),
+        move(41, 'w', { accuracy: 80, fenBefore: ENDING }),
+        move(43, 'w', { accuracy: 40, fenBefore: START }),
+      ],
+      1,
+    );
     const [opening, middlegame, endgame] = accuracyByPhase([g]);
     expect(opening).toMatchObject({ phase: 'opening', moves: 2, accuracy: 80 });
     expect(opening!.positions.map((p) => p.ply)).toEqual([3, 1]);
@@ -97,8 +111,20 @@ describe('Phase 8 — insights: phases', () => {
 
 describe('Phase 8 — insights: blunders, motifs, openings, rating', () => {
   it('blunders per 10 moves, game by game, oldest first', () => {
-    const a = reviewed('Me', 'O', '1-0', [move(1, 'w'), move(3, 'w', { classification: 'Blunder' }), move(5, 'w'), move(7, 'w'), move(9, 'w')], 2);
-    const b = reviewed('Me', 'O', '0-1', Array.from({ length: 20 }, (_, i) => move(i * 2 + 1, 'w', i < 2 ? { classification: 'Blunder' } : {})), 1);
+    const a = reviewed(
+      'Me',
+      'O',
+      '1-0',
+      [move(1, 'w'), move(3, 'w', { classification: 'Blunder' }), move(5, 'w'), move(7, 'w'), move(9, 'w')],
+      2,
+    );
+    const b = reviewed(
+      'Me',
+      'O',
+      '0-1',
+      Array.from({ length: 20 }, (_, i) => move(i * 2 + 1, 'w', i < 2 ? { classification: 'Blunder' } : {})),
+      1,
+    );
     const points = blundersOverTime([a, b]);
     expect(points.map((p) => p.gameId)).toEqual(['g1', 'g2']);
     expect(points[0]).toMatchObject({ blunders: 2, moves: 20, per10: 1 });
@@ -108,14 +134,23 @@ describe('Phase 8 — insights: blunders, motifs, openings, rating', () => {
 
   it('motifs: one count per move and motif, from my mistakes only', () => {
     const fork = { kind: 'fork' as const, square: 'e4' as const };
-    const g = reviewed('Me', 'O', '0-1', [
-      move(1, 'w', { classification: 'Blunder', motifs: [fork, fork, { kind: 'pin', square: 'c3' }] }),
-      move(3, 'w', { classification: 'Mistake', motifs: [fork] }),
-      move(5, 'w', { classification: 'Good', motifs: [fork] }), // not a mistake
-      move(2, 'b', { classification: 'Blunder', motifs: [fork] }), // not mine
-    ], 1);
+    const g = reviewed(
+      'Me',
+      'O',
+      '0-1',
+      [
+        move(1, 'w', { classification: 'Blunder', motifs: [fork, fork, { kind: 'pin', square: 'c3' }] }),
+        move(3, 'w', { classification: 'Mistake', motifs: [fork] }),
+        move(5, 'w', { classification: 'Good', motifs: [fork] }), // not a mistake
+        move(2, 'b', { classification: 'Blunder', motifs: [fork] }), // not mine
+      ],
+      1,
+    );
     const m = commonMotifs([g]);
-    expect(m.map((x) => [x.kind, x.count])).toEqual([['fork', 2], ['pin', 1]]);
+    expect(m.map((x) => [x.kind, x.count])).toEqual([
+      ['fork', 2],
+      ['pin', 1],
+    ]);
     expect(m[0]!.positions.map((p) => p.ply)).toEqual([1, 3]);
   });
 

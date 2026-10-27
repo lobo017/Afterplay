@@ -126,8 +126,7 @@ test.describe('Phase 1 — Core Rules, GameTree, PGN Round-Trip & Browser Indexe
         castleSan: castleMove.san,
         c960RoundTripAfterUndo,
         pgnIdempotent: written1 === written2,
-        treeIdempotent:
-          JSON.stringify(tree1.toJSON()) === JSON.stringify(tree2.toJSON()),
+        treeIdempotent: JSON.stringify(tree1.toJSON()) === JSON.stringify(tree2.toJSON()),
         mainLineSan: tree1.getMainLine().map((n) => n.san),
         v1Stores,
         v2Stores,
@@ -142,35 +141,14 @@ test.describe('Phase 1 — Core Rules, GameTree, PGN Round-Trip & Browser Indexe
     });
 
     expect(e2eResults.perft2).toBe(400);
-    expect(e2eResults.c960RoundTripBefore).toBe(
-      '1r3kr1/pppppppp/8/8/8/8/PPPPPPPP/1R3KR1 w GBgb - 0 1',
-    );
+    expect(e2eResults.c960RoundTripBefore).toBe('1r3kr1/pppppppp/8/8/8/8/PPPPPPPP/1R3KR1 w GBgb - 0 1');
     expect(e2eResults.castleSan).toBe('O-O');
-    expect(e2eResults.c960RoundTripAfterUndo).toBe(
-      '1r3kr1/pppppppp/8/8/8/8/PPPPPPPP/1R3KR1 w GBgb - 0 1',
-    );
+    expect(e2eResults.c960RoundTripAfterUndo).toBe('1r3kr1/pppppppp/8/8/8/8/PPPPPPPP/1R3KR1 w GBgb - 0 1');
     expect(e2eResults.pgnIdempotent).toBe(true);
     expect(e2eResults.treeIdempotent).toBe(true);
-    expect(e2eResults.mainLineSan).toEqual([
-      'e4',
-      'e6',
-      'Nf3',
-      'Nc6',
-      'Bb5',
-      'd5',
-      'e5',
-      'Ne7',
-      'O-O',
-      'Bd7',
-    ]);
+    expect(e2eResults.mainLineSan).toEqual(['e4', 'e6', 'Nf3', 'Nc6', 'Bb5', 'd5', 'e5', 'Ne7', 'O-O', 'Bd7']);
     expect(e2eResults.v1Stores).toEqual(['games', 'schema_meta', 'settings']);
-    expect(e2eResults.v2Stores).toEqual([
-      'games',
-      'puzzles',
-      'schema_meta',
-      'settings',
-      'srs_cards',
-    ]);
+    expect(e2eResults.v2Stores).toEqual(['games', 'puzzles', 'schema_meta', 'settings', 'srs_cards']);
     expect(e2eResults.v2HasAccuracyIdx).toBe(true);
     expect(e2eResults.v3Stores).toEqual([
       'endgame_progress',

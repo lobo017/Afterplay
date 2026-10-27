@@ -8,7 +8,9 @@ const OTHER_LOOPBACK_NAMES = new Set(['localhost', '[::1]', '::1']);
 
 /** The host name of a Host header value ("localhost:4173" → "localhost", "[::1]:4173" → "[::1]"). */
 export function hostNameOf(hostHeader) {
-  const host = String(hostHeader ?? '').trim().toLowerCase();
+  const host = String(hostHeader ?? '')
+    .trim()
+    .toLowerCase();
   if (host.startsWith('[')) {
     const end = host.indexOf(']');
     return end === -1 ? host : host.slice(0, end + 1);

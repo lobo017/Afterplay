@@ -7,9 +7,9 @@ const SCREENSHOT_DIR = path.join('test-results', 'phase6b-screens');
 const MODES = ['play', 'train', 'review', 'games'] as const;
 
 async function current(page: Page): Promise<string[]> {
-  return page.locator('[data-testid="main-nav"] [aria-current="page"]').evaluateAll((els) =>
-    els.map((el) => (el as HTMLElement).dataset.mode ?? ''),
-  );
+  return page
+    .locator('[data-testid="main-nav"] [aria-current="page"]')
+    .evaluateAll((els) => els.map((el) => (el as HTMLElement).dataset.mode ?? ''));
 }
 
 async function sideScroll(page: Page): Promise<number> {
@@ -77,7 +77,9 @@ test.describe('Phase 6b — app frame and navigation', () => {
     await expect(page.getByTestId('today-screen')).toHaveAttribute('data-state', 'ready');
     await page.getByTestId('btn-train-start').click();
     await expect(page.getByTestId('train-session')).toBeVisible();
-    await expect(page.getByTestId('puzzle-trainer')).toHaveAttribute('data-puzzle-state', 'playing', { timeout: 15_000 });
+    await expect(page.getByTestId('puzzle-trainer')).toHaveAttribute('data-puzzle-state', 'playing', {
+      timeout: 15_000,
+    });
     expect(await page.evaluate(() => window.__wizardChessPuzzles!.getTrainView())).toBe('session');
 
     await page.getByTestId('btn-train-hub').click();
@@ -94,7 +96,9 @@ test.describe('Phase 6b — app frame and navigation', () => {
     await expect(page.getByTestId('train-hub')).toBeVisible();
   });
 
-  test('Settings opens from the top bar and closes by button, Escape and backdrop, returning focus', async ({ page }) => {
+  test('Settings opens from the top bar and closes by button, Escape and backdrop, returning focus', async ({
+    page,
+  }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('/');
     const sheet = page.getByTestId('settings-sheet');
@@ -107,7 +111,9 @@ test.describe('Phase 6b — app frame and navigation', () => {
     await expect(sheet).toHaveAttribute('aria-modal', 'true');
     await expect(sheet.locator('h2')).toHaveText('Settings');
     // Focus moved into the sheet
-    expect(await page.evaluate(() => document.activeElement?.closest('[data-testid="settings-sheet"]') !== null)).toBe(true);
+    expect(await page.evaluate(() => document.activeElement?.closest('[data-testid="settings-sheet"]') !== null)).toBe(
+      true,
+    );
 
     // About & diagnostics holds what used to be in the header and footer
     const about = page.getByTestId('settings-about');
@@ -147,13 +153,17 @@ test.describe('Phase 6b — app frame and navigation', () => {
     // Tab stays inside the open sheet
     await opener.click();
     for (let i = 0; i < 6; i++) await page.keyboard.press('Tab');
-    expect(await page.evaluate(() => document.activeElement?.closest('[data-testid="settings-sheet"]') !== null)).toBe(true);
+    expect(await page.evaluate(() => document.activeElement?.closest('[data-testid="settings-sheet"]') !== null)).toBe(
+      true,
+    );
     await page.keyboard.press('Escape');
     await page.keyboard.press('`');
     await expect(page.getByTestId('dev-overlay')).toBeVisible();
   });
 
-  test('phone: a bottom tab bar, the screen name on top, full-screen Settings, no sideways scroll', async ({ page }) => {
+  test('phone: a bottom tab bar, the screen name on top, full-screen Settings, no sideways scroll', async ({
+    page,
+  }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/');
     const nav = (await page.getByTestId('main-nav').boundingBox())!;

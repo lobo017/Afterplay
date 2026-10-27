@@ -9,24 +9,10 @@ import { Preferences, loadStoredAppSettings } from './ui/settings-persistence';
 import { icon, type IconName } from './ui/components/icons';
 import { initBoardSize } from './render/board-size';
 import { boardFeel, type BoardFeelStore } from './render/board-feel';
-import {
-  DEFAULT_POSITION,
-  RulesAdapter,
-  validateChessFen,
-} from './core/rules';
+import { DEFAULT_POSITION, RulesAdapter, validateChessFen } from './core/rules';
 import { GameTree, nagToGlyph, resolveNagCode } from './core/game-tree';
-import {
-  parseCommentAnnotations,
-  parsePgn,
-  parsePgnGames,
-  writePgn,
-} from './core/pgn';
-import {
-  LATEST_SCHEMA_VERSION,
-  WizardChessStorage,
-  deleteWizardChessDB,
-  openWizardChessDB,
-} from './storage/db';
+import { parseCommentAnnotations, parsePgn, parsePgnGames, writePgn } from './core/pgn';
+import { LATEST_SCHEMA_VERSION, WizardChessStorage, deleteWizardChessDB, openWizardChessDB } from './storage/db';
 import {
   AnalysisCache,
   EngineCancelledError,
@@ -47,43 +33,16 @@ import {
   getTierForRating,
   selectHumanLikeMove,
 } from './engine/bot';
-import {
-  formatScore,
-  parseUciLine,
-  scoreForWhite,
-  scoreToCentipawns,
-} from './engine/uci-parser';
-import {
-  BOARD_THEMES,
-  PIECE_SETS,
-} from './render/themes';
+import { formatScore, parseUciLine, scoreForWhite, scoreToCentipawns } from './engine/uci-parser';
+import { BOARD_THEMES, PIECE_SETS } from './render/themes';
 import { getPieceSvgMarkup } from './render/piece-sets';
 import { BoardOverlay, squareToBoardCoords } from './render/overlay';
-import {
-  CaptureParticleSystem,
-  PARTICLE_POOL_SIZE,
-  SHARDS_PER_CAPTURE,
-} from './render/particles';
+import { CaptureParticleSystem, PARTICLE_POOL_SIZE, SHARDS_PER_CAPTURE } from './render/particles';
 import { CathedralAudio } from './render/audio';
-import {
-  BoardRenderer,
-  computePremoveTargets,
-} from './render/board-renderer';
-import {
-  ChessClock,
-  TIME_CONTROL_PRESETS,
-  formatClockMs,
-} from './ui/clock';
-import {
-  PlayController,
-  computeCapturedAndMaterial,
-} from './ui/play-controller';
-import {
-  OPENINGS_BY_EPD,
-  formatOpeningBadge,
-  lookupGameOpening,
-  lookupOpeningByFen,
-} from './analysis/opening-lookup';
+import { BoardRenderer, computePremoveTargets } from './render/board-renderer';
+import { ChessClock, TIME_CONTROL_PRESETS, formatClockMs } from './ui/clock';
+import { PlayController, computeCapturedAndMaterial } from './ui/play-controller';
+import { OPENINGS_BY_EPD, formatOpeningBadge, lookupGameOpening, lookupOpeningByFen } from './analysis/opening-lookup';
 import {
   EvalBar,
   cpToWhiteWinPercent,
@@ -92,19 +51,9 @@ import {
   scoreToEvalBarPercent,
   scoreToWhiteWinPercent,
 } from './analysis/eval-bar';
-import {
-  buildNullMoveFen,
-  detectOpponentThreat,
-} from './analysis/threat-detector';
-import {
-  EngineLinesPanel,
-  formatPvMovesToSan,
-} from './analysis/engine-lines-panel';
-import {
-  PositionEditor,
-  parseFenForEditor,
-  serializeEditorBoardToFen,
-} from './analysis/position-editor';
+import { buildNullMoveFen, detectOpponentThreat } from './analysis/threat-detector';
+import { EngineLinesPanel, formatPvMovesToSan } from './analysis/engine-lines-panel';
+import { PositionEditor, parseFenForEditor, serializeEditorBoardToFen } from './analysis/position-editor';
 import { AnalysisController } from './analysis/analysis-controller';
 import { BotSelectionClient } from './engine/bot-selection-client';
 import { ReviewPanel } from './review/review-panel';
@@ -355,12 +304,8 @@ declare global {
 }
 
 export function detectEnvironment(): AppShellEnvironment {
-  const isIsolated =
-    typeof window !== 'undefined' && Boolean(window.crossOriginIsolated);
-  const threads =
-    typeof navigator !== 'undefined' && navigator.hardwareConcurrency
-      ? navigator.hardwareConcurrency
-      : 1;
+  const isIsolated = typeof window !== 'undefined' && Boolean(window.crossOriginIsolated);
+  const threads = typeof navigator !== 'undefined' && navigator.hardwareConcurrency ? navigator.hardwareConcurrency : 1;
 
   return {
     crossOriginIsolated: isIsolated,
@@ -388,13 +333,12 @@ export function mountAppShell(container: HTMLElement): {
         </div>
         <nav class="wc-nav" aria-label="Main" data-testid="main-nav">
           ${NAV_ITEMS.map(
-            (item) => `<button type="button" class="wc-nav-item" data-mode="${item.mode}" data-testid="mode-tab-${item.mode}"${
-              item.mode === 'play' ? ' aria-current="page"' : ''
-            }>${icon(item.icon)}<span class="wc-nav-label">${item.label}</span>${
-              item.mode === 'train'
-                ? '<span class="wc-nav-count" data-testid="nav-train-count" hidden></span>'
-                : ''
-            }</button>`,
+            (item) =>
+              `<button type="button" class="wc-nav-item" data-mode="${item.mode}" data-testid="mode-tab-${item.mode}"${
+                item.mode === 'play' ? ' aria-current="page"' : ''
+              }>${icon(item.icon)}<span class="wc-nav-label">${item.label}</span>${
+                item.mode === 'train' ? '<span class="wc-nav-count" data-testid="nav-train-count" hidden></span>' : ''
+              }</button>`,
           ).join('')}
         </nav>
         <div class="wc-topbar-actions">
@@ -439,9 +383,7 @@ export function mountAppShell(container: HTMLElement): {
       },
     });
 
-  const workspaceHostEl = container.querySelector(
-    '#wc-workspace-host',
-  ) as HTMLElement;
+  const workspaceHostEl = container.querySelector('#wc-workspace-host') as HTMLElement;
   const playRootEl = container.querySelector('#wc-play-root') as HTMLElement;
   const analysisRootEl = document.createElement('div');
   analysisRootEl.id = 'wc-analysis-root';
@@ -693,17 +635,30 @@ export function mountAppShell(container: HTMLElement): {
       return null;
     }
     if (!drills) return null;
-    const [today, rating, summary] = await Promise.all([api.store.todaySummary(), api.store.getRating(), drills.summary()]);
+    const [today, rating, summary] = await Promise.all([
+      api.store.todaySummary(),
+      api.store.getRating(),
+      drills.summary(),
+    ]);
     const due = today.dueReviews.personal + today.dueReviews.lichess;
     const repertoire = summary.repertoire.due + summary.repertoire.fresh;
     const waiting = due + today.newPersonal + repertoire + summary.endgame.due + summary.visualization.due;
     const s = (n: number) => (n === 1 ? '' : 's');
-    if (due > 0) return { target: { trainer: 'puzzles', mode: 'review' }, detail: `Your ${due} due review${s(due)}`, waiting };
+    if (due > 0)
+      return { target: { trainer: 'puzzles', mode: 'review' }, detail: `Your ${due} due review${s(due)}`, waiting };
     if (repertoire > 0) {
-      return { target: { trainer: 'repertoire' }, detail: `Your ${repertoire} repertoire position${s(repertoire)}`, waiting };
+      return {
+        target: { trainer: 'repertoire' },
+        detail: `Your ${repertoire} repertoire position${s(repertoire)}`,
+        waiting,
+      };
     }
     if (summary.endgame.due > 0) {
-      return { target: { trainer: 'endgames' }, detail: `Your ${summary.endgame.due} due endgame drill${s(summary.endgame.due)}`, waiting };
+      return {
+        target: { trainer: 'endgames' },
+        detail: `Your ${summary.endgame.due} due endgame drill${s(summary.endgame.due)}`,
+        waiting,
+      };
     }
     if (summary.visualization.due > 0) {
       return {
@@ -719,7 +674,11 @@ export function mountAppShell(container: HTMLElement): {
         waiting,
       };
     }
-    return { target: { trainer: 'puzzles', mode: 'rated' }, detail: `Rated puzzles near ${Math.round(rating.rating)}`, waiting };
+    return {
+      target: { trainer: 'puzzles', mode: 'rated' },
+      detail: `Rated puzzles near ${Math.round(rating.rating)}`,
+      waiting,
+    };
   };
 
   /** How much Train has waiting (reviews due, new puzzles and positions, due drills), on its tab. */
@@ -869,7 +828,9 @@ export function mountAppShell(container: HTMLElement): {
       const me = color === 'w' ? record.white : record.black;
       out.push({
         id: record.id,
-        label: [`${me} vs ${opponent}`, record.date ? record.date.replace(/\./g, '-') : null].filter(Boolean).join(' · '),
+        label: [`${me} vs ${opponent}`, record.date ? record.date.replace(/\./g, '-') : null]
+          .filter(Boolean)
+          .join(' · '),
         pgn: record.pgn,
         color,
         loadBestMoves: async () => {
@@ -884,7 +845,11 @@ export function mountAppShell(container: HTMLElement): {
   };
 
   /** Creates a trainer in its own chunk the first time it is opened; its loading line stands in until then. */
-  function lazyTrainer<T>(kind: Exclude<TrainerKind, 'puzzles'>, label: string, make: () => Promise<T>): () => Promise<T> {
+  function lazyTrainer<T>(
+    kind: Exclude<TrainerKind, 'puzzles'>,
+    label: string,
+    make: () => Promise<T>,
+  ): () => Promise<T> {
     let loading: Promise<T> | null = null;
     return () => {
       if (!loading) {
@@ -908,22 +873,28 @@ export function mountAppShell(container: HTMLElement): {
   const loadRepertoire = lazyTrainer('repertoire', 'The repertoire trainer', () =>
     import('./trainers/repertoire-trainer').then((mod) => {
       trainerRoots.repertoire.replaceChildren();
-      repertoireTrainer = new mod.RepertoireTrainer({ container: trainerRoots.repertoire, store: drills!.repertoire, audio });
+      repertoireTrainer = new mod.RepertoireTrainer({
+        container: trainerRoots.repertoire,
+        store: drills!.repertoire,
+        audio,
+      });
       return repertoireTrainer;
     }),
   );
   const loadEndgames = lazyTrainer('endgames', 'The endgame trainer', () =>
-    Promise.all([import('./trainers/endgame-trainer'), import('./trainers/endgame-tables-client')]).then(([mod, tables]) => {
-      trainerRoots.endgames.replaceChildren();
-      endgameTrainer = new mod.EndgameTrainer({
-        container: trainerRoots.endgames,
-        store: drills!.endgames,
-        engine: sharedEngine,
-        defender: new tables.EndgameTablesClient(),
-        audio,
-      });
-      return endgameTrainer;
-    }),
+    Promise.all([import('./trainers/endgame-trainer'), import('./trainers/endgame-tables-client')]).then(
+      ([mod, tables]) => {
+        trainerRoots.endgames.replaceChildren();
+        endgameTrainer = new mod.EndgameTrainer({
+          container: trainerRoots.endgames,
+          store: drills!.endgames,
+          engine: sharedEngine,
+          defender: new tables.EndgameTablesClient(),
+          audio,
+        });
+        return endgameTrainer;
+      },
+    ),
   );
   const loadVisualization = lazyTrainer('visualization', 'The visualization drills', () =>
     import('./trainers/visualization-trainer').then((mod) => {
@@ -992,12 +963,8 @@ export function mountAppShell(container: HTMLElement): {
       }
     });
   }
-  trainRootEl
-    .querySelector('[data-testid="btn-train-start"]')
-    ?.addEventListener('click', () => void startTraining());
-  trainRootEl
-    .querySelector('[data-testid="btn-train-hub"]')
-    ?.addEventListener('click', () => showTrainView('hub'));
+  trainRootEl.querySelector('[data-testid="btn-train-start"]')?.addEventListener('click', () => void startTraining());
+  trainRootEl.querySelector('[data-testid="btn-train-hub"]')?.addEventListener('click', () => showTrainView('hub'));
 
   /** Opens a Games list game on the analysis board, with its saved review if it has one. */
   const openLibraryGame = async (record: StoredGameRecord): Promise<boolean> => {
@@ -1046,7 +1013,15 @@ export function mountAppShell(container: HTMLElement): {
       setAccounts: (accounts) => lib.setMyAccounts(accounts),
     });
     gamesRootEl.innerHTML = `
-      <div class="wc-games-tabs">${tabListHtml('games', [{ id: 'library', label: 'Library' }, { id: 'insights', label: 'Insights' }], 'library', 'Games views')}</div>
+      <div class="wc-games-tabs">${tabListHtml(
+        'games',
+        [
+          { id: 'library', label: 'Library' },
+          { id: 'insights', label: 'Insights' },
+        ],
+        'library',
+        'Games views',
+      )}</div>
       <div class="wc-games-pane" ${tabPanelAttrs('games', 'library', 'library')}></div>
       <div class="wc-games-pane" ${tabPanelAttrs('games', 'insights', 'library')}></div>`;
     const libraryPane = gamesRootEl.querySelector('[data-tab-panel="library"]') as HTMLElement;
@@ -1239,7 +1214,8 @@ export function mountAppShell(container: HTMLElement): {
     if (!prev || next.sound !== prev.sound) audio.setEnabled(next.sound);
     if (!prev || next.volume !== prev.volume) audio.setVolume(next.volume / 100);
     if (prev && next.analysisLines !== prev.analysisLines) analysisController.setMultiPv(next.analysisLines);
-    if (prev && next.reviewPreset !== prev.reviewPreset && reviewPanel.getPreset() !== next.reviewPreset) reviewPanel.setPreset(next.reviewPreset);
+    if (prev && next.reviewPreset !== prev.reviewPreset && reviewPanel.getPreset() !== next.reviewPreset)
+      reviewPanel.setPreset(next.reviewPreset);
   };
   applyAppSettings(appSettings.get(), null);
   appSettings.subscribe(applyAppSettings);
@@ -1335,8 +1311,7 @@ export function mountAppShell(container: HTMLElement): {
 
     window.__wizardChessAnalysis = {
       controller: analysisController,
-      switchToAnalysis: (copyPlayGame = false) =>
-        setMode('review', copyPlayGame),
+      switchToAnalysis: (copyPlayGame = false) => setMode('review', copyPlayGame),
       switchToPlay: () => setMode('play', false),
       getMode: () => currentMode,
       AnalysisController,
@@ -1375,12 +1350,7 @@ export function mountAppShell(container: HTMLElement): {
       ) {
         return;
       }
-      if (
-        (e.key === 'f' || e.key === 'F') &&
-        !e.ctrlKey &&
-        !e.altKey &&
-        !e.metaKey
-      ) {
+      if ((e.key === 'f' || e.key === 'F') && !e.ctrlKey && !e.altKey && !e.metaKey) {
         e.preventDefault();
         const board = playController.getBoard();
         board.setFlipped(!board.isFlipped());
@@ -1396,4 +1366,3 @@ export function mountAppShell(container: HTMLElement): {
     setMode,
   };
 }
-

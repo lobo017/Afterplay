@@ -38,22 +38,15 @@ async function readBoardState(page: Page) {
     const controller = window.__wizardChessAnalysis!.controller;
     const placement = controller.getAdapter().fen().split(' ')[0] ?? '';
     const pieces = Array.from(
-      document.querySelectorAll<HTMLElement>(
-        '[data-testid="board-pieces-layer"] .wc-piece',
-      ),
-    ).map(
-      (el) =>
-        `${el.getAttribute('data-square')}:${el.getAttribute('data-color')}${el.getAttribute('data-piece')}`,
-    );
+      document.querySelectorAll<HTMLElement>('[data-testid="board-pieces-layer"] .wc-piece'),
+    ).map((el) => `${el.getAttribute('data-square')}:${el.getAttribute('data-color')}${el.getAttribute('data-piece')}`);
     const runningPieceAnimations = document
       .getAnimations()
       .filter(
         (a) =>
           a.playState === 'running' &&
           (a.effect as KeyframeEffect | null)?.target instanceof HTMLElement &&
-          ((a.effect as KeyframeEffect).target as HTMLElement).classList.contains(
-            'wc-piece',
-          ),
+          ((a.effect as KeyframeEffect).target as HTMLElement).classList.contains('wc-piece'),
       ).length;
     return {
       fen: controller.getAdapter().fen(),
@@ -85,9 +78,7 @@ function expectedPiecesFromPlacement(placement: string): string[] {
 }
 
 test.describe('Phase 4 — Analysis navigation: zero layout shift & move animation', () => {
-  test('stepping through a 40-move game with arrow keys causes zero layout shift', async ({
-    page,
-  }) => {
+  test('stepping through a 40-move game with arrow keys causes zero layout shift', async ({ page }) => {
     test.setTimeout(120_000);
     const plyCount = await openAnalysisWithGame(page);
     expect(plyCount).toBe(81);
@@ -110,9 +101,7 @@ test.describe('Phase 4 — Analysis navigation: zero layout shift & move animati
     const shifts = await stopLayoutShiftRecorder(page);
     const summary = summarizeShiftSources(shifts);
     const totalShift = shifts.reduce((acc, s) => acc + s.value, 0);
-    console.log(
-      `[layout-shift] entries=${shifts.length} total=${totalShift.toFixed(5)}`,
-    );
+    console.log(`[layout-shift] entries=${shifts.length} total=${totalShift.toFixed(5)}`);
     for (const s of summary) {
       console.log(
         `[layout-shift] ${s.count}× ${s.node} prev=${JSON.stringify(s.example.previousRect)} curr=${JSON.stringify(s.example.currentRect)}`,
@@ -131,9 +120,7 @@ test.describe('Phase 4 — Analysis navigation: zero layout shift & move animati
     expect(shifts.length).toBe(0);
   });
 
-  test('holding the arrow key through a game ends on the correct position with no layout shift', async ({
-    page,
-  }) => {
+  test('holding the arrow key through a game ends on the correct position with no layout shift', async ({ page }) => {
     test.setTimeout(90_000);
     const plyCount = await openAnalysisWithGame(page);
     const scrollBefore = await page.evaluate(() => window.scrollY);
@@ -174,9 +161,7 @@ test.describe('Phase 4 — Analysis navigation: zero layout shift & move animati
 
     // Held forward: on the final move, every piece element on its square, nothing animating.
     expect(afterForward.currentPly).toBe(plyCount);
-    expect(afterForward.pieces).toEqual(
-      expectedPiecesFromPlacement(afterForward.placement),
-    );
+    expect(afterForward.pieces).toEqual(expectedPiecesFromPlacement(afterForward.placement));
     expect(afterForward.runningPieceAnimations).toBe(0);
 
     expect(afterBack.currentPly).toBe(0);
@@ -192,9 +177,7 @@ test.describe('Phase 4 — Analysis navigation: zero layout shift & move animati
     expect(shifts.length).toBe(0);
   });
 
-  test('a single step animates the move (reversed when stepping back) and highlights it', async ({
-    page,
-  }) => {
+  test('a single step animates the move (reversed when stepping back) and highlights it', async ({ page }) => {
     test.setTimeout(60_000);
     await openAnalysisWithGame(page);
 
@@ -217,12 +200,8 @@ test.describe('Phase 4 — Analysis navigation: zero layout shift & move animati
       });
       return {
         anims,
-        lastFrom: document
-          .querySelector('[data-testid="overlay-last-move-from"]')
-          ?.getAttribute('data-square'),
-        lastTo: document
-          .querySelector('[data-testid="overlay-last-move-to"]')
-          ?.getAttribute('data-square'),
+        lastFrom: document.querySelector('[data-testid="overlay-last-move-from"]')?.getAttribute('data-square'),
+        lastTo: document.querySelector('[data-testid="overlay-last-move-to"]')?.getAttribute('data-square'),
       };
     });
     expect(forward.anims).toHaveLength(1);
@@ -244,9 +223,7 @@ test.describe('Phase 4 — Analysis navigation: zero layout shift & move animati
         return { from: norm(kf[0]?.transform), to: norm(kf[kf.length - 1]?.transform) };
       });
     });
-    expect(backward).toEqual([
-      { from: 'translate3d(200%, 400%, 0px)', to: 'translate3d(200%, 600%, 0px)' },
-    ]);
+    expect(backward).toEqual([{ from: 'translate3d(200%, 400%, 0px)', to: 'translate3d(200%, 600%, 0px)' }]);
 
     // Home / End are jumps: they snap without animating.
     const jump = await page.evaluate(async () => {
@@ -255,11 +232,8 @@ test.describe('Phase 4 — Analysis navigation: zero layout shift & move animati
       controller.goToEnd();
       return document
         .getAnimations()
-        .filter((a) =>
-          ((a.effect as KeyframeEffect).target as HTMLElement | null)?.classList.contains(
-            'wc-piece',
-          ),
-        ).length;
+        .filter((a) => ((a.effect as KeyframeEffect).target as HTMLElement | null)?.classList.contains('wc-piece'))
+        .length;
     });
     expect(jump).toBe(0);
 
@@ -274,11 +248,8 @@ test.describe('Phase 4 — Analysis navigation: zero layout shift & move animati
       controller.goBack();
       return document
         .getAnimations()
-        .filter((a) =>
-          ((a.effect as KeyframeEffect).target as HTMLElement | null)?.classList.contains(
-            'wc-piece',
-          ),
-        ).length;
+        .filter((a) => ((a.effect as KeyframeEffect).target as HTMLElement | null)?.classList.contains('wc-piece'))
+        .length;
     });
     expect(off).toBe(0);
   });

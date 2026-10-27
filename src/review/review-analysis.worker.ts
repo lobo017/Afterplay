@@ -1,9 +1,6 @@
 /// <reference lib="webworker" />
 import { analyzeMove } from './review-game';
-import type {
-  ReviewAnalysisRequestMessage,
-  ReviewAnalysisResponseMessage,
-} from './review-analysis-client';
+import type { ReviewAnalysisRequestMessage, ReviewAnalysisResponseMessage } from './review-analysis-client';
 
 /** Review worker: classifies, explains and scores one move per message. */
 const scope = self as unknown as DedicatedWorkerGlobalScope;

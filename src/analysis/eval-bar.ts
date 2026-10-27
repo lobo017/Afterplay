@@ -143,10 +143,7 @@ export class EvalBar {
   }
 
   public setScoreWhite(scoreWhite: UciScore): void {
-    if (
-      this.scoreWhite.type === scoreWhite.type &&
-      this.scoreWhite.value === scoreWhite.value
-    ) {
+    if (this.scoreWhite.type === scoreWhite.type && this.scoreWhite.value === scoreWhite.value) {
       return;
     }
     this.scoreWhite = { ...scoreWhite };
@@ -179,19 +176,13 @@ export class EvalBar {
     const whitePct = scoreToEvalBarPercent(this.scoreWhite);
     const blackPct = 100 - whitePct;
     const isMate = this.scoreWhite.type === 'mate';
-    const whiteAheadOrEqual =
-      this.scoreWhite.type === 'mate'
-        ? this.scoreWhite.value >= 0
-        : this.scoreWhite.value >= 0;
+    const whiteAheadOrEqual = this.scoreWhite.type === 'mate' ? this.scoreWhite.value >= 0 : this.scoreWhite.value >= 0;
     const scoreText = formatEvalBarScore(this.scoreWhite);
 
     this.rootEl.setAttribute('data-flipped', String(this.flipped));
     this.rootEl.setAttribute('data-white-pct', whitePct.toFixed(1));
     this.rootEl.setAttribute('data-mate', String(isMate));
-    this.rootEl.setAttribute(
-      'data-advantage',
-      whiteAheadOrEqual ? 'w' : 'b',
-    );
+    this.rootEl.setAttribute('data-advantage', whiteAheadOrEqual ? 'w' : 'b');
     this.rootEl.setAttribute('aria-valuenow', whitePct.toFixed(0));
     this.rootEl.setAttribute('aria-valuetext', scoreText);
 
@@ -212,14 +203,8 @@ export class EvalBar {
 
     // Place the score label on the winning side's end of the bar
     const labelAtBottom = this.flipped ? !whiteAheadOrEqual : whiteAheadOrEqual;
-    this.scoreEl.setAttribute(
-      'data-position',
-      labelAtBottom ? 'bottom' : 'top',
-    );
-    this.scoreEl.setAttribute(
-      'data-theme-tone',
-      whiteAheadOrEqual ? 'light' : 'dark',
-    );
+    this.scoreEl.setAttribute('data-position', labelAtBottom ? 'bottom' : 'top');
+    this.scoreEl.setAttribute('data-theme-tone', whiteAheadOrEqual ? 'light' : 'dark');
     const shown = labelAtBottom ? this.scoreBottomEl : this.scoreTopEl;
     const other = labelAtBottom ? this.scoreTopEl : this.scoreBottomEl;
     if (shown.textContent !== scoreText) {
