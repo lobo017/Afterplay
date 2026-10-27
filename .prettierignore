@@ -1,0 +1,12 @@
+# Prose, datasets and the old app are not formatted by Prettier
+docs/
+data/
+legacy/
+LICENSES/
+*.md
+package-lock.json
+# Generated
+dist/
+dist-ext/
+test-results/
+playwright-report/

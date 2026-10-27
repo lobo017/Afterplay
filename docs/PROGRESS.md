@@ -21,11 +21,48 @@ log to `docs/progress/phase-N.md` and keep only a summary here.
 | 6b | UX redesign | Done | Board feel + badges; app frame (Play / Train / Review / Games + Settings sheet); all six stages committed (last `23f5d47`) | [phase-6b](progress/phase-6b.md) |
 | 7 | Repertoire, endgame & visualization | Done | White/Black repertoire trees (build, import, drill, review flag), 6 engine-verified endgame drills, coordinate/blindfold/guess-the-move; all feed Today with the puzzles | [phase-7](progress/phase-7.md) |
 | 8 | Library, insights, settings, offline | Done | Own service worker (precache + COOP/COEP, update banner) and an offline e2e gate; played games kept, colour/opening/date/accuracy filters, delete, worker bulk import; Insights tab; live-region announcements and keyboard play on every board; Settings for usernames, analysis lines, review depth | [phase-8](progress/phase-8.md) |
-| 9 | Performance pass & final audit | Pending | Frame-time/memory/startup profiling against budgets and full spec verification | — |
+| 9 | Performance pass & final audit | In progress | Frame-time/memory/startup profiling against budgets and full spec verification | — |
 
 ## Current phase and next step
 
-Phase 8 is done (commits `23cc01e` offline PWA, `06a2612` library, `372f45d` insights, `0085ced` accessibility, then leftovers and Settings; see [phase-8](progress/phase-8.md)). Next: Phase 9 (performance pass and final audit): re-run `perf:drag` first, since Phase 8 changed the board's input code (keyboard handling, click logic shared in `tryCompleteSelectedMove`).
+Phase 9 (performance pass and final audit) is in progress; the plan and the Phase 8 follow-ups are below. Phase 8 is done (commits `23cc01e` offline PWA, `06a2612` library, `372f45d` insights, `0085ced` accessibility, then leftovers and Settings; see [phase-8](progress/phase-8.md)).
+
+### Phase 8 follow-ups (2026-10-26, before Phase 9)
+
+1. **Bulk-import limit: back to 50 ms (`e1e94cc`).** The test observes `longtask` entries on the page's main thread
+   for the whole paste → import → list sequence. The 75 ms task that led to the 120 ms limit was **not the import**:
+   it was `new AudioContext()`, built by `audio.prewarm()` on the first pointer movement (Playwright's first click
+   moves the mouse). Probes with page-side timers around `listGameIds`, `saveNewGames`, `listGames`, `renderRows` showed the
+   import's biggest page step is ~20 ms for 400 games (a 3000-game import also showed no long task). The cold start of
+   the browser's audio stack costs 160–340 ms whatever the constructor options (`latencyHint`, `sampleRate`: tested, no
+   effect; only the first context of a browser process pays). The test now moves the pointer first so its window measures the import.
+   The audio stall itself is a Phase 9 item (below).
+2. **Navigation sweep (`perf:drag`): not decidable yet.** The first run on `e1e94cc` failed all four windows by the
+   same ~1.5 ms (p95 18.2–18.6 ms, p50 17.7 ms, 0 dropped frames beyond 1, 0 long tasks). A *blank* headless page
+   shows the same cadence (p50 17.5–17.9 ms ≈ 56 Hz) at that moment, so the cause is the environment: the session
+   was locked with the display off (LogonUI running, 19 min idle, display timeout 10 min on AC), and Chrome then has no
+   display vsync. System timer resolution was also 1 ms (holding 0.5 ms moved the blank page only from 17.9 to 17.5 ms).
+   See Phase 9 below for how the script now guards against this.
+3. **Endgame-data stall: slowness is ruled out, a hang cannot be proved (`b26bdf8`).** Alone and plugged in the file
+   takes 80 s (longest test 37 s; a battery run was 160 s), so 45 min is not CPU slowness. The machine enters Modern
+   Standby many times a day (power log events 506/507, e.g. 15:35–15:46 and 14:22–14:50 today), which freezes
+   background process trees while wall-clock time runs; the likeliest cause, but no log of that run exists. The test
+   had real weak spots: `Engine.until` waited forever for output, an engine death was never noticed, and a test that
+   timed out left the shared engine mid-search so the next tests misread its output (the "5 failures"). Now: 45 s
+   silence watchdog (healthy longest gap 2.5 s), 120 s per question, exit handling, engine killed with the test
+   process, a timed-out test stops the engine, test timeouts 240 → 150/90 s. Each path was fault-injected (1 s limit,
+   bad engine path, 3 s timeout): all fail in 1–11 s, with a message that names the cause.
+
+### Phase 9 plan (2026-10-26)
+
+Files to add or change: `scripts/perf-drag.mjs` (environment calibration; the input-latency check looked for the old lift
+scale `1.08` and printed 999 since Phase 6b without failing), new `scripts/perf-memory.mjs` + `npm run perf:memory` (50
+games, forced-GC heap, DOM and worker counts, one heap-snapshot diff), `scripts/perf-review.mjs` (review speed),
+`src/render/audio.ts` / `src/app.ts` (where the AudioContext stall lands), start-up long tasks (two seen at ~90 ms and
+~270 ms into page life: 55–340 ms), the `[P9]` items below, then a requirement-by-requirement audit of docs/SPEC.md
+(Done / Partial / Missing, with the test or measurement as evidence) and fixes for the gaps; README and this file get the final state.
+Risks: frame-time numbers are invalid unless the display is awake (the script now refuses to run otherwise);
+changes to board input code must keep every earlier e2e test passing; the full e2e run takes ~15 min and must run uninterrupted.
 
 ## Open decisions
 
