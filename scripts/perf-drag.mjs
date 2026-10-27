@@ -418,6 +418,32 @@ async function measureEnvironmentFloor(context) {
   }
 }
 
+// Main-thread time per frame, from the browser's own counters (script, style, layout, and every task in all):
+// a 120 Hz display gives a frame 8.3 ms, so the mean main-thread work per frame must fit in that.
+let cdpSession = null;
+const HIGH_REFRESH_FRAME_MS = 1000 / 120;
+async function readMetrics() {
+  const { metrics } = await cdpSession.send('Performance.getMetrics');
+  return Object.fromEntries(metrics.map((m) => [m.name, m.value]));
+}
+/** Runs `fn` (a measured window) and returns its result with the main thread's busy time per frame. */
+async function withMainThread(fn) {
+  const t0 = performance.now();
+  const before = await readMetrics();
+  const result = await fn();
+  const after = await readMetrics();
+  const wallMs = performance.now() - t0;
+  const ms = (name) => (after[name] - before[name]) * 1000;
+  const frames = Math.max(1, wallMs / FRAME_BUDGET_MS);
+  result.mainThread = {
+    busyMsPerFrame: Number((ms('TaskDuration') / frames).toFixed(2)),
+    busyPct: Number(((ms('TaskDuration') / wallMs) * 100).toFixed(1)),
+    scriptMsPerFrame: Number((ms('ScriptDuration') / frames).toFixed(2)),
+    layoutMsPerFrame: Number(((ms('LayoutDuration') + ms('RecalcStyleDuration')) / frames).toFixed(2)),
+  };
+  return result;
+}
+
 async function scenarioPlay(page) {
   // Infinite analysis on the shared engine while the user drags pieces in Play mode.
   await page.getByTestId('square-e2').click();
@@ -446,13 +472,15 @@ async function scenarioPlay(page) {
   await page.mouse.move(e2X, e2Y, { steps: 10 });
   await page.mouse.up();
 
-  const drag = await page.evaluate(runDragSweep, {
-    ghostHoverEvery: 0,
-    readTelemetry: true,
-  });
+  const drag = await withMainThread(() =>
+    page.evaluate(runDragSweep, {
+      ghostHoverEvery: 0,
+      readTelemetry: true,
+    }),
+  );
 
   // Premove burst: queue three premoves while the bot thinks and let all of them fire.
-  const premoves = await page.evaluate(async () => {
+  const premoves = await withMainThread(() => page.evaluate(async () => {
     const perf = window.__perf;
     const play = window.__wizardChessPlay;
     const controller = play.controller;
@@ -503,7 +531,7 @@ async function scenarioPlay(page) {
       ...perf.summarize(frameIntervals),
       ...longTasks,
     };
-  });
+  }));
 
   await page.evaluate(() => window.__wizardChessPlay.controller.setInfiniteAnalysis(false));
   return { drag, premoves };
@@ -551,10 +579,12 @@ async function scenarioAnalysis(page) {
     return { frames, maxEngineLineDomUpdatesPerFrame: maxPerFrame };
   });
 
-  const drag = await page.evaluate(runDragSweep, {
-    ghostHoverEvery: GHOST_PREVIEWS ? 3 : 0,
-    readTelemetry: true,
-  });
+  const drag = await withMainThread(() =>
+    page.evaluate(runDragSweep, {
+      ghostHoverEvery: GHOST_PREVIEWS ? 3 : 0,
+      readTelemetry: true,
+    }),
+  );
   await page.evaluate(() => {
     window.__perfAuditStop = true;
   });
@@ -564,7 +594,7 @@ async function scenarioAnalysis(page) {
   );
 
   // Navigation sweep: rapid arrow-key stepping through a 40-move game, one key per frame.
-  const navigation = await page.evaluate(async (pgn) => {
+  const navigation = await withMainThread(() => page.evaluate(async (pgn) => {
     const perf = window.__perf;
     const controller = window.__wizardChessAnalysis.controller;
     controller.importPgn(pgn);
@@ -600,7 +630,7 @@ async function scenarioAnalysis(page) {
       ...perf.summarize(frameIntervals),
       ...longTasks,
     };
-  }, FORTY_MOVE_PGN);
+  }, FORTY_MOVE_PGN));
 
   return {
     drag: {
@@ -695,6 +725,9 @@ ${formatProcesses(killed)}`,
       if (msg.type() === 'error') logError(`[page console.error] ${msg.text()}`);
     });
 
+    cdpSession = await context.newCDPSession(page);
+    await cdpSession.send('Performance.enable');
+
     const navStart = performance.now();
     await page.goto(BASE_URL, { waitUntil: 'domcontentloaded' });
     await page.locator('[data-testid="chess-board"]').waitFor({ state: 'visible' });
@@ -722,7 +755,15 @@ ${formatProcesses(killed)}`,
       ghostPreviews: GHOST_PREVIEWS,
     };
     const failures = [];
+    const checkMainThread = (label, stats) => {
+      if (stats.mainThread && stats.mainThread.busyMsPerFrame > HIGH_REFRESH_FRAME_MS) {
+        failures.push(
+          `${label}: main thread busy ${stats.mainThread.busyMsPerFrame} ms per frame > ${HIGH_REFRESH_FRAME_MS.toFixed(1)} ms (120 Hz)`,
+        );
+      }
+    };
     const checkFrames = (label, stats) => {
+      checkMainThread(label, stats);
       if (stats.p95FrameMs > p95Limit) {
         failures.push(`${label}: p95 ${stats.p95FrameMs} ms > ${p95Limit.toFixed(2)} ms`);
       }
