@@ -1,4 +1,5 @@
 import { DevOverlayController } from './ui/dev-overlay';
+import { lazy, lazyProxy, whenIdle } from './ui/lazy';
 import { SettingsPanel } from './ui/settings-panel';
 import { AppSettingsStore, type AppSettings } from './ui/app-settings';
 import { SETTINGS_ORDER, mountAppSettingsSections } from './ui/settings-sections';
@@ -291,6 +292,9 @@ export interface WizardChessReviewApi {
  * untouched. See PROGRESS.md (Phase 5, review engine threads).
  */
 export const REVIEW_ENGINE_THREADS = 1;
+/** After start-up, the idle moments (each its own task) that build the Review screen and the audio context. */
+const REVIEW_STACK_WARMUP_DELAY_MS = 150;
+const AUDIO_PREWARM_DELAY_MS = 400;
 export const REVIEW_ENGINE_HASH_MB = 32;
 
 export interface WizardChessLibraryApi {
@@ -534,15 +538,6 @@ export function mountAppShell(container: HTMLElement): {
     },
   });
 
-  const analysisController = new AnalysisController({
-    container: analysisRootEl,
-    engine: sharedEngine,
-    threatEngine: botEngine,
-    audio,
-    initialActive: false,
-    settings: appSettings,
-  });
-
   // The review runs on its own engine, so live analysis keeps its worker while a review
   // runs. Created on the first review.
   let reviewEngine: EngineClient | null = null;
@@ -556,65 +551,91 @@ export function mountAppShell(container: HTMLElement): {
     return reviewEngine;
   };
 
-  const reviewPanel = new ReviewPanel(analysisController.getReviewMount(), {
-    initialPreset: appSettings.get().reviewPreset,
-    onPresetChange: (preset) => appSettings.set({ reviewPreset: preset }),
-    host: {
-      getGameTree: () => analysisController.getGameTree(),
-      getCurrentNode: () => analysisController.getGameTree().currentNode,
-      goToNode: (nodeId) => {
-        analysisController.goToNode(nodeId);
-      },
-      setOrientation: (color) => analysisController.setOrientation(color),
-      importPgn: (pgn) => analysisController.importPgn(pgn),
-      importPgnFromStart: (pgn) => analysisController.importPgnFromStart(pgn),
-      addLine: (fromNodeId, ucis, options) => analysisController.addLine(fromNodeId, ucis, options),
-      deleteNode: (nodeId) => analysisController.deleteNode(nodeId),
-      stripEngineAnnotations: () => analysisController.stripEngineAnnotations(),
-      applyReview: (entries, rerender) => analysisController.applyReview(entries, rerender),
-      showPgnText: (pgn, status) => analysisController.showPgnText(pgn, status),
-      setMoveInterceptor: (fn) => analysisController.setMoveInterceptor(fn),
-      onNavigate: (listener) => analysisController.onNavigate(listener),
-      onTreeReplaced: (listener) => analysisController.onTreeReplaced(listener),
-    },
-    getEngine: getReviewEngine,
-    isBookPosition: (fen) => lookupOpeningByFen(fen) !== null,
-    getAccounts: () => library?.getUserAccounts() ?? DEFAULT_USER_ACCOUNTS,
-    // The repertoire the game was played from, to say where it was left
-    findRepertoireDeparture: async (tree, color) => {
-      const store = (await drillsReady).store;
-      return findDeparture(await store.repertoire.load(color), tree);
-    },
-    onReviewFinished: (result) => {
-      const id = openGameId;
-      const lib = library;
-      if (!id || !lib) return;
-      void lib.get(id).then((record) => {
-        const saved = toSavedReview(result);
-        if (!record || !saved) return undefined;
-        // Only when the board still shows the stored game's moves
-        const stored = mainLinePlies(parsePgn(record.pgn)).map((ply) => ply.uci);
-        if (stored.length === saved.ucis.length && stored.every((u, i) => u === saved.ucis[i])) {
-          return lib.saveReview(id, saved);
-        }
-        return undefined;
-      });
-    },
-    onPlayVsBot: (fen) => {
-      const turn = fen.trim().split(/\s+/)[1] === 'b' ? 'b' : 'w';
-      setMode('play', false);
-      playController.requestNewGame({ fen, playerColor: turn });
-    },
-  });
-
-  // Building an AudioContext blocks the main thread for ~200 ms on some systems. Do it on
-  // the first pointer movement, before the first click, so the first piece pickup isn't
-  // where that stall lands. Sound still starts on the first gesture (init() resumes it).
-  if (typeof window !== 'undefined') {
-    window.addEventListener('pointermove', () => audio.prewarm(), {
-      once: true,
-      passive: true,
+  // The Review screen's controller and panel (a second board and a lot of DOM, hidden at start) are built
+  // the first time anything touches them (a click on Review, a #review link, a test hook) or in an idle
+  // moment after start-up, whichever comes first. Building them with everything else made the mount task
+  // about 15-25 ms longer, and no task may run over 50 ms.
+  const reviewStack = lazy(() => {
+    const analysis = new AnalysisController({
+      container: analysisRootEl,
+      engine: sharedEngine,
+      threatEngine: botEngine,
+      audio,
+      initialActive: false,
+      settings: appSettings,
     });
+
+    const review = new ReviewPanel(analysis.getReviewMount(), {
+      initialPreset: appSettings.get().reviewPreset,
+      onPresetChange: (preset) => appSettings.set({ reviewPreset: preset }),
+      host: {
+        getGameTree: () => analysis.getGameTree(),
+        getCurrentNode: () => analysis.getGameTree().currentNode,
+        goToNode: (nodeId) => {
+          analysis.goToNode(nodeId);
+        },
+        setOrientation: (color) => analysis.setOrientation(color),
+        importPgn: (pgn) => analysis.importPgn(pgn),
+        importPgnFromStart: (pgn) => analysis.importPgnFromStart(pgn),
+        addLine: (fromNodeId, ucis, options) => analysis.addLine(fromNodeId, ucis, options),
+        deleteNode: (nodeId) => analysis.deleteNode(nodeId),
+        stripEngineAnnotations: () => analysis.stripEngineAnnotations(),
+        applyReview: (entries, rerender) => analysis.applyReview(entries, rerender),
+        showPgnText: (pgn, status) => analysis.showPgnText(pgn, status),
+        setMoveInterceptor: (fn) => analysis.setMoveInterceptor(fn),
+        onNavigate: (listener) => analysis.onNavigate(listener),
+        onTreeReplaced: (listener) => analysis.onTreeReplaced(listener),
+      },
+      getEngine: getReviewEngine,
+      isBookPosition: (fen) => lookupOpeningByFen(fen) !== null,
+      getAccounts: () => library?.getUserAccounts() ?? DEFAULT_USER_ACCOUNTS,
+      // The repertoire the game was played from, to say where it was left
+      findRepertoireDeparture: async (tree, color) => {
+        const store = (await drillsReady).store;
+        return findDeparture(await store.repertoire.load(color), tree);
+      },
+      onReviewFinished: (result) => {
+        const id = openGameId;
+        const lib = library;
+        if (!id || !lib) return;
+        void lib.get(id).then((record) => {
+          const saved = toSavedReview(result);
+          if (!record || !saved) return undefined;
+          // Only when the board still shows the stored game's moves
+          const stored = mainLinePlies(parsePgn(record.pgn)).map((ply) => ply.uci);
+          if (stored.length === saved.ucis.length && stored.every((u, i) => u === saved.ucis[i])) {
+            return lib.saveReview(id, saved);
+          }
+          return undefined;
+        });
+      },
+      onPlayVsBot: (fen) => {
+        const turn = fen.trim().split(/\s+/)[1] === 'b' ? 'b' : 'w';
+        setMode('play', false);
+        playController.requestNewGame({ fen, playerColor: turn });
+      },
+    });
+    analysis.onTreeReplaced(() => {
+      if (!openingGame) openGameId = null;
+    });
+    return { analysis, review };
+  });
+  const analysisController = lazyProxy(() => reviewStack.get().analysis);
+  const reviewPanel = lazyProxy(() => reviewStack.get().review);
+  if (typeof window !== 'undefined') {
+    setTimeout(() => whenIdle(() => void reviewStack.get(), 3000), REVIEW_STACK_WARMUP_DELAY_MS);
+  }
+
+  // The browser's audio stack starts cold: the first AudioContext of a browser process blocks the main
+  // thread for 160-340 ms (measured; latencyHint and sampleRate make no difference) and the page cannot
+  // avoid it. Pay it in an idle moment soon after start-up, when no input is waiting, rather than on the
+  // first pointer movement, where it hit a user reaching for the board. Sound still starts on the first
+  // gesture (init() resumes the suspended context), and a gesture before this runs builds it then.
+  if (typeof window !== 'undefined') {
+    setTimeout(() => {
+      // (with sound off nothing is built; turning it on later builds it on the first gesture)
+      if (appSettings.get().sound) whenIdle(() => audio.prewarm(), 2000);
+    }, AUDIO_PREWARM_DELAY_MS);
   }
 
   let currentMode: AppWorkspaceMode = 'play';
@@ -757,7 +778,8 @@ export function mountAppShell(container: HTMLElement): {
       workspaceHostEl.replaceChildren(analysisRootEl);
       analysisController.setActive(true);
     } else {
-      analysisController.setActive(false);
+      // (a Review screen that was never built is inactive already)
+      if (reviewStack.created()) analysisController.setActive(false);
       const roots: Record<Exclude<AppWorkspaceMode, 'review'>, HTMLElement> = {
         play: playRootEl,
         games: gamesRootEl,
@@ -976,10 +998,6 @@ export function mountAppShell(container: HTMLElement): {
   trainRootEl
     .querySelector('[data-testid="btn-train-hub"]')
     ?.addEventListener('click', () => showTrainView('hub'));
-
-  analysisController.onTreeReplaced(() => {
-    if (!openingGame) openGameId = null;
-  });
 
   /** Opens a Games list game on the analysis board, with its saved review if it has one. */
   const openLibraryGame = async (record: StoredGameRecord): Promise<boolean> => {

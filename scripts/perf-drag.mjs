@@ -35,6 +35,11 @@ const GHOST_PREVIEWS = process.env.PERF_GHOSTS !== 'off';
 const FRAME_BUDGET_MS = 16.7;
 const FRAME_JITTER_ALLOWANCE_MS = 0.5;
 const P95_LIMIT_MS = FRAME_BUDGET_MS + FRAME_JITTER_ALLOWANCE_MS;
+// A blank page must itself run at (about) the display rate; above this median the run is not valid evidence.
+const ENVIRONMENT_FLOOR_P50_MAX_MS = FRAME_BUDGET_MS + 0.3;
+// PERF_RELATIVE=1 runs anyway and judges each window against the blank-page floor instead of the 60 Hz budget
+// (to compare two commits under the same bad conditions). Such a run says nothing about the spec budget.
+const RELATIVE_MODE = process.env.PERF_RELATIVE === '1';
 
 const FORTY_MOVE_PGN = `[Event "World Championship"]
 [White "Fischer, Robert James"]
@@ -269,9 +274,10 @@ async function runDragSweep({ ghostHoverEvery, readTelemetry }) {
   const tInput0 = performance.now();
   perf.pointer('pointerdown', boardEl, 1, startPt);
   perf.pointer('pointermove', window, 1, { x: startPt.x + 30, y: startPt.y - 60 });
-  const inputLatencyMs = pieceE2?.style.transform.includes('scale(1.08)')
-    ? Number((performance.now() - tInput0).toFixed(3))
-    : 999;
+  // The lift (a scale transform, whatever the board-feel setting) must be in the style by the time the
+  // handlers return: the browser then paints it in the very next frame (one frame at most).
+  const inputLifted = /scale\(/.test(pieceE2?.style.transform ?? '');
+  const inputLatencyMs = Number((performance.now() - tInput0).toFixed(3));
   perf.pointer('pointerup', window, 1, startPt);
 
   const trajectories = [
@@ -347,6 +353,7 @@ async function runDragSweep({ ghostHoverEvery, readTelemetry }) {
   return {
     ...perf.summarize(frameIntervals),
     ...longTasks,
+    inputLifted,
     inputLatencyMs,
     ghostHovers,
     ghostPreviewsShown,
@@ -372,6 +379,43 @@ async function measureIdleRaf(page) {
     }
     return rafCalls;
   });
+}
+
+/**
+ * The frame cadence this machine gives a blank page right now (no app, no engine). Headless Chrome only
+ * locks to 60 Hz while the display is awake: with the session locked or the screen off it falls back to a
+ * software timer (~56 Hz seen), and then no app could meet the budget. Run before the scenarios so such a
+ * state is reported as "environment", not as an app regression.
+ */
+async function measureEnvironmentFloor(context) {
+  const page = await context.newPage();
+  try {
+    await page.setContent('<!doctype html><title>blank</title>');
+    const stats = await page.evaluate(
+      () =>
+        new Promise((resolve) => {
+          const stamps = [];
+          const tick = (now) => {
+            stamps.push(now);
+            if (stamps.length < 241) {
+              requestAnimationFrame(tick);
+              return;
+            }
+            const d = stamps
+              .slice(1)
+              .map((t, i) => t - stamps[i])
+              .filter((v) => v < 250)
+              .sort((a, b) => a - b);
+            const at = (q) => d[Math.min(d.length - 1, Math.floor(d.length * q))];
+            resolve({ p50: at(0.5), p95: at(0.95) });
+          };
+          requestAnimationFrame(tick);
+        }),
+    );
+    return { p50FrameMs: Number(stats.p50.toFixed(2)), p95FrameMs: Number(stats.p95.toFixed(2)) };
+  } finally {
+    await page.close();
+  }
 }
 
 async function scenarioPlay(page) {
@@ -625,6 +669,26 @@ ${formatProcesses(killed)}`,
       // The app's service worker would cache the build in the background during a measurement
       serviceWorkers: 'block',
     });
+    const environmentFloor = await measureEnvironmentFloor(context);
+    log(
+      `[environment] blank page: p50 ${environmentFloor.p50FrameMs} ms, p95 ${environmentFloor.p95FrameMs} ms ` +
+        `(a 60 Hz display gives ~16.7 ms)`,
+    );
+    let p95Limit = P95_LIMIT_MS;
+    if (environmentFloor.p50FrameMs > ENVIRONMENT_FLOOR_P50_MAX_MS) {
+      if (!RELATIVE_MODE) {
+        throw new PerfAbort(
+          `A blank page runs at p50 ${environmentFloor.p50FrameMs} ms here (limit ${ENVIRONMENT_FLOOR_P50_MAX_MS} ms), ` +
+            'so no app could meet the 60 Hz budget and the numbers would be meaningless. Typical causes: the ' +
+            'session is locked or the display is off (headless Chrome then loses vsync), battery or power-saver ' +
+            'mode, a busy machine. Unlock the screen, plug in, close other apps and run again. (PERF_RELATIVE=1 ' +
+            'compares against this floor instead; that result is not a spec budget result.)',
+          4,
+        );
+      }
+      p95Limit = Math.max(P95_LIMIT_MS, environmentFloor.p95FrameMs + FRAME_JITTER_ALLOWANCE_MS);
+      log(`[environment] PERF_RELATIVE=1: windows are judged against p95 <= ${p95Limit.toFixed(2)} ms (the floor + jitter), not the spec budget`);
+    }
     const page = await context.newPage();
     page.on('pageerror', (err) => logError('[page error]', err));
     page.on('console', (msg) => {
@@ -637,24 +701,41 @@ ${formatProcesses(killed)}`,
     await page.locator('[data-testid="piece-e2"]').waitFor({ state: 'visible' });
     const startupInteractiveMs = Number((performance.now() - navStart).toFixed(2));
 
+    // The app builds the Review screen and the audio context in idle moments shortly after start-up (the
+    // audio one is a 60-340 ms one-time browser cost). Let both finish so they land in no measured window.
+    await page.waitForFunction(() => window.__wizardChessPlay?.controller.getAudio().isInitialized(), undefined, {
+      timeout: 10_000,
+    });
+    await page.waitForTimeout(500);
+
     // No rAF work while nothing changes (clock not started, overlay hidden, no particles).
     const idleRafCallbacksIn500Ms = await measureIdleRaf(page);
     await page.evaluate(installPerfHelpers);
 
     const report = {
+      environmentFloor,
+      mode: environmentFloor.p50FrameMs > ENVIRONMENT_FLOOR_P50_MAX_MS ? 'relative-to-floor (NOT a spec budget result)' : 'spec budget',
       startupInteractiveMs,
       idleRafCallbacksIn500Ms,
-      p95LimitMs: P95_LIMIT_MS,
+      p95LimitMs: Number(p95Limit.toFixed(2)),
       engineThreadsRequested: ENGINE_THREADS ?? 'auto',
       ghostPreviews: GHOST_PREVIEWS,
     };
     const failures = [];
     const checkFrames = (label, stats) => {
-      if (stats.p95FrameMs > P95_LIMIT_MS) {
-        failures.push(`${label}: p95 ${stats.p95FrameMs} ms > ${P95_LIMIT_MS} ms`);
+      if (stats.p95FrameMs > p95Limit) {
+        failures.push(`${label}: p95 ${stats.p95FrameMs} ms > ${p95Limit.toFixed(2)} ms`);
       }
       if (stats.longTaskCount !== 0) {
         failures.push(`${label}: ${stats.longTaskCount} long task(s)`);
+      }
+    };
+
+    // Input latency (spec: <= 1 frame): the pickup's lift is applied inside the pointerdown/move handlers
+    const checkInput = (label, stats) => {
+      if (!stats.inputLifted) failures.push(`${label} input: the piece was not lifted by the pointer events`);
+      if (stats.inputLatencyMs > FRAME_BUDGET_MS) {
+        failures.push(`${label} input latency: ${stats.inputLatencyMs} ms > ${FRAME_BUDGET_MS} ms`);
       }
     };
 
@@ -664,6 +745,7 @@ ${formatProcesses(killed)}`,
       report.scenario1_playDragInfinite = play.drag;
       report.scenario1_premoveExecution = play.premoves;
       checkFrames('scenario 1 drag', play.drag);
+      checkInput('scenario 1', play.drag);
       checkFrames('scenario 1 premove execution', play.premoves);
       if (play.premoves.queued !== 3 || play.premoves.finalPly < 7) {
         failures.push(
@@ -683,6 +765,7 @@ ${formatProcesses(killed)}`,
       report.scenario2_analysisDragMultiPv5Ghosts = analysis.drag;
       report.scenario2_navigationSweep = analysis.navigation;
       checkFrames('scenario 2 drag', analysis.drag);
+      checkInput('scenario 2', analysis.drag);
       checkFrames('scenario 2 navigation', analysis.navigation);
       if (analysis.drag.maxEngineLineDomUpdatesPerFrame > 1) {
         failures.push(
