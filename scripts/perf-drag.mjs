@@ -15,6 +15,7 @@ import {
   killAllChildTrees,
   killCommandHint,
 } from './lib/process-guard.mjs';
+import { FRAME_FLOOR_P50_MAX_MS, measureFrameFloor } from './lib/frame-floor.mjs';
 
 const PORT = Number(process.env.PERF_PORT || 4179);
 const BASE_URL = `http://127.0.0.1:${PORT}`;
@@ -36,7 +37,7 @@ const FRAME_BUDGET_MS = 16.7;
 const FRAME_JITTER_ALLOWANCE_MS = 0.5;
 const P95_LIMIT_MS = FRAME_BUDGET_MS + FRAME_JITTER_ALLOWANCE_MS;
 // A blank page must itself run at (about) the display rate; above this median the run is not valid evidence.
-const ENVIRONMENT_FLOOR_P50_MAX_MS = FRAME_BUDGET_MS + 0.3;
+const ENVIRONMENT_FLOOR_P50_MAX_MS = FRAME_FLOOR_P50_MAX_MS;
 // PERF_RELATIVE=1 runs anyway and judges each window against the blank-page floor instead of the 60 Hz budget
 // (to compare two commits under the same bad conditions). Such a run says nothing about the spec budget.
 const RELATIVE_MODE = process.env.PERF_RELATIVE === '1';
@@ -381,43 +382,6 @@ async function measureIdleRaf(page) {
   });
 }
 
-/**
- * The frame cadence this machine gives a blank page right now (no app, no engine). Headless Chrome only
- * locks to 60 Hz while the display is awake: with the session locked or the screen off it falls back to a
- * software timer (~56 Hz seen), and then no app could meet the budget. Run before the scenarios so such a
- * state is reported as "environment", not as an app regression.
- */
-async function measureEnvironmentFloor(context) {
-  const page = await context.newPage();
-  try {
-    await page.setContent('<!doctype html><title>blank</title>');
-    const stats = await page.evaluate(
-      () =>
-        new Promise((resolve) => {
-          const stamps = [];
-          const tick = (now) => {
-            stamps.push(now);
-            if (stamps.length < 241) {
-              requestAnimationFrame(tick);
-              return;
-            }
-            const d = stamps
-              .slice(1)
-              .map((t, i) => t - stamps[i])
-              .filter((v) => v < 250)
-              .sort((a, b) => a - b);
-            const at = (q) => d[Math.min(d.length - 1, Math.floor(d.length * q))];
-            resolve({ p50: at(0.5), p95: at(0.95) });
-          };
-          requestAnimationFrame(tick);
-        }),
-    );
-    return { p50FrameMs: Number(stats.p50.toFixed(2)), p95FrameMs: Number(stats.p95.toFixed(2)) };
-  } finally {
-    await page.close();
-  }
-}
-
 // Main-thread time per frame, from the browser's own counters (script, style, layout, and every task in all):
 // a 120 Hz display gives a frame 8.3 ms, so the mean main-thread work per frame must fit in that.
 let cdpSession = null;
@@ -699,7 +663,7 @@ ${formatProcesses(killed)}`,
       // The app's service worker would cache the build in the background during a measurement
       serviceWorkers: 'block',
     });
-    const environmentFloor = await measureEnvironmentFloor(context);
+    const environmentFloor = await measureFrameFloor(context);
     log(
       `[environment] blank page: p50 ${environmentFloor.p50FrameMs} ms, p95 ${environmentFloor.p95FrameMs} ms ` +
         `(a 60 Hz display gives ~16.7 ms)`,

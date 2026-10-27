@@ -30,6 +30,7 @@ import {
   killAllChildTrees,
   killCommandHint,
 } from './lib/process-guard.mjs';
+import { FRAME_FLOOR_P50_MAX_MS, measureFrameFloor } from './lib/frame-floor.mjs';
 
 const PORT = Number(process.env.PERF_PORT || 4180);
 const BASE_URL = `http://127.0.0.1:${PORT}`;
@@ -349,7 +350,12 @@ async function main() {
       for (const scenario of SCENARIOS) {
         for (const threads of THREADS) {
           requireFreeMemory(`round ${round} ${scenario} ${threads} thread(s)`);
+          // The frame numbers below only mean something while a blank page runs at the display rate
+          const probe = await browser.newContext({ viewport: { width: 1440, height: 900 }, serviceWorkers: 'block' });
+          const floor = await measureFrameFloor(probe).finally(() => probe.close());
           const r = await runOne(browser, threads, scenario);
+          r.floorP50FrameMs = floor.p50FrameMs;
+          r.framesValid = floor.p50FrameMs <= FRAME_FLOOR_P50_MAX_MS;
           r.round = round;
           runs.push(r);
           log(`[result] ${JSON.stringify(r)}`);
@@ -361,12 +367,12 @@ async function main() {
     server?.kill();
   }
 
-  log('\n| Scenario | Threads | Review time | Mean / min depth | Review kN/s (kN per position) | Verified | Live kN/s before → during | p95 / p99 frame | Dropped | Long tasks | Free mem before → min |');
-  log('|---|---|---|---|---|---|---|---|---|---|---|');
+  log('\n| Scenario | Threads | Review time | Mean / min depth | Review kN/s (kN per position) | Verified | Live kN/s before → during | Blank-page floor | p95 / p99 frame | Dropped | Long tasks | Free mem before → min |');
+  log('|---|---|---|---|---|---|---|---|---|---|---|---|');
   for (const r of runs) {
     const live = r.liveKnpsBefore !== null ? `${r.liveKnpsBefore} → ${r.liveKnpsDuring}` : '—';
     log(
-      `| ${r.scenario} (round ${r.round}) | ${r.reviewThreads} (${r.reviewVariant}) | ${(r.reviewMs / 1000).toFixed(1)} s | ${r.meanDepth} / ${r.minDepth} | ${r.reviewKnps} (${r.meanKnodesPerPosition}) | ${r.verifiedPositions} | ${live} | ${r.p95FrameMs} / ${r.p99FrameMs} ms | ${r.droppedFrames} | ${r.longTasks.length ? r.longTasks.join(', ') + ' ms' : '0'} | ${r.freeBeforeGb} → ${r.minFreeDuringGb} GB |`,
+      `| ${r.scenario} (round ${r.round}) | ${r.reviewThreads} (${r.reviewVariant}) | ${(r.reviewMs / 1000).toFixed(1)} s | ${r.meanDepth} / ${r.minDepth} | ${r.reviewKnps} (${r.meanKnodesPerPosition}) | ${r.verifiedPositions} | ${live} | ${r.floorP50FrameMs} ms${r.framesValid ? '' : ' (display not at 60 Hz: frame numbers NOT valid)'} | ${r.p95FrameMs} / ${r.p99FrameMs} ms | ${r.droppedFrames} | ${r.longTasks.length ? r.longTasks.join(', ') + ' ms' : '0'} | ${r.freeBeforeGb} → ${r.minFreeDuringGb} GB |`,
     );
   }
   const failures = runs.filter(
