@@ -314,6 +314,35 @@ export function detectEnvironment(): AppShellEnvironment {
   };
 }
 
+type ReadyHook = '__wizardChessPuzzlesReady' | '__wizardChessDrillsReady' | '__wizardChessLibraryReady';
+const READY_HOOKS: readonly ReadyHook[] = [
+  '__wizardChessPuzzlesReady',
+  '__wizardChessDrillsReady',
+  '__wizardChessLibraryReady',
+];
+const readyResolvers = new Map<ReadyHook, (value: Promise<never>) => void>();
+
+/**
+ * Publishes the "ready" promises (library, puzzles, drills) on `window` at once, before the app is mounted: the app is
+ * built a frame after the page loads (see main.ts), and whoever awaits a promise (the tests, anything scripting the page)
+ * must find it there from the first moment, as it always was. `mountAppShell` settles each with the real one.
+ */
+export function installReadyHooks(): void {
+  for (const key of READY_HOOKS) {
+    const placeholder = new Promise<never>((resolve) => {
+      readyResolvers.set(key, resolve as (value: Promise<never>) => void);
+    });
+    placeholder.catch(() => undefined);
+    (window as unknown as Record<string, Promise<never>>)[key] = placeholder;
+  }
+}
+
+function publishReady(key: ReadyHook, promise: Promise<unknown>): void {
+  const resolve = readyResolvers.get(key);
+  if (resolve) resolve(promise as Promise<never>);
+  else (window as unknown as Record<string, Promise<unknown>>)[key] = promise;
+}
+
 export function mountAppShell(container: HTMLElement): {
   devOverlay: DevOverlayController;
   env: AppShellEnvironment;
@@ -1177,8 +1206,8 @@ export function mountAppShell(container: HTMLElement): {
     void refreshTrainCount();
     return api;
   });
-  window.__wizardChessPuzzlesReady = puzzlesReady;
-  window.__wizardChessDrillsReady = drillsReady;
+  publishReady('__wizardChessPuzzlesReady', puzzlesReady);
+  publishReady('__wizardChessDrillsReady', drillsReady);
   libraryReady.catch((err: unknown) => {
     rejectPuzzles(err);
     rejectDrills(err);
@@ -1195,7 +1224,7 @@ export function mountAppShell(container: HTMLElement): {
     msg.textContent = `The game library could not be opened: ${err instanceof Error ? err.message : String(err)}`;
     gamesRootEl.appendChild(msg);
   });
-  window.__wizardChessLibraryReady = libraryReady;
+  publishReady('__wizardChessLibraryReady', libraryReady);
 
   /** Board look, effects and sound follow the settings (Play and Review follow them themselves). */
   const applyAppSettings = (next: AppSettings, prev: AppSettings | null): void => {

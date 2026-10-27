@@ -60,8 +60,10 @@ npm run test:e2e    # Playwright end-to-end tests
 Slower measurement scripts, kept out of `npm test`:
 
 ```bash
-npm run perf:drag        # Frame times while dragging during engine analysis (needs a build)
+npm run perf:drag        # Frame times, input latency and main-thread cost per frame while dragging during analysis (needs a build)
 npm run perf:review      # Game review speed and review-engine threads (needs a build)
+npm run perf:memory      # 50 games in a row: heap, DOM, listeners and workers after forced GC, plus a heap-snapshot diff
+npm run perf:tasks       # A tour of 16 flows (play, review, import, Insights, trainers, backup…): no main-thread task over 50 ms
 npm run calibrate:bots   # Bot strength calibration (ACPL and blunder rate per level)
 npm run fixtures:review  # Re-record the engine results behind the classification fixtures
 npm run review:compare   # Quick preset vs. depth-18 classifications (docs/classification.md)
@@ -71,6 +73,12 @@ node scripts/record-capture-fixtures.mjs  # Re-record the capture extension's pa
 ```
 
 How the game review classifies moves, and why: [docs/classification.md](docs/classification.md).
+
+**Measure on a quiet machine.** Frame times are only meaningful while the display is awake, the laptop is plugged in and
+other apps are closed. A locked session or a screen that is off makes headless Chrome lose vsync (a blank page then runs
+at ~56 Hz), so `perf:drag` first times a blank page and stops with exit code 4 if it is not at the display rate
+(`PERF_RELATIVE=1` compares against that floor instead; such a run says nothing about the 60 fps budget).
+`perf:drag`, `perf:review` and `perf:tasks` also stop below 3 GB (2.5 GB) of free memory.
 
 The end-to-end tests run against the built site and extension: run `npm run build` first
 (the extension spec rebuilds `dist-ext/` itself).
@@ -214,6 +222,13 @@ All three live in the Train hub, beside the puzzles.
   the move played, or with the review's best move, counts).
 
 Everything stays on this device and is included in the JSON backup.
+
+## Playing against the bot
+
+Press Play on the New game card; the bot's strength (400–2400), style and thinking time, the time control, your colour and
+takebacks are all chosen there. **Hint** (three per game) shows the engine's best move. The move you then play carries the
+comment `Hint used: <suggested move>` in the saved game, its PGN and the Moves tree, and the review says how many of your
+moves followed a hint.
 
 ## Keyboard and screen readers
 

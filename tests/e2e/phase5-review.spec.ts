@@ -99,6 +99,11 @@ async function goToNode(page: Page, nodeId: string): Promise<void> {
 }
 
 async function startLongTaskObserver(page: Page): Promise<void> {
+  // The app builds its audio context in an idle moment after start-up (the browser's one-time audio start can take
+  // 60-340 ms: not the review's work); let it happen before the window that is measured
+  await page.waitForFunction(() => window.__wizardChessPlay?.controller.getAudio().isInitialized(), undefined, {
+    timeout: 10_000,
+  });
   await page.evaluate(() => {
     const w = window as unknown as { __longTasks: number[]; __longTaskObserver?: PerformanceObserver };
     w.__longTasks = [];
@@ -308,7 +313,23 @@ test.describe('Phase 5 — Game review', () => {
     await expect(page.getByTestId('eval-bar-score')).toHaveText(/^-/);
     await expect(page.getByTestId('analysis-eval-pill')).toHaveText(/^-/);
     await expect(page.getByTestId('engine-line-eval-1')).toHaveText(/^-/, { timeout: 20_000 });
-    await expect(page.getByTestId('engine-line-eval-2')).toHaveText(/^-/, { timeout: 20_000 });
+    // Line 2 is the runner-up (3...Nge7 here), worth about 0 for either side, so its sign is noise (it reads -0.2 to
+    // +0.06 on the Phase 8 build too). What it must do is rank behind line 1: lines are best-for-the-side-to-move first,
+    // so with Black to move the evals from White's point of view never go down from one line to the next. A flipped
+    // sign would put line 1 (+5.9) above line 2.
+    await expect
+      .poll(
+        async () => {
+          const [first, second] = await Promise.all(
+            [1, 2].map(async (n) =>
+              Number.parseFloat((await page.getByTestId(`engine-line-eval-${n}`).textContent()) ?? 'NaN'),
+            ),
+          );
+          return first! <= second!;
+        },
+        { timeout: 20_000 },
+      )
+      .toBe(true);
     // Still negative once live analysis has gone deeper
     await page.waitForTimeout(1500);
     await expect(page.getByTestId('eval-bar-score')).toHaveText(/^-/);

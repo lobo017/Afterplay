@@ -157,6 +157,46 @@ test.describe('Phase 9 — performance pass', () => {
     expect(afterReview).toContain(`Hint used: ${hint!.suggestedSan}`);
   });
 
+  test('the ready promises are on window from the first moment, before the app is mounted', async ({ page }) => {
+    // The app is built a frame after the page loads; whoever awaits these (the tests, a script) must still find them
+    await page.addInitScript(() => {
+      document.addEventListener('DOMContentLoaded', () => {
+        const w = window as unknown as Record<string, unknown>;
+        w.__seenAtLoad = {
+          library: w.__wizardChessLibraryReady instanceof Promise,
+          puzzles: w.__wizardChessPuzzlesReady instanceof Promise,
+          drills: w.__wizardChessDrillsReady instanceof Promise,
+          boardMounted: Boolean(document.querySelector('[data-testid="chess-board"]')),
+        };
+      });
+    });
+    await page.goto('/');
+    await expect(page.getByTestId('chess-board').first()).toBeVisible();
+    const seen = await page.evaluate(
+      () => (window as unknown as { __seenAtLoad: Record<string, boolean> }).__seenAtLoad,
+    );
+    expect(seen).toEqual({ library: true, puzzles: true, drills: true, boardMounted: false });
+    // ...and they settle with the real APIs
+    const apis = await page.evaluate(async () => {
+      const w = window as unknown as {
+        __wizardChessLibraryReady: Promise<object>;
+        __wizardChessPuzzlesReady: Promise<object>;
+        __wizardChessDrillsReady: Promise<object>;
+      };
+      const [library, puzzles, drills] = await Promise.all([
+        w.__wizardChessLibraryReady,
+        w.__wizardChessPuzzlesReady,
+        w.__wizardChessDrillsReady,
+      ]);
+      return [
+        Object.keys(library).includes('library'),
+        Object.keys(puzzles).includes('store'),
+        Object.keys(drills).includes('store'),
+      ];
+    });
+    expect(apis).toEqual([true, true, true]);
+  });
+
   test('the Review screen builds on first use or when idle, and the window hooks still reach it', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('/');
