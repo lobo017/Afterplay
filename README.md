@@ -47,6 +47,26 @@ install the app (the manifest has PNG icons; `npm run build:icons` redraws them 
 `public/favicon.svg`). `tests/e2e/phase8-offline.spec.ts` stops the server, switches the browser
 offline and checks all of this.
 
+## Performance and spec status
+
+Measured on a 60 Hz laptop display, plugged in, in headless Chrome (headless numbers are indicative; see "Measure on a quiet
+machine" below). Details and every run: [docs/progress/phase-9.md](docs/progress/phase-9.md).
+
+| Budget (docs/SPEC.md) | Measured |
+|---|---|
+| Frame time p95 ≤ 16.7 ms while dragging and animating with the engine on `go infinite` | 16.7–17.0 ms, 0 long tasks (`npm run perf:drag`) |
+| 120 fps on high-refresh screens | not testable here (60 Hz display); main-thread work is 1.4–3.1 ms per frame, so a 8.3 ms frame has at least 2.6× headroom |
+| Input latency ≤ 1 frame | 0.6–1.4 ms in the pointer handlers, painted in the next frame |
+| Idle | no render work: 0 animation-frame callbacks in 500 ms |
+| Cold start to an interactive board ≤ 1.5 s | 0.1–0.5 s |
+| Memory: no growth across 50 games | +0.2–0.3 MB over 40 games (JIT code), DOM nodes and listeners flat (`npm run perf:memory`) |
+| Review of a 40-move game on Quick, one thread, ≲ 30 s | 17.4–17.9 s, UI responsive (`npm run perf:review`) |
+| No main-thread task over 50 ms | none in a tour of 16 flows (`npm run perf:tasks`). Exception: on page load the browser's one-time audio start (60–340 ms, once, only with sound on) and its first text layout in a cold process (35–89 ms) |
+
+The requirement-by-requirement audit of the spec is in [docs/progress/phase-9.md](docs/progress/phase-9.md): everything is
+**Done** except two **Partial** items (the 50 ms rule on page load as above, and 120 fps on a real high-refresh display) and the
+optional Phase 10 (native engine mode), which is **Missing**.
+
 ## Verification & Testing Scripts
 
 ```bash

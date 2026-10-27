@@ -21,60 +21,58 @@ log to `docs/progress/phase-N.md` and keep only a summary here.
 | 6b | UX redesign | Done | Board feel + badges; app frame (Play / Train / Review / Games + Settings sheet); all six stages committed (last `23f5d47`) | [phase-6b](progress/phase-6b.md) |
 | 7 | Repertoire, endgame & visualization | Done | White/Black repertoire trees (build, import, drill, review flag), 6 engine-verified endgame drills, coordinate/blindfold/guess-the-move; all feed Today with the puzzles | [phase-7](progress/phase-7.md) |
 | 8 | Library, insights, settings, offline | Done | Own service worker (precache + COOP/COEP, update banner) and an offline e2e gate; played games kept, colour/opening/date/accuracy filters, delete, worker bulk import; Insights tab; live-region announcements and keyboard play on every board; Settings for usernames, analysis lines, review depth | [phase-8](progress/phase-8.md) |
-| 9 | Performance pass & final audit | In progress | Frame-time/memory/startup profiling against budgets and full spec verification | — |
+| 9 | Performance pass & final audit | Code and audit done; final full e2e run owed | Every budget measured (frame time, input latency, idle, startup, 50-game memory, review speed) and a 16-flow long-task audit; start-up split into tasks, lazy Review screen, Play bot-move task 16–27 → 7–9 ms; hints reach the review; full spec audit (all Done except two Partial and the optional Phase 10); Prettier enforced; measuring scripts guard against a locked screen | [phase-9](progress/phase-9.md) |
+
 
 ## Current phase and next step
 
-Phase 9 (performance pass and final audit) is in progress; the plan and the Phase 8 follow-ups are below. Phase 8 is done (commits `23cc01e` offline PWA, `06a2612` library, `372f45d` insights, `0085ced` accessibility, then leftovers and Settings; see [phase-8](progress/phase-8.md)).
+Phases 0–8 are done. **Phase 9 is complete except for its closing gate**: a full e2e run that passes, uninterrupted, on the final
+commit (and one clean scenario-2 `perf:drag` run). The code, the measurements and the requirement audit are done and committed;
+detail is in [phase-9](progress/phase-9.md). The "Phase 9: …" closing commit has not been made for that reason. Phase 10 (native
+engine mode) is optional and not started.
 
-### Phase 8 follow-ups (2026-10-26, before Phase 9)
+**State of the e2e gate (2026-10-27).** Unit 588/588, typecheck, lint, format check and build pass on the final commit. Full e2e:
+(1) first full run after the start-up split, 155 passed / 3 failed, the 3 fixed (see phase-9); (2) a run that froze while the laptop
+sat idle and locked (11 h, invalid); (3) a run on the final commit that the machine killed under memory pressure: 137 of its 138
+failures are `worker process exited unexpectedly (code 3221225794)` = Windows `0xC0000142` (process start failing), the 138th is
+a real one: `phase5-review` "reviews the built-in sample game" saw a 57 ms task in the review window (98 ms in run 1). It passes
+alone (7 of 7, also 3 of 3 under heavy CPU load), and CPU load does not reproduce it, so the cause is not found; memory pressure
+(paging) is suspected, not shown. **Next step: free memory (the user's Chrome holds 3.7+ GB), keep the screen on, run
+`npx playwright test` once; if that test fails again on a quiet machine it is a real finding to chase (a ≥ 50 ms task in the review
+window), not a flake to loosen.**
 
-1. **Bulk-import limit: back to 50 ms (`e1e94cc`).** The test observes `longtask` entries on the page's main thread
-   for the whole paste → import → list sequence. The 75 ms task that led to the 120 ms limit was **not the import**:
-   it was `new AudioContext()`, built by `audio.prewarm()` on the first pointer movement (Playwright's first click
-   moves the mouse). Probes with page-side timers around `listGameIds`, `saveNewGames`, `listGames`, `renderRows` showed the
-   import's biggest page step is ~20 ms for 400 games (a 3000-game import also showed no long task). The cold start of
-   the browser's audio stack costs 160–340 ms whatever the constructor options (`latencyHint`, `sampleRate`: tested, no
-   effect; only the first context of a browser process pays). The test now moves the pointer first so its window measures the import.
-   The audio stall itself is a Phase 9 item (below).
-2. **Navigation sweep (`perf:drag`): not decidable yet.** The first run on `e1e94cc` failed all four windows by the
-   same ~1.5 ms (p95 18.2–18.6 ms, p50 17.7 ms, 0 dropped frames beyond 1, 0 long tasks). A *blank* headless page
-   shows the same cadence (p50 17.5–17.9 ms ≈ 56 Hz) at that moment, so the cause is the environment: the session
-   was locked with the display off (LogonUI running, 19 min idle, display timeout 10 min on AC), and Chrome then has no
-   display vsync. System timer resolution was also 1 ms (holding 0.5 ms moved the blank page only from 17.9 to 17.5 ms).
-   See Phase 9 below for how the script now guards against this.
-3. **Endgame-data stall: slowness is ruled out, a hang cannot be proved (`b26bdf8`).** Alone and plugged in the file
-   takes 80 s (longest test 37 s; a battery run was 160 s), so 45 min is not CPU slowness. The machine enters Modern
-   Standby many times a day (power log events 506/507, e.g. 15:35–15:46 and 14:22–14:50 today), which freezes
-   background process trees while wall-clock time runs; the likeliest cause, but no log of that run exists. The test
-   had real weak spots: `Engine.until` waited forever for output, an engine death was never noticed, and a test that
-   timed out left the shared engine mid-search so the next tests misread its output (the "5 failures"). Now: 45 s
-   silence watchdog (healthy longest gap 2.5 s), 120 s per question, exit handling, engine killed with the test
-   process, a timed-out test stops the engine, test timeouts 240 → 150/90 s. Each path was fault-injected (1 s limit,
-   bad engine path, 3 s timeout): all fail in 1–11 s, with a message that names the cause.
+### Phase 8 follow-ups and the Phase 9 result, in short
 
-### Phase 9 plan (2026-10-26)
-
-Files to add or change: `scripts/perf-drag.mjs` (environment calibration; the input-latency check looked for the old lift
-scale `1.08` and printed 999 since Phase 6b without failing), new `scripts/perf-memory.mjs` + `npm run perf:memory` (50
-games, forced-GC heap, DOM and worker counts, one heap-snapshot diff), `scripts/perf-review.mjs` (review speed),
-`src/render/audio.ts` / `src/app.ts` (where the AudioContext stall lands), start-up long tasks (two seen at ~90 ms and
-~270 ms into page life: 55–340 ms), the `[P9]` items below, then a requirement-by-requirement audit of docs/SPEC.md
-(Done / Partial / Missing, with the test or measurement as evidence) and fixes for the gaps; README and this file get the final state.
-Risks: frame-time numbers are invalid unless the display is awake (the script now refuses to run otherwise);
-changes to board input code must keep every earlier e2e test passing; the full e2e run takes ~15 min and must run uninterrupted.
+1. **Bulk-import limit back to 50 ms.** The 75 ms task was the browser's first `AudioContext`, not the import (400 games:
+   biggest page step ~20 ms; 3000 games also clean).
+2. **Navigation sweep:** no regression from Phase 8. The failure on 2026-10-26 was machine state (battery, then a locked
+   session: with the display off a blank headless page runs at ~56 Hz). `perf:drag` passed every window in 4 of 4 full runs
+   on a quiet machine; it now measures a blank page first and aborts (exit 4) if the display is not at 60 Hz.
+3. **`endgame-data` stall:** not CPU slowness (80 s plugged in). The cause is now observed, not just suspected: a full e2e run
+   started at 23:15 froze at ~23:21 (session idle and locked, on AC, with a system-required power request held) and resumed at
+   10:08 the next morning, with even its own `timeout 2700` not firing. The whole process tree is frozen while the laptop sits
+   idle and locked. A system-required request does not prevent it; a long run needs the display held on too (done for the final
+   e2e run). The test also had real weak spots and now fails in seconds on a silent, dead or timed-out engine.
+4. **Phase 9 budgets** (all in [phase-9](progress/phase-9.md)): frame time p95 16.71–16.97 ms; input latency 0.6–1.4 ms;
+   idle 0 rAF; startup 95–490 ms (budget 1,500); 50 games: +0.2–0.3 MB (JIT code), DOM and listeners flat; review of an
+   81-ply game 17.4–17.9 s (budget ~30); main-thread time 1.4–3.1 ms per frame (120 Hz has 8.3).
+5. **Spec audit:** two **Partial**: *no task over 50 ms* (none in 16 flows; page load still has the browser's one-time audio
+   start, 60–340 ms, and a cold first layout, 35–89 ms, neither movable off the main thread) and *120 fps on high-refresh
+   screens* (no such display here; main-thread headroom measured). **Missing:** Phase 10 (optional). Everything else Done.
 
 ## Open decisions
 
-- **`PERF_ENGINE_THREADS` matrix** (4/3/2 threads × ghosts off) was never run; the setting is
-  re-enabled via `EngineClient.configure()` (6b18a4c). Run only if Phase 9 profiling suggests
-  scenario 2 is thread-bound. Whether to drop analysis threads while a background review runs is
-  also unmeasured ([phase-3-4-fixes](progress/phase-3-4-fixes.md)).
-- **Review engine threads:** decided 1 thread (`REVIEW_ENGINE_THREADS` in `app.ts`); more threads
-  bought no depth and cost live analysis speed ([phase-5](progress/phase-5.md)).
+- **Final scenario-2 `perf:drag` run.** Scenario 2 (analysis board, MultiPV 5, ghosts, navigation sweep) was last measured clean
+  before the final small changes; on the final commit the machine was too busy (the pre-Phase-9 build failed it the same
+  way minutes apart). Run `npm run perf:drag` with other apps closed, plugged in and the screen on.
+- **`preact`** is a dependency (and in LICENSES) that nothing imports; the app is vanilla TS. Remove it? (Not done: a
+  dependency change is yours to say.)
+- **`PERF_ENGINE_THREADS` matrix** (4/3/2 threads × ghosts off) was never run; only worth running if scenario 2 fails on a
+  quiet machine. Whether to drop analysis threads while a background review runs is also unmeasured
+  ([phase-3-4-fixes](progress/phase-3-4-fixes.md)).
+- **Review engine threads:** decided 1 thread (`REVIEW_ENGINE_THREADS` in `app.ts`); more threads bought no depth and cost
+  live analysis speed ([phase-5](progress/phase-5.md)). Memory per engine is now known (+149 MB review, +294 MB live).
 - **Bot level calibration** is approximate by design; no human data offline.
-- **Prettier:** `npm run format:check` fails on most files (code uses longer lines than
-  `.prettierrc.json`'s 100). Not a required check; left alone.
 
 ## Known issues
 
@@ -106,31 +104,36 @@ Phase 8 (details in [phase-8](progress/phase-8.md))
   allows 30 s per test and 4 test processes, and the DTM oracle solves in slices so a test worker keeps reporting. One
   run of `endgame-data` alone took 45 min and failed 5 tests after the machine stalled; rerun it passed (160 s).
 
-Everything marked **[P9]** is deferred to the Phase 9 profiling pass.
+Phase 9 (details in [phase-9](progress/phase-9.md))
+- **Open: `phase5-review` sample-game long-task assertion failed in both full runs on the final code (98 ms, 57 ms), never alone.**
+  See "Current phase" above.
+- **Frame-time numbers are only valid with the display awake.** A locked session or a screen that is off makes headless Chrome
+  lose vsync (blank page ~56 Hz); battery throttles too. `perf:drag` aborts (exit 4) on a slow blank page; `perf:review` prints the
+  floor per run. A busy machine (a user's Chrome at ~22% CPU) also fails scenario 2 on any build.
+- **Long runs freeze when the laptop is idle and locked** (see follow-up 3): keep the screen on and do not walk away mid-run, or
+  hold the display awake while it runs. A frozen run looks like a hang and fails its own time limits on resume.
+- `perf:drag`, `perf:review` need ≥ 3 GB free memory (`perf:tasks` 2.5, `perf:memory` 2); with a user's Chrome open at 5+ GB the
+  guards stop full runs. Scenario 2 on the final commit is still to be run clean.
+- **No task over 50 ms** holds in 16 flows after page load. Page load has two browser-owned costs: the first `AudioContext` of a
+  browser process (60–340 ms; built ~0.4 s after start-up in an idle moment, only with sound on; cannot be built off the main
+  thread) and the renderer's first text layout in a cold process (35–89 ms, now in its own task). Both documented, neither fixable.
+- The Games list shows 100 rows at most (then "Show more"), so a played game adds ~41 DOM nodes until then; `perf:memory` deletes
+  each saved game so it measures leaks only. `importPgn` of the 33-move sample is 27–33 ms on the main thread (under the limit).
+- `window.__wizardChess{Library,Puzzles,Drills}Ready` exist from module load; every other test hook (`__wizardChessPlay`, `…Analysis`,
+  `…Review`) appears when the app mounts, one frame after load; tests wait for the board first. The Review screen is built lazily
+  (first use or an idle moment), so its DOM does not exist until then.
+- Hints: the comment `Hint used: …` goes on the move played after a hint; a hint asked for and then never followed by a move (game
+  ends) leaves no comment.
+- The review's long-task windows in tests start after the audio warm-up; `phase5-review` "Black-to-move" no longer asserts the sign
+  of a runner-up line that is worth ~0.
+- A temporary worktree's folder could not be deleted by `git worktree remove` right after use (Windows lock, my own shell was in
+  it); deleted with `Remove-Item` once the shell had left it. Nothing outside the repo was touched.
 
 Performance
-- **[P9] `perf:drag` scenario 2 drag (analysis board, MultiPV 5, ghost hovers, `go infinite`, 4
-  threads) is sensitive to machine state.** Failed 8 of 11 runs on 2026-10-17 under load (p95 33.3 ms,
-  3–7% dropped frames, 0 long tasks), then passed 3/3 on a clean machine (6b18a4c). See the
-  2026-10-19/25 entry below. Drops are single frames with no long task: probably render/composite
-  (ghost layer + overlay + dragged piece) competing with 4 engine threads; needs a trace-level
-  profile.
-- **perf:drag scenario 2, 2026-10-19 session (recorded 2026-10-26 from the user, who saw the
-  output; that session hit its usage limit before logging it).** In full runs scenario 2's drag
-  failed with p95 up to ~50 ms and ~15% dropped frames; run alone it passed (p95 16.73 ms). The
-  same failure appeared on the commit before Phase 6b and on 6b18a4c (which passed 3/3 on
-  2026-10-17), so it points to machine state, not to 6b. Re-measured 2026-10-26: see below. (Earlier that day the
-  script's 3 GB free-memory guard aborted attempts at 2.4–3.3 GB free.) A temporary worktree
-  left by that session (`wt-pre6b`, at 6b18a4c, clean) was removed.
-- **[P9]** Premove burst still shows 0–2 isolated dropped frames per ~70-frame window (p99 up to 50
-  ms) around bot moves; p95 unaffected.
-- **[P9]** Occasional unattributed 50–76 ms long tasks with live MultiPV 5 plus a review under
-  load (probably CPU contention: 4 + 1 engine threads on 8 logical cores).
-- **[P9]** The second (review) engine's memory cost is not measured (noise from other apps).
-- `importPgn` of the 33-move sample game is 27–33 ms on the main thread (largest single task the
-  review flow causes); opening a game on the board still parses it there. The Games list's bulk
-  import is in a worker since Phase 8.
-- `perf:drag` needs ≥ 3 GB free memory (its own guard aborts below that).
+- `importPgn` and the Games list: see above. `perf:drag` scenario 2 had failed under load before (2026-10-17/19/26); all of those
+  were machine state (load, battery, a locked screen), as the A/B in phase-9 shows once more.
+- The premove burst shows 1–3 dropped frames per ~70 (one is the harness's own click batch); p95 passes. The bot-move task is 7–9 ms
+  (was 16–27).
 
 Review and analysis
 - Quick preset grades small drops loosely (Excellent/Good/Inaccuracy agree with depth 18 about half
@@ -177,48 +180,23 @@ Test and tooling notes
 
 ## Key measurements
 
-Headless Chrome, 60 Hz, `npm run perf:drag`, MT Stockfish ×4 (budget: p95 ≤ 17.2 ms, no dropped
-frame, 0 long tasks). Last clean baseline, 6b18a4c (2026-10-17):
+Headless Chrome, 60 Hz, AC power, display awake (blank page 16.7 ms). Budgets: frame p95 ≤ 17.2 ms with 0 long tasks; the details,
+the runs and the older tables are in [phase-9](progress/phase-9.md).
 
-| Window | p95 | Dropped | Long tasks |
-|--------|-----|---------|------------|
-| 1 · Play drag + `go infinite` | 16.70–16.76 ms | 0–0.4% | 0 |
-| 1 · 3-premove burst | 16.76–16.85 ms | 0–5.2% (bot-move frames) | 0 |
-| 2 · Analysis drag, MultiPV 5, ghost every 3rd frame | 16.69 ms (3/3 clean runs) | 0.36–0.71% | 0 |
-| 2 · Navigation sweep (81 plies) | 16.81–16.92 ms | 1.7–4.5% | 0 |
+| Budget | Result |
+|---|---|
+| Frame time, `perf:drag` (S1 drag · burst · S2 drag · S2 sweep p95) | 16.71–16.78 · 16.74–16.97 · 16.76–16.77 · 16.84–16.88 ms (4 full quiet runs; final commit: S1 only, S2 owed) |
+| Input latency | 0.6–1.4 ms in the pointer handlers (+ the next frame) |
+| Main thread per frame | 1.4–3.1 ms (S1 drag 1.4–2.6, burst 1.6–2.0, S2 3.1) against 8.3 ms at 120 Hz |
+| Idle | 0 rAF in 500 ms |
+| Startup to an interactive board | 95–490 ms (cache reload ≈ 95–136 ms quiet); budget 1,500 ms |
+| 50 games (`perf:memory`) | +0.2–0.3 MB heap (5–7 KB per game, JIT code), DOM and listeners flat, workers 2 |
+| Review, 81 plies, Quick, 1 thread (`perf:review`) | 17.4–17.9 s (budget ~30 s), 0 long tasks |
+| Tasks over 50 ms (`perf:tasks`, 16 flows) | 0 after page load; page load: audio start 78–114 ms once, cold first layout 50–89 ms |
+| Engine memory | live (4 threads, 128 MB hash) +294 MB; review (1 thread, 32 MB) +149 MB; single-threaded +153 MB |
+| Bot-move + premove task | 7–9 ms (was 16–27) |
+| Bundle | main 1,486.03 kB (Phase 8: 1,483.20); precache 30 files, ~20.9 MB |
+| Earlier phases | engine 2.1–3.2 MN/s at depth 22–25; perft start depth 4 ≈ 737 ms; bot move selection (worker) 15.9 ms mean |
 
-- Input latency 0.8–1.2 ms; idle rAF 0; startup 260–314 ms; engine 2.1–2.8 MN/s at depth 22–25;
-  engine-line DOM updates ≤ 1 per frame; premove execution 5–7 ms.
-- Phase 4 baseline before fixes: scenario 2 drag p95 33.36 ms with a 281 ms long task; sweep p95 83 ms.
-- Review (`perf:review`): 81-ply game on Quick, 1 thread, 17.9–19.4 s (budget ~30 s); 46-move
-  Lichess game 29–31 s earlier on Quick. p95 frame 16.7–16.8 ms during reviews.
-- Phase 1: perft start depth 4 (197,281 nodes) ≈ 737 ms in Vitest; Kiwipete depth 3 ≈ 303 ms.
-- Bot move selection (worker): Node average 15.9 ms, max 112 ms over 560 positions; was main-thread
-  15–40 ms in the browser.
-- Bundle: main 1,483.20 kB at Phase 8 (1,449.47 kB at Phase 7, +33.7 kB: filters, insights, announcer, keyboard board, pwa); precache 30 files, 20.9 MB; earlier: main 1,449.47 kB (269.71 kB gzip) at Phase 7 (+29 kB); trainer chunks 19.1 / 14.1 / 22.4 kB (repertoire / endgames / visualization), loaded on first use; extension background 247 kB.
-- Tests at last full run (Phase 8, laptop on battery): 581 unit (49 files, 179 s), 155 e2e on one worker (14.1 min): 154 passed; the one failure (a 75 ms task against a 50 ms limit in the bulk-import test) was re-run after the limit became 120 ms (the work it guards is ~600 ms on the page), and passes. `perf:drag` after Phase 8: see below.
-
-
-### Phase 8: `perf:drag` on cce6dcd+ (2026-10-26, laptop on battery, Balanced plan, 3.4–4.2 GB free)
-
-One run, exit 1: scenario 1 drag p95 16.80 ms (0 dropped), premove burst 16.86 (2), scenario 2 drag 16.77 (3), all 0 long
-tasks; **scenario 2 navigation sweep p95 33.37 ms, 37 dropped frames (15%)**, 0 long tasks. Phase 8 touched the board's input
-code (keyboard handling, `tryCompleteSelectedMove`) and adds one live-region text write per navigation step. A baseline run
-of 3d9fde3 in a temporary worktree under the same conditions timed out before measuring anything, so there is no A/B. The sweep
-failed the same way on a loaded machine before (Oct 17/19); **first job of Phase 9: re-run `perf:drag` 3× plugged in, and
-if the sweep still fails, compare with the announcer switched off.**
-
-### Phase 6b close-out: `perf:drag` on 23f5d47+docs (2026-10-26)
-
-3 full runs (both scenarios), machine plugged in, best performance, 5.4–6.3 GB free, all exit 0:
-
-| Run | S1 drag p95 | S1 burst p95 | S2 drag p95 | S2 sweep p95 | Dropped (S1 drag / burst / S2 drag / sweep) | Long tasks |
-|-----|-------------|--------------|-------------|--------------|----------------------------------------------|------------|
-| 1 | 16.73 | 16.77 | 16.69 | 16.80 | 0 / 1 / 0 / 8 | 0 |
-| 2 | 16.70 | 16.77 | 16.73 | 16.90 | 0 / 1 / 3 / 10 | 0 |
-| 3 | 16.70 | 16.82 | 16.71 | 16.83 | 0 / 2 / 7 / 11 | 0 |
-
-(Window order per run as printed by the script; limit 17.2 ms.) Result: pass 3/3 on the current
-commit, so the Oct 19 scenario 2 failures were machine state (consistent with Oct 17's finding), not
-a 6b regression; the 6b18a4c comparison was not needed. Earlier attempts the same day were aborted by
-the 3 GB free-memory guard (2.4–3.3 GB free, other apps open) and measured nothing.
+Tests: 588 unit (51 files, 116 s); e2e 158 (155 passed on the first full run after the start-up split, the 3 failures fixed as described
+in phase-9; final full run below).
