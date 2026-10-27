@@ -1,5 +1,6 @@
 import { GameTree, type GameTermination } from '../core/game-tree';
 import { writePgn } from '../core/pgn';
+import { hintComment } from '../review/hints';
 import { announce } from './announcer';
 import {
   DEFAULT_POSITION,
@@ -185,6 +186,11 @@ export const DEFAULT_MAX_PREMOVES = 10;
  * Coordinates the 2D board, clocks, Web Audio synth, capture particles, Stockfish bot,
  * takebacks, draw offers, resign, limited hints, and optional infinite background analysis.
  */
+/** Writes text only when it differs: setting the same text still replaces the text node and dirties layout. */
+function setTextIfChanged(el: Element, text: string): void {
+  if (el.textContent !== text) el.textContent = text;
+}
+
 export class PlayController {
   private readonly container: HTMLElement;
   private readonly engine: EngineClient;
@@ -253,6 +259,13 @@ export class PlayController {
   private statusBannerEl!: HTMLElement;
   private evalBadgeEl!: HTMLElement;
   private moveListEl!: HTMLElement;
+  /** What the move list shows, move by move: a new move only adds to it (no rebuild of the whole list). */
+  private renderedMoveSans: string[] = [];
+  private moveSpans: HTMLElement[] = [];
+  private moveListScrollQueued = false;
+  /** The last tray markup written, so an update that changes nothing writes nothing. */
+  private topTrayHtml = '';
+  private bottomTrayHtml = '';
   private hintBtnEl!: HTMLButtonElement;
   private takebackBtnEl!: HTMLButtonElement;
   private hintsLogEl!: HTMLElement;
@@ -953,7 +966,12 @@ export class PlayController {
         ? this.clock.start(executed.color === 'w' ? 'b' : 'w')
         : this.clock.switchTurn(executed.color);
 
-    this.gameTree.addMove(executed.uci);
+    // A move played after a hint carries a comment saying so: it is how the hint reaches the saved game and its review
+    const hints = this.hintsLog.filter((h) => h.ply === this.plyHistory.length && h.color === executed.color);
+    this.gameTree.addMove(
+      executed.uci,
+      hints.length > 0 ? { comment: hintComment(hints.map((h) => h.suggestedSan)) } : undefined,
+    );
     announce(`${executed.color === 'w' ? 'White' : 'Black'} plays ${executed.san}`);
 
     this.plyHistory.push({
@@ -989,8 +1007,9 @@ export class PlayController {
       } to move${this.adapter.inCheck() ? ' — Check!' : ''}`;
     }
 
-    this.updateAllHud();
+    // One HUD pass per task: when a premove plays right after this move, its pass covers both
     if (!options?.moreMovesFollow) {
+      this.updateAllHud();
       this.restartInfiniteAnalysisIfEnabled();
     }
   }
@@ -1126,6 +1145,8 @@ export class PlayController {
         moreMovesFollow: premoveQueued,
       });
       if (premoveQueued && !this.executeQueuedPremove()) {
+        // (the premove didn't play, so the HUD pass that was held back for it is due now)
+        this.updateAllHud();
         this.restartInfiniteAnalysisIfEnabled();
       }
     } catch (err: unknown) {
@@ -1430,10 +1451,8 @@ export class PlayController {
         ? `You (${c === 'w' ? 'White' : 'Black'})`
         : `Stockfish ${tier} (${this.botRating})`;
 
-    this.topPlayerNameEl.textContent = labelForColor(topColor);
-    this.bottomPlayerNameEl.textContent = labelForColor(
-      topColor === 'w' ? 'b' : 'w',
-    );
+    setTextIfChanged(this.topPlayerNameEl, labelForColor(topColor));
+    setTextIfChanged(this.bottomPlayerNameEl, labelForColor(topColor === 'w' ? 'b' : 'w'));
     this.renderClockSnapshot(this.clock.getSnapshot());
     this.updateCapturedTrays();
   }
@@ -1467,10 +1486,16 @@ export class PlayController {
       return icons + advBadge;
     };
 
-    this.topCapturedEl.innerHTML = renderTrayHtml(topColor);
-    this.bottomCapturedEl.innerHTML = renderTrayHtml(
-      topColor === 'w' ? 'b' : 'w',
-    );
+    const topHtml = renderTrayHtml(topColor);
+    const bottomHtml = renderTrayHtml(topColor === 'w' ? 'b' : 'w');
+    if (topHtml !== this.topTrayHtml) {
+      this.topCapturedEl.innerHTML = topHtml;
+      this.topTrayHtml = topHtml;
+    }
+    if (bottomHtml !== this.bottomTrayHtml) {
+      this.bottomCapturedEl.innerHTML = bottomHtml;
+      this.bottomTrayHtml = bottomHtml;
+    }
   }
 
   private updateMoveList(): void {
@@ -1480,26 +1505,74 @@ export class PlayController {
     if (this.panelView === 'setup') this.renderNewGameCard();
     if (this.plyHistory.length === 0) {
       this.moveListEl.innerHTML = `<div class="wc-move-empty">No moves played yet. Drag or click a piece to begin.</div>`;
+      this.renderedMoveSans = [];
+      this.moveSpans = [];
       return;
     }
 
-    const rows: string[] = [];
-    for (let i = 0; i < this.plyHistory.length; i += 2) {
-      const moveNum = Math.floor(i / 2) + 1;
-      const whiteMove = this.plyHistory[i]?.executedMove;
-      const blackMove = this.plyHistory[i + 1]?.executedMove;
-      rows.push(`
+    const sans = this.plyHistory.map((p) => p.executedMove.san);
+    const shown = this.renderedMoveSans;
+    // The usual update only adds the newest move(s): then only they are written. Anything else (a takeback,
+    // a new game, a position loaded) rebuilds the list.
+    // (moveSpans holds both slots of every row, the unplayed black slot of an odd last row included)
+    const appendOnly =
+      shown.length > 0 &&
+      sans.length > shown.length &&
+      shown.every((san, i) => san === sans[i]) &&
+      this.moveSpans.length === Math.ceil(shown.length / 2) * 2;
+    if (appendOnly) {
+      this.moveSpans[shown.length - 1]?.classList.remove('wc-move-san-active');
+      for (let i = shown.length; i < sans.length; i++) {
+        if (i % 2 === 0) {
+          const moveNum = i / 2 + 1;
+          const row = document.createElement('div');
+          row.className = 'wc-move-row';
+          row.setAttribute('data-testid', `move-row-${moveNum}`);
+          row.innerHTML = `
+          <span class="wc-move-num">${moveNum}.</span>
+          <span class="wc-move-san" data-testid="move-ply-${i + 1}"></span>
+          <span class="wc-move-san" data-testid="move-ply-${i + 2}"></span>
+        `;
+          this.moveListEl.appendChild(row);
+          const spans = row.querySelectorAll<HTMLElement>('.wc-move-san');
+          this.moveSpans.push(spans[0]!);
+          this.moveSpans.push(spans[1]!);
+        }
+        this.moveSpans[i]!.textContent = sans[i]!;
+      }
+      this.moveSpans[sans.length - 1]?.classList.add('wc-move-san-active');
+    } else {
+      const rows: string[] = [];
+      for (let i = 0; i < sans.length; i += 2) {
+        const moveNum = Math.floor(i / 2) + 1;
+        rows.push(`
         <div class="wc-move-row" data-testid="move-row-${moveNum}">
           <span class="wc-move-num">${moveNum}.</span>
-          <span class="wc-move-san ${i === this.plyHistory.length - 1 ? 'wc-move-san-active' : ''}" data-testid="move-ply-${i + 1}">${whiteMove?.san ?? ''}</span>
-          <span class="wc-move-san ${i + 1 === this.plyHistory.length - 1 ? 'wc-move-san-active' : ''}" data-testid="move-ply-${i + 2}">${blackMove?.san ?? ''}</span>
+          <span class="wc-move-san ${i === sans.length - 1 ? 'wc-move-san-active' : ''}" data-testid="move-ply-${i + 1}">${sans[i] ?? ''}</span>
+          <span class="wc-move-san ${i + 1 === sans.length - 1 ? 'wc-move-san-active' : ''}" data-testid="move-ply-${i + 2}">${sans[i + 1] ?? ''}</span>
         </div>
       `);
+      }
+      this.moveListEl.innerHTML = rows.join('');
+      this.moveSpans = [...this.moveListEl.querySelectorAll<HTMLElement>('.wc-move-san')];
     }
-    this.moveListEl.innerHTML = rows.join('');
-    // The latest move in view (the list scrolls sideways on phones)
-    this.moveListEl.scrollTop = this.moveListEl.scrollHeight;
-    this.moveListEl.scrollLeft = this.moveListEl.scrollWidth;
+    this.renderedMoveSans = sans;
+    this.scrollMoveListToEnd();
+  }
+
+  /**
+   * The latest move in view (the list scrolls sideways on phones). Done at the start of the next frame:
+   * reading the scroll size right here forced a layout in the middle of the move, and a premove
+   * following the bot's move made it two per frame.
+   */
+  private scrollMoveListToEnd(): void {
+    if (this.moveListScrollQueued) return;
+    this.moveListScrollQueued = true;
+    requestAnimationFrame(() => {
+      this.moveListScrollQueued = false;
+      this.moveListEl.scrollTop = this.moveListEl.scrollHeight;
+      this.moveListEl.scrollLeft = this.moveListEl.scrollWidth;
+    });
   }
 
   private updateStatusBanner(): void {
@@ -1510,7 +1583,7 @@ export class PlayController {
 
   private updateControlsDisabledState(): void {
     const hintText = this.hintBtnEl.querySelector('.wc-btn-text');
-    if (hintText) hintText.textContent = `Hint (${this.hintsRemaining})`;
+    if (hintText) setTextIfChanged(hintText, `Hint (${this.hintsRemaining})`);
     this.hintBtnEl.disabled =
       this.gameOver ||
       this.hintsRemaining <= 0 ||
@@ -1526,9 +1599,7 @@ export class PlayController {
     const actions = this.container.querySelector<HTMLElement>('[data-testid="play-actions"]');
     if (over) over.hidden = !this.gameOver;
     if (actions) actions.hidden = this.gameOver;
-    this.hintsLogEl.textContent = `${this.hintsLog.length} hint${
-      this.hintsLog.length === 1 ? '' : 's'
-    } used`;
+    setTextIfChanged(this.hintsLogEl, `${this.hintsLog.length} hint${this.hintsLog.length === 1 ? '' : 's'} used`);
   }
 
   private updateAllHud(): void {

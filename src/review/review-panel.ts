@@ -5,6 +5,7 @@ import { EngineCancelledError, type EngineClient } from '../engine/engine-client
 import type { UciScore } from '../engine/uci-parser';
 import { formatEvalBarScore } from '../analysis/eval-bar';
 import { lookupOpeningByFen } from '../analysis/opening-lookup';
+import { describeHintedMoves, hintedMoves } from './hints';
 import { CLASS_THRESHOLDS, classFromWinDrop, isErrorClass } from './classification';
 import { formatBotLevel, winPercentFromScore } from './formulas';
 import {
@@ -887,6 +888,7 @@ export class ReviewPanel {
         // Short line; the details go in the tooltip
         const stats = this.result?.stats;
         const seconds = (stats?.timeMs ?? 0) / 1000;
+        const hinted = hintedMoves(this.host.getGameTree());
         text = `Reviewed · ${PRESET_LABEL[this.preset]} · ${seconds < 10 ? seconds.toFixed(1) : Math.round(seconds)} s`;
         details = [
           this.savedAt !== null ? `saved review from ${new Date(this.savedAt).toLocaleString()}` : '',
@@ -896,6 +898,7 @@ export class ReviewPanel {
           this.strippedAnnotations > 0
             ? `replaced ${this.strippedAnnotations} earlier engine annotation${this.strippedAnnotations === 1 ? '' : 's'}`
             : '',
+          hinted.length > 0 ? `${hinted.length} move${hinted.length === 1 ? '' : 's'} played after a hint (${describeHintedMoves(hinted)})` : '',
         ]
           .filter(Boolean)
           .join(' · ');
