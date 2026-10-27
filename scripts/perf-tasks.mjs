@@ -152,7 +152,7 @@ async function run() {
           return { x: r.left + ('abcdefgh'.indexOf(sq[0]) + 0.5) * (r.width / 8), y: r.top + (8 - Number(sq[1]) + 0.5) * (r.height / 8) };
         };
         const fire = (t, target, pt) =>
-          target.dispatchEvent(new PointerEvent(t, { bubbles: true, pointerId: 1, button: 0, buttons: t === 'pointerup' ? 0 : 1, clientX: pt.x, clientY: pt.y }));
+          target.dispatchEvent(new window.PointerEvent(t, { bubbles: true, pointerId: 1, button: 0, buttons: t === 'pointerup' ? 0 : 1, clientX: pt.x, clientY: pt.y }));
         const click = (sq) => {
           const pt = center(sq);
           fire('pointerdown', boardEl, pt);
@@ -194,7 +194,7 @@ async function run() {
     });
     await flow('review: step through with the arrow keys and jump Home / End', async () => {
       await page.evaluate(async () => {
-        const press = (key) => window.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+        const press = (key) => window.dispatchEvent(new window.KeyboardEvent('keydown', { key, bubbles: true }));
         press('Home');
         for (let i = 0; i < 30; i++) {
           press('ArrowRight');
