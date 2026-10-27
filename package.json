@@ -21,6 +21,7 @@
     "perf:drag": "node scripts/perf-drag.mjs",
     "perf:review": "node scripts/perf-review.mjs",
     "perf:memory": "node scripts/perf-memory.mjs",
+    "perf:tasks": "node scripts/perf-tasks.mjs",
     "calibrate:bots": "node scripts/calibrate-bots.mjs",
     "fixtures:review": "node scripts/record-review-fixtures.mjs",
     "review:compare": "node scripts/compare-review-presets.mjs",
