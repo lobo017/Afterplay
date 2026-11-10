@@ -10,7 +10,6 @@ Every runtime dependency, development tool, and bundled dataset used by this pro
 | `stockfish` | `^17.1.0` | `GPL-3.0-or-later` | Stockfish Authors & NMrugg (`stockfish.js`) — see `LICENSES/GPL-3.0-or-later.txt` |
 | `chess.js` | `^1.0.0` | `BSD-2-Clause` | Copyright (c) 2025 Jeff Hlywa (`jhlywa@gmail.com`) — see `LICENSES/BSD-2-Clause-chess.js.txt` |
 | `idb` | `^8.0.2` | `ISC` | Copyright (c) Jake Archibald — see `LICENSES/ISC-idb.txt` |
-| `preact` | `^10.26.4` | `MIT` | Copyright (c) 2015-present Jason Miller — see `LICENSES/MIT-preact-vite.txt` |
 
 ## Build, Testing & Linting Dependencies
 

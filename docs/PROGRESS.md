@@ -102,8 +102,7 @@ Differences from the brief, and why:
 - **Final scenario-2 `perf:drag` run.** Scenario 2 (analysis board, MultiPV 5, ghosts, navigation sweep) was last measured clean
   before the final small changes; on the final commit the machine was too busy (the pre-Phase-9 build failed it the same
   way minutes apart). Run `npm run perf:drag` with other apps closed, plugged in and the screen on.
-- **`preact`** is a dependency (and in LICENSES) that nothing imports; the app is vanilla TS. Remove it? (Not done: a
-  dependency change is yours to say.)
+- **`preact`:** removed on 2026-11-09 (nothing imported it; package.json, lockfile, LICENSES and the tsconfig JSX options).
 - **`PERF_ENGINE_THREADS` matrix** (4/3/2 threads × ghosts off) was never run; only worth running if scenario 2 fails on a
   quiet machine. Whether to drop analysis threads while a background review runs is also unmeasured
   ([phase-3-4-fixes](progress/phase-3-4-fixes.md)).

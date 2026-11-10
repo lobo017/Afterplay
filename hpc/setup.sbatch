@@ -50,7 +50,7 @@ main() {
   wc_log "repo at $(git -C "$WC_REPO" rev-parse --short HEAD): $(git -C "$WC_REPO" log -1 --format=%s)"
 
   # 2. The safe-delete helper must refuse what it should refuse
-  bash "$WC_REPO/hpc/test/paths-test.sh" || return 1
+  TMPDIR="$WC_JOB_SCRATCH/tmp" bash "$WC_REPO/hpc/test/paths-test.sh" || return 1
 
   # 3. The image
   wc_image_vars || return 1

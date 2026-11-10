@@ -8,6 +8,15 @@ here="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/paths.sh
 . "$here/../lib/paths.sh"
 
+# On Juno (inside a Slurm job) the temporary fake home must be inside the project's own folders, never the node's
+# /tmp: the caller sets TMPDIR to the job's scratch folder, and this fails if it is not inside a wizard-chess-hpc folder.
+if [ -n "${SLURM_JOB_ID:-}" ]; then
+  wc_init_paths || exit 2
+  if ! wc_inside_project "${TMPDIR:-}"; then
+    echo "FAIL TMPDIR='${TMPDIR:-}' is not inside ~/work/wizard-chess-hpc or ~/scratch/wizard-chess-hpc" >&2
+    exit 2
+  fi
+fi
 outer="$(mktemp -d "${TMPDIR:-/tmp}/wc-paths-test.XXXXXX")"
 fake="$outer/home"
 mkdir -p "$fake/work" "$fake/scratch" "$fake/other"
