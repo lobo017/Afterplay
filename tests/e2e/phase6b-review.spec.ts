@@ -152,18 +152,26 @@ test.describe('Phase 6b — Review', () => {
     for (const s of summary) console.log(`[layout-shift] ${s.count}× ${s.node}`);
     expect(summary).toEqual([]);
 
-    // Try it on a mistake: the board goes back one move and waits for a better move
-    await page.getByTestId(`review-moment-${moments[0]!.ply}`).click();
+    // Try it on a mistake: the board goes back one move and waits for a better move. Which moments a Quick review finds
+    // varies from run to run, and "Try it" is off for a move that is no mistake (a Good one can be among the key
+    // moments), so take the first key moment that offers it.
+    let k = -1;
+    for (let i = 0; i < moments.length && k < 0; i++) {
+      await page.getByTestId(`review-moment-${moments[i]!.ply}`).click();
+      await expect(label).toHaveText(`Key moment ${i + 1} of ${moments.length}`);
+      if (await page.getByTestId('btn-review-retry').isEnabled()) k = i;
+    }
+    expect(k, 'a key moment that is a mistake (Try it enabled)').toBeGreaterThanOrEqual(0);
     const before = await node(page);
     await expect(page.getByTestId('btn-review-retry')).toHaveText('Try it');
     await page.getByTestId('btn-review-retry').click();
     await expect(page.getByTestId('btn-review-retry')).toHaveText('Stop trying');
     expect((await node(page)).ply).toBe(before.ply - 1);
-    await expect(label).toHaveText(`Key moment 1 of ${moments.length}`);
+    await expect(label).toHaveText(`Key moment ${k + 1} of ${moments.length}`);
     await page.screenshot({ path: path.join(SCREENSHOT_DIR, 'desktop-review-try-it.png') });
-    // Next moment leaves the retry and moves on
+    // Next moment leaves the retry and moves on (after the last it wraps to the first)
     await page.getByTestId('btn-coach-next').click();
-    expect((await node(page)).id).toBe(moments[1]!.nodeId);
+    expect((await node(page)).id).toBe(moments[(k + 1) % moments.length]!.nodeId);
     await expect(page.getByTestId('btn-review-retry')).toHaveText('Try it');
   });
 

@@ -116,6 +116,13 @@ Differences from the brief, and why:
     answered 1.e4 … 2.d4 with `Bb4+` (page snapshot: "White to move — Check!"), the test's fixed third move Nf3 does not answer a check and
     was refused, so the move list stayed at 4 plies. The bot's replies are randomised, so this was a latent test race (it passed in
     11 of 12 Juno runs). Test fix: the planned move is played when legal, otherwise the first legal move.
+- **Closing gate, second attempt (commit `ca59164`):** wc-unit 505619 passed (592/592). **wc-e2e-repeat 505623: runs 1, 2 and 4 passed (159/159); run 3
+  failed one test** (`meta.json` commit and empty `repo-changes.txt` checked for all four): `phase6b-review` "the coach card walks through the key
+  moments…" hit its 150 s timeout. Not caused by saving: the page snapshot shows the first key moment was `6... Nf6`, a **Good** move, and
+  "Try it" is disabled for it (the app enables it only for errors, `review-panel.ts` `canRetry`); the test clicked it anyway and a click
+  on a disabled button waits until the test times out. Which moments a time-limited Quick review finds varies from run to run (as in the
+  phase8-leftovers case above), so this was a latent flake (passed in 11 of 12 earlier Juno runs). Test fix: take the first key moment that
+  offers "Try it"; the retry is still exercised on a mistake, assertions unchanged.
 
 ### Phase 8 follow-ups and the Phase 9 result, in short
 
