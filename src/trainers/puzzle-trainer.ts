@@ -1,3 +1,4 @@
+import { registerActivity } from '../ui/activity';
 import { announce } from '../ui/announcer';
 import type { PuzzleEntry } from '../core/datasets';
 import { RulesAdapter, type Color, type ExecutedMove, type MoveInput } from '../core/rules';
@@ -136,6 +137,10 @@ export class PuzzleTrainer {
   private menu!: Menu;
 
   constructor(private readonly options: PuzzleTrainerOptions) {
+    // Never reloaded for an update while a drill is under way (ui/activity.ts)
+    registerActivity('puzzle', () =>
+      ['playing', 'reply', 'checking', 'wrong'].includes(this.root.getAttribute('data-puzzle-state') ?? ''),
+    );
     this.dataset = options.dataset ?? new PuzzleDatasetClient();
     this.root = document.createElement('div');
     this.root.className = 'wc-play-layout wc-puzzle-layout';

@@ -41,11 +41,31 @@ app starts and works with no network and no server: play, analysis, review, all 
 the Games list. It also serves the pages with the COOP/COEP headers, so the multi-threaded engine
 still works offline and in the installed app, and the page falls back to single-threaded Stockfish
 only if isolation is unavailable. Settings › About & diagnostics shows whether the cache is
-complete. A newer build is downloaded in the background and waits behind an "A new version is
-ready" banner, so a game in progress is never reloaded; **Reload** takes it. Chrome offers to
+complete. A newer build is downloaded in the background. If nothing is in progress when it is
+found (at launch, or when the app comes back to the front) it is applied at once; if a game, drill
+or review is under way it waits behind a "New version available" banner, so nothing in progress is
+ever reloaded; **Reload** takes it. Saved data (IndexedDB) carries over. Chrome offers to
 install the app (the manifest has PNG icons; `npm run build:icons` redraws them from
 `public/favicon.svg`). `tests/e2e/phase8-offline.spec.ts` stops the server, switches the browser
 offline and checks all of this.
+
+### Hosting (Cloudflare Pages)
+
+The same build can be hosted. `public/_headers` (copied into `dist/`) gives every path the COOP/COEP
+headers, so the hosted page is cross-origin isolated from its first load, and tells browsers to
+always re-check `index.html` and `sw.js` while keeping the hashed files for good. Deploys use
+Wrangler (a dev dependency) and always go to a preview URL first:
+
+```bash
+npx wrangler login                                   # once, in a browser
+npx wrangler pages project create wizards-chess --production-branch=main   # once
+npm run deploy:preview                               # needs a clean git tree: builds, uploads, prints the URL and a build id
+npm run deploy:production -- --checked <build id>    # the same dist/, no rebuild
+```
+
+`deploy:production` refuses unless `dist/` and HEAD are exactly what the last preview deployed (a
+record in the git-ignored `.deploy/`). `WC_PAGES_PROJECT` names another Pages project. Each preview
+URL is its own origin, so its saved data and home-screen install are separate from production's.
 
 ## Performance and spec status
 

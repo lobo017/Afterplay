@@ -1,8 +1,9 @@
 import { applyUpdate, watchUpdate } from '../pwa';
 
 /**
- * "A new version is ready": shown when a newer build has been downloaded and is waiting. The
- * app never reloads by itself (a game could be under way); Reload takes the new build.
+ * "New version available": shown when a newer build is waiting while something is in progress
+ * (a game, a drill, a review). With nothing in progress the build is applied by itself instead
+ * (pwa.ts), so this banner never interrupts; Reload takes the new build, Later keeps the old one.
  */
 export function mountUpdateBanner(parent: HTMLElement): void {
   const el = document.createElement('div');
@@ -11,7 +12,7 @@ export function mountUpdateBanner(parent: HTMLElement): void {
   el.setAttribute('role', 'status');
   el.hidden = true;
   el.innerHTML = `
-    <span>A new version is ready.</span>
+    <span>New version available.</span>
     <button type="button" class="wc-btn wc-btn-primary wc-btn-sm" data-testid="btn-update-reload">Reload</button>
     <button type="button" class="wc-btn wc-btn-ghost wc-btn-sm" data-testid="btn-update-later">Later</button>`;
   parent.appendChild(el);

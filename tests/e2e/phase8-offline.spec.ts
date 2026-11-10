@@ -9,7 +9,8 @@ import { expect, test, type Page } from '@playwright/test';
 // build from its own server, lets the service worker cache everything, then STOPS the server and
 // switches the browser offline, and checks that play, analysis, review, train and the Games list
 // all still work (and that the page is still cross-origin isolated, so the engine still gets its
-// threads). Also installability, and the update flow (a new build waits for "Reload").
+// threads). Also installability, and the update flow (a new build goes in by itself when nothing is in
+// progress, and waits behind a "New version available" banner when something is).
 const SCREENSHOT_DIR = path.join('test-results', 'phase8-screens');
 fs.mkdirSync(SCREENSHOT_DIR, { recursive: true });
 
@@ -262,50 +263,107 @@ test.describe('Phase 8 — offline', () => {
     expect(result.installabilityErrors.map((e) => e.errorId).filter((id) => id !== 'in-incognito')).toEqual([]);
   });
 
-  test('an update waits behind a banner: the open page keeps its build until Reload', async ({ page }) => {
+  /** A copy of the build to serve, and a way to turn it into a "new build" (a changed page and worker). */
+  function makeEditableBuild(): { dir: string; publishNewBuild(): void } {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'wc-update-'));
+    fs.cpSync('dist', dir, { recursive: true });
+    return {
+      dir,
+      publishNewBuild() {
+        const indexPath = path.join(dir, 'index.html');
+        fs.writeFileSync(
+          indexPath,
+          fs
+            .readFileSync(indexPath, 'utf8')
+            .replace("<title>Wizard's Chess</title>", "<title>Wizard's Chess (new build)</title>"),
+        );
+        // (a real build also lists the page's new revision in the worker's file list)
+        const swPath = path.join(dir, 'sw.js');
+        const swText = fs.readFileSync(swPath, 'utf8');
+        const bumped = swText.replace(/("revision":")[0-9a-f]+(","url":"index\.html")/, '$1new-build$2');
+        expect(bumped).not.toBe(swText);
+        fs.writeFileSync(swPath, bumped);
+      },
+    };
+  }
+
+  /** What the app does when it comes back to the front (a phone resuming the home-screen app). */
+  async function resume(page: Page): Promise<void> {
+    await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  }
+
+  test('with nothing in progress, an update is applied by itself and saved data survives it', async ({ page }) => {
     test.setTimeout(180_000);
-    // A copy of the build, so a "new version" can be made by editing it
-    const copy = fs.mkdtempSync(path.join(os.tmpdir(), 'wc-update-'));
-    fs.cpSync('dist', copy, { recursive: true });
-    server = await startServer(copy);
+    const build = makeEditableBuild();
+    server = await startServer(build.dir);
+    await page.goto(server.url);
+    await waitForOfflineReady(page);
+    const firstScript = await page.evaluate(() => (navigator.serviceWorker.controller as ServiceWorker).scriptURL);
+
+    // Something saved on the old build
+    await page.getByTestId('mode-tab-games').click();
+    await page.getByTestId('btn-games-import').click();
+    await page.getByTestId('btn-games-paste').click();
+    await page.getByTestId('games-paste-text').fill(PASTED_GAME);
+    await page.getByTestId('btn-games-paste-import').click();
+    await expect(page.getByTestId('games-message')).toContainText('Imported 1 game');
+    expect(await page.evaluate(() => window.__wizardChessUpdate?.inProgress())).toEqual([]);
+
+    // A new build is published; the app finds it (as it does at launch) and, with nothing in progress, takes it
+    build.publishNewBuild();
+    let bannerSeen = false;
+    const watchBanner = setInterval(() => {
+      void page
+        .getByTestId('update-banner')
+        .isVisible()
+        .then((v) => (bannerSeen ||= v))
+        .catch(() => undefined);
+    }, 100);
+    await page.evaluate(async () => (await navigator.serviceWorker.getRegistration())!.update());
+    await expect.poll(() => page.title(), { timeout: 60_000 }).toBe("Wizard's Chess (new build)");
+    clearInterval(watchBanner);
+    expect(bannerSeen, 'no banner when nothing is in progress').toBe(false);
+    expect(await page.evaluate(() => (navigator.serviceWorker.controller as ServiceWorker).scriptURL)).toBe(
+      firstScript,
+    );
+
+    // The new build has the old build's data
+    await page.getByTestId('mode-tab-games').click();
+    await expect(page.getByTestId('games-row')).toHaveCount(1);
+    await expect(page.getByTestId('games-row-opening')).toContainText('Sicilian');
+    fs.rmSync(build.dir, { recursive: true, force: true });
+  });
+
+  test('with a game in progress, an update waits behind the banner until Reload', async ({ page }) => {
+    test.setTimeout(180_000);
+    const build = makeEditableBuild();
+    server = await startServer(build.dir);
     await page.goto(server.url);
     await waitForOfflineReady(page);
     await expect(page.getByTestId('update-banner')).toBeHidden();
-    const firstScript = await page.evaluate(() => (navigator.serviceWorker.controller as ServiceWorker).scriptURL);
 
-    // The new build: a changed page and a changed worker
-    const indexPath = path.join(copy, 'index.html');
-    fs.writeFileSync(
-      indexPath,
-      fs
-        .readFileSync(indexPath, 'utf8')
-        .replace("<title>Wizard's Chess</title>", "<title>Wizard's Chess (new build)</title>"),
-    );
-    // (a real build also lists the page's new revision in the worker's file list)
-    const swPath = path.join(copy, 'sw.js');
-    const swText = fs.readFileSync(swPath, 'utf8');
-    const bumped = swText.replace(/("revision":")[0-9a-f]+(","url":"index\.html")/, '$1new-build$2');
-    expect(bumped).not.toBe(swText);
-    fs.writeFileSync(swPath, bumped);
+    // A game under way
+    await clickMove(page, 'play-layout', 'e2', 'e4');
+    await expect.poll(() => page.evaluate(() => window.__wizardChessUpdate?.inProgress())).toContain('game');
 
-    // The page asks for updates when it is opened again; the old build stays until Reload
+    build.publishNewBuild();
     await page.evaluate(async () => (await navigator.serviceWorker.getRegistration())!.update());
     await expect(page.getByTestId('update-banner')).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByTestId('update-banner')).toContainText('New version available');
     expect(await page.title()).toBe("Wizard's Chess");
     await page.screenshot({ path: path.join(SCREENSHOT_DIR, 'update-banner.png') });
     await page.getByTestId('btn-update-later').click();
     await expect(page.getByTestId('update-banner')).toBeHidden();
 
-    // A reload with the old worker still in charge shows the old build…
-    await page.reload();
+    // Coming back to the app with the game still on: the banner again, never a reload under the game
+    await resume(page);
+    await expect(page.getByTestId('update-banner')).toBeVisible({ timeout: 10_000 });
+    await page.waitForTimeout(2500);
     expect(await page.title()).toBe("Wizard's Chess");
-    // …and the banner again; Reload takes the new one
-    await expect(page.getByTestId('update-banner')).toBeVisible({ timeout: 30_000 });
+
+    // Reload takes the new build
     await Promise.all([page.waitForEvent('load'), page.getByTestId('btn-update-reload').click()]);
     await expect.poll(() => page.title(), { timeout: 30_000 }).toBe("Wizard's Chess (new build)");
-    expect(await page.evaluate(() => (navigator.serviceWorker.controller as ServiceWorker).scriptURL)).toBe(
-      firstScript,
-    );
-    fs.rmSync(copy, { recursive: true, force: true });
+    fs.rmSync(build.dir, { recursive: true, force: true });
   });
 });

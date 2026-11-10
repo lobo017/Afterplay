@@ -1,3 +1,4 @@
+import { registerActivity } from '../ui/activity';
 import type { GameNode, GameTree } from '../core/game-tree';
 import { writePgn } from '../core/pgn';
 import { DEFAULT_POSITION, type Color, type MoveInput, type Square } from '../core/rules';
@@ -112,6 +113,8 @@ export class RepertoireTrainer {
   };
 
   constructor(private readonly options: RepertoireTrainerOptions) {
+    // Never reloaded for an update while a drill is under way (ui/activity.ts)
+    registerActivity('repertoire', () => this.drillState === 'playing' || this.drillState === 'asking');
     this.root = createTrainerRoot(options.container, 'repertoire-trainer', 'wc-repertoire-layout');
     const tabList = [
       { id: 'build', label: 'Build' },

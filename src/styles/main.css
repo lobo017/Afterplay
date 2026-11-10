@@ -5551,7 +5551,7 @@ label.wc-setting-row {
   }
 }
 
-/* "A new version is ready" (the service worker has a newer build waiting) */
+/* "New version available" (a newer build is waiting while something is in progress) */
 .wc-update-banner {
   position: fixed;
   left: 50%;

@@ -13,3 +13,11 @@ data/.cache/
 .DS_Store
 Thumbs.db
 dist-ext/
+
+# Deploy records (scripts/deploy.mjs) and Wrangler state
+.deploy/
+.wrangler/
+
+# Personal data for a gift build: presets, messages, downloaded games (never committed)
+gift.local/
+*.local.json

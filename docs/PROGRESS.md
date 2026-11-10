@@ -70,7 +70,29 @@ Unit, e2e and perf runs and batch studies run on the university's SLURM cluster 
    start, 60–340 ms, and a cold first layout, 35–89 ms, neither movable off the main thread) and *120 fps on high-refresh
    screens* (no such display here; main-thread headroom measured). **Missing:** Phase 10 (optional). Everything else Done.
 
-## Open decisions
+## Phase 11 — Hosting, iPhone support, presets (started 2026-11-10)
+
+Deadline: working on the target iPhone by 2026-11-19 (11-20 is buffer). Seven stages, each ending with its checks, a commit and a
+report. Personal data (the gift preset, its messages, downloaded games, the opponent shortlist) lives only in the git-ignored
+`gift.local/` folder; nothing personal goes in the repo, this file or commit messages.
+
+**Stage 1 plan: hosting on Cloudflare Pages + updates**
+- `public/_headers` (copied into `dist/`): COOP / COEP / CORP on every path, `no-cache` for `index.html`, `sw.js` and the manifest,
+  `immutable` for hashed `assets/*` and `stockfish/*`. A unit test checks it sends the same isolation headers as `serve.mjs` / Vite.
+- `scripts/deploy.mjs` with `deploy:preview` and `deploy:production` (Wrangler as a dev dependency, asked first):
+  - preview: clean git tree required, builds, hashes `dist/`, uploads to the Pages project's `preview` branch, prints the preview
+    URL and a short build id, records `{commit, dist hash, url}` in the git-ignored `.deploy/preview.json`.
+  - production: never builds; refuses unless `dist/` and HEAD still match the recorded preview and `--checked <build id>` names it,
+    so production only ever gets the exact files that were checked on the preview URL.
+- Updates (`src/pwa.ts`, `src/ui/update-banner.ts`, new `src/ui/activity.ts`): screens report whether something is in progress
+  (a game, a puzzle or drill, a review or queued background review, an open sheet). When a new build is waiting at launch or on
+  resume (the app checks for one when it becomes visible again, since an iPhone home-screen app resumes rather than relaunches),
+  it is applied at once if nothing is in progress and the user has not touched the page for 2 s; otherwise the banner shows.
+- The phase-8 update e2e test splits in two: idle → applied by itself (saved data still there afterwards); a game in
+  progress → the banner, then Reload.
+- Risks: Pages' 25 MiB file limit (largest file 4 MB: fine); the preview origin is a different origin from production (separate
+  data and install, expected); Wrangler adds a large dev dependency (also to Juno's `npm ci`, counted against its quota).
+
 
 - **Scenario-2 `perf:drag`** (analysis board, MultiPV 5, ghosts, navigation sweep) passed clean on Juno on the final code (p95 16.67 ms, 0 dropped).
   Not re-measured on the laptop: the laptop failures were machine state, and Juno numbers are baselines, not a screen.

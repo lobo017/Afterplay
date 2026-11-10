@@ -11,6 +11,8 @@
     "build:ext": "node scripts/build-extension.mjs",
     "build:icons": "node scripts/build-icons.mjs",
     "serve": "node scripts/serve.mjs",
+    "deploy:preview": "node scripts/deploy.mjs preview",
+    "deploy:production": "node scripts/deploy.mjs production",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings=0",
     "format": "prettier --write .",
@@ -45,6 +47,7 @@
     "typescript-eslint": "^8.26.0",
     "vite": "^6.2.0",
     "vite-plugin-pwa": "^0.21.1",
-    "vitest": "^3.0.7"
+    "vitest": "^3.0.7",
+    "wrangler": "^4.160.0"
   }
 }

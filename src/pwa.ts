@@ -1,7 +1,20 @@
 /**
  * Registers the app's service worker (src/sw.ts) and reports what it is doing: whether the app
  * is cached for offline use, and when a newer build is waiting.
+ *
+ * Updates: when a newer build is waiting (found at launch, or when the app comes back to the
+ * front: a home-screen app on a phone resumes rather than relaunches, so that is when it looks),
+ * it is applied by itself if nothing is in progress (ui/activity.ts) and the page has not been
+ * touched for a moment. Otherwise the "new version" banner shows, and the build waits for Reload.
  */
+import { activitiesInProgress } from './ui/activity';
+
+declare global {
+  interface Window {
+    /** Test hook: what the update flow would wait for now (ui/activity.ts). */
+    __wizardChessUpdate?: { inProgress: () => string[] };
+  }
+}
 
 export type OfflineState =
   /** Not a production build, or the browser has no service workers. */
@@ -52,8 +65,44 @@ export function watchUpdate(listener: (waiting: boolean) => void): () => void {
   return () => updateListeners.delete(listener);
 }
 
-function announceUpdate(): void {
+/** How long the page must have been left alone before an update reloads it by itself. */
+export const UPDATE_QUIET_MS = 2000;
+/** At most one update check per this long when the app keeps coming back to the front. */
+const UPDATE_CHECK_INTERVAL_MS = 60_000;
+
+let lastInputAt = -Infinity;
+let quietTimer: ReturnType<typeof setTimeout> | null = null;
+let lastCheckAt = -Infinity;
+
+function showBanner(): void {
   for (const l of updateListeners) l(true);
+}
+
+/** A newer build is waiting: take it now if nothing would be lost, otherwise leave it to the banner. */
+function announceUpdate(): void {
+  if (!registration?.waiting) return;
+  if (activitiesInProgress().length > 0) {
+    showBanner();
+    return;
+  }
+  const quietFor = performance.now() - lastInputAt;
+  if (quietFor >= UPDATE_QUIET_MS) {
+    applyUpdate();
+    return;
+  }
+  // The user is tapping around right now: decide again once they pause
+  if (quietTimer) clearTimeout(quietTimer);
+  quietTimer = setTimeout(() => {
+    quietTimer = null;
+    announceUpdate();
+  }, UPDATE_QUIET_MS - quietFor);
+}
+
+/** Asks the server for a newer build (no-op when offline, or when it asked a moment ago). */
+function checkForUpdate(): void {
+  if (!registration || performance.now() - lastCheckAt < UPDATE_CHECK_INTERVAL_MS) return;
+  lastCheckAt = performance.now();
+  void registration.update().catch(() => undefined);
 }
 
 /** Asks the worker how many of the build's files are cached. */
@@ -63,9 +112,12 @@ function askStatus(): void {
 }
 
 /** Lets the waiting build take over and reloads into it. */
+let applying = false;
+
 export function applyUpdate(): void {
   const waiting = registration?.waiting;
-  if (!waiting) return;
+  if (!waiting || applying) return;
+  applying = true;
   navigator.serviceWorker.addEventListener('controllerchange', () => window.location.reload(), { once: true });
   waiting.postMessage({ type: 'SKIP_WAITING' });
 }
@@ -79,6 +131,19 @@ export function registerServiceWorker(): void {
   }
   if (!import.meta.env.PROD) return;
   set({ kind: 'caching' });
+  window.__wizardChessUpdate = { inProgress: activitiesInProgress };
+
+  const noteInput = (): void => {
+    lastInputAt = performance.now();
+  };
+  window.addEventListener('pointerdown', noteInput, { capture: true, passive: true });
+  window.addEventListener('keydown', noteInput, { capture: true, passive: true });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    // Coming back to the front counts as a launch: a build that waited may go in now, and a newer one may exist
+    if (registration?.waiting && navigator.serviceWorker.controller) announceUpdate();
+    checkForUpdate();
+  });
 
   navigator.serviceWorker.addEventListener('message', (e: MessageEvent<StatusReply>) => {
     if (e.data?.type !== 'STATUS') return;
@@ -98,6 +163,8 @@ export function registerServiceWorker(): void {
       .register('/sw.js', { scope: '/' })
       .then((reg) => {
         registration = reg;
+        // The browser checks for a newer worker on this load; resumes check again (above)
+        lastCheckAt = performance.now();
         const watch = (worker: ServiceWorker | null): void => {
           if (!worker) return;
           worker.addEventListener('statechange', () => {

@@ -83,6 +83,7 @@ import type { EndgameTrainer } from './trainers/endgame-trainer';
 import type { GuessGame, VisualizationTrainer } from './trainers/visualization-trainer';
 import { describeOffline, watchOffline } from './pwa';
 import { mountUpdateBanner } from './ui/update-banner';
+import { registerActivity } from './ui/activity';
 import { mountGamesSettings } from './ui/settings-games-section';
 
 /** The four destinations. Review holds the analysis board; Train holds Today and the puzzles. */
@@ -398,6 +399,7 @@ export function mountAppShell(container: HTMLElement): {
   settingsBtn.addEventListener('click', () => settings.open());
   watchOffline((state) => settings.setOfflineStatus(describeOffline(state)));
   mountUpdateBanner(shellEl);
+  registerActivity('settings', () => settings.isOpen());
 
   const createConnectedEngine = (options?: EngineClientOptions) =>
     new EngineClient({
@@ -508,6 +510,7 @@ export function mountAppShell(container: HTMLElement): {
       void libraryReady.then((api) => api.library.savePlayedGame(game)).catch(() => undefined);
     },
   });
+  registerActivity('game', () => playController.isGameInProgress());
 
   // The review runs on its own engine, so live analysis keeps its worker while a review
   // runs. Created on the first review.
@@ -589,6 +592,7 @@ export function mountAppShell(container: HTMLElement): {
     analysis.onTreeReplaced(() => {
       if (!openingGame) openGameId = null;
     });
+    registerActivity('review', () => review.getState() === 'running');
     return { analysis, review };
   });
   const analysisController = lazyProxy(() => reviewStack.get().analysis);
@@ -1037,6 +1041,7 @@ export function mountAppShell(container: HTMLElement): {
       getEngine: getReviewEngine,
       isBookPosition: (fen) => lookupOpeningByFen(fen) !== null,
     });
+    registerActivity('background-review', () => queue.pending().length > 0);
     const bridge = new ExtensionBridgeClient(window as unknown as MessageWindow, {
       saveGames: (games) => lib.saveBridgeGames(games),
       setAccounts: (accounts) => lib.setMyAccounts(accounts),

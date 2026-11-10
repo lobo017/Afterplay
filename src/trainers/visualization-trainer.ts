@@ -1,3 +1,4 @@
+import { registerActivity } from '../ui/activity';
 import { OPENINGS_BY_EPD } from '../analysis/opening-lookup';
 import type { GameTree } from '../core/game-tree';
 import { announce } from '../ui/announcer';
@@ -155,6 +156,14 @@ export class VisualizationTrainer {
   };
 
   constructor(private readonly options: VisualizationTrainerOptions) {
+    // Never reloaded for an update while a drill is under way (ui/activity.ts)
+    registerActivity(
+      'visualization',
+      () =>
+        this.coordState === 'running' ||
+        (this.blindState !== 'idle' && this.blindState !== 'done') ||
+        (this.guessState !== 'idle' && this.guessState !== 'done'),
+    );
     this.random = options.random ?? Math.random;
     this.root = createTrainerRoot(
       options.container,

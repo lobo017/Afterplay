@@ -24,6 +24,7 @@ Every runtime dependency, development tool, and bundled dataset used by this pro
 | `typescript-eslint` | `^8.26.0` | `MIT` | Copyright (c) 2019-present TypeScript ESLint and contributors |
 | `prettier` | `^3.5.3` | `MIT` | Copyright (c) James Long and contributors |
 | `@types/node` | `^22.13.9` | `MIT` | Copyright (c) Microsoft Corporation and DefinitelyTyped contributors (type declarations only, not shipped) |
+| `wrangler` | `^4.160.0` | `MIT OR Apache-2.0` | Copyright (c) Cloudflare, Inc. (deploy tool for `npm run deploy:*` only, not shipped) |
 
 ## Bundled Datasets (`data/`)
 

@@ -1,0 +1,26 @@
+# Cloudflare Pages response headers (copied into dist/ by the build; see scripts/deploy.mjs).
+# The isolation headers are the same ones `npm run serve` and the service worker send: they make the page
+# cross-origin isolated, which the multi-threaded engine needs (SharedArrayBuffer).
+
+/*
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: require-corp
+  Cross-Origin-Resource-Policy: same-origin
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: no-referrer
+
+# Un-hashed files: always asked for again, so a new build is found (the service worker serves them offline)
+/
+  Cache-Control: no-cache
+/index.html
+  Cache-Control: no-cache
+/sw.js
+  Cache-Control: no-cache
+/manifest.webmanifest
+  Cache-Control: no-cache
+
+# Hashed file names never change content
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+/stockfish/*
+  Cache-Control: public, max-age=31536000, immutable

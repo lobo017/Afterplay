@@ -1,3 +1,4 @@
+import { registerActivity } from '../ui/activity';
 import type { EndgamePositionEntry } from '../core/datasets';
 import type { ExecutedMove, MoveInput, Square } from '../core/rules';
 import { EngineCancelledError, type EngineClient } from '../engine/engine-client';
@@ -84,6 +85,8 @@ export class EndgameTrainer {
   };
 
   constructor(private readonly options: EndgameTrainerOptions) {
+    // Never reloaded for an update while a drill is under way (ui/activity.ts)
+    registerActivity('endgame', () => this.state === 'playing' || this.state === 'thinking' || this.state === 'saving');
     this.root = createTrainerRoot(options.container, 'endgame-trainer', 'wc-endgame-layout');
     this.root.innerHTML = trainerLayoutHtml({
       testId: 'endgame-trainer',

@@ -12,3 +12,7 @@ test-results/
 playwright-report/
 # Recorded page and API data: kept exactly as recorded
 tests/fixtures/
+# Personal and deploy data, never part of the repo
+gift.local/
+.deploy/
+.wrangler/
