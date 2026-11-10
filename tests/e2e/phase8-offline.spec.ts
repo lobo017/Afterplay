@@ -168,7 +168,7 @@ test.describe('Phase 8 — offline', () => {
     if ((await page.getByTestId('toggle-analysis-engine').getAttribute('aria-pressed')) !== 'true') {
       await page.getByTestId('toggle-analysis-engine').click();
     }
-    await expect(page.getByTestId('eval-bar')).toHaveAttribute('data-mate', /.+/, { timeout: 60_000 });
+    await expect(page.getByTestId('eval-bar')).toHaveAttribute('data-mate', 'true', { timeout: 60_000 });
     await expect
       .poll(async () => Number(/\d+/.exec((await page.getByTestId('analysis-depth').textContent()) ?? '')?.[0] ?? 0), {
         timeout: 30_000,

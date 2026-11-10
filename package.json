@@ -13,6 +13,7 @@
     "serve": "node scripts/serve.mjs",
     "deploy:preview": "node scripts/deploy.mjs preview",
     "deploy:production": "node scripts/deploy.mjs production",
+    "check:hosted": "node scripts/check-hosted.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings=0",
     "format": "prettier --write .",
