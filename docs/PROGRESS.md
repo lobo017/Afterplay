@@ -106,6 +106,10 @@ report. Personal data (the gift preset, its messages, downloaded games, the oppo
   files cached, mate found at depth 15 with 4 threads, the bot answers, offline reload still isolated and the bot still answers,
   installable with no errors, no request outside the origin). `curl`: every path has the three isolation headers; hashed
   `assets/*` and `stockfish/*` are `immutable`. `/_headers` itself is not served (Pages answers with the app page).
+- **Production (2026-11-10, approved by the user after checking the preview):** build `aeedca6f9bb6` at commit `8c453ad`
+  (re-previewed at that commit first: same build id, so byte-identical) went to `https://wizards-chess-4tu.pages.dev`
+  (deployment `15595ec1`). Pages uploaded 0 new files (all 41 already there from the preview). `check:hosted` on production:
+  15/15 (mate at depth 16, offline reload isolated, installable, no request outside the origin).
 - A brand-new `pages.dev` subdomain failed TLS for the first minutes (certificate being issued); it then answered normally.
 - **Juno gate on `36b5bed`, all passed:** setup 505777 (lockfile changed: `npm ci`; quota 21,345 → 23,359 files, 5.2 → 5.8 GB,
   realsize 10.5 → 11.6 GB), wc-unit 505778 (typecheck, lint, format, build, 599/599 unit), wc-e2e-repeat 505779 (4 of 4 runs,
