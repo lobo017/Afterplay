@@ -166,10 +166,28 @@ wc_load_apptainer_inner() {
     return 1
   fi
   echo "wc: module found; MODULESHOME='${MODULESHOME:-}' LMOD_CMD='${LMOD_CMD:-}' MODULEPATH='${MODULEPATH:-}'"
-  module load apptainer/1.3.4 || {
-    echo "wc: 'module load apptainer/1.3.4' failed (MODULEPATH='${MODULEPATH:-}')" >&2
-    return 1
-  }
+  # Juno's login MODULEPATH, used only if the init left it empty or the module is not found with the one it set
+  local login_modulepath=/opt/ohpc/pub/unpackaged/modulefiles:/opt/ohpc/pub/registry/views/default:/opt/ohpc/pub/moduledeps/gnu14-openmpi5:/opt/ohpc/pub/moduledeps/gnu14:/opt/ohpc/pub/moduledeps/spack:/opt/ohpc/pub/modulefiles
+  if [ -z "${MODULEPATH:-}" ]; then
+    export MODULEPATH="$login_modulepath"
+    echo "wc: MODULEPATH was empty after the init; set it to Juno's login value"
+  elif ! module load apptainer/1.3.4 2>/dev/null; then
+    export MODULEPATH="$login_modulepath"
+    echo "wc: apptainer/1.3.4 not found with the init's MODULEPATH; retrying with Juno's login value"
+  else
+    echo "wc: loaded apptainer/1.3.4 with the init's MODULEPATH"
+  fi
+  if ! command -v apptainer >/dev/null 2>&1; then
+    # The load reported success (or was retried above) but apptainer is not on PATH: one more try with the login path
+    if [ "${MODULEPATH:-}" != "$login_modulepath" ]; then
+      export MODULEPATH="$login_modulepath"
+      echo "wc: apptainer not on PATH; retrying with Juno's login MODULEPATH"
+    fi
+    module load apptainer/1.3.4 || {
+      echo "wc: 'module load apptainer/1.3.4' failed (MODULEPATH='${MODULEPATH:-}')" >&2
+      return 1
+    }
+  fi
   command -v apptainer >/dev/null 2>&1 || {
     echo "wc: apptainer is not on PATH after 'module load apptainer/1.3.4'" >&2
     return 1
