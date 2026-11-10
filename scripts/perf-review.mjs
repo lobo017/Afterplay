@@ -30,6 +30,7 @@ import {
   killAllChildTrees,
   killCommandHint,
 } from './lib/process-guard.mjs';
+import { browserLaunchOptions } from './lib/browser.mjs';
 import { FRAME_FLOOR_P50_MAX_MS, measureFrameFloor } from './lib/frame-floor.mjs';
 
 const PORT = Number(process.env.PERF_PORT || 4180);
@@ -346,8 +347,7 @@ async function main() {
   try {
     server = await startStaticServer(PORT);
     browser = await chromium.launch({
-      channel: 'chrome',
-      headless: true,
+      ...browserLaunchOptions(),
       handleSIGINT: false,
       handleSIGTERM: false,
       handleSIGHUP: false,

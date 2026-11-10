@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page, type Request } from '@playwright/test';
+import { SITE_URL, SITE_URL_LOCALHOST } from './helpers/site';
 
 // Phase 6: puzzles (bundled Lichess set loaded lazily in a worker, puzzles from my own
 // mistakes), Glicko-2 rating, FSRS reviews and the Today screen.
@@ -295,15 +296,15 @@ test.describe('Phase 6 — puzzles', () => {
 
 test.describe('npm run serve — one origin', () => {
   test('localhost redirects to 127.0.0.1 with the path and query', async ({ request }) => {
-    const res = await request.get('http://localhost:4173/?mode=games', { maxRedirects: 0 });
+    const res = await request.get(`${SITE_URL_LOCALHOST}/?mode=games`, { maxRedirects: 0 });
     expect(res.status()).toBe(307);
-    expect(res.headers()['location']).toBe('http://127.0.0.1:4173/?mode=games');
+    expect(res.headers()['location']).toBe(`${SITE_URL}/?mode=games`);
     expect(res.headers()['cache-control']).toBe('no-store');
   });
 
   test('a page opened at localhost ends up on 127.0.0.1 with its #fragment', async ({ page }) => {
-    await page.goto('http://localhost:4173/#today');
-    expect(page.url()).toBe('http://127.0.0.1:4173/#today');
+    await page.goto(`${SITE_URL_LOCALHOST}/#today`);
+    expect(page.url()).toBe(`${SITE_URL}/#today`);
     await expect(page.getByTestId('mode-tab-train')).toHaveAttribute('aria-current', 'page');
   });
 });

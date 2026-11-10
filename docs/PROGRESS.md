@@ -41,6 +41,43 @@ alone (7 of 7, also 3 of 3 under heavy CPU load), and CPU load does not reproduc
 `npx playwright test` once; if that test fails again on a quiet machine it is a real finding to chase (a ≥ 50 ms task in the review
 window), not a flake to loosen.**
 
+### HPC: automated checks on Juno (started 2026-11-09)
+
+Plan (Part A, then the Phase 9 closing gate on Juno as Part B). Checks, perf and batch studies move to the university's SLURM
+cluster (Juno); the laptop no longer runs them.
+
+- **Files added:** `hpc/` (`lib/paths.sh` with the folder constants and the safe delete helper, `lib/job.sh` for the shared job
+  prologue/epilogue, `setup.sbatch`, `jobs/{unit,e2e,e2e-repeat,perf,calibrate,puzzles}.sbatch`, `summarize.mjs`, `smoke.mjs`,
+  `README.md`); `scripts/verify-puzzles.mjs` (deep puzzle check, did not exist); `tests/e2e/helpers/site.ts` (one place for the port).
+- **Files changed:** `playwright.config.ts`, `tests/e2e/helpers/extension.ts` + two specs (browser channel and port by platform/env,
+  Windows behaviour unchanged), `scripts/lib/process-guard.mjs` (read `/proc` on Linux), `scripts/perf-*.mjs` (channel, headless
+  display-rate wording), `scripts/calibrate-bots.mjs` (`--level`), `scripts/build-extension.mjs` + `extension/src/settings.ts`
+  (build-time default port), `AGENTS.md`.
+- **Design:** every job runs `apptainer exec --cleanenv --containall` from the Playwright image (pinned to the lockfile's
+  Playwright version) with only these binds: the repo, the npm cache, a per-job scratch folder as `/tmp`, and per-job folders over
+  the repo's `dist/`, `dist-ext/` and `test-results/`. So parallel jobs on one node never share a build or a port, nothing is
+  written into the repo outside `node_modules`, and the container's own PID namespace limits "leftover process" checks to the job.
+- **Risks:** nothing could be run on Linux from the laptop, so the first Juno job is the first Linux run of this harness (the setup
+  job ends with a smoke test of headless Chromium, the frame floor and loading the extension). New headless Chromium and
+  `Extensions.loadUnpacked` are expected to work; `xvfb-run` is the fallback (`WC_HEADED=1`). Whether the GitHub repo is public
+  is unknown (a private repo cannot be cloned by the setup job).
+
+**Part A (the `hpc/` setup) is written and committed ("HPC: Juno job setup"); nothing has run on Juno yet.** Waiting for approval of
+the scripts and the exact commands, then Part B (remove `preact`, setup job, `e2e-repeat` ×4, one `perf` job, close Phase 9).
+Differences from the brief, and why:
+- `wc-unit` also runs typecheck, lint, format check and build (separate steps, same job): AGENTS.md's gate needs them and they
+  must run on Juno too. `wc-summarize` and `hpc/smoke.mjs` were added (arrays need a combined report; the setup needs a check
+  that Chromium and the extension work on Linux).
+- `scripts/verify-puzzles.mjs` is new (no "deep puzzle verification" existed): fixed-depth Stockfish over every player move of
+  all 20k puzzles, accepting the stored move by the app's own alternative-move rule. Tried locally on 20 puzzles (55 moves, all
+  engine-best, 0.25 s per puzzle); the failure path tried at depth 1.
+- Checked on the laptop before the commit (Juno did not exist yet): `typecheck`, `lint`, `format:check`, `bash -n` on every script,
+  `hpc/test/paths-test.sh` (symlink cases are skipped on Windows), `hpc/smoke.mjs`, `summarize.mjs` on made-up results, a
+  `build:ext` with and without `WC_PORT`. The unit and e2e suites were not run (they are what Juno is for).
+- Not checked anywhere yet: apptainer flags (`--containall --no-home`, nested binds over `dist/` and `node_modules/.vite`), the
+  `module` init in a job, `git clone` of the GitHub repo (is it public?), new headless Chromium loading the extension, and
+  whether `/dev/shm` inside the container is big enough for Chromium.
+
 ### Phase 8 follow-ups and the Phase 9 result, in short
 
 1. **Bulk-import limit back to 50 ms.** The 75 ms task was the browser's first `AudioContext`, not the import (400 games:

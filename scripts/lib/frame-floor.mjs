@@ -9,6 +9,21 @@
 /** Above this blank-page median the frame numbers of a run are not valid evidence (60 Hz = 16.7 ms). */
 export const FRAME_FLOOR_P50_MAX_MS = 17.0;
 
+/**
+ * What a failed floor means on this machine, for the abort message. A laptop's headless Chrome follows the
+ * display, so a slow blank page means a locked or sleeping screen, battery or load. A cluster node has no
+ * display: Chromium paces frames with its own 60 Hz timer, so only load on the node (or a throttled CPU) can
+ * make the floor slow.
+ */
+export function floorFailureHint(headlessServer) {
+  return headlessServer
+    ? 'This machine has no display (headless server), so Chromium paces frames with its own 60 Hz timer and a ' +
+        'slow blank page means the node is busy or throttled. Run perf jobs on an --exclusive node and check ' +
+        'that nothing else of yours shares it.'
+    : 'Typical causes: the session is locked or the display is off (headless Chrome then loses vsync), battery ' +
+        'or power-saver mode, a busy machine. Unlock the screen, plug in, close other apps and run again.';
+}
+
 /** Samples 240 requestAnimationFrame intervals of a blank page in a new page of `context`. */
 export async function measureFrameFloor(context) {
   const page = await context.newPage();

@@ -18,6 +18,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { chromium } from '@playwright/test';
 import { formatGb, formatProcesses, freeMemoryBytes, installCleanup, killAllChildTrees } from './lib/process-guard.mjs';
+import { browserLaunchOptions } from './lib/browser.mjs';
 
 const PORT = Number(process.env.PERF_PORT || 4181);
 const BASE_URL = `http://127.0.0.1:${PORT}`;
@@ -248,8 +249,7 @@ async function run() {
   try {
     server = await startStaticServer(PORT);
     browser = await chromium.launch({
-      channel: 'chrome',
-      headless: true,
+      ...browserLaunchOptions(),
       handleSIGINT: false,
       handleSIGTERM: false,
       handleSIGHUP: false,

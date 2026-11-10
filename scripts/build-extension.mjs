@@ -115,8 +115,14 @@ function drawIcon(size) {
 
 // --- build
 
-fs.rmSync(OUT, { recursive: true, force: true });
+// Empty the folder but keep it: on Juno dist-ext/ is a per-job mount point, which cannot be removed
+fs.mkdirSync(OUT, { recursive: true });
+for (const entry of fs.readdirSync(OUT)) fs.rmSync(path.join(OUT, entry), { recursive: true, force: true });
 fs.mkdirSync(path.join(OUT, 'icons'), { recursive: true });
+
+// The default site URL has the port the site is served on. The e2e jobs on a shared machine each serve on their
+// own port (WC_PORT) and build the extension for it; without WC_PORT nothing changes (4173).
+const define = process.env.WC_PORT ? { __WC_SITE_PORT__: JSON.stringify(String(Number(process.env.WC_PORT))) } : {};
 
 for (const [name, file] of ENTRIES) {
   await build({
@@ -124,6 +130,7 @@ for (const [name, file] of ENTRIES) {
     root,
     logLevel: 'warn',
     publicDir: false,
+    define,
     build: {
       outDir: OUT,
       emptyOutDir: false,

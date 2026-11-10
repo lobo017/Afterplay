@@ -12,8 +12,11 @@ export interface ExtensionSettings {
   autoCapture: boolean;
 }
 
+/** Replaced at build time by scripts/build-extension.mjs when WC_PORT is set (test jobs on a shared machine). */
+declare const __WC_SITE_PORT__: string | undefined;
+
 /** `npm run serve` serves the site here. */
-export const DEFAULT_SITE_URL = 'http://127.0.0.1:4173';
+export const DEFAULT_SITE_URL = `http://127.0.0.1:${typeof __WC_SITE_PORT__ === 'string' ? __WC_SITE_PORT__ : '4173'}`;
 
 export const DEFAULT_SETTINGS: ExtensionSettings = {
   lichessUsername: '',

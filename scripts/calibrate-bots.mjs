@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'vite';
@@ -169,7 +170,25 @@ const CALIBRATION_LEVELS = [
   },
 ];
 
+/**
+ * Which levels to run: all of them, or one with `--level <rating>` (or CALIBRATE_LEVEL=<rating>), which is how the
+ * Juno array job runs one strength level per task. Each level has its own seeded rng; the engines are shared between
+ * levels in a full run, so a level alone can differ slightly from the same level in a full run (hash contents). The
+ * monotonic-progression check needs several levels, so hpc/summarize.mjs repeats it over the tasks of an array.
+ */
+function selectedLevels() {
+  const flag = process.argv.indexOf('--level');
+  const wanted = flag !== -1 ? process.argv[flag + 1] : process.env.CALIBRATE_LEVEL;
+  if (!wanted) return CALIBRATION_LEVELS;
+  const level = CALIBRATION_LEVELS.find((l) => String(l.rating) === String(wanted));
+  if (!level) {
+    throw new Error(`No calibration level ${wanted}; levels are ${CALIBRATION_LEVELS.map((l) => l.rating).join(', ')}`);
+  }
+  return [level];
+}
+
 async function runCalibration() {
+  const levels = selectedLevels();
   const startedAt = performance.now();
   const vite = await createServer({
     root: rootDir,
@@ -234,7 +253,7 @@ async function runCalibration() {
   let allPassed = true;
 
   try {
-    for (const cfg of CALIBRATION_LEVELS) {
+    for (const cfg of levels) {
       const rng = mulberry32(104729 + cfg.rating * 31);
       const refRng = mulberry32(209951 + cfg.rating * 17);
 
@@ -376,6 +395,8 @@ async function runCalibration() {
       `\nCalibration finished in ${elapsedSec}s. Monotonic progression: ${monotonic ? 'PASS' : 'FAIL'}. Overall: ${allPassed && monotonic ? 'PASS' : 'NEEDS TUNING'}\n`,
     );
     console.log(JSON.stringify(summaryRows, null, 2));
+    // Machine-readable copy for hpc/summarize.mjs (Juno jobs set CALIBRATE_OUT to a file in their results folder)
+    if (process.env.CALIBRATE_OUT) fs.writeFileSync(process.env.CALIBRATE_OUT, JSON.stringify(summaryRows, null, 2));
 
     if (!allPassed || !monotonic) {
       process.exitCode = 1;

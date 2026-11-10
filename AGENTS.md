@@ -10,7 +10,7 @@
   items, and key measurements in PROGRESS.md.
 - Work one phase at a time. Before writing code, add a short plan to PROGRESS.md (files to
   add or change, risks).
-- A phase is done only when all of these pass, run by you:
+- A phase is done only when all of these pass, run by you (on Juno, see below):
   - `npm run typecheck`
   - `npm run lint`
   - `npm test`
@@ -38,4 +38,29 @@
 - Only kill processes you started: ones you hold a handle to, or descendants of your own process found by parent PID. Re-check each process's parent PID and command line immediately before killing it. Never find processes by name or command-line text matching. For anything else, list it and ask me to stop it.
 - Never send personal information (email, name, tokens, file paths) to any external service without asking me first.
 - Never link node_modules (junction or symlink) into a git worktree, and never use git worktree remove --force. If a comparison needs an older commit, give its worktree its own npm ci, or ask me.
-- Before perf runs or the full e2e suite, check whether the laptop is on battery. If it is, tell me and wait for me to plug in, since battery throttling invalidates the results.
+- Before any perf run or full e2e run on the laptop (rare now; see Juno below), check whether the laptop is on battery. If it is, tell me and wait for me to plug in, since battery throttling invalidates the results.
+
+## Juno (the university's SLURM cluster)
+
+Automated checks (unit, e2e, perf) and batch studies (bot calibration, puzzle verification) run on Juno, not on this laptop.
+The setup and every job script are in hpc/ (hpc/README.md). Perf numbers from Juno are regression baselines for the code on a
+headless Linux node, not user-experience measurements; the Key measurements in PROGRESS.md say which machine each number is from.
+
+Juno safety rules (these override anything else):
+
+- One folder only. Everything created on Juno lives under ~/work/wizard-chess-hpc/ (subfolders: repo/, results/, cache/ for
+  Apptainer and npm caches, image/). Temporary job files go only in ~/scratch/wizard-chess-hpc/<job-id>/. Never read, write, move,
+  or delete anything outside those two folders. Other projects in ~/work must not be touched.
+- No conda. Don't use, create, modify, or activate any conda environment; Node comes from the Playwright container. Every job
+  script starts with #SBATCH --export=NONE and runs the container with apptainer exec --cleanenv, so an active conda environment
+  can't leak in.
+- Don't modify the account setup: ~/.bashrc, ~/.bash_profile, ~/.ssh, ~/.conda, ~/.condarc, module defaults, or anything else in
+  the home folder.
+- Every script sources the shared hpc/lib/paths.sh, which defines the root folder and the safe delete helper (wc_rm_tree). The
+  helper refuses any path that isn't inside ~/work/wizard-chess-hpc/ or ~/scratch/wizard-chess-hpc/, and refuses empty or unset
+  variables. Never use rm -rf directly.
+- Jobs are named with the prefix wc- . Only cancel jobs submitted in this project (wc- jobs); never touch other jobs.
+- Over ssh, run only: sbatch, squeue, sacct, scancel (wc- jobs only), mfsgetquota, mkdir -p / ls / cat inside the project folders,
+  and git pull inside ~/work/wizard-chess-hpc/repo. Anything else, ask first. Use a timeout on every ssh command.
+- Keep total usage under 50 GB and 300k files. Check mfsgetquota before setup and after the first npm ci, and report both numbers.
+- Request only the resources a job needs (fairshare charges what is requested), never GPUs, at most 4 running jobs.

@@ -4,10 +4,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium, expect, type BrowserContext, type Page, type Route, type Worker } from '@playwright/test';
+import { EXTENSION_HEADLESS, SITE_URL, SITE_URL_LOCALHOST, extensionChannel } from './site';
 
-export const SITE_URL = 'http://127.0.0.1:4173';
-/** The same server under its other name. */
-export const SITE_URL_LOCALHOST = 'http://localhost:4173';
+export { SITE_URL, SITE_URL_LOCALHOST };
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 export const EXTENSION_DIR = path.join(ROOT, 'dist-ext');
 export const CAPTURE_FIXTURES = path.join(ROOT, 'tests', 'fixtures', 'capture');
@@ -89,8 +88,8 @@ export async function launchWithExtension(options: LaunchOptions = {}): Promise<
   buildExtension();
   const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wc-ext-e2e-'));
   const context = await chromium.launchPersistentContext(userDataDir, {
-    channel: 'chrome',
-    headless: true,
+    channel: extensionChannel(),
+    headless: EXTENSION_HEADLESS,
     viewport: { width: 1440, height: 900 },
     // The extension's own service worker has to run, so service workers are allowed here even though
     // the config blocks them for every other test (the site's worker then caches the build quietly)

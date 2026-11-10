@@ -15,7 +15,8 @@ import {
   killAllChildTrees,
   killCommandHint,
 } from './lib/process-guard.mjs';
-import { FRAME_FLOOR_P50_MAX_MS, measureFrameFloor } from './lib/frame-floor.mjs';
+import { browserLaunchOptions, isHeadlessServer } from './lib/browser.mjs';
+import { FRAME_FLOOR_P50_MAX_MS, floorFailureHint, measureFrameFloor } from './lib/frame-floor.mjs';
 
 const PORT = Number(process.env.PERF_PORT || 4179);
 const BASE_URL = `http://127.0.0.1:${PORT}`;
@@ -641,8 +642,7 @@ ${formatProcesses(killed)}`,
   try {
     server = await startStaticServer(PORT);
     browser = await chromium.launch({
-      channel: 'chrome',
-      headless: true,
+      ...browserLaunchOptions(),
       // This script owns signal handling, so cleanup covers the server too
       handleSIGINT: false,
       handleSIGTERM: false,
@@ -664,9 +664,8 @@ ${formatProcesses(killed)}`,
       if (!RELATIVE_MODE) {
         throw new PerfAbort(
           `A blank page runs at p50 ${environmentFloor.p50FrameMs} ms here (limit ${ENVIRONMENT_FLOOR_P50_MAX_MS} ms), ` +
-            'so no app could meet the 60 Hz budget and the numbers would be meaningless. Typical causes: the ' +
-            'session is locked or the display is off (headless Chrome then loses vsync), battery or power-saver ' +
-            'mode, a busy machine. Unlock the screen, plug in, close other apps and run again. (PERF_RELATIVE=1 ' +
+            'so no app could meet the 60 Hz budget and the numbers would be meaningless. ' +
+            `${floorFailureHint(isHeadlessServer())} (PERF_RELATIVE=1 ` +
             'compares against this floor instead; that result is not a spec budget result.)',
           4,
         );
@@ -704,6 +703,9 @@ ${formatProcesses(killed)}`,
 
     const report = {
       environmentFloor,
+      // A cluster node has no display: frames follow Chromium's own 60 Hz timer, and these numbers are
+      // regression baselines for the code, not what a user's screen would show
+      display: isHeadlessServer() ? 'none (headless server, software 60 Hz timer)' : 'display',
       mode:
         environmentFloor.p50FrameMs > ENVIRONMENT_FLOOR_P50_MAX_MS
           ? 'relative-to-floor (NOT a spec budget result)'

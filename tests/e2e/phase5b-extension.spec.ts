@@ -9,6 +9,8 @@ import {
   queueEntry,
   readFixture,
   setUsernames,
+  SITE_URL,
+  SITE_URL_LOCALHOST,
   stripPageAssets,
   type ExtensionSession,
 } from './helpers/extension';
@@ -548,7 +550,7 @@ test.describe('Phase 5b — capture extension', () => {
   test('Settings: the bridge moves with the site URL; bad values are refused; auto-capture can be switched off', async () => {
     const popup = await openPopup(session);
     await popup.getByTestId('popup-settings').locator('summary').click();
-    await expect(popup.getByTestId('popup-site-url')).toHaveValue('http://127.0.0.1:4173');
+    await expect(popup.getByTestId('popup-site-url')).toHaveValue(SITE_URL);
     await expect(popup.getByTestId('popup-auto-capture')).toBeChecked();
     await popup.getByTestId('popup-site-url').fill('localhost:5173');
     await popup.getByTestId('popup-settings-save').click();
@@ -568,12 +570,12 @@ test.describe('Phase 5b — capture extension', () => {
       await popup.getByTestId('popup-settings-save').click();
       await expect(popup.getByTestId('popup-settings-result')).toContainText(message);
       await expect(popup.getByTestId('popup-settings-result')).toHaveAttribute('data-tone', 'bad');
-      await popup.getByTestId(field).fill(field === 'popup-site-url' ? 'http://127.0.0.1:4173' : '');
+      await popup.getByTestId(field).fill(field === 'popup-site-url' ? SITE_URL : '');
     }
     expect(await matches()).toEqual(['http://127.0.0.1:5173/*', 'http://localhost:5173/*']);
     await popup.getByTestId('popup-settings-save').click();
     await expect(popup.getByTestId('popup-settings-result')).toHaveText('Saved.');
-    expect(await matches()).toEqual(['http://127.0.0.1:4173/*', 'http://localhost:4173/*']);
+    expect(await matches()).toEqual([`${SITE_URL}/*`, `${SITE_URL_LOCALHOST}/*`]);
     await popup.close();
 
     // Auto-capture off: my game ending on the page only enables the button

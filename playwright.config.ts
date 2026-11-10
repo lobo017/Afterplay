@@ -1,4 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
+import { SITE_PORT, SITE_URL, pageChannel } from './tests/e2e/helpers/site';
+
+const channel = pageChannel();
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -10,9 +13,10 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: 0,
   workers: 1,
-  reporter: 'list',
+  // On Juno the job also asks for a JSON report (PLAYWRIGHT_JSON_OUTPUT_NAME), which hpc/summarize.mjs reads
+  reporter: process.env.PLAYWRIGHT_JSON_OUTPUT_NAME ? [['list'], ['json']] : 'list',
   use: {
-    baseURL: 'http://127.0.0.1:4173',
+    baseURL: SITE_URL,
     trace: 'on-first-retry',
     // The app's service worker caches the whole build on first load; tests run without it
     // (a fresh profile each, nothing to reuse) except phase8-offline.spec.ts, which turns it on.
@@ -23,14 +27,16 @@ export default defineConfig({
       name: 'chromium',
       use: {
         ...devices['Desktop Chrome'],
-        channel: 'chrome',
+        ...(channel ? { channel } : {}),
       },
     },
   ],
   webServer: {
-    command: 'node scripts/serve.mjs --port 4173',
-    url: 'http://127.0.0.1:4173',
-    reuseExistingServer: !process.env.CI,
+    command: `node scripts/serve.mjs --port ${SITE_PORT}`,
+    url: SITE_URL,
+    // A server already on the port is reused on the laptop. On a shared cluster node it would be somebody
+    // else's build, so a job (WC_PORT set) always starts its own and fails if the port is taken.
+    reuseExistingServer: !process.env.CI && !process.env.WC_PORT,
     timeout: 30000,
     // Playwright starts the server through a shell, outside the runner's process tree,
     // so a force-killed runner used to leave it running. The server now exits when the

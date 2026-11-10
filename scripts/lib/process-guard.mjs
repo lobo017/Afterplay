@@ -1,11 +1,37 @@
 // Process hygiene for the perf and e2e harnesses: find leftover browsers/servers from
 // earlier runs, kill whole process trees, and clean up on every way a run can end.
 import { spawnSync } from 'node:child_process';
+import fs from 'node:fs';
 import os from 'node:os';
 import process from 'node:process';
 import { setInterval, setTimeout } from 'node:timers';
 
 const IS_WINDOWS = process.platform === 'win32';
+const IS_LINUX = process.platform === 'linux';
+
+/**
+ * Linux: read /proc directly (the Playwright image is not guaranteed to have `ps`). Inside the Apptainer
+ * container of a Juno job /proc only shows the job's own processes (private PID namespace), which keeps
+ * the leftover checks from ever seeing another job's browsers on a shared node.
+ */
+function listProcessesFromProc() {
+  const rows = [];
+  for (const entry of fs.readdirSync('/proc')) {
+    if (!/^\d+$/.test(entry)) continue;
+    try {
+      const stat = fs.readFileSync(`/proc/${entry}/stat`, 'utf8');
+      // "pid (comm) state ppid ...": comm may hold spaces and parentheses, so cut at the last ')'
+      const close = stat.lastIndexOf(')');
+      const name = stat.slice(stat.indexOf('(') + 1, close);
+      const ppid = Number(stat.slice(close + 2).split(' ')[1]);
+      const cmd = fs.readFileSync(`/proc/${entry}/cmdline`, 'utf8').split('\0').filter(Boolean).join(' ') || name;
+      rows.push({ pid: Number(entry), ppid, name, cmd });
+    } catch {
+      // the process ended while we looked
+    }
+  }
+  return rows;
+}
 
 /** Every process on the machine: { pid, ppid, name, cmd }. */
 export function listProcesses() {
@@ -31,6 +57,7 @@ export function listProcesses() {
       cmd: String(r.CommandLine ?? ''),
     }));
   }
+  if (IS_LINUX) return listProcessesFromProc();
   const res = spawnSync('ps', ['-eo', 'pid=,ppid=,comm=,args='], {
     encoding: 'utf8',
     timeout: 30_000,
@@ -79,7 +106,7 @@ export function findLeftoverTestProcesses({ ports = [] } = {}) {
     if (isPlaywrightBrowser(p)) return true;
     if (!/node/i.test(p.name)) return false;
     if (
-      /scripts[\\/](perf-drag|perf-review|calibrate-bots|compare-review-presets|record-review-fixtures)\.mjs/.test(
+      /scripts[\\/](perf-drag|perf-review|calibrate-bots|compare-review-presets|record-review-fixtures|verify-puzzles)\.mjs/.test(
         p.cmd,
       )
     ) {
