@@ -161,7 +161,13 @@ export function registerServiceWorker(): void {
   const start = (): void => {
     navigator.serviceWorker
       .register('/sw.js', { scope: '/' })
-      .then((reg) => {
+      .then((maybeReg: ServiceWorkerRegistration | undefined) => {
+        // (A blocked registration, e.g. Playwright's WebKit with service workers turned off, resolves to nothing)
+        if (!maybeReg) {
+          set({ kind: 'failed', message: 'this browser did not register the offline worker' });
+          return;
+        }
+        const reg = maybeReg;
         registration = reg;
         // The browser checks for a newer worker on this load; resumes check again (above)
         lastCheckAt = performance.now();

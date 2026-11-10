@@ -242,7 +242,9 @@ test.describe('Phase 3 — Drag survival, drag cancel & premove queue', () => {
     // Black has only a king and two pawns, so it can never check or block our knights
     // The New game card's time chips (applied when the game below starts)
     await page.getByTestId('time-control-5+3').click();
-    await setupGame(page, '7k/6pp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQ - 0 1', 'w', 700);
+    // The bot thinks 3 s: the three premoves (six clicks and a drag) must all be queued before its first reply, and
+    // in WebKit's iPhone mode at this size they take up to ~2 s
+    await setupGame(page, '7k/6pp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQ - 0 1', 'w', 3000);
     expect(await page.evaluate(() => window.__wizardChessPlay!.controller.getMaxPremoves())).toBe(10);
 
     // Sample the ply count and White's clock on every frame

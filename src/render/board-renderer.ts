@@ -2041,6 +2041,11 @@ export class BoardRenderer {
       animationDurationMs?: number;
       /** The head of the premove queue was just played on the real board. */
       consumedPremove?: boolean;
+      /**
+       * The opponent's reply: a piece selected by a tap or click (not a drag) stays selected if it is still on its
+       * square, so a move begun while the opponent thought can be finished after it answered.
+       */
+      keepSelection?: boolean;
     },
   ): void {
     if (this.pendingPromotion) {
@@ -2079,6 +2084,8 @@ export class BoardRenderer {
       this.particles.triggerCapture(lm.to, capturedColor, lm.from, this.flipped);
     }
 
+    const selectedBefore = this.selectedSquare;
+    const selectedPieceBefore = selectedBefore ? this.displaySquares.get(selectedBefore) : undefined;
     this.displaySquares = this.computeDisplaySquares();
 
     const drag = this.dragState;
@@ -2096,8 +2103,17 @@ export class BoardRenderer {
       this.premoveTargets = this.selectionPremoveTargets(drag.from, drag.piece);
     } else {
       this.endDragForRemovedPiece();
-      this.selectedSquare = null;
-      this.premoveTargets = [];
+      const after = selectedBefore ? this.displaySquares.get(selectedBefore) : undefined;
+      const keep =
+        Boolean(options?.keepSelection) &&
+        drag === null &&
+        selectedBefore !== null &&
+        after !== undefined &&
+        after.color === selectedPieceBefore?.color &&
+        after.type === selectedPieceBefore.type &&
+        this.canInteractWithColor(after.color);
+      this.selectedSquare = keep ? selectedBefore : null;
+      this.premoveTargets = keep && after ? this.selectionPremoveTargets(selectedBefore!, after) : [];
     }
 
     const animate = options?.animate ?? Boolean(lm);

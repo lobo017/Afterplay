@@ -167,11 +167,19 @@ test.describe('Phase 3 — 2D Board, Play Mode vs Bot & Legacy Bug Regression Su
       play.controller.loadPosition('2bqkbnr/Pppppppp/8/8/8/8/1PPPPPPP/RNBQKBNR b KQk - 0 1', 'w');
     });
 
-    // Click a7 -> click a8 while it is Black's turn -> Premove Promotion Picker opens -> click Knight ('promote-n')
-    await page.getByTestId('square-a7').click();
-    await page.getByTestId('square-a8').click();
+    // Click a7 -> click a8 while it is Black's turn -> Premove Promotion Picker opens -> click Knight ('promote-n').
+    // Clicks at measured centres: a locator click waits for stability first (300-500 ms each in WebKit), and three
+    // of them outlast the bot's 900 ms
+    const clickAt = async (testId: string) => {
+      const box = (await page.getByTestId(testId).boundingBox())!;
+      await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+    };
+    const a7 = (await page.getByTestId('square-a7').boundingBox())!;
+    const a8 = (await page.getByTestId('square-a8').boundingBox())!;
+    await page.mouse.click(a7.x + a7.width / 2, a7.y + a7.height / 2);
+    await page.mouse.click(a8.x + a8.width / 2, a8.y + a8.height / 2);
     await expect(promoPicker).toBeVisible();
-    await page.getByTestId('promote-n').click();
+    await clickAt('promote-n');
     await expect(promoPicker).toBeHidden();
 
     const premoveUnderpromoResult = await page.evaluate(async () => {
@@ -365,10 +373,19 @@ test.describe('Phase 3 — 2D Board, Play Mode vs Bot & Legacy Bug Regression Su
     // New-game choices apply when the game starts
     await page.getByTestId('btn-new-game').click();
 
+    // Clicks at the squares' centres (measured once): a locator click waits for the element to be stable first, which
+    // in WebKit takes 300-500 ms per click, and four of them outlast the bot's 0.7 s
+    const centre: Record<string, { x: number; y: number }> = {};
+    for (const sq of ['e2', 'e4', 'd2', 'd4']) {
+      const box = (await page.getByTestId(`square-${sq}`).boundingBox())!;
+      centre[sq] = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
+    }
+    const clickSquare = (sq: string) => page.mouse.click(centre[sq]!.x, centre[sq]!.y);
+
     // Play 1. e4 as White
     const movePlayedAt = Date.now();
-    await page.getByTestId('square-e2').click();
-    await page.getByTestId('square-e4').click();
+    await clickSquare('e2');
+    await clickSquare('e4');
     await expect(page.getByTestId('move-ply-1')).toHaveText('e4');
 
     // Confirm the bot is currently in its non-blocking human-like thinking delay
@@ -378,8 +395,8 @@ test.describe('Phase 3 — 2D Board, Play Mode vs Bot & Legacy Bug Regression Su
     expect(isThinkingImmediately).toBe(true);
 
     // Queue a premove 2. d4 (d2 -> d4) while the bot is still thinking
-    await page.getByTestId('square-d2').click();
-    await page.getByTestId('square-d4').click();
+    await clickSquare('d2');
+    await clickSquare('d4');
 
     // Confirm the premove is queued on the board while the bot is still thinking
     const premoveStateWhileThinking = await page.evaluate(() => {

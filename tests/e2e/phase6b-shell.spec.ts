@@ -170,7 +170,12 @@ test.describe('Phase 6b — app frame and navigation', () => {
     expect(Math.round(nav.y + nav.height)).toBe(844);
     expect(Math.round(nav.width)).toBe(390);
     await expect(page.getByTestId('screen-title')).toHaveText('Play');
-    await expect(page.getByRole('heading', { name: "Wizard's Chess" })).toBeHidden();
+    // The app's heading gives way to the screen name: out of sight (a 1 px clipped box), still there for screen readers
+    const heading = page.getByRole('heading', { name: "Wizard's Chess" });
+    await expect(heading).toBeAttached();
+    const headingBox = (await heading.boundingBox())!;
+    expect(headingBox.width).toBeLessThanOrEqual(1);
+    expect(headingBox.height).toBeLessThanOrEqual(1);
     for (const mode of MODES) {
       await page.getByTestId(`mode-tab-${mode}`).click();
       await expect(page.getByTestId('screen-title')).toHaveText(mode[0]!.toUpperCase() + mode.slice(1));

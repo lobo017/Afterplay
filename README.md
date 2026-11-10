@@ -63,6 +63,10 @@ npm run deploy:preview                               # needs a clean git tree: b
 npm run deploy:production -- --checked <build id>    # the same dist/, no rebuild
 ```
 
+`npm run check:hosted -- <url>` checks a deployed copy as a first visitor meets it (headers, isolation, the
+engine and the bot, offline reload, install); `--browser webkit` or `--browser webkit-iphone` runs it in
+Playwright's WebKit, the second as an iPhone (the install guide and the phone engine profile too).
+
 `deploy:production` refuses unless `dist/` and HEAD are exactly what the last preview deployed (a
 record in the git-ignored `.deploy/`). `WC_PAGES_PROJECT` names another Pages project. Each preview
 URL is its own origin, so its saved data and home-screen install are separate from production's.
@@ -71,6 +75,27 @@ Since Wrangler 4.15x, `pages project create` hands new projects to Workers stati
 given `--force`; this app stays on classic Pages (decided 2026-11-10). Later `pages deploy` commands
 run against the existing Pages project and need no flag. The production URL is
 `https://wizards-chess-4tu.pages.dev` (Pages added a suffix: the plain name was taken).
+
+### On an iPhone or iPad
+
+Open the hosted URL in Safari and add it to the Home Screen (Share, or ⋯ then Share, then **Add to Home
+Screen**, with **Open as Web App** left on). Safari clears the saved data of a website that hasn't been
+opened for a while; a Home Screen web app keeps it, opens full screen and works offline. The first visit
+in iOS or iPadOS (not installed) opens a guide with pictures; Settings › About & diagnostics › **Add to
+Home Screen** reopens it on any device. The app also asks for persistent storage after start-up, and
+Settings says whether the browser granted it.
+
+A phone (an iPhone or Android phone user agent, or a touch screen whose short side is under 600 px) runs
+one Stockfish engine for everything, with at most 2 threads and a 16 MB hash: about 150 MB instead of the
+~600 MB of a desktop's three engines (live analysis, bot, review), which is about what iOS allows a Safari
+tab. The engine's queue orders the work (live analysis first, then reviews, then background reviews of the
+Games list); a review started on the board pauses live analysis until it ends. Settings › About shows the
+profile in use.
+
+The e2e suite runs in three Playwright projects: `chromium`, `webkit` (desktop Safari's engine) and
+`webkit-iphone` (an iPhone 13: 390 × 664, touch, iPhone user agent). The capture extension's tests are
+Chromium-only. Playwright's WebKit is not Safari on a real iPhone (no memory limit, no Home Screen mode),
+so the target phone is still checked by hand.
 
 ## Performance and spec status
 
@@ -99,7 +124,7 @@ npm run typecheck   # TypeScript strict type checking
 npm run lint        # ESLint zero-warning check
 npm test            # Vitest unit tests
 npm run build       # Production build to dist/
-npm run test:e2e    # Playwright end-to-end tests
+npm run test:e2e    # Playwright end-to-end tests (chromium, webkit, webkit-iphone; one project: -- --project=webkit)
 ```
 
 Slower measurement scripts, kept out of `npm test`:

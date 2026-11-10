@@ -103,6 +103,8 @@ export class AnalysisController {
 
   private isActive: boolean;
   private engineEnabled: boolean;
+  /** Why live analysis is on hold although the engine is on (a review running on a phone's only engine), or null. */
+  private livePausedNote: string | null = null;
   private multipv: number;
   private analysisDepth: number;
   private threatSearchDepth: number;
@@ -835,6 +837,34 @@ export class AnalysisController {
     return this.engineEnabled;
   }
 
+  /**
+   * Holds live analysis (the engine stays "on") with a note in the lines panel, or resumes it (null). On a phone
+   * one engine does everything, and a review started on the board needs it to itself.
+   */
+  public setLivePaused(note: string | null): void {
+    if (this.livePausedNote === note) return;
+    const wasPaused = this.livePausedNote !== null;
+    this.livePausedNote = note;
+    this.linesPanel.setPausedNote(note);
+    if (note !== null) {
+      if (wasPaused) return;
+      this.cancelActiveSearches();
+      this.latestLines = [];
+      this.latestThreat = null;
+      this.linesPanel.clear(this.gameTree.currentNode.fen);
+      this.board.setBestMoveArrow(null);
+      this.board.setThreatMoveArrow(null);
+      this.board.setGhostPreview(null);
+      this.threatBadgeEl.textContent = 'Threat: —';
+      return;
+    }
+    if (this.engineEnabled && this.isActive) this.startPositionAnalysis();
+  }
+
+  public getLivePausedNote(): string | null {
+    return this.livePausedNote;
+  }
+
   public setMultiPv(multipv: number): void {
     const clamped = Math.max(1, Math.min(5, Math.floor(multipv)));
     if (this.multipv === clamped) return;
@@ -864,7 +894,7 @@ export class AnalysisController {
     if (checkbox && checkbox.checked !== show) {
       checkbox.checked = show;
     }
-    if (show && !this.latestThreat && this.engineEnabled) {
+    if (show && !this.latestThreat && this.engineEnabled && this.livePausedNote === null) {
       void this.runThreatSearchForCurrentNode(this.analysisGeneration, this.adapter.fen());
     } else {
       this.syncAnalysisArrows();
@@ -1512,7 +1542,7 @@ export class AnalysisController {
       return;
     }
 
-    if (!this.isActive) {
+    if (!this.isActive || this.livePausedNote !== null) {
       this.linesPanel.clear(fen);
       return;
     }

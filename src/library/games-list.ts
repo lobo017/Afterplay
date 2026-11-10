@@ -346,7 +346,10 @@ export class GamesList {
     ]) {
       el.addEventListener('change', onFilter);
     }
-    for (const el of [this.els.opening, this.els.minAccuracy]) el.addEventListener('input', onFilter);
+    // Dates too: a browser without a date picker shows a text field, which fires `change` only when it loses focus
+    for (const el of [this.els.opening, this.els.minAccuracy, this.els.from, this.els.to]) {
+      el.addEventListener('input', onFilter);
+    }
     this.els.clear.addEventListener('click', () => this.clearFilters());
     this.els.del.addEventListener('click', () => {
       const n = this.selectedVisibleIds().length;

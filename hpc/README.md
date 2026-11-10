@@ -80,7 +80,7 @@ a job is running, the jobs read the repo while they run). Then:
 | Job | Partition · resources · limit | What it does | Command |
 |---|---|---|---|
 | `wc-unit` | dev · 4 CPUs · 8 GB · 55 min | `typecheck`, `lint`, `format:check`, `build`, `npm test` (each its own step) | `SB $JOBS/unit.sbatch"` (extra arguments go to vitest) |
-| `wc-e2e` | normal · 6 CPUs · 12 GB · 100 min | build, then one full `playwright test` (80 min inside) | `SB $JOBS/e2e.sbatch"` (`--headed`: extension tests in a real window under xvfb-run; `-- <playwright args>`) |
+| `wc-e2e` | normal · 6 CPUs · 12 GB · 100 min | build, then one full `playwright test`: the `chromium`, `webkit` and `webkit-iphone` projects (80 min inside) | `SB $JOBS/e2e.sbatch"` (`--headed`: extension tests in a real window under xvfb-run; `-- <playwright args>`, e.g. `-- --project=webkit-iphone`) |
 | `wc-e2e-repeat` | normal · 6 CPUs · 12 GB · 100 min per task | N complete e2e runs, to expose flaky tests | `SB --array=1-4%4 $JOBS/e2e-repeat.sbatch"` (N runs: `--array=1-N%4`) |
 | `wc-perf` | normal · `--exclusive` · 16 GB · 90 min | `perf:drag`, `perf:review`, `perf:tasks`, `perf:memory`, one after the other | `SB $JOBS/perf.sbatch"` (`--only drag,tasks` for a subset) |
 | `wc-calibrate` | normal · 3 CPUs · 3 GB · 50 min per task | `calibrate:bots`, one level per task (400 … 2400) | `SB $JOBS/calibrate.sbatch"` (array 0-6%4 is built in) |

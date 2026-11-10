@@ -12,6 +12,37 @@ const FOCUSABLE =
   'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 /**
+ * Safari does not focus a button that is clicked or tapped, so `document.activeElement` is still the page when a
+ * click opens a sheet. The control pressed last stands in for it (pressed just now, still in the page), so focus
+ * still goes back to whatever opened the sheet.
+ */
+const PRESS_MEMORY_MS = 2000;
+let lastPressed: { el: HTMLElement; at: number } | null = null;
+let pressTrackerInstalled = false;
+
+function trackPresses(): void {
+  if (pressTrackerInstalled || typeof document === 'undefined') return;
+  pressTrackerInstalled = true;
+  document.addEventListener(
+    'pointerdown',
+    (e) => {
+      const target = e.target instanceof Element ? e.target.closest<HTMLElement>(FOCUSABLE) : null;
+      lastPressed = target ? { el: target, at: performance.now() } : null;
+    },
+    { capture: true, passive: true },
+  );
+}
+
+function currentOpener(): HTMLElement | null {
+  const active = document.activeElement;
+  if (active instanceof HTMLElement && active !== document.body) return active;
+  if (lastPressed && lastPressed.el.isConnected && performance.now() - lastPressed.at < PRESS_MEMORY_MS) {
+    return lastPressed.el;
+  }
+  return null;
+}
+
+/**
  * A modal panel that slides in from the right (full screen on phones). Escape, the backdrop
  * and the close button close it; focus moves into it on open, stays inside while open, and
  * returns to whatever opened it.
@@ -44,6 +75,7 @@ export class Sheet {
     this.root.querySelector('.wc-sheet-backdrop')?.addEventListener('click', () => this.close());
     this.root.querySelector(`[data-testid="${options.testId}-close"]`)?.addEventListener('click', () => this.close());
     this.root.addEventListener('keydown', this.handleKeyDown);
+    trackPresses();
   }
 
   public isOpen(): boolean {
@@ -52,8 +84,7 @@ export class Sheet {
 
   public open(): void {
     if (this.isOpen()) return;
-    const active = document.activeElement;
-    this.returnFocus = active instanceof HTMLElement ? active : null;
+    this.returnFocus = currentOpener();
     this.root.hidden = false;
     document.documentElement.classList.add('wc-sheet-open');
     // Escape closes it even when focus has left it (e.g. a button inside was just hidden)

@@ -974,6 +974,7 @@ export class PlayController {
       wasDragged,
       triggerCaptureParticles: true,
       consumedPremove: Boolean(options?.consumedPremove),
+      keepSelection: executed.color !== this.playerColor,
     });
 
     // Trigger procedural Web Audio effects

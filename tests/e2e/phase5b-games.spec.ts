@@ -196,13 +196,14 @@ test.describe('Phase 5b — Games list (no extension)', () => {
     expect(stored.review?.review.moves).toHaveLength(6);
     expect(stored.review?.review.complete).toBe(true);
 
-    // Opening it shows the stored review; the engine is not asked for anything
+    // Opening it shows the stored review; the engine is not asked to review anything (on a phone the review engine is
+    // also the live one, so live analysis of the position shown is not counted)
     await page.evaluate(() => {
       const engine = window.__wizardChessReview!.getEngine();
       const original = engine.analyze.bind(engine);
       (window as unknown as { __analyzeCalls: number }).__analyzeCalls = 0;
       engine.analyze = (...args: Parameters<typeof original>) => {
-        (window as unknown as { __analyzeCalls: number }).__analyzeCalls++;
+        if ((args[0].priority ?? 'live') !== 'live') (window as unknown as { __analyzeCalls: number }).__analyzeCalls++;
         return original(...args);
       };
     });

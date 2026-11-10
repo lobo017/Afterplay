@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   AnalysisCache,
   EngineCancelledError,
@@ -283,6 +283,72 @@ describe('Phase 2 — EngineClient, Thread Detection, Priority Queue & Cache', (
     await Promise.all([pBg1, pBg2, pRev1, pLive1]);
 
     expect(executionOrder).toEqual(['bg-1', 'live-1', 'review-1', 'bg-2']);
+    client.terminate();
+  });
+
+  it('re-queues a finite search pre-empted by a higher-priority request; an infinite one is still cancelled', async () => {
+    let t!: MockStockfishTransport;
+    const client = new EngineClient({
+      variant: 'single-threaded',
+      transportFactory: (v) => {
+        t = new MockStockfishTransport(v);
+        t.autoRespondSearch = false;
+        return t;
+      },
+    });
+    await client.init();
+
+    const REVIEW_FEN = 'rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2';
+    const LIVE_FEN = 'rnbqkbnr/pppp1ppp/8/4p3/4P3/5N2/PPPP1PPP/RNBQKB1R b KQkq - 1 2';
+    const searched: string[] = [];
+    let holdNext = true;
+    const origSend = t.send.bind(t);
+    t.send = (cmd: string) => {
+      origSend(cmd);
+      if (cmd.startsWith('position ')) searched.push(cmd.includes(REVIEW_FEN) ? 'review' : 'live');
+      if (cmd.startsWith('go ')) {
+        // The first search is held until something pre-empts it; every later one answers by itself
+        if (holdNext) {
+          holdNext = false;
+          return;
+        }
+        const n = searched.length;
+        setTimeout(() => {
+          t.emit(`info depth 9 seldepth 9 multipv 1 score cp ${n} nodes 10 nps 10 time 1 pv e2e4`);
+          t.emit('bestmove e2e4');
+        }, 5);
+      }
+    };
+
+    const order: string[] = [];
+    const review = client
+      .analyze({ id: 'review', priority: 'review', fen: REVIEW_FEN, depth: 20, useCache: false })
+      .then((r) => {
+        order.push('review');
+        return r;
+      });
+    await vi.waitFor(() => expect(searched).toEqual(['review']));
+    const live = client
+      .analyze({ id: 'live', priority: 'live', preempt: true, fen: LIVE_FEN, depth: 8, useCache: false })
+      .then(() => order.push('live'));
+    const [reviewResult] = await Promise.all([review, live]);
+
+    expect(order).toEqual(['live', 'review']);
+    expect(searched).toEqual(['review', 'live', 'review']);
+    expect(t.sentCommands.filter((c) => c === 'stop')).toHaveLength(1);
+    // The result is the rerun's (third search), not the stopped one's
+    expect(reviewResult.depth).toBe(9);
+    expect(reviewResult.lines[0]?.score).toEqual({ type: 'cp', value: 3 });
+
+    // An infinite search of the same priority is cancelled as before, not rerun (labels are by position)
+    holdNext = true;
+    searched.length = 0;
+    const infinite = client.analyze({ id: 'inf', priority: 'live', fen: REVIEW_FEN, infinite: true, useCache: false });
+    await vi.waitFor(() => expect(searched).toEqual(['review']));
+    const next = client.analyze({ id: 'next', priority: 'live', fen: LIVE_FEN, depth: 8, useCache: false });
+    await expect(infinite).rejects.toThrow(EngineCancelledError);
+    await next;
+    expect(searched).toEqual(['review', 'live']);
     client.terminate();
   });
 

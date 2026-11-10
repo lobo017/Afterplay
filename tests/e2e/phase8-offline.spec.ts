@@ -113,6 +113,11 @@ async function clickMove(page: Page, scope: string, from: string, to: string): P
 
 test.describe('Phase 8 — offline', () => {
   let server: Server | null = null;
+  // Each test serves the build on an origin of its own, which the iPhone project's "install guide seen" storage state
+  // does not cover: mark it seen here too, so the guide does not cover the board
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => localStorage.setItem('wc-install-guide-seen', '1'));
+  });
   test.afterEach(async () => {
     await server?.stop();
     server = null;
@@ -228,7 +233,10 @@ test.describe('Phase 8 — offline', () => {
     expect(tracked.network).toEqual([]);
   });
 
-  test('the app is installable: a full manifest with PNG icons, and the worker controls the page', async ({ page }) => {
+  test('the app is installable: a full manifest with PNG icons, and the worker controls the page', async ({
+    page,
+    browserName,
+  }) => {
     server = await startServer();
     await page.goto(server.url);
     await waitForOfflineReady(page);
@@ -254,7 +262,19 @@ test.describe('Phase 8 — offline', () => {
       expect(res.status(), icon.src).toBe(200);
       expect(res.headers()['content-type'], icon.src).toContain('image/');
     }
-    // Chrome's own installability check finds nothing wrong
+    // Safari's Home Screen: its icon (an image), the app's name and full screen
+    const apple = await page.evaluate(() => ({
+      icon: document.querySelector<HTMLLinkElement>('link[rel="apple-touch-icon"]')?.href ?? null,
+      capable: document.querySelector<HTMLMetaElement>('meta[name="apple-mobile-web-app-capable"]')?.content ?? null,
+      title: document.querySelector<HTMLMetaElement>('meta[name="apple-mobile-web-app-title"]')?.content ?? null,
+    }));
+    expect(apple.capable).toBe('yes');
+    expect(apple.title).toBe("Wizard's Chess");
+    const appleIcon = await page.request.get(apple.icon!);
+    expect(appleIcon.status()).toBe(200);
+    expect(appleIcon.headers()['content-type']).toContain('image/png');
+    // Chrome's own installability check (Chromium only: WebKit has no such check) finds nothing wrong
+    if (browserName !== 'chromium') return;
     const cdp = await page.context().newCDPSession(page);
     const result = (await cdp.send('Page.getInstallabilityErrors' as never)) as {
       installabilityErrors: Array<{ errorId: string }>;

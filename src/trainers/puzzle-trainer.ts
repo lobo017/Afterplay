@@ -657,8 +657,9 @@ export class PuzzleTrainer {
     const result = await this.options.store.recordAttempt(l.entry, l.source, outcome);
     if (this.loaded === l) {
       this.lastResult = result;
-      this.root.setAttribute('data-recorded', result.rated ? 'rated' : 'unrated');
+      // The stats first: `data-recorded` says the result is stored and on screen (the new rating included)
       await this.renderStats();
+      if (this.loaded === l) this.root.setAttribute('data-recorded', result.rated ? 'rated' : 'unrated');
     }
   }
 

@@ -1,6 +1,14 @@
 import { DevOverlayController } from './ui/dev-overlay';
 import { lazy, lazyProxy, whenIdle } from './ui/lazy';
 import { SettingsPanel } from './ui/settings-panel';
+import { InstallGuide, preventIosFocusZoom, readInstallEnvironment } from './ui/install-guide';
+import { describePersistence, requestPersistentStorage } from './storage/persistence';
+import {
+  describeEngineProfile,
+  detectDeviceProfile,
+  engineProfileFor,
+  type EngineProfile,
+} from './engine/engine-profile';
 import { AppSettingsStore, type AppSettings } from './ui/app-settings';
 import { SETTINGS_ORDER, mountAppSettingsSections } from './ui/settings-sections';
 import { mountBoardFeelSection } from './ui/settings-feel-section';
@@ -234,18 +242,15 @@ export interface WizardChessReviewApi {
   SAMPLE_GAME_PGN: string;
 }
 
-/**
- * Threads for the review engine. A review searches each position for a fixed time, so
- * threads could only buy depth, and measured they don't: 2 and 4 threads search 1.9× and
- * 2.7× the nodes but reach no greater depth at 0.2 s or 0.6 s, while 4 threads next to
- * live analysis caused long tasks and slowed it by 15%. One thread leaves live analysis
- * untouched. See PROGRESS.md (Phase 5, review engine threads).
- */
-export const REVIEW_ENGINE_THREADS = 1;
 /** After start-up, the idle moments (each its own task) that build the Review screen and the audio context. */
 const REVIEW_STACK_WARMUP_DELAY_MS = 150;
 const AUDIO_PREWARM_DELAY_MS = 400;
-export const REVIEW_ENGINE_HASH_MB = 32;
+/** After start-up, when to ask for persistent storage and when the first-run install guide may open (iPhone/iPad). */
+const PERSIST_REQUEST_DELAY_MS = 1000;
+const INSTALL_GUIDE_DELAY_MS = 600;
+/** The lines panel's note while a review has a phone's only engine. */
+export const REVIEW_PAUSES_ANALYSIS_NOTE =
+  'Live analysis is paused while the review runs (this phone uses one engine).';
 
 export interface WizardChessLibraryApi {
   library: GameLibrary;
@@ -352,6 +357,9 @@ export function mountAppShell(container: HTMLElement): {
   setMode: (mode: AppWorkspaceMode, copyPlayGame?: boolean) => void;
 } {
   const env = detectEnvironment();
+  preventIosFocusZoom();
+  const engineProfile: EngineProfile = engineProfileFor(detectDeviceProfile());
+  const caps = detectEngineCapabilities();
   initBoardSize();
   container.innerHTML = `
     <div class="wc-shell" data-testid="app-shell" data-mode="play">
@@ -386,6 +394,7 @@ export function mountAppShell(container: HTMLElement): {
 
   const shellEl = container.querySelector('.wc-shell') as HTMLElement;
   const devOverlay = new DevOverlayController(shellEl);
+  const installGuide = new InstallGuide(shellEl);
   const settings = new SettingsPanel({
     parent: shellEl,
     devOverlay,
@@ -393,6 +402,15 @@ export function mountAppShell(container: HTMLElement): {
       crossOriginIsolated: env.crossOriginIsolated,
       hardwareConcurrency: env.hardwareConcurrency,
       schemaVersion: LATEST_SCHEMA_VERSION,
+      engineProfile: describeEngineProfile(
+        engineProfile,
+        caps.multiThreadedSupported ? (engineProfile.live.threads ?? caps.recommendedThreads) : 1,
+        engineProfile.live.hashMb ?? caps.recommendedHashMb,
+      ),
+    },
+    onShowInstallGuide: () => {
+      settings.close();
+      installGuide.open();
     },
   });
   const settingsBtn = container.querySelector('[data-testid="btn-settings"]') as HTMLButtonElement;
@@ -400,6 +418,18 @@ export function mountAppShell(container: HTMLElement): {
   watchOffline((state) => settings.setOfflineStatus(describeOffline(state)));
   mountUpdateBanner(shellEl);
   registerActivity('settings', () => settings.isOpen());
+  registerActivity('install-guide', () => installGuide.isOpen());
+  if (typeof window !== 'undefined') {
+    // First visit on an iPhone or iPad, not installed: how to add it to the Home Screen (once)
+    setTimeout(() => installGuide.openIfFirstRun(), INSTALL_GUIDE_DELAY_MS);
+    setTimeout(() => {
+      whenIdle(() => {
+        void requestPersistentStorage().then((state) =>
+          settings.setStorageStatus(describePersistence(state, readInstallEnvironment().standalone)),
+        );
+      }, 3000);
+    }, PERSIST_REQUEST_DELAY_MS);
+  }
 
   const createConnectedEngine = (options?: EngineClientOptions) =>
     new EngineClient({
@@ -470,11 +500,14 @@ export function mountAppShell(container: HTMLElement): {
   let openGameId: string | null = null;
   let openingGame = false;
 
-  const sharedEngine = createConnectedEngine({ variant: 'auto' });
-  const botEngine = new EngineClient({
-    variant: 'single-threaded',
-    hashMb: 16,
-  });
+  // On a phone one engine does everything (engine-profile.ts); on a desktop the bot and the review have their own
+  const sharedEngine = createConnectedEngine({ variant: 'auto', ...engineProfile.live });
+  const botEngine = engineProfile.singleEngine
+    ? sharedEngine
+    : new EngineClient({
+        variant: 'single-threaded',
+        hashMb: engineProfile.bot.hashMb,
+      });
 
   // Every setting in one store: Settings and the New game card write it, every screen follows
   // it. Remembered on this device and mirrored into the database for the JSON backup.
@@ -512,15 +545,16 @@ export function mountAppShell(container: HTMLElement): {
   });
   registerActivity('game', () => playController.isGameInProgress());
 
-  // The review runs on its own engine, so live analysis keeps its worker while a review
-  // runs. Created on the first review.
+  // On a desktop the review runs on its own engine, so live analysis keeps its worker while a review runs (created on
+  // the first review). On a phone it shares the one engine, and a review started on the board pauses live analysis.
   let reviewEngine: EngineClient | null = null;
-  let reviewThreads = REVIEW_ENGINE_THREADS;
+  let reviewThreads = engineProfile.review.threads;
   const getReviewEngine = (): EngineClient => {
+    if (engineProfile.singleEngine) return sharedEngine;
     reviewEngine ??= createConnectedEngine({
       variant: 'auto',
       threads: reviewThreads,
-      hashMb: REVIEW_ENGINE_HASH_MB,
+      hashMb: engineProfile.review.hashMb,
     });
     return reviewEngine;
   };
@@ -583,6 +617,11 @@ export function mountAppShell(container: HTMLElement): {
           return undefined;
         });
       },
+      ...(engineProfile.singleEngine
+        ? {
+            onRunningChange: (running: boolean) => analysis.setLivePaused(running ? REVIEW_PAUSES_ANALYSIS_NOTE : null),
+          }
+        : {}),
       onPlayVsBot: (fen) => {
         const turn = fen.trim().split(/\s+/)[1] === 'b' ? 'b' : 'w';
         setMode('play', false);

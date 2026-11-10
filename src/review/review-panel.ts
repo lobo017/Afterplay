@@ -109,6 +109,8 @@ export interface ReviewPanelOptions {
   getAccounts?: () => readonly UserAccount[];
   /** Called when a review run finishes (not when it is cancelled or fails). */
   onReviewFinished?: (result: ReviewRunResult, tree: GameTree) => void;
+  /** A review starts running (true) or stops: finished, cancelled or failed (false). */
+  onRunningChange?: (running: boolean) => void;
   /**
    * Where the reviewed game leaves my repertoire (null: it doesn't, or there is none). Asked
    * only for my own games: `color` is my side, from my usernames.
@@ -674,6 +676,7 @@ export class ReviewPanel {
     this.exitRetry();
     this.lastError = null;
     this.state = 'running';
+    this.options.onRunningChange?.(true);
     this.els.body.hidden = false;
     this.savedAt = null;
     this.renderPlayers(tree.getHeaders());
@@ -708,7 +711,11 @@ export class ReviewPanel {
       this.renderState();
       return null;
     } finally {
-      if (this.abort === abort) this.abort = null;
+      // (a newer run already replaced this one: it reports its own end)
+      if (this.abort === abort) {
+        this.abort = null;
+        this.options.onRunningChange?.(false);
+      }
     }
   }
 

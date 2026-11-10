@@ -100,10 +100,19 @@ async function goToNode(page: Page, nodeId: string): Promise<void> {
 
 async function startLongTaskObserver(page: Page): Promise<void> {
   // The app builds its audio context in an idle moment after start-up (the browser's one-time audio start can take
-  // 60-340 ms: not the review's work); let it happen before the window that is measured
-  await page.waitForFunction(() => window.__wizardChessPlay?.controller.getAudio().isInitialized(), undefined, {
-    timeout: 10_000,
-  });
+  // 60-340 ms: not the review's work); let it happen before the window that is measured. (Playwright's WebKit on
+  // Windows has no Web Audio at all: nothing to wait for there.)
+  await page.waitForFunction(
+    () =>
+      !('AudioContext' in window || 'webkitAudioContext' in window) ||
+      window.__wizardChessPlay?.controller.getAudio().isInitialized(),
+    undefined,
+    { timeout: 10_000 },
+  );
+  // WebKit has no long-task timing: the check below then has nothing to see, and only Chromium measures it
+  if (!(await page.evaluate(() => PerformanceObserver.supportedEntryTypes.includes('longtask')))) {
+    test.info().annotations.push({ type: 'note', description: 'no long-task timing in this browser' });
+  }
   await page.evaluate(() => {
     const w = window as unknown as { __longTasks: number[]; __longTaskObserver?: PerformanceObserver };
     w.__longTasks = [];
@@ -205,9 +214,16 @@ test.describe('Phase 5 — Game review', () => {
     await expect(page.getByTestId('review-status-tooltip')).toHaveText(/^34 positions in \d+\.\d s · mean depth/);
     // On a device that hovers, hovering the status line shows its details
     await expect(page.getByTestId('review-status-tooltip')).toBeHidden();
-    await page.getByTestId('review-progress').hover();
-    await expect(page.getByTestId('review-status-tooltip')).toBeVisible();
-    await page.mouse.move(5, 450);
+    // A pointer that can hover shows it on hover; a touch screen on a tap (closed again by Escape)
+    if (await page.evaluate(() => matchMedia('(hover: hover)').matches)) {
+      await page.getByTestId('review-progress').hover();
+      await expect(page.getByTestId('review-status-tooltip')).toBeVisible();
+      await page.mouse.move(5, 450);
+    } else {
+      await page.getByTestId('review-progress').tap();
+      await expect(page.getByTestId('review-status-tooltip')).toBeVisible();
+      await page.keyboard.press('Escape');
+    }
     await expect(page.getByTestId('review-status-tooltip')).toBeHidden();
     await expect(page.getByTestId('review-accuracy-w')).toHaveText(review.white.accuracy!.toFixed(1));
     // The counts table is under "All moves by class"
@@ -223,13 +239,16 @@ test.describe('Phase 5 — Game review', () => {
     await expect(lastBadge).toHaveAttribute('aria-label', review.moves[32]!.classification);
     await expect(page.locator('[data-testid="analysis-move-tree"] .wc-tree-class')).toHaveCount(33);
 
-    // The formulas tooltip explains every number
-    await page.getByTestId('btn-review-formulas').hover();
+    // The formulas tooltip explains every number (on hover, or a tap on a touch screen)
+    const canHover = await page.evaluate(() => matchMedia('(hover: hover)').matches);
+    if (canHover) await page.getByTestId('btn-review-formulas').hover();
+    else await page.getByTestId('btn-review-formulas').tap();
     await expect(page.getByTestId('review-formulas-tooltip')).toBeVisible();
     await expect(page.getByTestId('review-formulas-tooltip')).toContainText('0.00368208');
     await expect(page.getByTestId('review-formulas-tooltip')).toContainText('103.1668');
     await expect(page.getByTestId('review-formulas-tooltip')).toContainText('harmonic mean');
-    await page.mouse.move(5, 450);
+    if (canHover) await page.mouse.move(5, 450);
+    else await page.keyboard.press('Escape');
 
     // Key moments jump to their move
     const moment = review.keyMoments[review.keyMoments.length - 1]!;

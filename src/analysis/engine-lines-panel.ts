@@ -145,6 +145,9 @@ export class EngineLinesPanel {
   private readonly linesContainerEl: HTMLElement;
   private readonly emptyStatusEl: HTMLElement;
   private readonly disabledStatusEl: HTMLElement;
+  private readonly pausedStatusEl: HTMLElement;
+  /** Why live analysis is on hold while the engine is on (a review on a phone's single engine), or null. */
+  private pausedNote: string | null = null;
   private readonly slots: LineRowSlot[] = [];
 
   private enabled: boolean;
@@ -229,6 +232,7 @@ export class EngineLinesPanel {
         <div class="wc-engine-lines-status" data-testid="engine-lines-empty" hidden>
           Analyzing position...
         </div>
+        <div class="wc-engine-lines-status" data-testid="engine-lines-paused" role="status" hidden></div>
         <div class="wc-engine-lines-status" data-testid="engine-lines-disabled" hidden>
           Engine paused — press <kbd>Space</kbd> or click <strong>Engine: OFF</strong> to resume analysis.
         </div>
@@ -242,6 +246,7 @@ export class EngineLinesPanel {
     this.linesContainerEl = this.rootEl.querySelector('[data-testid="engine-lines-list"]') as HTMLElement;
     this.emptyStatusEl = this.rootEl.querySelector('[data-testid="engine-lines-empty"]') as HTMLElement;
     this.disabledStatusEl = this.rootEl.querySelector('[data-testid="engine-lines-disabled"]') as HTMLElement;
+    this.pausedStatusEl = this.rootEl.querySelector('[data-testid="engine-lines-paused"]') as HTMLElement;
 
     for (let k = 1; k <= MAX_LINES; k++) {
       const rowEl = this.rootEl.querySelector(`[data-testid="engine-line-row-${k}"]`) as HTMLElement;
@@ -345,6 +350,13 @@ export class EngineLinesPanel {
 
   public isEnabled(): boolean {
     return this.enabled;
+  }
+
+  /** Shows why live analysis is on hold (null: it isn't). The rows stay hidden until lines arrive again. */
+  public setPausedNote(note: string | null): void {
+    if (this.pausedNote === note) return;
+    this.pausedNote = note;
+    this.scheduleFlush();
   }
 
   public setMultiPv(multipv: number): void {
@@ -528,7 +540,16 @@ export class EngineLinesPanel {
       wrote = true;
     }
 
-    const showEmpty = this.enabled && this.formattedLines.length === 0;
+    const showPaused = this.enabled && this.pausedNote !== null;
+    if (
+      this.pausedStatusEl.hidden === showPaused ||
+      (showPaused && this.pausedStatusEl.textContent !== this.pausedNote)
+    ) {
+      this.pausedStatusEl.hidden = !showPaused;
+      this.pausedStatusEl.textContent = this.pausedNote ?? '';
+      wrote = true;
+    }
+    const showEmpty = this.enabled && !showPaused && this.formattedLines.length === 0;
     if (this.emptyStatusEl.hidden === showEmpty) {
       this.emptyStatusEl.hidden = !showEmpty;
       wrote = true;

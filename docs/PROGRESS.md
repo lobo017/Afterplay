@@ -22,13 +22,13 @@ log to `docs/progress/phase-N.md` and keep only a summary here.
 | 7 | Repertoire, endgame & visualization | Done | White/Black repertoire trees (build, import, drill, review flag), 6 engine-verified endgame drills, coordinate/blindfold/guess-the-move; all feed Today with the puzzles | [phase-7](progress/phase-7.md) |
 | 8 | Library, insights, settings, offline | Done | Own service worker (precache + COOP/COEP, update banner) and an offline e2e gate; played games kept, colour/opening/date/accuracy filters, delete, worker bulk import; Insights tab; live-region announcements and keyboard play on every board; Settings for usernames, analysis lines, review depth | [phase-8](progress/phase-8.md) |
 | 9 | Performance pass & final audit | Done (closing gate on Juno, 2026-11-10) | Every budget measured (frame time, input latency, idle, startup, 50-game memory, review speed) and a 16-flow long-task audit; start-up split into tasks, lazy Review screen, Play bot-move task 16–27 → 7–9 ms; hints reach the review; full spec audit (all Done except two Partial and the optional Phase 10); Prettier enforced; measuring scripts guard against a locked screen; closing gate on Juno (unit 592, e2e 4 × 159, perf), results saved before they are shown, review tests hardened | [phase-9](progress/phase-9.md) |
-| 11 | Hosting, iPhone, presets | In progress (stage 1 of 7 done, 2026-11-10) | Cloudflare Pages (classic) with `_headers`, preview-first deploy scripts, automatic updates when nothing is in progress | — |
+| 11 | Hosting, iPhone, presets | In progress (stage 1 of 7 done; stage 2 coded, gate pending, 2026-11-10) | Cloudflare Pages (classic) with `_headers`, preview-first deploy scripts, automatic updates; WebKit e2e projects, phone engine profile, persistent storage, Add to Home Screen guide | [phase-11](progress/phase-11.md) |
 | HPC | Automated checks on Juno | Done (2026-11-10) | `hpc/`: Apptainer + pinned Playwright image, jobs wc-unit / e2e / e2e-repeat / perf / calibrate / puzzles / summarize, per-job build, port and scratch folder, safe-delete helper, reports; `wc-calibrate` and `wc-puzzles` not yet run | [phase-9](progress/phase-9.md) |
 
 
 ## Current phase and next step
 
-**Phase 11 is in progress (stage 1 of 7 done: hosting and updates; plan and results in the Phase 11 section below).** Phases 0–9 are done. **Phase 9 was closed on 2026-11-10: its closing gate ran on Juno (Linux, headless)**: typecheck, lint, format check, build,
+**Phase 11 is in progress (stage 1 of 7 done: hosting and updates; stage 2, iPhone support, coded and checked on the laptop, its Juno gate and preview pending; see the Phase 11 section below).** Phases 0–9 are done. **Phase 9 was closed on 2026-11-10: its closing gate ran on Juno (Linux, headless)**: typecheck, lint, format check, build,
 592/592 unit tests, 4 of 4 full e2e runs (159/159 each) and all four perf scripts passed on commit `cefe783` (details below and in
 [phase-9](progress/phase-9.md)). **The Key measurements table at the bottom comes from earlier laptop runs; the Juno numbers are in the table
 under it** (regression baselines for a headless Linux node, not a user's screen). Phase 10 (native engine mode) is optional and not started.
@@ -77,47 +77,77 @@ Deadline: working on the target iPhone by 2026-11-19 (11-20 is buffer). Seven st
 report. Personal data (the gift preset, its messages, downloaded games, the opponent shortlist) lives only in the git-ignored
 `gift.local/` folder; nothing personal goes in the repo, this file or commit messages.
 
-**Stage 1 plan: hosting on Cloudflare Pages + updates**
-- `public/_headers` (copied into `dist/`): COOP / COEP / CORP on every path, `no-cache` for `index.html`, `sw.js` and the manifest,
-  `immutable` for hashed `assets/*` and `stockfish/*`. A unit test checks it sends the same isolation headers as `serve.mjs` / Vite.
-- `scripts/deploy.mjs` with `deploy:preview` and `deploy:production` (Wrangler as a dev dependency, asked first):
-  - preview: clean git tree required, builds, hashes `dist/`, uploads to the Pages project's `preview` branch, prints the preview
-    URL and a short build id, records `{commit, dist hash, url}` in the git-ignored `.deploy/preview.json`.
-  - production: never builds; refuses unless `dist/` and HEAD still match the recorded preview and `--checked <build id>` names it,
-    so production only ever gets the exact files that were checked on the preview URL.
-- Updates (`src/pwa.ts`, `src/ui/update-banner.ts`, new `src/ui/activity.ts`): screens report whether something is in progress
-  (a game, a puzzle or drill, a review or queued background review, an open sheet). When a new build is waiting at launch or on
-  resume (the app checks for one when it becomes visible again, since an iPhone home-screen app resumes rather than relaunches),
-  it is applied at once if nothing is in progress and the user has not touched the page for 2 s; otherwise the banner shows.
-- The phase-8 update e2e test splits in two: idle → applied by itself (saved data still there afterwards); a game in
-  progress → the banner, then Reload.
-- Risks: Pages' 25 MiB file limit (largest file 4 MB: fine); the preview origin is a different origin from production (separate
-  data and install, expected); Wrangler adds a large dev dependency (also to Juno's `npm ci`, counted against its quota).
+**Stage 1 (2026-11-10, done, in production):** Cloudflare Pages (classic) with `_headers`, preview-first deploy scripts
+(`deploy:preview`, `deploy:production -- --checked <id>`), automatic updates when nothing is in progress, `check:hosted`.
+Production `https://wizards-chess-4tu.pages.dev` = build `aeedca6f9bb6` (commit `8c453ad`). Juno gate on `36b5bed` passed (unit 599/599,
+e2e 4 × 160/160, perf all four). Plan, results and job IDs: [phase-11](progress/phase-11.md).
 
-**Stage 1 result (2026-11-10): done, preview deployed, production waits for the user's check**
-- Commits `36b5bed` (hosting, deploy scripts, updates), `b69e87d` (README), `610a4d3` (`npm run check:hosted`, a stricter offline test).
-- **Decision: classic Cloudflare Pages.** Wrangler 4.160 hands `pages project create` to Workers static assets ("Pages, now part
-  of Workers"); that hand-off failed, and the user chose classic Pages with `--force` (the SPEC's host; a `*.pages.dev` URL carries
-  no account name). Only the create needed `--force`. Project `wizards-chess`, production URL `https://wizards-chess-4tu.pages.dev`
-  (the plain name was taken). Wrangler `^4.160.0` added (approved); npm 11 left the `esbuild` / `workerd` install scripts
-  unapproved, which a static upload does not need. Wrangler's usage metrics are off in the deploy script.
-- **Preview** `https://acc34cf1.wizards-chess-4tu.pages.dev` (alias `preview.wizards-chess-4tu.pages.dev`), build `aeedca6f9bb6`,
-  commit `b69e87d`. `check:hosted` in Chrome: 15/15 (COOP/COEP on the page, isolated, `sw.js` and `index.html` `no-cache`, all 30
-  files cached, mate found at depth 15 with 4 threads, the bot answers, offline reload still isolated and the bot still answers,
-  installable with no errors, no request outside the origin). `curl`: every path has the three isolation headers; hashed
-  `assets/*` and `stockfish/*` are `immutable`. `/_headers` itself is not served (Pages answers with the app page).
-- **Production (2026-11-10, approved by the user after checking the preview):** build `aeedca6f9bb6` at commit `8c453ad`
-  (re-previewed at that commit first: same build id, so byte-identical) went to `https://wizards-chess-4tu.pages.dev`
-  (deployment `15595ec1`). Pages uploaded 0 new files (all 41 already there from the preview). `check:hosted` on production:
-  15/15 (mate at depth 16, offline reload isolated, installable, no request outside the origin).
-- A brand-new `pages.dev` subdomain failed TLS for the first minutes (certificate being issued); it then answered normally.
-- **Juno gate on `36b5bed`, all passed:** setup 505777 (lockfile changed: `npm ci`; quota 21,345 → 23,359 files, 5.2 → 5.8 GB,
-  realsize 10.5 → 11.6 GB), wc-unit 505778 (typecheck, lint, format, build, 599/599 unit), wc-e2e-repeat 505779 (4 of 4 runs,
-  160/160 each, 11.4–11.7 min), wc-perf 505780 (all four passed: drag p95 16.67 ms in all four windows, 0 dropped, 0 long tasks;
-  start-up 240 ms; review 81 plies 17.0–17.1 s; 16 task flows clean; 50 games +0.39 MB heap, 8.3 KB per game, listeners +0).
-  `repo-changes.txt` empty in every job. (`610a4d3` only adds the hosted checker and makes one assertion stricter; it ran on the
-  laptop, 1/1, and joins the next gate.)
-- Fixed on the way: the offline e2e test's `data-mate` check matched `"false"` too (the depth check after it was the real one).
+**Stage 2 plan: iPhone support (written before code, 2026-11-10)**
+- **WebKit e2e projects** (`playwright.config.ts`): `webkit` (Desktop Safari) and `webkit-iphone` (iPhone 13: 390 × 664, touch,
+  iPhone user agent). The three capture-extension specs stay Chromium-only. Fix what fails in the app, not by skipping. Juno's e2e
+  job runs all three projects (its 80-minute inner limit may need raising: measure first).
+- **Phone engine profile** (new `src/engine/engine-profile.ts`): a phone is an iPhone/iPod/Android-mobile user agent, or a coarse
+  pointer with a short screen side under 600 px. On a phone one `EngineClient` serves everything (live analysis, the bot, threats,
+  puzzles, endgames, reviews, the Games list's background reviews): 2 threads at most, 16 MB hash, so one Stockfish worker instead
+  of three (~150 MB instead of ~600). Desktop is unchanged.
+  - `EngineClient`: a finite search pre-empted by a higher-priority request is put back in the queue and rerun, instead of
+    failing (today only Play's infinite live eval is ever pre-empted on desktop, and that stays cancelled). This keeps a
+    background review alive when the user steps through moves on a phone.
+  - **A review started on the board pauses live analysis** (the lines panel says so; it resumes when the review ends or is
+    cancelled). The Games list's background reviews do not pause it: they wait for live searches instead.
+  - Settings › About shows the profile (threads, hash, engines).
+- **Persistent storage** (new `src/storage/persistence.ts`): `navigator.storage.persist()` once after start-up (in an idle
+  moment) and again when the app runs from the Home Screen; Settings › About shows whether storage is kept.
+- **Add to Home Screen guide** (new `src/ui/install-guide.ts`): a sheet with four drawn pictures (Share / ⋯ menu, "Add to Home
+  Screen", "Add" with "Open as Web App", the icon on the Home Screen; no Apple artwork). Opens once on first run in iPhone/iPad
+  Safari when not installed; Settings has a row that reopens it anywhere. The iPhone e2e project marks it seen (storage state).
+- **New e2e** `tests/e2e/phase11-iphone.spec.ts` (WebKit iPhone project; parts also on desktop): the phone profile (one engine,
+  threads and hash), a review pausing and resuming live analysis, the guide on first run only, persistent storage requested,
+  touch drag and a premove with touch pointers, the board fitting a 390 px screen. Unit tests for the profile, the re-queue, and
+  the persistence helper.
+- Risks: Playwright's WebKit is not Safari on an iPhone (no real memory limit, no home-screen mode); Windows WebKit differs from
+  Linux WebKit (Juno is the gate); WebKit has no long-task observer, so tests that assert on long tasks need a Chromium guard;
+  sharing one engine makes the bot wait for a review position (≤ one search, ~0.2–0.6 s) on a phone.
+
+**Stage 2 result (2026-11-10): code done; laptop WebKit runs below, Juno gate and preview pending**
+- Built as planned (profile, re-queue, review pause, persistence, guide, three projects). The persistence request runs once per
+  start-up (a Home Screen launch is a fresh start, so no separate call was needed).
+- **Found by WebKit and fixed in the app:**
+  - Safari does not focus a button on click, so sheets could not return focus to their opener: `Sheet` now remembers the
+    control pressed last (2 s) when nothing has focus.
+  - A piece tapped while the bot thinks was dropped when the bot replied; on a phone that is a slow second tap doing nothing.
+    `setPosition(…, { keepSelection })` keeps it for the bot's reply in Play (same piece still on its square).
+  - Date filters listen to `input` too (a browser without a date picker shows a text field, which fires `change` only on blur).
+  - Phones: the app's heading is visually hidden instead of `display: none` (screen readers kept it; the phone shell test now
+    checks that); `viewport-fit=cover` so the existing safe-area CSS takes effect, plus side insets for landscape;
+    `maximum-scale=1` on iOS only (Safari zooms in on any focused field under 16 px; pinching still zooms on iOS);
+    Home Screen tags (`apple-touch-icon`, title, `apple-mobile-web-app-capable`).
+  - A blocked service-worker registration (Playwright WebKit) resolves to nothing: a readable "Not available" instead of a
+    TypeError in Settings.
+  - **Every select was unreadable in WebKit**: Safari's own select paints a white box, with the app's white text on it (review
+    depth, Games filters, Settings…). Selects are now drawn by the app (`appearance: none`, an inline SVG chevron), the same
+    in every browser; this also ended a sub-pixel text overflow the phone review test caught.
+  - The puzzle trainer set `data-recorded` before the new rating was on screen (it reads the rating from IndexedDB first);
+    the attribute now follows the stats.
+- **Tests changed, none weakened:** three timing-sensitive tests clicked through Playwright locators, which wait for stability
+  (300–500 ms per click in WebKit) and outlast the bot's think time: phase3's premove and underpromotion steps now click
+  measured square centres (as phase3-premoves already did), and phase3-premoves' queue test gives the bot 3 s instead of
+  0.7 s (its seven inputs take up to ~2 s in WebKit's iPhone mode; assertions unchanged). The two WebKit projects have a 60 s
+  default per test (Chromium keeps 30 s): WebKit's clicks are 1.5–3× slower, and two long tests hit 30 s there. Hover-only
+  tooltip steps in two review tests tap instead on a touch screen (the phone tooltip test already covered taps). The offline
+  tests serve the build on their own origins, which the iPhone project's "guide seen" storage state does not reach: they mark
+  it seen with an init script. Chromium-only parts are guarded, not skipped: Chrome's CDP installability check (WebKit checks
+  the Apple tags and icon instead), the audio wait before long-task windows (Windows WebKit has no Web Audio), and long-task
+  windows are annotated "no long-task timing" in WebKit. The stored-review test counts only review searches (on a phone the
+  review engine is also the live one).
+- `check:hosted` has `--browser webkit-iphone` (iPhone 13 emulation: also the install guide and the phone profile).
+- **Laptop runs (Windows WebKit, not the gate):** desktop `webkit` first run 125/134 in 19.4 min (9 failures, all fixed and
+  rerun); `webkit-iphone` first run found 10 more (all fixed and rerun, 25/25 of the failed and unreached tests); unit
+  605/605 (76 s). Windows WebKit has no Web Audio, no date input and no long-task timing; Linux WebKit on Juno is the gate.
+- **Open (later stages):** the Games screen on a phone still shows the Chrome capture-extension card (stage 3, Chess.com sync,
+  replaces it there); a real iPhone has not been tried yet (memory limit, Home Screen mode, the guide's steps on iOS 26).
+- Agent note: a stopped background `playwright test` left its runner orphaned (its shell's parent gone); not provably mine by
+  parent PID, so it was not killed: it finished by itself. Stop a run with Ctrl+C-like means, not by stopping the shell task.
 
 
 - **Scenario-2 `perf:drag`** (analysis board, MultiPV 5, ghosts, navigation sweep) passed clean on Juno on the final code (p95 16.67 ms, 0 dropped).

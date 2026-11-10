@@ -229,6 +229,8 @@ interface QueuedAnalyzeTask {
   cacheable: boolean;
   cancelled: boolean;
   stoppingToResolve: boolean;
+  /** Stopped for a higher-priority request: goes back in the queue and runs again from the start. */
+  requeueOnStop: boolean;
   startedAt: number;
   linesByMultiPv: Map<number, EngineLine>;
   maxDepth: number;
@@ -559,6 +561,7 @@ export class EngineClient {
         active.resolve(this.buildTaskSnapshot(active, null, null));
       } else {
         if (active.kind === 'analyze') {
+          active.requeueOnStop = false;
           active.linesByMultiPv.clear();
           active.maxDepth = 0;
           active.latestNodes = 0;
@@ -567,7 +570,9 @@ export class EngineClient {
         } else {
           active.divide = {};
         }
-        this.queue.unshift(active);
+        // Its sequence number is older than anything queued after it, so it is first among its priority (and a
+        // higher-priority request that was pre-empting it still goes first)
+        this.enqueueTask(active);
       }
     }
 
@@ -667,6 +672,7 @@ export class EngineClient {
         cacheable,
         cancelled: false,
         stoppingToResolve: false,
+        requeueOnStop: false,
         startedAt: 0,
         linesByMultiPv: new Map<number, EngineLine>(),
         maxDepth: 0,
@@ -687,16 +693,19 @@ export class EngineClient {
         request.signal.addEventListener('abort', onAbort, { once: true });
       }
 
-      // Preempt active search if request.preempt is true or if the active search is an infinite background search
-      if (
-        this.activeTask &&
-        this.activePhase === 'searching' &&
-        ((request.preempt && this.activeTask.priorityRank < task.priorityRank) ||
-          (this.activeTask.kind === 'analyze' &&
-            Boolean(this.activeTask.request.infinite) &&
-            this.activeTask.priorityRank <= task.priorityRank))
-      ) {
-        this.cancel(this.activeTask.id);
+      // Pre-empt the active search if request.preempt is true (and it has lower priority), or if it is an infinite
+      // search of the same or lower priority. An infinite search is cancelled (its owner starts a new one when it
+      // wants); a finite analysis goes back in the queue and runs again after this one, so whoever waits for it (a
+      // review on a phone's single engine, say) still gets its result.
+      const active = this.activeTask;
+      if (active && this.activePhase === 'searching') {
+        const infinite = active.kind === 'analyze' && Boolean(active.request.infinite);
+        if (infinite && active.priorityRank <= task.priorityRank) {
+          this.cancel(active.id);
+        } else if (request.preempt && active.priorityRank < task.priorityRank) {
+          if (active.kind === 'analyze') this.requeueActiveTask(active);
+          else this.cancel(active.id);
+        }
       }
 
       this.enqueueTask(task);
@@ -1086,9 +1095,31 @@ export class EngineClient {
     }
   }
 
+  /** Stops the active analysis so it can make room; handleAnalyzeBestMove puts it back in the queue. */
+  private requeueActiveTask(task: QueuedAnalyzeTask): void {
+    if (!this.transport) return;
+    task.requeueOnStop = true;
+    this.activePhase = 'stopping';
+    this.transport.send('stop');
+  }
+
   private handleAnalyzeBestMove(task: QueuedAnalyzeTask, bestMove: string | null, ponder: string | null): void {
     this.activeTask = null;
     this.activePhase = 'idle';
+
+    if (task.requeueOnStop && !task.cancelled) {
+      // Back in the queue with its original sequence number (first among its priority), as if it never started
+      task.requeueOnStop = false;
+      task.linesByMultiPv.clear();
+      task.maxDepth = 0;
+      task.latestNps = 0;
+      task.latestNodes = 0;
+      task.latestTimeMs = 0;
+      this.enqueueTask(task);
+      this.pumpQueue();
+      return;
+    }
+
     task.abortHandler?.();
 
     if (task.cancelled && !task.stoppingToResolve) {

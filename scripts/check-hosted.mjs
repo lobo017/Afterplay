@@ -1,6 +1,9 @@
 // Checks a hosted copy of the app (a Cloudflare Pages preview or production URL) the way a first visitor meets it:
 //
-//   node scripts/check-hosted.mjs <url> [--browser chromium|webkit]
+//   node scripts/check-hosted.mjs <url> [--browser chromium|webkit|webkit-iphone]
+//
+// (`webkit-iphone`: Playwright's WebKit as an iPhone 13, which also checks the first-run Add to Home Screen guide and
+// the phone engine profile. It is still not Safari on a real iPhone.)
 //
 // 1. The page arrives with the isolation headers and is cross-origin isolated (the engine gets its threads).
 // 2. The service worker caches the whole build.
@@ -15,14 +18,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
-import { chromium, webkit } from '@playwright/test';
+import { chromium, devices, webkit } from '@playwright/test';
 import { browserLaunchOptions } from './lib/browser.mjs';
 
 const args = process.argv.slice(2);
 const url = args.find((a) => /^https?:\/\//.test(a));
 const browserName = args.includes('--browser') ? args[args.indexOf('--browser') + 1] : 'chromium';
-if (!url || !['chromium', 'webkit'].includes(browserName)) {
-  console.error('usage: node scripts/check-hosted.mjs <url> [--browser chromium|webkit]');
+const iphone = browserName === 'webkit-iphone';
+if (!url || !['chromium', 'webkit', 'webkit-iphone'].includes(browserName)) {
+  console.error('usage: node scripts/check-hosted.mjs <url> [--browser chromium|webkit|webkit-iphone]');
   process.exit(2);
 }
 const origin = new URL(url).origin;
@@ -56,15 +60,19 @@ async function botAnswers(page) {
   );
 }
 
-const launcher = browserName === 'webkit' ? webkit : chromium;
-const browser = await launcher.launch(browserName === 'webkit' ? { headless: true } : browserLaunchOptions());
+const launcher = browserName === 'chromium' ? chromium : webkit;
+const browser = await launcher.launch(browserName === 'chromium' ? browserLaunchOptions() : { headless: true });
 const killTimer = setTimeout(() => {
   console.error('check-hosted: over 10 minutes, giving up');
   void browser.close().finally(() => process.exit(3));
 }, 10 * 60_000);
 
 try {
-  const context = await browser.newContext({ serviceWorkers: 'allow', viewport: { width: 1280, height: 800 } });
+  const context = await browser.newContext(
+    iphone
+      ? { ...devices['iPhone 13'], serviceWorkers: 'allow' }
+      : { serviceWorkers: 'allow', viewport: { width: 1280, height: 800 } },
+  );
   const page = await context.newPage();
   const foreign = new Set();
   page.on('request', (r) => {
@@ -82,6 +90,20 @@ try {
   );
   await page.getByTestId('play-layout').waitFor({ timeout: 60_000 });
   check('cross-origin isolated', await page.evaluate(() => window.crossOriginIsolated));
+  if (iphone) {
+    // A first visit on an iPhone: the Add to Home Screen guide, then out of the way
+    const guide = await waitFor(() => page.getByTestId('install-guide').isVisible(), 10_000);
+    check('Add to Home Screen guide opens on the first visit', Boolean(guide));
+    if (guide) {
+      await page.screenshot({ path: path.join(OUT, `${browserName}-install-guide.png`) });
+      await page.getByTestId('install-guide-done').click();
+    }
+    const profile = (await page.getByTestId('stat-engine-profile').textContent())?.trim() ?? '';
+    const oneEngine = await page.evaluate(
+      () => window.__wizardChessPlay?.botEngine === window.__wizardChessPlay?.engine,
+    );
+    check('phone engine profile (one engine)', oneEngine && profile.startsWith('Phone:'), profile);
+  }
   for (const p of ['/sw.js', '/index.html']) {
     const r = await page.request.get(new URL(p, origin).href);
     check(

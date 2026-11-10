@@ -5,12 +5,16 @@ export interface AboutInfo {
   crossOriginIsolated: boolean;
   hardwareConcurrency: number | boolean;
   schemaVersion: number;
+  /** The engine profile in a line (engine-profile.ts describeEngineProfile). */
+  engineProfile: string;
 }
 
 export interface SettingsPanelOptions {
   parent: HTMLElement;
   devOverlay: DevOverlayController;
   about: AboutInfo;
+  /** Opens the Add to Home Screen guide (src/ui/install-guide.ts). */
+  onShowInstallGuide: () => void;
 }
 
 /**
@@ -29,6 +33,12 @@ export class SettingsPanel {
   /** What the service worker says about offline use (shown in About & diagnostics). */
   public setOfflineStatus(text: string): void {
     const el = this.sheet.body.querySelector('[data-testid="stat-offline"]');
+    if (el) el.textContent = text;
+  }
+
+  /** Whether saved data is protected from being cleared (shown in About & diagnostics). */
+  public setStorageStatus(text: string): void {
+    const el = this.sheet.body.querySelector('[data-testid="stat-persistence"]');
     if (el) el.textContent = text;
   }
 
@@ -97,6 +107,8 @@ export class SettingsPanel {
           ['rules', 'Rules &amp; variants', 'Standard + Chess960 (Perft Verified)'],
           ['pgn', 'PGN &amp; game tree', 'RAVs · NAGs · [%eval/%cal/%csl]'],
           ['storage', 'Local storage', `IndexedDB Schema v${about.schemaVersion}`],
+          ['persistence', 'Saved data', 'Checking…'],
+          ['engine-profile', 'Engine profile', about.engineProfile],
           ['engine', 'Stockfish engine', 'Stockfish 17.1 Lite NNUE (MultiPV 1–5)'],
           ['bot', 'Playing bot', '400–2400 Elo · Aggressive / Solid / Gambiteer'],
         ]
@@ -107,10 +119,18 @@ export class SettingsPanel {
           .join('')}
       </dl>
       <div class="wc-setting-row">
+        <span class="wc-setting-label">Add to Home Screen
+          <span class="wc-setting-hint">How to install the app on an iPhone or iPad, so Safari keeps your data</span></span>
+        <button type="button" class="wc-btn wc-btn-sm" data-testid="btn-install-guide">Show how</button>
+      </div>
+      <div class="wc-setting-row">
         <span class="wc-setting-label">Performance overlay <span class="wc-kbd">\`</span>
           <span class="wc-setting-hint">FPS, frame time, long tasks, engine speed</span></span>
         <button type="button" class="wc-switch" role="switch" data-testid="toggle-dev-overlay" aria-checked="false" aria-pressed="false" aria-label="Performance overlay"></button>
       </div>`;
+    body
+      .querySelector('[data-testid="btn-install-guide"]')
+      ?.addEventListener('click', () => this.options.onShowInstallGuide());
     const toggle = body.querySelector('[data-testid="toggle-dev-overlay"]') as HTMLButtonElement;
     toggle.addEventListener('click', () => devOverlay.toggle());
     devOverlay.onToggle((visible) => {
