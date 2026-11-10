@@ -34,6 +34,7 @@ test.describe('Phase 6b — Settings', () => {
     await open(page);
     await openSettings(page);
     await expect(page.getByTestId('settings-sheet').locator('.wc-settings-sec-title')).toHaveText([
+      'Profile',
       'Board',
       'Board feel',
       'Moves',

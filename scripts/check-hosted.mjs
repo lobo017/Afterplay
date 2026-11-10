@@ -11,7 +11,9 @@
 // 4. Offline: the browser is cut off from the network, the page reloads from the cache, still isolated, and the bot
 //    still answers.
 // 5. Install (Chromium): a full manifest, and Chrome's own installability check finds nothing wrong.
-// 6. Every request the page made went to the hosted origin itself.
+// 6. The sample first-run link (/start/sample/), as a first visitor: the host serves the link's own page and
+//    manifest, the preset is applied (look, names, welcome), and an unknown link says so.
+// 7. Every request the pages made went to the hosted origin itself.
 //
 // Screenshots go to test-results/hosted/. Exit code 0 when every check passes. A dev-time script: it is the only
 // thing here that talks to the hosted site, and it sends nothing but ordinary page requests.
@@ -180,7 +182,91 @@ try {
     check('Chrome finds it installable', errors.length === 0, errors.join(', ') || 'no errors');
   }
 
-  // 6. Nothing but the hosted origin
+  // 6. The sample first-run link, in a browser that has never seen the site
+  const linkContext = await browser.newContext(
+    iphone
+      ? { ...devices['iPhone 13'], serviceWorkers: 'allow' }
+      : { serviceWorkers: 'allow', viewport: { width: 1280, height: 800 } },
+  );
+  const link = await linkContext.newPage();
+  link.on('request', (r) => {
+    const u = r.url();
+    if (/^https?:/.test(u) && new URL(u).origin !== origin) foreign.add(u);
+  });
+  const linkUrl = new URL('/start/sample/', origin).href;
+  const linkResponse = await link.goto(linkUrl, { waitUntil: 'load', timeout: 60_000 });
+  const lh = linkResponse?.headers() ?? {};
+  const linkHtml = (await linkResponse?.text()) ?? '';
+  check(
+    "first-run link: the host serves the link's own page",
+    linkHtml.includes('href="/start/sample/manifest.webmanifest"') && /<title>Ada's Chess<\/title>/.test(linkHtml),
+    new URL(link.url()).pathname,
+  );
+  check(
+    'first-run link: isolated, re-checked by browsers, not for search engines',
+    lh['cross-origin-opener-policy'] === 'same-origin' &&
+      lh['cross-origin-embedder-policy'] === 'require-corp' &&
+      /no-cache/.test(lh['cache-control'] ?? '') &&
+      /noindex/.test(lh['x-robots-tag'] ?? ''),
+    `cache-control ${lh['cache-control']}, x-robots-tag ${lh['x-robots-tag']}`,
+  );
+  const shell = link.getByTestId('app-shell');
+  const applied = await waitFor(async () => (await shell.getAttribute('data-first-run')) === 'applied', 30_000);
+  check('first-run link: the preset is applied', Boolean(applied), (await shell.getAttribute('data-first-run')) ?? '');
+  const welcome = await waitFor(() => link.getByTestId('welcome-sheet').isVisible(), 10_000);
+  check('first-run link: the welcome message opens', Boolean(welcome));
+  if (welcome) {
+    await link.screenshot({ path: path.join(OUT, `${browserName}-first-run-welcome.png`) });
+    await link.getByTestId('welcome-done').click();
+  }
+  if (iphone) {
+    const guide = await waitFor(() => link.getByTestId('install-guide').isVisible(), 10_000);
+    check('first-run link: the Add to Home Screen guide follows the welcome', Boolean(guide));
+    if (guide) await link.getByTestId('install-guide-done').click();
+  }
+  const look = await link.evaluate(() => {
+    const frame = document.querySelector('[data-testid="play-layout"] [data-testid="chess-board-frame"]');
+    return {
+      theme: frame?.getAttribute('data-theme'),
+      pieces: frame?.getAttribute('data-piece-set'),
+      me: document.querySelector('[data-testid="bottom-player-name"]')?.textContent,
+      bot: document.querySelector('[data-testid="top-player-name"]')?.textContent,
+      title: document.title,
+    };
+  });
+  check(
+    'first-run link: look and names are the preset’s',
+    look.theme === 'green' &&
+      look.pieces === 'classic' &&
+      look.me === 'Ada (White)' &&
+      look.bot === 'Professor Rook (800)' &&
+      look.title === "Ada's Chess",
+    JSON.stringify(look),
+  );
+  await link.screenshot({ path: path.join(OUT, `${browserName}-first-run-play.png`) });
+  const linkManifest = await link.evaluate(async () => {
+    const href = document.querySelector('link[rel="manifest"]')?.href;
+    return href ? (await fetch(href)).json() : null;
+  });
+  check(
+    'first-run link: its manifest starts the installed app at the link',
+    Boolean(linkManifest && linkManifest.start_url === '/start/sample/' && linkManifest.name === "Ada's Chess"),
+    linkManifest ? `${linkManifest.name}, start_url ${linkManifest.start_url}` : 'no manifest',
+  );
+  if (browserName === 'chromium') {
+    const cdp = await linkContext.newCDPSession(link);
+    const { installabilityErrors } = await cdp.send('Page.getInstallabilityErrors');
+    const errors = installabilityErrors.map((e) => e.errorId).filter((id) => id !== 'in-incognito');
+    check('first-run link: Chrome finds it installable', errors.length === 0, errors.join(', ') || 'no errors');
+  }
+  // An unknown link: the app opens as usual and says the link is not known
+  await link.goto(new URL('/start/no-such-link/', origin).href, { waitUntil: 'load', timeout: 60_000 });
+  const unknown = await waitFor(async () => (await shell.getAttribute('data-first-run')) === 'failed', 30_000);
+  const notice = unknown ? ((await link.getByTestId('app-notice-text').textContent()) ?? '') : '';
+  check('an unknown first-run link says so', Boolean(unknown) && /not known here/.test(notice), notice);
+  await linkContext.close();
+
+  // 7. Nothing but the hosted origin
   check('no request left the hosted origin', foreign.size === 0, [...foreign].slice(0, 5).join(' '));
 } catch (err) {
   check('the run itself', false, err instanceof Error ? err.message : String(err));

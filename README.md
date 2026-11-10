@@ -64,7 +64,7 @@ npm run deploy:production -- --checked <build id>    # the same dist/, no rebuil
 ```
 
 `npm run check:hosted -- <url>` checks a deployed copy as a first visitor meets it (headers, isolation, the
-engine and the bot, offline reload, install); `--browser webkit` or `--browser webkit-iphone` runs it in
+engine and the bot, offline reload, install, the sample first-run link); `--browser webkit` or `--browser webkit-iphone` runs it in
 Playwright's WebKit, the second as an iPhone (the install guide and the phone engine profile too).
 
 `deploy:production` refuses unless `dist/` and HEAD are exactly what the last preview deployed (a
@@ -96,6 +96,64 @@ The e2e suite runs in three Playwright projects: `chromium`, `webkit` (desktop S
 `webkit-iphone` (an iPhone 13: 390 × 664, touch, iPhone user agent). The capture extension's tests are
 Chromium-only. Playwright's WebKit is not Safari on a real iPhone (no memory limit, no Home Screen mode),
 so the target phone is still checked by hand.
+
+### Presets and first-run links
+
+A **preset** is one JSON file that sets the app up for somebody: the look, any setting, names and a welcome.
+A **first-run link** applies it: `https://<site>/start/<name>/` opens the app and, the first time on a device,
+loads `/start/<name>/preset.json` (same origin, once) and applies it. After that the link is simply the app's
+address: nothing is fetched and nothing you changed since is overwritten.
+
+```json
+{
+  "version": 1,
+  "appName": "Ada's Chess",
+  "profile": { "displayName": "Ada", "title": "Countess" },
+  "welcome": { "title": "Welcome, Ada", "message": "First paragraph.\n\nSecond paragraph.", "from": "A friend" },
+  "settings": { "boardTheme": "green", "pieceSet": "classic", "newGame": { "botRating": 800, "timeControlId": "10+0" } },
+  "usernames": { "lichess": "", "chesscom": "ada-sample" },
+  "bots": [{ "name": "Professor Rook", "rating": 800, "style": "solid" }]
+}
+```
+
+Every field but `version` is optional.
+
+| Field | What it does |
+|---|---|
+| `appName` | The app's name: page title, the heading, and the name under the Home Screen icon (up to 30 characters; a phone shows about 12) |
+| `profile` | `displayName` replaces "You" in Play and in the PGN of games played here; `title` is a short badge before it (also editable in Settings › Profile) |
+| `welcome` | A message shown once after the set-up (plain text; a blank line starts a paragraph). Settings › Profile shows it again |
+| `settings` | Any app setting by its name in `src/ui/app-settings.ts` (`boardTheme`, `pieceSet`, `sound`, `reviewPreset`, …); `newGame` holds the bot level (`botRating` 400–2400), `botStyle`, `timeControlId`, `color`, think times and takebacks |
+| `usernames` | Your Lichess and Chess.com names, so the app knows your side in your games |
+| `bots` | Up to eight bots with names of their own: the usual bot at that `rating` and `style` (`solid`, `aggressive`, `gambiteer`), offered as buttons on the New game card |
+
+Anything the app does not understand is ignored (and the unit test `tests/unit/presets.test.ts` lists it).
+The sample link `/start/sample/` (`public/start/sample/preset.json`, invented names) shows all of it.
+
+**How a link is built.** For every `start/<name>/preset.json` the build writes two files beside it
+(`scripts/build-start-pages.mjs`, the last step of `npm run build`): an `index.html` (the app page with the
+preset's name) and a `manifest.webmanifest` whose `start_url` is the link itself. That matters on an iPhone: a
+Home Screen app does not share Safari's storage, so the installed app starts empty; because it starts at the
+link, its first launch applies the preset again. (That launch needs the network; later ones do not.) A link's
+files are not part of the offline cache, and `public/_headers` keeps `/start/*` out of search engines.
+
+**Personal presets** (real names, usernames, messages) never go into the repository. Put them in the
+git-ignored `gift.local/start/<name>/preset.json`, with a long random `<name>` (lower-case letters, digits and
+hyphens), since the name is all that keeps the link private:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(12).toString('hex'))"   # a link name
+npm run build:local        # the build, with gift.local/start/ copied into dist/ (try it with npm run serve)
+npm run deploy:preview -- --with-local-presets    # PUBLISHES them at their links, on the preview
+```
+
+A plain `npm run build` or `npm run deploy:preview` never includes them. `deploy:production` uploads exactly
+the `dist/` the last preview had, so a personal link reaches production only through a preview made with
+`--with-local-presets`.
+
+**Looks added for presets** (also in Settings › Board): the *Tournament Green* board (flat cream and green
+squares) and the *Classic* pieces, Colin M.L. Burnett's set (the default on Wikipedia and Lichess,
+GPL-2.0-or-later; `npm run build:pieces` regenerates `src/render/classic-pieces.ts` from the Lichess repository).
 
 ## Performance and spec status
 

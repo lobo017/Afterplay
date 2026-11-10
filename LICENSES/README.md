@@ -34,11 +34,17 @@ Every runtime dependency, development tool, and bundled dataset used by this pro
 | `data/puzzles.json` | [Lichess Open Puzzle Database](https://database.lichess.org/#puzzles) | `CC0-1.0` | Public domain tactical puzzles (`lichess_db_puzzle.csv.zst`), stratified 20k subset — see `LICENSES/CC0-1.0.txt` |
 | `data/endgames.json` | Wizard's Chess Contributors | `GPL-3.0-or-later` | Hand-curated fundamental endgame training positions (K+Q v K, K+R v K, K+P opposition, Lucena, Philidor, R+P v R) |
 
+## Bundled artwork
+
+| Files | Source | SPDX License | Description |
+|-------|--------|--------------|-------------|
+| `src/render/classic-pieces.ts` (the "Classic" piece set) | SVG chess pieces by [Colin M.L. Burnett](https://en.wikipedia.org/wiki/User:Cburnett), taken from [`lichess-org/lila`](https://github.com/lichess-org/lila/tree/master/public/piece/cburnett) at commit `5b44d719ec59` by `scripts/build-piece-set.mjs` | `GPL-2.0-or-later` (the author also offers them under GFDL and BSD) | The twelve piece drawings, unchanged except that each file's outer `<svg>` element is replaced by the app's own; used here under the terms of GPL version 3 — see `LICENSES/GPL-3.0-or-later.txt` |
+
 ## Original to this project (GPL-3.0-or-later)
 
 Not taken from any other work, so nothing further to attribute:
 
-- the piece sets (Cathedral, Staunton, High contrast) and board themes: generated in code (`src/render/piece-sets.ts`, `src/render/themes.ts`);
+- the piece sets Cathedral, Staunton and High contrast, and every board theme (Tournament Green included: its colour values are this project's own): generated in code (`src/render/piece-sets.ts`, `src/render/themes.ts`);
 - the app icons (`public/`, rendered from `public/favicon.svg` by `scripts/build-icons.mjs`) and the capture extension's toolbar icons (drawn by `scripts/build-extension.mjs`);
 - the Web Audio synthesizer (`src/render/audio.ts`, ported from this project's earlier `legacy/index.html`);
 - the endgame positions (`data/endgames.json`, listed above).

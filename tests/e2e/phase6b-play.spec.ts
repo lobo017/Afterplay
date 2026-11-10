@@ -202,6 +202,7 @@ test.describe('Phase 6b — Play', () => {
     await expect(sheet.getByTestId('settings-sound')).toBeVisible();
     // Sections in order, About last
     await expect(sheet.locator('.wc-settings-sec-title')).toHaveText([
+      'Profile',
       'Board',
       'Board feel',
       'Moves',

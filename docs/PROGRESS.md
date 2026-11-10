@@ -88,8 +88,11 @@ WebKit-only bugs fixed in the app (focus return, selects, date filters, safe are
 605/605 (505993), e2e chromium ×2 165/165 (505994), webkit ×2 139/139 (505995), webkit-iphone ×2 140/140 (505996), 0 failed, 0
 flaky. Preview build `f32cb599143d`, `check:hosted` 15/15 (Chrome) and 16/16 (iPhone WebKit). Plan, fixes and test changes:
 [phase-11](progress/phase-11.md).
-- **wc-perf 505997 (stage 2's perf run):** still PENDING (waiting for an exclusive node) when stage 3 started on 2026-11-10; see
-  the stage 3 result below for what happened to it.
+- **wc-perf 505997 (stage 2's perf run): passed** (ran 14:27 Juno time on 2026-11-10, read in the stage 3 session; `meta.json`
+  commit `96da4fd667`, `repo-changes.txt` empty, exit 0): all four scripts. `perf:drag` p95 16.67 ms in all four windows, 0
+  dropped, 0 long tasks, main thread 0.65–1.37 ms per frame, input 0.36 and 0.72 ms, start-up 243 ms, idle 0 rAF;
+  `perf:review` 81 plies 17.0–17.1 s at 1, 2 and 4 threads, 0 long tasks; `perf:tasks` 17 flows, 0 tasks of 50 ms or more;
+  `perf:memory` 50 games +0.26 MB heap (6.6 KB per game), listeners +0. No regression against stage 1 (505780).
 - **Open:** a real iPhone has not been tried yet (memory limit, Home Screen mode, the guide's steps on iOS 26). The Games screen
   on a phone still shows the Chrome capture-extension card (the Chess.com sync stage replaces it there).
 
@@ -135,16 +138,41 @@ flaky. Preview build `f32cb599143d`, `check:hosted` 15/15 (Chrome) and 16/16 (iP
   `start_url`, is its storage really empty, does the welcome show twice: once in Safari, once in the app); the first launch of
   the installed app needs the network; a per-preset manifest shares the app's `id`; a secret URL is only as private as the link.
 
-**Stage 3 status (checkpoint, 2026-11-10; update or replace when the stage is reported):**
-- Built and committed locally (not pushed): the preset parser, profile store, first-run link flow, welcome sheet, Settings ›
-  Profile, names / title / named bots in Play, the green theme, the Classic pieces, `build-start-pages`, `serve.mjs` folder
-  pages, `_headers`, `deploy:preview -- --with-local-presets`, the sample link, and `phase11-presets.spec.ts` (7/7 in Chromium
-  on the laptop; typecheck and lint clean).
-- **Still to do, in order:** unit tests (preset, first-run, profile + backup, start pages, `_headers`; `phase3-board` expects 4
-  themes and 4 sets) → the new spec in `webkit` and `webkit-iphone` on the laptop, and phone screenshots looked at →
-  `check:hosted` checks for the sample link → README and LICENSES → the personal preset draft in `gift.local/start/` →
-  "Phase 11 stage 3" commit → the juno-gate skill (stage 2's wc-perf 505997 was still PENDING: a pull changes what it
-  tests, see the skill's step 2) → preview → stop for the user's check.
+**Stage 3 result (2026-11-10): built; the Juno gate and the preview are the next step (see "Gate" below)**
+- Built as planned. Decisions made on the way:
+  - **A bot is a named bot by its rating and style** (no extra setting): the New game card shows the profile's bots as
+    buttons; a tap sets rating and style; Play and the PGN (`White`/`Black`, `Event`, `WhiteTitle`/`BlackTitle`) use the names.
+  - **The board waiting at the start position takes the preset's bot and time control** (`adoptPendingChoices`); a game with
+    a move played is never touched.
+  - What a preset does not name stays as it was (settings, profile fields, the other username). The profile travels in the
+    preferences record (backup and restore); which link a device applied and whether its welcome was seen are device facts
+    (`localStorage` only), so a restore cannot make a link apply twice.
+  - The page title and the iOS Home Screen title are changed only when a profile names the app (the update tests caught the
+    first version overwriting a new build's title).
+  - An unknown or unreadable link, or no network on the first run: a notice that waits for OK; the app works as usual.
+- **Tests changed (none weakened):** `phase3-board` expects 4 themes and 4 piece sets; the two tests that list the Settings
+  sections (`phase6b-settings`, `phase6b-play`) expect **Profile** first; the test server of `phase8-offline` moved to
+  `tests/e2e/helpers/server.ts` (shared with the new spec), unchanged.
+- **Laptop runs (not the gate):** unit 632/632 (232 s; on Juno one of them, the check of personal presets, is skipped: no
+  `gift.local/` there); `phase11-presets.spec.ts` 7/7 in each of the three projects; the neighbouring specs (settings, shell,
+  play, a11y, offline, screens, iphone) in Chromium 23/23 and 31/31 after the two fixes above. `check:hosted` against a local
+  server: 20/23, the three misses being headers only the host sends (`no-cache`, `noindex`). Screenshots looked at (desktop and
+  iPhone: board, welcome, guide, Settings).
+- **Laptop WebKit, not caused by this stage:** in `webkit-iphone` on the laptop, `phase6b-play` "a game in progress never ends…"
+  and "in game: tabs…" timed out on a click that never became stable. The same two fail against a build of stage 2
+  (`fe5d0c9`, temporary worktree, removed) and a probe shows the page getting 4 animation frames in 2.5 s once a game runs,
+  on stage 2's deployed build too: the laptop (most likely its screen off or locked, as in Phase 9). They passed on Juno in
+  stage 2; Juno is the gate.
+- **Personal preset:** drafted in `gift.local/start/<random name>/preset.json` with notes in `gift.local/README.md` on what is
+  still the user's to decide (message, username, level, bot names). Valid (the unit check passes). **Not uploaded anywhere**:
+  the preview of this stage is built without `--with-local-presets`.
+- **Open / to check on the real iPhone:** that the Home Screen app starts at the link (manifest `start_url`) and applies the
+  preset in its own empty storage; the welcome shows once in Safari and once more in the installed app (separate storage:
+  cannot be told apart from here); the first launch of the installed app needs the network. Coordinates sit close to the
+  Classic pieces' bases on a 390 px board (same positions as every theme).
+- **Gate:** not run yet. Next: the juno-gate skill on the stage commit (queue was empty at 17:5x laptop time; pull, submit the
+  five jobs, trust checks, report here), then `npm run deploy:preview` and `check:hosted` in Chrome and iPhone WebKit, then
+  stop for the user's check. No production deploy.
 
 ## Open items from earlier phases
 
