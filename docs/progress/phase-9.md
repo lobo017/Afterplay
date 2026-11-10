@@ -344,3 +344,126 @@ if the sweep still fails, compare with the announcer switched off.**
 commit, so the Oct 19 scenario 2 failures were machine state (consistent with Oct 17's finding), not
 a 6b regression; the 6b18a4c comparison was not needed. Earlier attempts the same day were aborted by
 the 3 GB free-memory guard (2.4–3.3 GB free, other apps open) and measured nothing.
+
+
+## Closing gate and Juno (2026-10-27 → 2026-11-10)
+
+Moved here verbatim from PROGRESS.md when Phase 9 was closed (2026-11-10).
+
+### State of the e2e gate on the laptop (as it stood on 2026-10-27)
+
+**State of the e2e gate (2026-10-27).** Unit 588/588, typecheck, lint, format check and build pass on the final commit. Full e2e:
+(1) first full run after the start-up split, 155 passed / 3 failed, the 3 fixed (see phase-9); (2) a run that froze while the laptop
+sat idle and locked (11 h, invalid); (3) a run on the final commit that the machine killed under memory pressure: 137 of its 138
+failures are `worker process exited unexpectedly (code 3221225794)` = Windows `0xC0000142` (process start failing), the 138th is
+a real one: `phase5-review` "reviews the built-in sample game" saw a 57 ms task in the review window (98 ms in run 1). It passes
+alone (7 of 7, also 3 of 3 under heavy CPU load), and CPU load does not reproduce it, so the cause is not found; memory pressure
+(paging) is suspected, not shown. **Next step: free memory (the user's Chrome holds 3.7+ GB), keep the screen on, run
+`npx playwright test` once; if that test fails again on a quiet machine it is a real finding to chase (a ≥ 50 ms task in the review
+window), not a flake to loosen.**
+
+### HPC: automated checks on Juno (started 2026-11-09)
+
+Plan (Part A, then the Phase 9 closing gate on Juno as Part B). Checks, perf and batch studies move to the university's SLURM
+cluster (Juno); the laptop no longer runs them.
+
+- **Files added:** `hpc/` (`lib/paths.sh` with the folder constants and the safe delete helper, `lib/job.sh` for the shared job
+  prologue/epilogue, `setup.sbatch`, `jobs/{unit,e2e,e2e-repeat,perf,calibrate,puzzles}.sbatch`, `summarize.mjs`, `smoke.mjs`,
+  `README.md`); `scripts/verify-puzzles.mjs` (deep puzzle check, did not exist); `tests/e2e/helpers/site.ts` (one place for the port).
+- **Files changed:** `playwright.config.ts`, `tests/e2e/helpers/extension.ts` + two specs (browser channel and port by platform/env,
+  Windows behaviour unchanged), `scripts/lib/process-guard.mjs` (read `/proc` on Linux), `scripts/perf-*.mjs` (channel, headless
+  display-rate wording), `scripts/calibrate-bots.mjs` (`--level`), `scripts/build-extension.mjs` + `extension/src/settings.ts`
+  (build-time default port), `AGENTS.md`.
+- **Design:** every job runs `apptainer exec --cleanenv --containall` from the Playwright image (pinned to the lockfile's
+  Playwright version) with only these binds: the repo, the npm cache, a per-job scratch folder as `/tmp`, and per-job folders over
+  the repo's `dist/`, `dist-ext/` and `test-results/`. So parallel jobs on one node never share a build or a port, nothing is
+  written into the repo outside `node_modules`, and the container's own PID namespace limits "leftover process" checks to the job.
+- **Risks:** nothing could be run on Linux from the laptop, so the first Juno job is the first Linux run of this harness (the setup
+  job ends with a smoke test of headless Chromium, the frame floor and loading the extension). New headless Chromium and
+  `Extensions.loadUnpacked` are expected to work; `xvfb-run` is the fallback (`WC_HEADED=1`). Whether the GitHub repo is public
+  is unknown (a private repo cannot be cloned by the setup job).
+
+**Part A (the `hpc/` setup) is committed and running on Juno; Part B (close Phase 9) is in progress.** `preact` is removed.
+Differences from the brief, and why:
+- `wc-unit` also runs typecheck, lint, format check and build (separate steps, same job): AGENTS.md's gate needs them and they
+  must run on Juno too. `wc-summarize` and `hpc/smoke.mjs` were added (arrays need a combined report; the setup needs a check
+  that Chromium and the extension work on Linux).
+- `scripts/verify-puzzles.mjs` is new (no "deep puzzle verification" existed): fixed-depth Stockfish over every player move of
+  all 20k puzzles, accepting the stored move by the app's own alternative-move rule. Tried locally on 20 puzzles (55 moves, all
+  engine-best, 0.25 s per puzzle); the failure path tried at depth 1.
+- Checked on the laptop before the commit (Juno did not exist yet): `typecheck`, `lint`, `format:check`, `bash -n` on every script,
+  `hpc/test/paths-test.sh` (symlink cases are skipped on Windows), `hpc/smoke.mjs`, `summarize.mjs` on made-up results, a
+  `build:ext` with and without `WC_PORT`. The unit and e2e suites were not run (they are what Juno is for).
+- Not checked anywhere yet: apptainer flags (`--containall --no-home`, nested binds over `dist/` and `node_modules/.vite`), the
+  `module` init in a job, `git clone` of the GitHub repo (is it public?), new headless Chromium loading the extension, and
+  whether `/dev/shm` inside the container is big enough for Chromium.
+
+**Juno runs, 2026-11-09 evening** (all on repo commit `35b58d1`; project folder 4.1 GiB, 18Ki inodes; `~/work` was at 888Ki inodes /
+613 GiB before and 906Ki / 617 GiB after setup):
+- Setup attempt 1 (504970) failed in 9 s: `module` was undefined in the scrubbed job (`/etc/profile.d/lmod.sh` did not define it). Fixed
+  by sourcing Lmod's own init (`/opt/ohpc/admin/lmod/lmod/init/bash`) with a fallback to Juno's login MODULEPATH. Attempt 2 (**504976**)
+  passed: Apptainer mounts, own PID namespace (7 processes visible), headless Chromium 156, blank page p50 16.7 / p95 16.8 ms,
+  cross-origin isolated, extension loads in new headless (no `--headed` needed). Node in the image is v26.13.0.
+- **wc-unit 504982: passed** (typecheck, lint, format, build, 588/588 unit tests, 1 min 45 s; `repo-changes.txt` empty).
+- **wc-perf 504989: passed** (6 min 19 s, exclusive node c-02-04): drag p95 16.67 ms in all four windows, 0 dropped, 0 long tasks, main thread
+  0.6–1.5 ms per frame; memory +0.26 MB over 50 games (6.8 KB/game); review of 81 plies 17.0–17.1 s at 1, 2 and 4 threads, 0 long tasks;
+  16 flows, 0 tasks ≥ 50 ms; blank page 16.7 ms. Baselines for a headless Linux node, not a screen.
+- **wc-e2e-repeat 504985, first round (commit `35b58d1`): all 4 runs failed, 2–3 tests each of 159 (11.5–12 min per run);** `meta.json` commit
+  and an empty `repo-changes.txt` checked for every task. `phase5-review` "reviews the built-in sample game" passed in all 4 runs. Failures:
+  - `phase7-trainers` "giving up, restarting and offering a draw too early": 4 of 4. The test read the saved progress the moment the
+    result showed; the app saves it a moment later (by design, `EndgameTrainer.finish`). Linux/timing (the profile folder is on a
+    network disk). Test fix: wait for the record. The same read without a wait in the rp-vs-r and lucena tests got the same fix.
+  - `phase6b-review` "Analyze this position (from Play)": 3 of 4, and `phase2-engine-restart` "threads set to 4 right after the engine
+    starts": 1 of 4 (its "2" twin has the same code). Both used `window.__wizardChessPlay` right after `goto`; since the start-up split
+    it exists only after the app mounts. Test fix: wait for it first.
+  - `phase8-leftovers` "phone: a key moment's sentence is complete": 1 of 4. **Real layout bug:** on phones the key-moment chips wrap into
+    two reserved rows; five chips with long labels (`4... Bxf3`, `10... cxb5`, …; which moments Quick finds varies per run) need a third
+    row, which was cut off. Fix: three rows reserved on phones (`7.3rem`); checked with five worst-case chips at 390 and 360 px.
+- **Second round, wc-e2e-repeat 505518 (commit `14119ff`): 4 of 4 runs passed, 159/159 each** (11.2–11.7 min); `meta.json` commit matches and
+  `repo-changes.txt` is empty for all four. Round 1 and 2 together: `phase5-review` "reviews the built-in sample game" passed in all 8 Juno runs.
+- **Follow-up (commit `8cb6894`): results are saved before they are shown** (a phone app closed as a result appears must have stored it).
+  `saveBeforeShow` (400 ms cap) in the endgame trainer and the coordinate / blindfold / guess drills; the puzzle trainer, played games
+  (resign, draw, flag, rules) and the stored game's review now request their save before showing anything; the repertoire drill already
+  did. IndexedDB still commits asynchronously, so "before" means waited for (drills) or requested first (the rest). It changes app code,
+  so the closing gate (unit, e2e ×4, perf) runs again on the final commit.
+- **Closing gate, first attempt (commit `efd1acc`):** wc-unit 505535 passed (592/592); wc-perf 505540 passed; **wc-e2e-repeat 505536 failed in
+  all 4 runs** (`meta.json` commit and empty `repo-changes.txt` checked). Three tests:
+  - `phase7-trainers` "K+Q v K is played to mate and recorded" (4 of 4, 120 s timeout) and "Philidor: … a draw offer is accepted" (2 of 4,
+    240 s timeout): **caused by save-before-show.** The drill was over (hint and draw buttons off) but `data-endgame-state` still read
+    `playing` while the result waited for its save (up to 400 ms); the helper loops saw `playing`, clicked the disabled Hint button and
+    hung. Code fix: a `saving` state from the moment the drill ends until the result shows (the tests already wait for
+    `playing|reached|failed`, so they are unchanged).
+  - `phase9` "the move list is extended move by move…": 1 of 4, **not caused by it** (the game never ends in that test): the bot
+    answered 1.e4 … 2.d4 with `Bb4+` (page snapshot: "White to move — Check!"), the test's fixed third move Nf3 does not answer a check and
+    was refused, so the move list stayed at 4 plies. The bot's replies are randomised, so this was a latent test race (it passed in
+    11 of 12 Juno runs). Test fix: the planned move is played when legal, otherwise the first legal move.
+- **Closing gate, second attempt (commit `ca59164`):** wc-unit 505619 passed (592/592). **wc-e2e-repeat 505623: runs 1, 2 and 4 passed (159/159); run 3
+  failed one test** (`meta.json` commit and empty `repo-changes.txt` checked for all four): `phase6b-review` "the coach card walks through the key
+  moments…" hit its 150 s timeout. Not caused by saving: the page snapshot shows the first key moment was `6... Nf6`, a **Good** move, and
+  "Try it" is disabled for it (the app enables it only for errors, `review-panel.ts` `canRetry`); the test clicked it anyway and a click
+  on a disabled button waits until the test times out. Which moments a time-limited Quick review finds varies from run to run (as in the
+  phase8-leftovers case above), so this was a latent flake (passed in 11 of 12 earlier Juno runs). Test fix: take the first key moment that
+  offers "Try it"; the retry is still exercised on a mistake, assertions unchanged.
+- **Audit of every e2e test that runs a review (after the third flake from a time-limited Quick review).** A fixed node budget was not an
+  option: `panel.start()` takes no budget (the preset comes from the UI selector), so it would need a new app code path and a hook, and several
+  tests assert the Quick preset itself. So the tests were checked one by one for assumptions about what the review found:
+  - Already derived from the review's own output (nothing to change): `phase5-review` sample game (classes, key moments, error cards),
+    imported-Lichess replacement, the three perspective tests (`errorsOf(review, side)`), `phase6b-board-feel` real-review badges,
+    `phase6b-screens`, `phase8-a11y`, `phase8-offline`, `phase5b-games`, `phase5b-extension`, `phase6` puzzles from mistakes (the queen
+    blunder is decided by position, not by search depth), `phase7` repertoire notes (no engine result used).
+  - Fixed: `phase6b-review` coach card (Try it on the first key moment that offers it, previous commit); `phase8-leftovers` (layout, CSS fix);
+    `phase5-review` Black perspective: "a class Black has no move in" now picks from all ten classes (was six, with a non-null assertion), and
+    the perspective tests state their precondition ("the review found an error by White / Black") instead of failing on an undefined move.
+
+### Closing gate, final attempt (2026-11-10, commit `cefe783`)
+
+- **wc-unit 505665:** typecheck, lint, format check, build ok; 592/592 unit tests (167 suites), about 1½ min.
+- **wc-e2e-repeat 505669 (tasks 1–4):** 4 of 4 runs passed, **159/159 each** (11.4–11.5 min per run).
+- **wc-perf 505673 (exclusive node, 6 min 20 s):** perf:drag p95 16.67 ms in all four windows (play drag, premove burst, analysis drag, navigation
+  sweep), 0 dropped frames, 0 long tasks, main thread 0.67–1.46 ms per frame, input latency 0.37 / 0.52 ms, start-up 248 ms, idle 0 rAF; perf:memory
+  50 games +0.2 MB heap (5.2 KB per game), listeners +0; perf:review of 81 plies on Quick 17.0–17.1 s at 1, 2 and 4 threads, 0 long tasks, blank-page floor
+  16.7 ms; perf:tasks 0 tasks of 50 ms or more in the 16 flows.
+- Every result: `meta.json` commit `cefe783`, `repo-changes.txt` empty. After the last job: no `wc-` job left in the queue; `~/work` at 909Ki inodes and
+  618 GiB (906Ki / 617 GiB right after setup; 888Ki / 613 GiB before it, all other projects), the project itself about 4 GiB and 18Ki files after setup.
+- Across all five Juno e2e rounds (20 full runs) `phase5-review` "reviews the built-in sample game" never failed, so the ≥ 50 ms tasks seen on the
+  laptop (98 ms, 57 ms) were most likely the laptop (memory pressure, power and display state), not the app.

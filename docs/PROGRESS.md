@@ -21,118 +21,35 @@ log to `docs/progress/phase-N.md` and keep only a summary here.
 | 6b | UX redesign | Done | Board feel + badges; app frame (Play / Train / Review / Games + Settings sheet); all six stages committed (last `23f5d47`) | [phase-6b](progress/phase-6b.md) |
 | 7 | Repertoire, endgame & visualization | Done | White/Black repertoire trees (build, import, drill, review flag), 6 engine-verified endgame drills, coordinate/blindfold/guess-the-move; all feed Today with the puzzles | [phase-7](progress/phase-7.md) |
 | 8 | Library, insights, settings, offline | Done | Own service worker (precache + COOP/COEP, update banner) and an offline e2e gate; played games kept, colour/opening/date/accuracy filters, delete, worker bulk import; Insights tab; live-region announcements and keyboard play on every board; Settings for usernames, analysis lines, review depth | [phase-8](progress/phase-8.md) |
-| 9 | Performance pass & final audit | Code and audit done; final full e2e run owed | Every budget measured (frame time, input latency, idle, startup, 50-game memory, review speed) and a 16-flow long-task audit; start-up split into tasks, lazy Review screen, Play bot-move task 16–27 → 7–9 ms; hints reach the review; full spec audit (all Done except two Partial and the optional Phase 10); Prettier enforced; measuring scripts guard against a locked screen | [phase-9](progress/phase-9.md) |
+| 9 | Performance pass & final audit | Done (closing gate on Juno, 2026-11-10) | Every budget measured (frame time, input latency, idle, startup, 50-game memory, review speed) and a 16-flow long-task audit; start-up split into tasks, lazy Review screen, Play bot-move task 16–27 → 7–9 ms; hints reach the review; full spec audit (all Done except two Partial and the optional Phase 10); Prettier enforced; measuring scripts guard against a locked screen; closing gate on Juno (unit 592, e2e 4 × 159, perf), results saved before they are shown, review tests hardened | [phase-9](progress/phase-9.md) |
+| HPC | Automated checks on Juno | Done (2026-11-10) | `hpc/`: Apptainer + pinned Playwright image, jobs wc-unit / e2e / e2e-repeat / perf / calibrate / puzzles / summarize, per-job build, port and scratch folder, safe-delete helper, reports; `wc-calibrate` and `wc-puzzles` not yet run | [phase-9](progress/phase-9.md) |
 
 
 ## Current phase and next step
 
-Phases 0–8 are done. **Phase 9 is complete except for its closing gate**: a full e2e run that passes, uninterrupted, on the final
-commit (and one clean scenario-2 `perf:drag` run). The code, the measurements and the requirement audit are done and committed;
-detail is in [phase-9](progress/phase-9.md). The "Phase 9: …" closing commit has not been made for that reason. Phase 10 (native
-engine mode) is optional and not started.
+Phases 0–9 are done. **Phase 9 was closed on 2026-11-10: its closing gate ran on Juno (Linux, headless)**: typecheck, lint, format check, build,
+592/592 unit tests, 4 of 4 full e2e runs (159/159 each) and all four perf scripts passed on commit `cefe783` (details below and in
+[phase-9](progress/phase-9.md)). **The Key measurements table at the bottom comes from earlier laptop runs; the Juno numbers are in the table
+under it** (regression baselines for a headless Linux node, not a user's screen). Phase 10 (native engine mode) is optional and not started.
 
-**State of the e2e gate (2026-10-27).** Unit 588/588, typecheck, lint, format check and build pass on the final commit. Full e2e:
-(1) first full run after the start-up split, 155 passed / 3 failed, the 3 fixed (see phase-9); (2) a run that froze while the laptop
-sat idle and locked (11 h, invalid); (3) a run on the final commit that the machine killed under memory pressure: 137 of its 138
-failures are `worker process exited unexpectedly (code 3221225794)` = Windows `0xC0000142` (process start failing), the 138th is
-a real one: `phase5-review` "reviews the built-in sample game" saw a 57 ms task in the review window (98 ms in run 1). It passes
-alone (7 of 7, also 3 of 3 under heavy CPU load), and CPU load does not reproduce it, so the cause is not found; memory pressure
-(paging) is suspected, not shown. **Next step: free memory (the user's Chrome holds 3.7+ GB), keep the screen on, run
-`npx playwright test` once; if that test fails again on a quiet machine it is a real finding to chase (a ≥ 50 ms task in the review
-window), not a flake to loosen.**
+### Automated checks on Juno (2026-11-09 → 10)
 
-### HPC: automated checks on Juno (started 2026-11-09)
-
-Plan (Part A, then the Phase 9 closing gate on Juno as Part B). Checks, perf and batch studies move to the university's SLURM
-cluster (Juno); the laptop no longer runs them.
-
-- **Files added:** `hpc/` (`lib/paths.sh` with the folder constants and the safe delete helper, `lib/job.sh` for the shared job
-  prologue/epilogue, `setup.sbatch`, `jobs/{unit,e2e,e2e-repeat,perf,calibrate,puzzles}.sbatch`, `summarize.mjs`, `smoke.mjs`,
-  `README.md`); `scripts/verify-puzzles.mjs` (deep puzzle check, did not exist); `tests/e2e/helpers/site.ts` (one place for the port).
-- **Files changed:** `playwright.config.ts`, `tests/e2e/helpers/extension.ts` + two specs (browser channel and port by platform/env,
-  Windows behaviour unchanged), `scripts/lib/process-guard.mjs` (read `/proc` on Linux), `scripts/perf-*.mjs` (channel, headless
-  display-rate wording), `scripts/calibrate-bots.mjs` (`--level`), `scripts/build-extension.mjs` + `extension/src/settings.ts`
-  (build-time default port), `AGENTS.md`.
-- **Design:** every job runs `apptainer exec --cleanenv --containall` from the Playwright image (pinned to the lockfile's
-  Playwright version) with only these binds: the repo, the npm cache, a per-job scratch folder as `/tmp`, and per-job folders over
-  the repo's `dist/`, `dist-ext/` and `test-results/`. So parallel jobs on one node never share a build or a port, nothing is
-  written into the repo outside `node_modules`, and the container's own PID namespace limits "leftover process" checks to the job.
-- **Risks:** nothing could be run on Linux from the laptop, so the first Juno job is the first Linux run of this harness (the setup
-  job ends with a smoke test of headless Chromium, the frame floor and loading the extension). New headless Chromium and
-  `Extensions.loadUnpacked` are expected to work; `xvfb-run` is the fallback (`WC_HEADED=1`). Whether the GitHub repo is public
-  is unknown (a private repo cannot be cloned by the setup job).
-
-**Part A (the `hpc/` setup) is committed and running on Juno; Part B (close Phase 9) is in progress.** `preact` is removed.
-Differences from the brief, and why:
-- `wc-unit` also runs typecheck, lint, format check and build (separate steps, same job): AGENTS.md's gate needs them and they
-  must run on Juno too. `wc-summarize` and `hpc/smoke.mjs` were added (arrays need a combined report; the setup needs a check
-  that Chromium and the extension work on Linux).
-- `scripts/verify-puzzles.mjs` is new (no "deep puzzle verification" existed): fixed-depth Stockfish over every player move of
-  all 20k puzzles, accepting the stored move by the app's own alternative-move rule. Tried locally on 20 puzzles (55 moves, all
-  engine-best, 0.25 s per puzzle); the failure path tried at depth 1.
-- Checked on the laptop before the commit (Juno did not exist yet): `typecheck`, `lint`, `format:check`, `bash -n` on every script,
-  `hpc/test/paths-test.sh` (symlink cases are skipped on Windows), `hpc/smoke.mjs`, `summarize.mjs` on made-up results, a
-  `build:ext` with and without `WC_PORT`. The unit and e2e suites were not run (they are what Juno is for).
-- Not checked anywhere yet: apptainer flags (`--containall --no-home`, nested binds over `dist/` and `node_modules/.vite`), the
-  `module` init in a job, `git clone` of the GitHub repo (is it public?), new headless Chromium loading the extension, and
-  whether `/dev/shm` inside the container is big enough for Chromium.
-
-**Juno runs, 2026-11-09 evening** (all on repo commit `35b58d1`; project folder 4.1 GiB, 18Ki inodes; `~/work` was at 888Ki inodes /
-613 GiB before and 906Ki / 617 GiB after setup):
-- Setup attempt 1 (504970) failed in 9 s: `module` was undefined in the scrubbed job (`/etc/profile.d/lmod.sh` did not define it). Fixed
-  by sourcing Lmod's own init (`/opt/ohpc/admin/lmod/lmod/init/bash`) with a fallback to Juno's login MODULEPATH. Attempt 2 (**504976**)
-  passed: Apptainer mounts, own PID namespace (7 processes visible), headless Chromium 156, blank page p50 16.7 / p95 16.8 ms,
-  cross-origin isolated, extension loads in new headless (no `--headed` needed). Node in the image is v26.13.0.
-- **wc-unit 504982: passed** (typecheck, lint, format, build, 588/588 unit tests, 1 min 45 s; `repo-changes.txt` empty).
-- **wc-perf 504989: passed** (6 min 19 s, exclusive node c-02-04): drag p95 16.67 ms in all four windows, 0 dropped, 0 long tasks, main thread
-  0.6–1.5 ms per frame; memory +0.26 MB over 50 games (6.8 KB/game); review of 81 plies 17.0–17.1 s at 1, 2 and 4 threads, 0 long tasks;
-  16 flows, 0 tasks ≥ 50 ms; blank page 16.7 ms. Baselines for a headless Linux node, not a screen.
-- **wc-e2e-repeat 504985, first round (commit `35b58d1`): all 4 runs failed, 2–3 tests each of 159 (11.5–12 min per run);** `meta.json` commit
-  and an empty `repo-changes.txt` checked for every task. `phase5-review` "reviews the built-in sample game" passed in all 4 runs. Failures:
-  - `phase7-trainers` "giving up, restarting and offering a draw too early": 4 of 4. The test read the saved progress the moment the
-    result showed; the app saves it a moment later (by design, `EndgameTrainer.finish`). Linux/timing (the profile folder is on a
-    network disk). Test fix: wait for the record. The same read without a wait in the rp-vs-r and lucena tests got the same fix.
-  - `phase6b-review` "Analyze this position (from Play)": 3 of 4, and `phase2-engine-restart` "threads set to 4 right after the engine
-    starts": 1 of 4 (its "2" twin has the same code). Both used `window.__wizardChessPlay` right after `goto`; since the start-up split
-    it exists only after the app mounts. Test fix: wait for it first.
-  - `phase8-leftovers` "phone: a key moment's sentence is complete": 1 of 4. **Real layout bug:** on phones the key-moment chips wrap into
-    two reserved rows; five chips with long labels (`4... Bxf3`, `10... cxb5`, …; which moments Quick finds varies per run) need a third
-    row, which was cut off. Fix: three rows reserved on phones (`7.3rem`); checked with five worst-case chips at 390 and 360 px.
-- **Second round, wc-e2e-repeat 505518 (commit `14119ff`): 4 of 4 runs passed, 159/159 each** (11.2–11.7 min); `meta.json` commit matches and
-  `repo-changes.txt` is empty for all four. Round 1 and 2 together: `phase5-review` "reviews the built-in sample game" passed in all 8 Juno runs.
-- **Follow-up (commit `8cb6894`): results are saved before they are shown** (a phone app closed as a result appears must have stored it).
-  `saveBeforeShow` (400 ms cap) in the endgame trainer and the coordinate / blindfold / guess drills; the puzzle trainer, played games
-  (resign, draw, flag, rules) and the stored game's review now request their save before showing anything; the repertoire drill already
-  did. IndexedDB still commits asynchronously, so "before" means waited for (drills) or requested first (the rest). It changes app code,
-  so the closing gate (unit, e2e ×4, perf) runs again on the final commit.
-- **Closing gate, first attempt (commit `efd1acc`):** wc-unit 505535 passed (592/592); wc-perf 505540 passed; **wc-e2e-repeat 505536 failed in
-  all 4 runs** (`meta.json` commit and empty `repo-changes.txt` checked). Three tests:
-  - `phase7-trainers` "K+Q v K is played to mate and recorded" (4 of 4, 120 s timeout) and "Philidor: … a draw offer is accepted" (2 of 4,
-    240 s timeout): **caused by save-before-show.** The drill was over (hint and draw buttons off) but `data-endgame-state` still read
-    `playing` while the result waited for its save (up to 400 ms); the helper loops saw `playing`, clicked the disabled Hint button and
-    hung. Code fix: a `saving` state from the moment the drill ends until the result shows (the tests already wait for
-    `playing|reached|failed`, so they are unchanged).
-  - `phase9` "the move list is extended move by move…": 1 of 4, **not caused by it** (the game never ends in that test): the bot
-    answered 1.e4 … 2.d4 with `Bb4+` (page snapshot: "White to move — Check!"), the test's fixed third move Nf3 does not answer a check and
-    was refused, so the move list stayed at 4 plies. The bot's replies are randomised, so this was a latent test race (it passed in
-    11 of 12 Juno runs). Test fix: the planned move is played when legal, otherwise the first legal move.
-- **Closing gate, second attempt (commit `ca59164`):** wc-unit 505619 passed (592/592). **wc-e2e-repeat 505623: runs 1, 2 and 4 passed (159/159); run 3
-  failed one test** (`meta.json` commit and empty `repo-changes.txt` checked for all four): `phase6b-review` "the coach card walks through the key
-  moments…" hit its 150 s timeout. Not caused by saving: the page snapshot shows the first key moment was `6... Nf6`, a **Good** move, and
-  "Try it" is disabled for it (the app enables it only for errors, `review-panel.ts` `canRetry`); the test clicked it anyway and a click
-  on a disabled button waits until the test times out. Which moments a time-limited Quick review finds varies from run to run (as in the
-  phase8-leftovers case above), so this was a latent flake (passed in 11 of 12 earlier Juno runs). Test fix: take the first key moment that
-  offers "Try it"; the retry is still exercised on a mistake, assertions unchanged.
-- **Audit of every e2e test that runs a review (after the third flake from a time-limited Quick review).** A fixed node budget was not an
-  option: `panel.start()` takes no budget (the preset comes from the UI selector), so it would need a new app code path and a hook, and several
-  tests assert the Quick preset itself. So the tests were checked one by one for assumptions about what the review found:
-  - Already derived from the review's own output (nothing to change): `phase5-review` sample game (classes, key moments, error cards),
-    imported-Lichess replacement, the three perspective tests (`errorsOf(review, side)`), `phase6b-board-feel` real-review badges,
-    `phase6b-screens`, `phase8-a11y`, `phase8-offline`, `phase5b-games`, `phase5b-extension`, `phase6` puzzles from mistakes (the queen
-    blunder is decided by position, not by search depth), `phase7` repertoire notes (no engine result used).
-  - Fixed: `phase6b-review` coach card (Try it on the first key moment that offers it, previous commit); `phase8-leftovers` (layout, CSS fix);
-    `phase5-review` Black perspective: "a class Black has no move in" now picks from all ten classes (was six, with a non-null assertion), and
-    the perspective tests state their precondition ("the review found an error by White / Black") instead of failing on an undefined move.
+Unit, e2e and perf runs and batch studies run on the university's SLURM cluster (Juno), in the pinned Playwright container: `hpc/` (see
+[hpc/README.md](../hpc/README.md)), rules in AGENTS.md, the full log (plan, setup attempts, every gate attempt with job IDs) in
+[phase-9](progress/phase-9.md). Jobs: `wc-unit` (typecheck, lint, format, build, unit), `wc-e2e`, `wc-e2e-repeat`, `wc-perf`, `wc-calibrate`,
+`wc-puzzles` (new `scripts/verify-puzzles.mjs`), `wc-summarize`; each has its own build, port and scratch folder and writes to
+`results/<job-id>/` outside the repo. **`wc-calibrate` and `wc-puzzles` are built but have not been run yet.**
+- **Closing gate, final (all on `cefe783`; each result's `meta.json` commit checked, `repo-changes.txt` empty):** wc-unit 505665 (592/592),
+  wc-e2e-repeat 505669 (4 of 4 runs 159/159, 12 min each), wc-perf 505673 (all four scripts passed). The `phase5-review` sample-game long-task check
+  never failed in any of the 20 Juno e2e runs: the earlier laptop failures were most likely the laptop.
+- The gate took five rounds and found real things: tests that raced the start-up hooks and the asynchronous save of a drill's result; a **phone
+  layout bug** (five key-moment chips need three rows, only two were reserved); a bug in my own save-before-show change (the endgame drill read
+  `playing` while its result waited for the save; now a `saving` state); and three tests that assumed what a time-limited Quick review finds (a
+  bot reply without a check, a Good move among the key moments, classes of a side). All fixed in the code or the test, no limit raised, nothing skipped.
+- **Results are saved before they are shown** (a phone app closed as a result appears must have stored it): the endgame trainer and the coordinate,
+  blindfold and guess drills wait for the save (at most 400 ms, `saveBeforeShow`); the puzzle trainer, played games (resign, draw, flag, rules) and
+  the stored game's review request the save first (IndexedDB still commits asynchronously). Not tried on a real phone.
+- `preact` removed (unused).
 
 ### Phase 8 follow-ups and the Phase 9 result, in short
 
@@ -155,9 +72,9 @@ Differences from the brief, and why:
 
 ## Open decisions
 
-- **Final scenario-2 `perf:drag` run.** Scenario 2 (analysis board, MultiPV 5, ghosts, navigation sweep) was last measured clean
-  before the final small changes; on the final commit the machine was too busy (the pre-Phase-9 build failed it the same
-  way minutes apart). Run `npm run perf:drag` with other apps closed, plugged in and the screen on.
+- **Scenario-2 `perf:drag`** (analysis board, MultiPV 5, ghosts, navigation sweep) passed clean on Juno on the final code (p95 16.67 ms, 0 dropped).
+  Not re-measured on the laptop: the laptop failures were machine state, and Juno numbers are baselines, not a screen.
+- **First runs of `wc-calibrate` and `wc-puzzles`** (built, not yet run): the calibrate time limit (50 min per task) is an estimate; tighten it after the first run.
 - **`preact`:** removed on 2026-11-09 (nothing imported it; package.json, lockfile, LICENSES and the tsconfig JSX options).
 - **`PERF_ENGINE_THREADS` matrix** (4/3/2 threads × ghosts off) was never run; only worth running if scenario 2 fails on a
   quiet machine. Whether to drop analysis threads while a background review runs is also unmeasured
@@ -197,15 +114,20 @@ Phase 8 (details in [phase-8](progress/phase-8.md))
   run of `endgame-data` alone took 45 min and failed 5 tests after the machine stalled; rerun it passed (160 s).
 
 Phase 9 (details in [phase-9](progress/phase-9.md))
-- **Open: `phase5-review` sample-game long-task assertion failed in both full runs on the final code (98 ms, 57 ms), never alone.**
-  See "Current phase" above.
+- **Resolved: `phase5-review` sample-game long-task assertion** (it had failed on the laptop at 98 ms and 57 ms, never alone) passed in all 20 full
+  runs on Juno, so those failures were most likely the laptop; the limit was not changed.
+- **Saving a result:** drills wait for their save (400 ms at most, then the result shows anyway and the save finishes in the background); puzzles, played
+  games and stored-game reviews only request the save first. A real phone app-close mid-result was not tried.
+- **A Quick review is time-limited, so the key moments and classes differ from run to run.** Tests must derive what they check from the review's own
+  output (the three flakes of 2026-11-10 were tests that did not); a fixed node budget would need a new app code path.
+- **Phone layout:** the key-moment chips reserve three rows (`7.3rem`) at 760 px and below; five long labels fit on three rows at 390 and 360 px.
 - **Frame-time numbers are only valid with the display awake.** A locked session or a screen that is off makes headless Chrome
   lose vsync (blank page ~56 Hz); battery throttles too. `perf:drag` aborts (exit 4) on a slow blank page; `perf:review` prints the
   floor per run. A busy machine (a user's Chrome at ~22% CPU) also fails scenario 2 on any build.
 - **Long runs freeze when the laptop is idle and locked** (see follow-up 3): keep the screen on and do not walk away mid-run, or
-  hold the display awake while it runs. A frozen run looks like a hang and fails its own time limits on resume.
+  hold the display awake while it runs. A frozen run looks like a hang and fails its own time limits on resume. (Moot for runs on Juno.)
 - `perf:drag`, `perf:review` need ≥ 3 GB free memory (`perf:tasks` 2.5, `perf:memory` 2); with a user's Chrome open at 5+ GB the
-  guards stop full runs. Scenario 2 on the final commit is still to be run clean.
+  guards stop full runs. (On Juno: an exclusive node with 340+ GB free.)
 - **No task over 50 ms** holds in 16 flows after page load. Page load has two browser-owned costs: the first `AudioContext` of a
   browser process (60–340 ms; built ~0.4 s after start-up in an idle moment, only with sound on; cannot be built off the main
   thread) and the renderer's first text layout in a cold process (35–89 ms, now in its own task). Both documented, neither fixable.
@@ -272,8 +194,8 @@ Test and tooling notes
 
 ## Key measurements
 
-Headless Chrome, 60 Hz, AC power, display awake (blank page 16.7 ms). Budgets: frame p95 ≤ 17.2 ms with 0 long tasks; the details,
-the runs and the older tables are in [phase-9](progress/phase-9.md).
+**This first table is from earlier laptop runs** (headless Chrome, 60 Hz, AC power, display awake, blank page 16.7 ms), not from the closing gate.
+Budgets: frame p95 ≤ 17.2 ms with 0 long tasks; the details, the runs and the older tables are in [phase-9](progress/phase-9.md).
 
 | Budget | Result |
 |---|---|
@@ -290,5 +212,17 @@ the runs and the older tables are in [phase-9](progress/phase-9.md).
 | Bundle | main 1,486.03 kB (Phase 8: 1,483.20); precache 30 files, ~20.9 MB |
 | Earlier phases | engine 2.1–3.2 MN/s at depth 22–25; perft start depth 4 ≈ 737 ms; bot move selection (worker) 15.9 ms mean |
 
-Tests: 588 unit (51 files, 116 s); e2e 158 (155 passed on the first full run after the start-up split, the 3 failures fixed as described
-in phase-9; final full run below).
+**Closing gate on Juno, 2026-11-10, commit `cefe783`** (headless Chromium 156 on Linux, exclusive node, no display: frames follow Chromium's own
+60 Hz timer, blank page 16.7 ms; **regression baselines for the code, not what a user's screen shows**):
+
+| Budget | Juno result |
+|---|---|
+| Frame time, `perf:drag` (S1 drag · burst · S2 drag · S2 sweep p95) | 16.67 · 16.67 · 16.67 · 16.67 ms, 0 dropped frames, 0 long tasks |
+| Input latency / main thread per frame | 0.37 and 0.52 ms / 0.67–1.46 ms (120 Hz has 8.3) |
+| Idle · start-up | 0 rAF in 500 ms · 248 ms |
+| 50 games (`perf:memory`) | +0.2 MB heap (5.2 KB per game), listeners +0 |
+| Review, 81 plies, Quick (`perf:review`) | 17.0–17.1 s at 1, 2 and 4 threads (a fixed time per position), 0 long tasks |
+| Tasks over 50 ms (`perf:tasks`, 16 flows) | 0 |
+| Tests | 592 unit (1½ min); e2e 159 per run, 4 of 4 runs passed (11.4–11.5 min each) |
+
+Tests on the laptop before Phase 9 closed: 588 unit (51 files, 116 s); e2e 158.
