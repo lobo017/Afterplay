@@ -49,8 +49,10 @@ headless Linux node, not user-experience measurements; the Key measurements in P
 Juno safety rules (these override anything else):
 
 - One folder only. Everything created on Juno lives under ~/work/wizard-chess-hpc/ (subfolders: repo/, results/, cache/ for
-  Apptainer and npm caches, image/). Temporary job files go only in ~/scratch/wizard-chess-hpc/<job-id>/. Never read, write, move,
-  or delete anything outside those two folders. Other projects in ~/work must not be touched.
+  Apptainer and npm caches, image/). Temporary job files go only in ~/scratch/wizard-chess-hpc/<job-id>/. Never write, move, or
+  delete anything outside those two folders. Read-only access to system locations (/etc, /usr, /opt, the module system's own
+  paths) is fine, since those are not the user's files. Never read or touch anything else of the user's: other files in the home
+  folder (dotfiles, ~/.ssh, ~/.conda), other projects in ~/work, or anything else in ~/scratch.
 - No conda. Don't use, create, modify, or activate any conda environment; Node comes from the Playwright container. Every job
   script starts with #SBATCH --export=NONE and runs the container with apptainer exec --cleanenv, so an active conda environment
   can't leak in.
