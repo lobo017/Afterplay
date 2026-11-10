@@ -105,6 +105,17 @@ Differences from the brief, and why:
   (resign, draw, flag, rules) and the stored game's review now request their save before showing anything; the repertoire drill already
   did. IndexedDB still commits asynchronously, so "before" means waited for (drills) or requested first (the rest). It changes app code,
   so the closing gate (unit, e2e ×4, perf) runs again on the final commit.
+- **Closing gate, first attempt (commit `efd1acc`):** wc-unit 505535 passed (592/592); wc-perf 505540 passed; **wc-e2e-repeat 505536 failed in
+  all 4 runs** (`meta.json` commit and empty `repo-changes.txt` checked). Three tests:
+  - `phase7-trainers` "K+Q v K is played to mate and recorded" (4 of 4, 120 s timeout) and "Philidor: … a draw offer is accepted" (2 of 4,
+    240 s timeout): **caused by save-before-show.** The drill was over (hint and draw buttons off) but `data-endgame-state` still read
+    `playing` while the result waited for its save (up to 400 ms); the helper loops saw `playing`, clicked the disabled Hint button and
+    hung. Code fix: a `saving` state from the moment the drill ends until the result shows (the tests already wait for
+    `playing|reached|failed`, so they are unchanged).
+  - `phase9` "the move list is extended move by move…": 1 of 4, **not caused by it** (the game never ends in that test): the bot
+    answered 1.e4 … 2.d4 with `Bb4+` (page snapshot: "White to move — Check!"), the test's fixed third move Nf3 does not answer a check and
+    was refused, so the move list stayed at 4 plies. The bot's replies are randomised, so this was a latent test race (it passed in
+    11 of 12 Juno runs). Test fix: the planned move is played when legal, otherwise the first legal move.
 
 ### Phase 8 follow-ups and the Phase 9 result, in short
 

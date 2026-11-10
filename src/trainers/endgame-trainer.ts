@@ -41,7 +41,8 @@ export interface EndgameTrainerOptions {
   audio: CathedralAudio;
 }
 
-export type EndgameState = 'idle' | 'playing' | 'thinking' | 'reached' | 'failed';
+/** 'saving': the drill is over and its record is being stored; the result shows as 'reached' or 'failed' once it is. */
+export type EndgameState = 'idle' | 'playing' | 'thinking' | 'saving' | 'reached' | 'failed';
 
 function toSquares(uci: string): { from: Square; to: Square } {
   return { from: uci.slice(0, 2) as Square, to: uci.slice(2, 4) as Square };
@@ -499,6 +500,8 @@ export class EndgameTrainer {
     this.busy = false;
     this.board.setInteractiveColor('none');
     this.board.setBestMoveArrow(null);
+    // Over, but not yet shown: not 'playing' any more (the hint and draw buttons are already off)
+    this.setState('saving');
     this.updateButtons();
     void this.showResultAfterSave(s, entry, end, this.options.store.record(entry, s.outcome));
   }

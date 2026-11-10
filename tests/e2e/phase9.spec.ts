@@ -34,6 +34,21 @@ async function moveListState(page: Page) {
   });
 }
 
+/**
+ * The move to click: the wanted one when it is legal. The bot's reply is not fixed (it can be a check, e.g. 1.e4 e6 2.d4
+ * Bb4+), and a move that does not answer a check is refused, so then the first legal move stands in for it.
+ */
+async function legalMove(page: Page, from: string, to: string): Promise<[string, string]> {
+  return page.evaluate(
+    ([f, t]) => {
+      const moves = window.__wizardChessPlay!.controller.getAdapter().verboseMoves();
+      const move = moves.find((m) => m.from === f && m.to === t) ?? moves[0]!;
+      return [move.from, move.to] as [string, string];
+    },
+    [from, to] as const,
+  );
+}
+
 async function waitForPlies(page: Page, plies: number): Promise<void> {
   await expect
     .poll(() => page.evaluate(() => window.__wizardChessPlay!.controller.getGameTree().getMainLine().length), {
@@ -66,7 +81,8 @@ test.describe('Phase 9 — performance pass', () => {
       ['g1', 'f3'],
     ];
     let plies = 0;
-    for (const [from, to] of moves) {
+    for (const wanted of moves) {
+      const [from, to] = await legalMove(page, ...wanted);
       await play.getByTestId(`square-${from}`).click();
       await play.getByTestId(`square-${to}`).click();
       plies += 2;
@@ -79,8 +95,9 @@ test.describe('Phase 9 — performance pass', () => {
 
     // An odd number of plies (the player moved, the bot has not answered yet): the half-filled last row is right too
     await page.evaluate(() => window.__wizardChessPlay!.controller.setBotMoveDelayMs(60_000));
-    await play.getByTestId('square-b1').click();
-    await play.getByTestId('square-c3').click();
+    const [oddFrom, oddTo] = await legalMove(page, 'b1', 'c3');
+    await play.getByTestId(`square-${oddFrom}`).click();
+    await play.getByTestId(`square-${oddTo}`).click();
     await waitForPlies(page, plies + 1);
     const odd = await moveListState(page);
     expect(odd.drawn).toEqual(odd.expected);
@@ -97,8 +114,9 @@ test.describe('Phase 9 — performance pass', () => {
     // Then it keeps growing from there
     await page.evaluate(() => window.__wizardChessPlay!.controller.setBotMoveDelayMs(5));
     const fromPlies = back.plies;
-    await play.getByTestId('square-b1').click();
-    await play.getByTestId('square-c3').click();
+    const [againFrom, againTo] = await legalMove(page, 'b1', 'c3');
+    await play.getByTestId(`square-${againFrom}`).click();
+    await play.getByTestId(`square-${againTo}`).click();
     await waitForPlies(page, fromPlies + 2);
     const again = await moveListState(page);
     expect(again.drawn).toEqual(again.expected);
