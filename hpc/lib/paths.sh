@@ -135,32 +135,41 @@ wc_image_vars() {
 # --- Modules ------------------------------------------------------------------------------------
 # Loads apptainer/1.3.4 with the site's own module init (never a user dotfile).
 wc_load_apptainer() {
-  # Module init scripts are not written for `set -u`
-  local had_u=0 rc=0
+  # Module init scripts are not written for `set -u` or `set -e`
+  local had_u=0 had_e=0 rc=0
   case "$-" in *u*) had_u=1 ;; esac
-  set +u
+  case "$-" in *e*) had_e=1 ;; esac
+  set +u +e
   wc_load_apptainer_inner || rc=$?
   [ "$had_u" = 1 ] && set -u
+  [ "$had_e" = 1 ] && set -e
   return "$rc"
 }
 
+# Gets the `module` command from Juno's own Lmod init, never from a user dotfile. On Juno (OpenHPC) the site script
+# /etc/profile.d/lmod.sh did not define `module` in a scrubbed job, but Lmod's own init does:
+# MODULESHOME=/opt/ohpc/admin/lmod/lmod, so /opt/ohpc/admin/lmod/lmod/init/bash.
 wc_load_apptainer_inner() {
+  local f
   if ! command -v module >/dev/null 2>&1; then
-    local f
-    for f in /etc/profile.d/lmod.sh /etc/profile.d/z00_lmod.sh /etc/profile.d/modules.sh \
-      /usr/share/lmod/lmod/init/bash /usr/share/Modules/init/bash; do
+    for f in /etc/profile.d/lmod.sh /opt/ohpc/admin/lmod/lmod/init/bash; do
       if [ -r "$f" ]; then
+        echo "wc: sourcing $f"
         # shellcheck disable=SC1090
         . "$f"
-        break
+        command -v module >/dev/null 2>&1 && break
       fi
     done
   fi
   if ! command -v module >/dev/null 2>&1; then
-    echo "wc: the 'module' command is not available in the job; ask the owner how Juno initialises modules" >&2
+    echo "wc: the 'module' command is still not defined after sourcing the Lmod init files" >&2
     return 1
   fi
-  module load apptainer/1.3.4
+  echo "wc: module found; MODULESHOME='${MODULESHOME:-}' LMOD_CMD='${LMOD_CMD:-}' MODULEPATH='${MODULEPATH:-}'"
+  module load apptainer/1.3.4 || {
+    echo "wc: 'module load apptainer/1.3.4' failed (MODULEPATH='${MODULEPATH:-}')" >&2
+    return 1
+  }
   command -v apptainer >/dev/null 2>&1 || {
     echo "wc: apptainer is not on PATH after 'module load apptainer/1.3.4'" >&2
     return 1
