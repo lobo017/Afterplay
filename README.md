@@ -58,7 +58,7 @@ Wrangler (a dev dependency) and always go to a preview URL first:
 
 ```bash
 npx wrangler login                                   # once, in a browser
-npx wrangler pages project create wizards-chess --production-branch=main   # once
+npx wrangler pages project create wizards-chess --production-branch=main --force   # once (--force: classic Pages, see below)
 npm run deploy:preview                               # needs a clean git tree: builds, uploads, prints the URL and a build id
 npm run deploy:production -- --checked <build id>    # the same dist/, no rebuild
 ```
@@ -66,6 +66,11 @@ npm run deploy:production -- --checked <build id>    # the same dist/, no rebuil
 `deploy:production` refuses unless `dist/` and HEAD are exactly what the last preview deployed (a
 record in the git-ignored `.deploy/`). `WC_PAGES_PROJECT` names another Pages project. Each preview
 URL is its own origin, so its saved data and home-screen install are separate from production's.
+
+Since Wrangler 4.15x, `pages project create` hands new projects to Workers static assets unless
+given `--force`; this app stays on classic Pages (decided 2026-11-10). Later `pages deploy` commands
+run against the existing Pages project and need no flag. The production URL is
+`https://wizards-chess-4tu.pages.dev` (Pages added a suffix: the plain name was taken).
 
 ## Performance and spec status
 
