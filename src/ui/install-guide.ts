@@ -55,6 +55,8 @@ function writeSeen(): void {
 }
 
 const HIGHLIGHT = 'var(--accent-gold)';
+/** How much of the app's name fits under an icon in the pictures. */
+const PICTURE_NAME_CHARS = 16;
 
 /** Safari's bottom bar with the ⋯ menu open, "Share" highlighted (and the older toolbar's Share button). */
 const PICTURE_SHARE = `
@@ -99,7 +101,7 @@ const PICTURE_CONFIRM = `
   <text x="207" y="31" text-anchor="middle" class="wc-ig-text">Add</text>
   <rect x="20" y="46" width="200" height="40" rx="10" class="wc-ig-card"/>
   <image href="/icon-192.png" x="28" y="52" width="28" height="28"/>
-  <text x="66" y="71" class="wc-ig-text">Wizard's Chess</text>
+  <text x="66" y="71" class="wc-ig-text" data-app-name="short">Wizard's Chess</text>
   <rect x="20" y="94" width="200" height="36" rx="10" class="wc-ig-card"/>
   <text x="32" y="116" class="wc-ig-text">Open as Web App</text>
   <rect x="176" y="102" width="34" height="20" rx="10" fill="${HIGHLIGHT}"/>
@@ -109,7 +111,7 @@ const PICTURE_CONFIRM = `
 /** A Home Screen with the app's icon highlighted. */
 const PICTURE_HOME = `
 <svg viewBox="0 0 240 150" role="img" aria-labelledby="ig-p4" class="wc-install-pic" data-testid="install-picture-home">
-  <title id="ig-p4">The Home Screen with the Wizard's Chess icon</title>
+  <title id="ig-p4">The Home Screen with the app's icon</title>
   <rect x="8" y="6" width="224" height="138" rx="14" class="wc-ig-screen"/>
   ${[0, 1, 2, 3]
     .map(
@@ -120,7 +122,7 @@ const PICTURE_HOME = `
     .join('')}
   <image href="/icon-192.png" x="174" y="76" width="36" height="36"/>
   <rect x="170" y="72" width="44" height="44" rx="12" fill="none" stroke="${HIGHLIGHT}" stroke-width="2.5"/>
-  <text x="192" y="132" text-anchor="middle" class="wc-ig-text-small">Wizard's Chess</text>
+  <text x="192" y="132" text-anchor="middle" class="wc-ig-text-small" data-app-name="short">Wizard's Chess</text>
 </svg>`;
 
 const STEPS: ReadonlyArray<{ title: string; text: string; picture: string }> = [
@@ -141,7 +143,7 @@ const STEPS: ReadonlyArray<{ title: string; text: string; picture: string }> = [
   },
   {
     title: 'Open it from the Home Screen',
-    text: 'From now on, start Wizard’s Chess from its icon. It opens full screen, works offline and keeps your games.',
+    text: 'From now on, start <span data-app-name>Wizard’s Chess</span> from its icon. It opens full screen, works offline and keeps your games.',
     picture: PICTURE_HOME,
   },
 ];
@@ -161,7 +163,7 @@ export class InstallGuide {
     this.sheet.body.innerHTML = `
       <p class="wc-install-intro" data-testid="install-guide-intro">
         Safari can clear the saved games, puzzles and progress of a website you haven’t opened for a while.
-        Added to your Home Screen, Wizard’s Chess runs as an app and keeps them.
+        Added to your Home Screen, <span data-app-name>Wizard’s Chess</span> runs as an app and keeps them.
       </p>
       <ol class="wc-install-steps">
         ${STEPS.map(
@@ -178,6 +180,15 @@ export class InstallGuide {
     this.sheet.body
       .querySelector('[data-testid="install-guide-done"]')
       ?.addEventListener('click', () => this.sheet.close());
+  }
+
+  /** The name the guide uses for the app (a preset can give it one); long names are cut in the pictures. */
+  public setAppName(name: string): void {
+    const chars = [...name];
+    const short = chars.length > PICTURE_NAME_CHARS ? `${chars.slice(0, PICTURE_NAME_CHARS - 1).join('')}…` : name;
+    for (const el of this.sheet.body.querySelectorAll<HTMLElement | SVGElement>('[data-app-name]')) {
+      el.textContent = el.getAttribute('data-app-name') === 'short' ? short : name;
+    }
   }
 
   public open(): void {

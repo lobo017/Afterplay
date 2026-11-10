@@ -1,6 +1,6 @@
-export type BoardThemeId = 'marble-obsidian' | 'imperial-walnut' | 'high-contrast';
+export type BoardThemeId = 'marble-obsidian' | 'imperial-walnut' | 'green' | 'high-contrast';
 
-export type PieceSetId = 'cathedral' | 'staunton' | 'high-contrast';
+export type PieceSetId = 'cathedral' | 'staunton' | 'classic' | 'high-contrast';
 
 export interface BoardThemeConfig {
   id: BoardThemeId;
@@ -30,7 +30,8 @@ export const DEFAULT_BOARD_THEME: BoardThemeId = 'marble-obsidian';
 export const DEFAULT_PIECE_SET: PieceSetId = 'cathedral';
 
 /**
- * Board themes ported from the legacy audit in docs/PROGRESS.md plus Imperial Walnut and WCAG High Contrast.
+ * Board themes ported from the legacy audit in docs/PROGRESS.md plus Imperial Walnut, Tournament Green (flat squares,
+ * the look most chess sites start with; the colour values are this project's own) and WCAG High Contrast.
  */
 export const BOARD_THEMES: Record<BoardThemeId, BoardThemeConfig> = {
   'marble-obsidian': {
@@ -69,6 +70,23 @@ export const BOARD_THEMES: Record<BoardThemeId, BoardThemeConfig> = {
     coordLight: '#5c3a21',
     coordDark: '#ede0c8',
   },
+  green: {
+    id: 'green',
+    label: 'Tournament Green',
+    description: 'Flat cream (#edeed4) and green (#6f9654) squares with a plain dark frame and no texture.',
+    lightSquareBase: '#edeed4',
+    lightSquareVein: 'transparent',
+    lightSquareChamfer: 'transparent',
+    darkSquareBase: '#6f9654',
+    darkSquareVein: 'transparent',
+    darkSquareChamfer: 'transparent',
+    frameOuter: '#3d4a36',
+    frameInner: '#262b24',
+    groutColor: '#566f45',
+    inlayTrim: '#2f3a2a',
+    coordLight: '#2f3b29',
+    coordDark: '#2f3b29',
+  },
   'high-contrast': {
     id: 'high-contrast',
     label: 'High Contrast Tournament',
@@ -100,6 +118,11 @@ export const PIECE_SETS: Record<PieceSetId, PieceSetConfig> = {
     id: 'staunton',
     label: 'Championship Staunton',
     description: 'Classic tournament Staunton silhouettes with balanced collars and clean bevel shading.',
+  },
+  classic: {
+    id: 'classic',
+    label: 'Classic',
+    description: 'The familiar diagram pieces drawn by Colin M.L. Burnett (the default on Wikipedia and Lichess).',
   },
   'high-contrast': {
     id: 'high-contrast',

@@ -8,6 +8,7 @@ import {
 } from '../render/board-feel';
 import { BOARD_SIZE_STORAGE_KEY, applyBoardSize, loadBoardSize, saveBoardSize } from '../render/board-size';
 import { AppSettingsStore, sanitizeAppSettings, type AppSettings } from './app-settings';
+import { PROFILE_STORAGE_KEY, sanitizeProfile, type Profile, type ProfileStore } from '../preset/profile';
 
 /** Where the app settings live on this device (read synchronously at start-up). */
 export const APP_SETTINGS_STORAGE_KEY = 'wc.settings.v1';
@@ -24,6 +25,8 @@ export interface PreferencesSnapshot {
   boardFeel: BoardFeel;
   /** Board frame width in px, or null for the layout's default. */
   boardSize: number | null;
+  /** Name, title, app name, named bots and welcome (absent in records written before profiles existed). */
+  profile?: Profile;
 }
 
 /** Reads and checks a preferences record (from storage or a backup); null when unusable. */
@@ -36,6 +39,7 @@ export function parsePreferences(value: unknown): PreferencesSnapshot | null {
     app: sanitizeAppSettings(v.app),
     boardFeel: sanitizeBoardFeel(v.boardFeel),
     boardSize: size,
+    ...(v.profile && typeof v.profile === 'object' ? { profile: sanitizeProfile(v.profile) } : {}),
   };
 }
 
@@ -66,6 +70,8 @@ export interface PreferencesBackend {
 export interface PreferencesOptions {
   appSettings: AppSettingsStore;
   boardFeel?: BoardFeelStore;
+  /** The profile, when the app has one: mirrored and restored with the rest. */
+  profile?: ProfileStore;
   storage?: FeelStorage | null;
   /** How long to wait after the last change before writing the IndexedDB record. */
   mirrorDelayMs?: number;
@@ -79,6 +85,7 @@ export interface PreferencesOptions {
 export class Preferences {
   private readonly appSettings: AppSettingsStore;
   private readonly feel: BoardFeelStore;
+  private readonly profile: ProfileStore | null;
   private readonly storage: FeelStorage | null;
   private readonly mirrorDelayMs: number;
   private backend: PreferencesBackend | null = null;
@@ -88,6 +95,7 @@ export class Preferences {
   constructor(options: PreferencesOptions) {
     this.appSettings = options.appSettings;
     this.feel = options.boardFeel ?? sharedBoardFeel;
+    this.profile = options.profile ?? null;
     this.storage = options.storage === undefined ? localStore() : options.storage;
     this.mirrorDelayMs = options.mirrorDelayMs ?? 300;
     this.appSettings.subscribe((settings) => {
@@ -95,6 +103,7 @@ export class Preferences {
       this.scheduleMirror();
     });
     this.feel.subscribe(() => this.scheduleMirror());
+    this.profile?.subscribe(() => this.scheduleMirror());
     if (typeof window !== 'undefined') {
       // The board size is written by the resize grip; mirror it when it's done
       window.addEventListener('wc-board-size', () => this.scheduleMirror());
@@ -115,6 +124,7 @@ export class Preferences {
       app: this.appSettings.get(),
       boardFeel: { ...this.feel.get() },
       boardSize: loadBoardSize(this.storage),
+      ...(this.profile ? { profile: this.profile.get() } : {}),
     };
   }
 
@@ -128,8 +138,8 @@ export class Preferences {
     try {
       // Any preference kept on this device is newer than the mirrored record (which lags by the
       // mirror delay): a reload right after tuning the board feel must not bring the old one back
-      hadLocal = [APP_SETTINGS_STORAGE_KEY, BOARD_FEEL_STORAGE_KEY, BOARD_SIZE_STORAGE_KEY].some((key) =>
-        Boolean(this.storage?.getItem(key)),
+      hadLocal = [APP_SETTINGS_STORAGE_KEY, BOARD_FEEL_STORAGE_KEY, BOARD_SIZE_STORAGE_KEY, PROFILE_STORAGE_KEY].some(
+        (key) => Boolean(this.storage?.getItem(key)),
       );
     } catch {
       hadLocal = false;
@@ -151,6 +161,8 @@ export class Preferences {
     this.feel.set(snapshot.boardFeel);
     saveBoardSize(snapshot.boardSize, this.storage);
     applyBoardSize(snapshot.boardSize);
+    // A record from before profiles existed says nothing about the profile: it stays as it is
+    if (snapshot.profile) this.profile?.replace(snapshot.profile);
     this.scheduleMirror();
   }
 

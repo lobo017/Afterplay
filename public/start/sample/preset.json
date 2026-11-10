@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "appName": "Ada's Chess",
+  "profile": { "displayName": "Ada", "title": "Countess" },
+  "welcome": {
+    "title": "Welcome, Ada",
+    "message": "This copy of Wizard's Chess was set up for you: a green board, the classic pieces and three opponents with names of their own.\n\nEverything works offline and stays on this device. Add it to your Home Screen and it is yours.",
+    "from": "A sample preset (invented names)"
+  },
+  "settings": {
+    "boardTheme": "green",
+    "pieceSet": "classic",
+    "newGame": { "botRating": 800, "botStyle": "solid", "timeControlId": "10+0" }
+  },
+  "usernames": { "chesscom": "ada-sample" },
+  "bots": [
+    { "name": "Professor Rook", "rating": 800, "style": "solid" },
+    { "name": "The Gambit Goblin", "rating": 1200, "style": "gambiteer" },
+    { "name": "Lady Zugzwang", "rating": 1800, "style": "aggressive" }
+  ]
+}

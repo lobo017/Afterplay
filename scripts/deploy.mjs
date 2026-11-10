@@ -1,6 +1,8 @@
 // Deploys the built app to Cloudflare Pages with Wrangler (a dev dependency; log in once with `npx wrangler login`).
 //
 //   npm run deploy:preview                          builds, uploads to the project's preview branch, prints the URL
+//   npm run deploy:preview -- --with-local-presets  the same, with the personal first-run links of gift.local/start/
+//                                                   in the build: this PUBLISHES them (at their unguessable addresses)
 //   npm run deploy:production -- --checked <id>     uploads the same dist/ to production (never rebuilds)
 //
 // Every build goes to a preview URL first. Production refuses unless dist/ and HEAD are exactly what the last
@@ -130,13 +132,14 @@ function writeRecord(file, record) {
   fs.writeFileSync(file, `${JSON.stringify(record, null, 2)}\n`);
 }
 
-async function preview() {
+async function preview(withLocalPresets) {
   if (git('status', '--porcelain'))
     fail('the working tree has uncommitted changes; commit first so the preview is a commit.');
   const commit = git('rev-parse', 'HEAD');
   const npmCli = process.env.npm_execpath;
   if (!npmCli) fail('run this through npm (npm run deploy:preview).');
-  await run(process.execPath, [npmCli, 'run', 'build']);
+  await run(process.execPath, [npmCli, 'run', withLocalPresets ? 'build:local' : 'build']);
+  if (withLocalPresets) console.log('\ndeploy: this build holds the personal first-run links of gift.local/start/.');
   const count = checkDist();
   const fingerprint = fingerprintDir(DIST);
   const buildId = buildIdOf(fingerprint);
@@ -144,7 +147,14 @@ async function preview() {
     `\ndeploy: ${count} files, build ${buildId}, commit ${commit.slice(0, 8)} → preview branch of "${PROJECT}"`,
   );
   const url = await pagesDeploy(PREVIEW_BRANCH, commit, buildId);
-  writeRecord(PREVIEW_RECORD, { commit, fingerprint, buildId, url, deployedAt: new Date().toISOString() });
+  writeRecord(PREVIEW_RECORD, {
+    commit,
+    fingerprint,
+    buildId,
+    url,
+    localPresets: withLocalPresets,
+    deployedAt: new Date().toISOString(),
+  });
   console.log(`\nPreview: ${url}`);
   console.log(`Check it there (engine, offline, install). Then: npm run deploy:production -- --checked ${buildId}`);
 }
@@ -167,9 +177,9 @@ const checked =
   checkedIndex >= 0 ? rest[checkedIndex + 1] : (rest.find((a) => a.startsWith('--checked='))?.slice(10) ?? null);
 
 try {
-  if (target === 'preview') await preview();
+  if (target === 'preview') await preview(rest.includes('--with-local-presets'));
   else if (target === 'production') await production(checked);
-  else fail('usage: node scripts/deploy.mjs preview | production --checked <build id>');
+  else fail('usage: node scripts/deploy.mjs preview [--with-local-presets] | production --checked <build id>');
 } catch (err) {
   fail(err instanceof Error ? err.message : String(err));
 }

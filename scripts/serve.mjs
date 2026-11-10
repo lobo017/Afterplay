@@ -65,6 +65,12 @@ const handleRequest = (req, res) => {
     return;
   }
 
+  // A folder with a page of its own (a first-run link, /start/<slug>/) serves that page, as the host does
+  if (fs.existsSync(filePath) && fs.statSync(filePath).isDirectory()) {
+    const ownIndex = path.join(filePath, 'index.html');
+    if (fs.existsSync(ownIndex)) filePath = ownIndex;
+  }
+
   if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
     const indexFallback = path.join(distDir, 'index.html');
     if (fs.existsSync(indexFallback) && !path.extname(pathname)) {

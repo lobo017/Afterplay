@@ -93,6 +93,13 @@ import { describeOffline, watchOffline } from './pwa';
 import { mountUpdateBanner } from './ui/update-banner';
 import { registerActivity } from './ui/activity';
 import { mountGamesSettings } from './ui/settings-games-section';
+import { mountProfileSection } from './ui/settings-profile-section';
+import { WelcomeSheet } from './ui/welcome-sheet';
+import { mountNotice } from './ui/notice';
+import { startSlugFromPath, type Preset } from './preset/preset';
+import { DEFAULT_APP_NAME, ProfileStore, type Profile } from './preset/profile';
+import { loadFirstRunPreset, loadFirstRunState, saveFirstRunState } from './preset/first-run';
+import { applyAppIdentity } from './preset/app-identity';
 
 /** The four destinations. Review holds the analysis board; Train holds Today and the puzzles. */
 export type AppWorkspaceMode = 'play' | 'train' | 'review' | 'games';
@@ -366,7 +373,7 @@ export function mountAppShell(container: HTMLElement): {
       <header class="wc-topbar">
         <div class="wc-brand">
           <div class="wc-brand-mark" aria-hidden="true">${icon('crest')}</div>
-          <h1 class="wc-brand-title">Wizard's Chess</h1>
+          <h1 class="wc-brand-title" data-testid="brand-title">Wizard's Chess</h1>
           <span class="wc-screen-title" data-testid="screen-title" aria-hidden="true">Play</span>
         </div>
         <nav class="wc-nav" aria-label="Main" data-testid="main-nav">
@@ -420,8 +427,6 @@ export function mountAppShell(container: HTMLElement): {
   registerActivity('settings', () => settings.isOpen());
   registerActivity('install-guide', () => installGuide.isOpen());
   if (typeof window !== 'undefined') {
-    // First visit on an iPhone or iPad, not installed: how to add it to the Home Screen (once)
-    setTimeout(() => installGuide.openIfFirstRun(), INSTALL_GUIDE_DELAY_MS);
     setTimeout(() => {
       whenIdle(() => {
         void requestPersistentStorage().then((state) =>
@@ -512,7 +517,9 @@ export function mountAppShell(container: HTMLElement): {
   // Every setting in one store: Settings and the New game card write it, every screen follows
   // it. Remembered on this device and mirrored into the database for the JSON backup.
   const appSettings = new AppSettingsStore(loadStoredAppSettings());
-  const preferences = new Preferences({ appSettings, boardFeel });
+  // Who plays here and what the app is called (empty until a preset or Settings › Profile fills it)
+  const profile = new ProfileStore();
+  const preferences = new Preferences({ appSettings, boardFeel, profile });
   mountAppSettingsSections(settings, appSettings);
   mountBoardFeelSection(settings, SETTINGS_ORDER.boardFeel, SETTINGS_ORDER.board);
 
@@ -529,6 +536,7 @@ export function mountAppShell(container: HTMLElement): {
     devOverlay,
     audio,
     settings: appSettings,
+    profile,
     onAnalyzeGame: () => {
       setMode('review', true);
       analysisController.showTab('analysis');
@@ -544,6 +552,95 @@ export function mountAppShell(container: HTMLElement): {
     },
   });
   registerActivity('game', () => playController.isGameInProgress());
+
+  // The first-run link (/start/<slug>/, preset/first-run.ts): its preset is applied once on this device, then its
+  // welcome message is shown, and on an iPhone the Add to Home Screen guide follows. Without a link (or on every
+  // later launch) only the guide's own first-visit rule applies.
+  const startSlug = typeof window !== 'undefined' ? startSlugFromPath(window.location.pathname) : null;
+  let firstRun = loadFirstRunState();
+  let guideAfterWelcome = false;
+  const brandTitleEl = container.querySelector('[data-testid="brand-title"]') as HTMLElement;
+  const applyIdentity = (p: Profile): void => {
+    const name = p.appName || DEFAULT_APP_NAME;
+    if (brandTitleEl.textContent !== name) brandTitleEl.textContent = name;
+    installGuide.setAppName(name);
+    // The link's own manifest only once its preset is applied here: an unknown link has none
+    applyAppIdentity(document, p.appName, startSlug !== null && firstRun.slug === startSlug ? startSlug : null);
+  };
+  const welcomeSheet = new WelcomeSheet(shellEl, () => {
+    if (firstRun.slug && !firstRun.welcomeSeen) {
+      firstRun = { ...firstRun, welcomeSeen: true };
+      saveFirstRunState(firstRun);
+    }
+    if (guideAfterWelcome) {
+      guideAfterWelcome = false;
+      installGuide.openIfFirstRun();
+    }
+  });
+  registerActivity('welcome', () => welcomeSheet.isOpen());
+  const showNotice = mountNotice(shellEl);
+  mountProfileSection(settings, profile, () => {
+    const welcome = profile.get().welcome;
+    if (!welcome) return;
+    settings.close();
+    welcomeSheet.show(welcome);
+  });
+  profile.subscribe(applyIdentity);
+  applyIdentity(profile.get());
+
+  const applyPreset = (slug: string, preset: Preset): void => {
+    appSettings.set(preset.settings);
+    // What the preset names replaces what was there; what it leaves out stays
+    profile.set({
+      ...(preset.displayName ? { displayName: preset.displayName } : {}),
+      ...(preset.title ? { title: preset.title } : {}),
+      ...(preset.appName ? { appName: preset.appName } : {}),
+      ...(preset.bots.length > 0 ? { bots: preset.bots } : {}),
+      ...(preset.welcome ? { welcome: preset.welcome } : {}),
+    });
+    firstRun = { slug, welcomeSeen: false };
+    saveFirstRunState(firstRun);
+    applyIdentity(profile.get());
+    // The board waiting at the start position takes the preset's bot and time control
+    playController.adoptPendingChoices();
+    const usernames = preset.usernames;
+    if (usernames) {
+      void libraryReady
+        .then(async (api) => {
+          const mine = api.library.getMyAccounts();
+          await api.library.setMyAccounts({
+            lichess: usernames.lichess || mine?.lichess || '',
+            chesscom: usernames.chesscom || mine?.chesscom || '',
+          });
+          await api.gamesList.refresh();
+        })
+        .catch(() => undefined);
+    }
+  };
+  /** The welcome message if one is waiting, otherwise the install guide's own first-visit rule. */
+  const showWelcomeOrGuide = (): void => {
+    const welcome = profile.get().welcome;
+    if (welcome && firstRun.slug && !firstRun.welcomeSeen) {
+      guideAfterWelcome = true;
+      welcomeSheet.show(welcome);
+    } else {
+      installGuide.openIfFirstRun();
+    }
+  };
+  if (typeof window !== 'undefined') {
+    shellEl.dataset.firstRun = startSlug === null ? 'none' : startSlug === firstRun.slug ? 'already' : 'loading';
+    if (startSlug !== null && startSlug !== firstRun.slug) {
+      const opened = performance.now();
+      void loadFirstRunPreset({ pathname: window.location.pathname, appliedSlug: firstRun.slug }).then((result) => {
+        if (result.kind === 'loaded') applyPreset(result.slug, result.preset);
+        else if (result.kind === 'failed') showNotice(result.message);
+        shellEl.dataset.firstRun = result.kind === 'loaded' ? 'applied' : result.kind;
+        setTimeout(showWelcomeOrGuide, Math.max(0, INSTALL_GUIDE_DELAY_MS - (performance.now() - opened)));
+      });
+    } else {
+      setTimeout(showWelcomeOrGuide, INSTALL_GUIDE_DELAY_MS);
+    }
+  }
 
   // On a desktop the review runs on its own engine, so live analysis keeps its worker while a review runs (created on
   // the first review). On a phone it shares the one engine, and a review started on the board pauses live analysis.

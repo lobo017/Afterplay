@@ -1,4 +1,5 @@
 import type { Color, PieceSymbol } from '../core/rules';
+import { CLASSIC_PIECES, CLASSIC_PIECE_VIEWBOX } from './classic-pieces';
 import type { PieceSetId } from './themes';
 
 interface PiecePalette {
@@ -238,6 +239,13 @@ export function getPieceSvgMarkup(setId: PieceSetId, color: Color, piece: PieceS
   const cacheKey = `${setId}:${color}:${piece}`;
   const cached = SVG_CACHE.get(cacheKey);
   if (cached) return cached;
+
+  if (setId === 'classic') {
+    // Ready-made drawings (classic-pieces.ts), not built from the shared shapes below
+    const classic = `<svg class="wc-piece-svg" viewBox="${CLASSIC_PIECE_VIEWBOX}" aria-hidden="true" focusable="false">${CLASSIC_PIECES[color][piece]}</svg>`;
+    SVG_CACHE.set(cacheKey, classic);
+    return classic;
+  }
 
   const palette = getPalette(setId, color);
   let body = '';

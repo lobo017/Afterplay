@@ -29,6 +29,7 @@ import { getPieceSvgMarkup } from '../render/piece-sets';
 import { ChessClock, TIME_CONTROL_PRESETS, type ClockSnapshot, type TimeControlPresetId } from './clock';
 import type { DevOverlayController } from './dev-overlay';
 import { AppSettingsStore, MAX_PREMOVES_LIMIT, type AppSettings, type NewGameOptions } from './app-settings';
+import { ProfileStore, customBotFor } from '../preset/profile';
 import { icon } from './components/icons';
 import { Menu } from './components/menu';
 import { Tabs, tabListHtml, tabPanelAttrs } from './components/tabs';
@@ -141,6 +142,8 @@ export interface PlayControllerOptions {
   maxPremoves?: number;
   /** App settings: board, input, sound and the new-game choices (a private store if absent). */
   settings?: AppSettingsStore;
+  /** My name and title, and the bots with names of their own (an empty profile if absent). */
+  profile?: ProfileStore;
   /** ⋯ › Analyze this position: open the game in Review. */
   onAnalyzeGame?: () => void;
   /** Game over › Review this game. */
@@ -181,6 +184,8 @@ export class PlayController {
   private board!: BoardRenderer;
   private readonly settings: AppSettingsStore;
   private readonly unsubscribeSettings: () => void;
+  private readonly profile: ProfileStore;
+  private readonly unsubscribeProfile: () => void;
   private readonly onAnalyzeGame: (() => void) | undefined;
   private readonly onReviewGame: (() => void) | undefined;
   private menu!: Menu;
@@ -229,6 +234,9 @@ export class PlayController {
   // Cached DOM references
   private topPlayerNameEl!: HTMLElement;
   private bottomPlayerNameEl!: HTMLElement;
+  private topPlayerTitleEl!: HTMLElement;
+  private bottomPlayerTitleEl!: HTMLElement;
+  private customBotsEl!: HTMLElement;
   private topClockEl!: HTMLElement;
   private bottomClockEl!: HTMLElement;
   private topCapturedEl!: HTMLElement;
@@ -251,6 +259,7 @@ export class PlayController {
     this.container = options.container;
     this.engine = options.engine;
     this.settings = options.settings ?? new AppSettingsStore();
+    this.profile = options.profile ?? new ProfileStore(null);
     this.onAnalyzeGame = options.onAnalyzeGame;
     this.onReviewGame = options.onReviewGame;
     this.onGameFinished = options.onGameFinished;
@@ -313,6 +322,11 @@ export class PlayController {
     this.mountLayout();
     this.infiniteAnalysisEnabled = this.settings.get().playLiveEval;
     this.unsubscribeSettings = this.settings.subscribe((next, prev) => this.applySettings(next, prev));
+    this.unsubscribeProfile = this.profile.subscribe(() => {
+      this.renderCustomBots();
+      this.renderNewGameCard();
+      this.updatePlayerBars();
+    });
     this.updateAllHud();
   }
 
@@ -329,7 +343,10 @@ export class PlayController {
             <div class="wc-player-info">
               <span class="wc-player-avatar" data-testid="top-player-avatar">${icon('bot')}</span>
               <div class="wc-player-text">
-                <div class="wc-player-name" data-testid="top-player-name"></div>
+                <div class="wc-player-name-row">
+                  <span class="wc-player-title" data-testid="top-player-title" hidden></span>
+                  <div class="wc-player-name" data-testid="top-player-name"></div>
+                </div>
                 <div class="wc-captured-tray" data-testid="top-captured-tray" aria-label="Top player captured pieces"></div>
               </div>
             </div>
@@ -342,7 +359,10 @@ export class PlayController {
             <div class="wc-player-info">
               <span class="wc-player-avatar wc-player-avatar-you" data-testid="bottom-player-avatar">${icon('person')}</span>
               <div class="wc-player-text">
-                <div class="wc-player-name" data-testid="bottom-player-name"></div>
+                <div class="wc-player-name-row">
+                  <span class="wc-player-title" data-testid="bottom-player-title" hidden></span>
+                  <div class="wc-player-name" data-testid="bottom-player-name"></div>
+                </div>
                 <div class="wc-captured-tray" data-testid="bottom-captured-tray" aria-label="Bottom player captured pieces"></div>
               </div>
             </div>
@@ -365,6 +385,7 @@ export class PlayController {
                     <span class="wc-label" id="new-game-opponent">Opponent</span>
                     <span class="wc-label-value" data-testid="bot-rating-label"></span>
                   </div>
+                  <div class="wc-custom-bots" role="group" aria-label="Named opponents" data-testid="custom-bots" hidden></div>
                   <input type="range" class="wc-range" min="400" max="2400" step="50" value="${ng.botRating}" data-testid="slider-bot-rating" aria-labelledby="new-game-opponent" />
                   <div class="wc-tier-ticks" role="group" aria-label="Bot level">
                     ${tierChoices
@@ -512,6 +533,9 @@ export class PlayController {
     const q = <T extends HTMLElement>(id: string) => this.container.querySelector(`[data-testid="${id}"]`) as T;
     this.topPlayerNameEl = q('top-player-name');
     this.bottomPlayerNameEl = q('bottom-player-name');
+    this.topPlayerTitleEl = q('top-player-title');
+    this.bottomPlayerTitleEl = q('bottom-player-title');
+    this.customBotsEl = q('custom-bots');
     this.topClockEl = q('top-clock');
     this.bottomClockEl = q('bottom-clock');
     this.topCapturedEl = q('top-captured-tray');
@@ -562,6 +586,7 @@ export class PlayController {
     );
 
     this.bindUiControls();
+    this.renderCustomBots();
     this.renderNewGameCard();
   }
 
@@ -598,6 +623,12 @@ export class PlayController {
     for (const el of this.container.querySelectorAll<HTMLElement>('.wc-tier-tick')) {
       el.setAttribute('aria-pressed', String(el.dataset.tier === tier));
     }
+    const named = customBotFor(this.profile.get(), ng.botRating, ng.botStyle);
+    if (label && named) label.textContent = `${named.name} · ${ng.botRating} Elo`;
+    for (const el of this.customBotsEl.querySelectorAll<HTMLElement>('.wc-custom-bot')) {
+      const chosen = el.dataset.rating === String(ng.botRating) && el.dataset.style === ng.botStyle;
+      el.setAttribute('aria-pressed', String(chosen));
+    }
     setChoice(this.container.querySelector('[data-seg="style"]'), ng.botStyle);
     setChoice(this.container.querySelector('[data-seg="time"]'), ng.timeControlId);
     setChoice(this.container.querySelector('[data-seg="color"]'), ng.color);
@@ -609,6 +640,51 @@ export class PlayController {
     if (takebacks) takebacks.checked = ng.takebacks;
     const back = q('btn-back-to-game');
     if (back) back.hidden = !this.isGameInProgress();
+  }
+
+  /** The profile's named bots as buttons above the rating slider: one tap sets that bot's rating and style. */
+  private renderCustomBots(): void {
+    const bots = this.profile.get().bots;
+    this.customBotsEl.replaceChildren();
+    this.customBotsEl.hidden = bots.length === 0;
+    bots.forEach((bot, i) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'wc-custom-bot';
+      button.dataset.rating = String(bot.rating);
+      button.dataset.style = bot.style;
+      button.setAttribute('data-testid', `custom-bot-${i}`);
+      button.setAttribute('aria-pressed', 'false');
+      const name = document.createElement('span');
+      name.className = 'wc-custom-bot-name';
+      name.textContent = bot.name;
+      const rating = document.createElement('span');
+      rating.className = 'wc-custom-bot-rating';
+      rating.textContent = String(bot.rating);
+      button.append(name, rating);
+      button.addEventListener('click', () => {
+        this.settings.set({ newGame: { botRating: bot.rating, botStyle: bot.style } });
+      });
+      this.customBotsEl.appendChild(button);
+    });
+  }
+
+  /** The bot's name: its own if the profile names this rating and style, otherwise "Stockfish <tier>". */
+  private botName(): string {
+    const named = customBotFor(this.profile.get(), this.botRating, this.botStyle);
+    return named ? named.name : `Stockfish ${getTierForRating(this.botRating)}`;
+  }
+
+  /**
+   * Takes the New game card's choices for the board that is waiting at the start position (after a preset changed
+   * them): the bot, the time control and the think times, as a freshly opened app would have them. A game with a
+   * move played is left alone.
+   */
+  public adoptPendingChoices(): void {
+    if (this.plyHistory.length > 0 || this.gameOver || this.isBotThinking) return;
+    this.applyNewGameOptions(this.settings.get().newGame);
+    this.clock.reset(TIME_CONTROL_PRESETS[this.timeControlId]);
+    this.updateAllHud();
   }
 
   private hideEndGameConfirm(): void {
@@ -1354,7 +1430,9 @@ export class PlayController {
   private notifyGameFinished(): void {
     if (!this.onGameFinished || this.gameTree.getMainLine().length === 0) return;
     const config = TIME_CONTROL_PRESETS[this.timeControlId];
-    const bot = `Stockfish ${getTierForRating(this.botRating)}`;
+    const bot = this.botName();
+    const profile = this.profile.get();
+    const myName = profile.displayName || 'You';
     const me = this.playerColor;
     const now = new Date(this.gameStartedAt);
     const pad = (n: number) => String(n).padStart(2, '0');
@@ -1364,8 +1442,9 @@ export class PlayController {
     tree.setHeader('Date', `${now.getFullYear()}.${pad(now.getMonth() + 1)}.${pad(now.getDate())}`);
     tree.setHeader('UTCDate', `${now.getUTCFullYear()}.${pad(now.getUTCMonth() + 1)}.${pad(now.getUTCDate())}`);
     tree.setHeader('UTCTime', `${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}:${pad(now.getUTCSeconds())}`);
-    tree.setHeader('White', me === 'w' ? 'You' : bot);
-    tree.setHeader('Black', me === 'b' ? 'You' : bot);
+    tree.setHeader('White', me === 'w' ? myName : bot);
+    tree.setHeader('Black', me === 'b' ? myName : bot);
+    if (profile.title) tree.setHeader(me === 'w' ? 'WhiteTitle' : 'BlackTitle', profile.title);
     tree.setHeader(me === 'w' ? 'BlackElo' : 'WhiteElo', String(this.botRating));
     tree.setHeader(
       'TimeControl',
@@ -1409,13 +1488,22 @@ export class PlayController {
   private updatePlayerBars(): void {
     const flipped = this.board.isFlipped();
     const topColor: Color = flipped ? 'w' : 'b';
-    const tier = getTierForRating(this.botRating);
+    const bottomColor: Color = topColor === 'w' ? 'b' : 'w';
+    const profile = this.profile.get();
+    const myName = profile.displayName || 'You';
 
     const labelForColor = (c: Color): string =>
-      c === this.playerColor ? `You (${c === 'w' ? 'White' : 'Black'})` : `Stockfish ${tier} (${this.botRating})`;
+      c === this.playerColor ? `${myName} (${c === 'w' ? 'White' : 'Black'})` : `${this.botName()} (${this.botRating})`;
+    const showTitle = (el: HTMLElement, c: Color): void => {
+      const title = c === this.playerColor ? profile.title : '';
+      setTextIfChanged(el, title);
+      if (el.hidden !== (title === '')) el.hidden = title === '';
+    };
 
     setTextIfChanged(this.topPlayerNameEl, labelForColor(topColor));
-    setTextIfChanged(this.bottomPlayerNameEl, labelForColor(topColor === 'w' ? 'b' : 'w'));
+    setTextIfChanged(this.bottomPlayerNameEl, labelForColor(bottomColor));
+    showTitle(this.topPlayerTitleEl, topColor);
+    showTitle(this.bottomPlayerTitleEl, bottomColor);
     this.renderClockSnapshot(this.clock.getSnapshot());
     this.updateCapturedTrays();
   }
@@ -1626,6 +1714,7 @@ export class PlayController {
     this.cancelInFlightBotSearch();
     this.cancelInfiniteAnalysis();
     this.unsubscribeSettings();
+    this.unsubscribeProfile();
     this.menu.destroy();
     if (this.pendingEvalRafId !== null) {
       cancelAnimationFrame(this.pendingEvalRafId);

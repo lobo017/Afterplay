@@ -110,8 +110,8 @@ export default defineConfig({
       },
       injectManifest: {
         globPatterns: ['**/*.{js,css,html,svg,json,wasm,nnue,webmanifest,png}'],
-        // Source maps are not part of the offline app
-        globIgnores: ['**/*.map'],
+        // Source maps are not part of the offline app; a first-run link's preset is fetched once, online
+        globIgnores: ['**/*.map', 'start/**'],
         maximumFileSizeToCacheInBytes: 30 * 1024 * 1024,
         rollupFormat: 'iife',
       },

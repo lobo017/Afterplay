@@ -7,7 +7,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && vite build && node scripts/build-start-pages.mjs",
+    "build:local": "tsc --noEmit && vite build && node scripts/build-start-pages.mjs --local",
+    "build:pieces": "node scripts/build-piece-set.mjs",
     "build:ext": "node scripts/build-extension.mjs",
     "build:icons": "node scripts/build-icons.mjs",
     "serve": "node scripts/serve.mjs",
