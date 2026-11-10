@@ -696,6 +696,7 @@ test.describe('Phase 5 — Review perspective', () => {
     expect(await stepErrors(page, 'prev', 1)).toEqual([blackErrors[blackErrors.length - 1]!.nodeId]);
 
     // Retry covers only Black's mistakes
+    expect(errorsOf(review, 'w').length, 'the review found an error by White').toBeGreaterThanOrEqual(1);
     await goToNode(page, errorsOf(review, 'w')[0]!.nodeId);
     await expect(page.getByTestId('btn-review-refutation')).toBeEnabled();
     await expect(page.getByTestId('btn-review-retry')).toBeDisabled();
@@ -726,10 +727,21 @@ test.describe('Phase 5 — Review perspective', () => {
       await page.getByTestId(`review-count-${slug}-b`).click();
       expect((await currentNode(page)).id).toBe(expected.nodeId);
     }
-    const zeroClass = ['Brilliant', 'Great', 'Book', 'Blunder', 'Miss', 'Mistake'].find(
-      (c) => !review.moves.some((m) => m.color === 'b' && m.classification === c),
-    )!;
-    const zero = page.getByTestId(`review-count-${zeroClass.toLowerCase()}-b`);
+    // Which classes Black has no move in depends on what the review found, so take one that really has none
+    const zeroClass = [
+      'Brilliant',
+      'Great',
+      'Miss',
+      'Blunder',
+      'Mistake',
+      'Book',
+      'Inaccuracy',
+      'Excellent',
+      'Best',
+      'Good',
+    ].find((c) => !review.moves.some((m) => m.color === 'b' && m.classification === c));
+    expect(zeroClass, 'a class that Black has no move in').toBeDefined();
+    const zero = page.getByTestId(`review-count-${zeroClass!.toLowerCase()}-b`);
     await expect(zero).toHaveText('0');
     await expect(zero).toBeDisabled();
     await expect(zero).toHaveAttribute('data-zero', 'true');
@@ -769,6 +781,7 @@ test.describe('Phase 5 — Review perspective', () => {
       `White errors · ${whiteErrors.length} / ${whiteErrors.length}`,
     );
     await expect(page.getByTestId('btn-review-retry')).toBeEnabled();
+    expect(errorsOf(review, 'b').length, 'the review found an error by Black').toBeGreaterThanOrEqual(1);
     await goToNode(page, errorsOf(review, 'b')[0]!.nodeId);
     await expect(page.getByTestId('btn-review-retry')).toBeDisabled();
     await goToNode(page, whiteErrors[0]!.nodeId);
@@ -797,6 +810,8 @@ test.describe('Phase 5 — Review perspective', () => {
     await expect(page.getByTestId('review-mistake-position')).toHaveText(
       `All errors · ${allErrors.length} / ${allErrors.length}`,
     );
+    expect(errorsOf(review, 'w').length, 'the review found an error by White').toBeGreaterThanOrEqual(1);
+    expect(errorsOf(review, 'b').length, 'the review found an error by Black').toBeGreaterThanOrEqual(1);
     await goToNode(page, errorsOf(review, 'w')[0]!.nodeId);
     await expect(page.getByTestId('btn-review-retry')).toBeEnabled();
     await goToNode(page, errorsOf(review, 'b')[0]!.nodeId);

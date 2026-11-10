@@ -123,6 +123,16 @@ Differences from the brief, and why:
   on a disabled button waits until the test times out. Which moments a time-limited Quick review finds varies from run to run (as in the
   phase8-leftovers case above), so this was a latent flake (passed in 11 of 12 earlier Juno runs). Test fix: take the first key moment that
   offers "Try it"; the retry is still exercised on a mistake, assertions unchanged.
+- **Audit of every e2e test that runs a review (after the third flake from a time-limited Quick review).** A fixed node budget was not an
+  option: `panel.start()` takes no budget (the preset comes from the UI selector), so it would need a new app code path and a hook, and several
+  tests assert the Quick preset itself. So the tests were checked one by one for assumptions about what the review found:
+  - Already derived from the review's own output (nothing to change): `phase5-review` sample game (classes, key moments, error cards),
+    imported-Lichess replacement, the three perspective tests (`errorsOf(review, side)`), `phase6b-board-feel` real-review badges,
+    `phase6b-screens`, `phase8-a11y`, `phase8-offline`, `phase5b-games`, `phase5b-extension`, `phase6` puzzles from mistakes (the queen
+    blunder is decided by position, not by search depth), `phase7` repertoire notes (no engine result used).
+  - Fixed: `phase6b-review` coach card (Try it on the first key moment that offers it, previous commit); `phase8-leftovers` (layout, CSS fix);
+    `phase5-review` Black perspective: "a class Black has no move in" now picks from all ten classes (was six, with a non-null assertion), and
+    the perspective tests state their precondition ("the review found an error by White / Black") instead of failing on an undefined move.
 
 ### Phase 8 follow-ups and the Phase 9 result, in short
 
