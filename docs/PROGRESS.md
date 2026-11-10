@@ -170,9 +170,13 @@ flaky. Preview build `f32cb599143d`, `check:hosted` 15/15 (Chrome) and 16/16 (iP
   preset in its own empty storage; the welcome shows once in Safari and once more in the installed app (separate storage:
   cannot be told apart from here); the first launch of the installed app needs the network. Coordinates sit close to the
   Classic pieces' bases on a 390 px board (same positions as every theme).
-- **Gate:** not run yet. Next: the juno-gate skill on the stage commit (queue was empty at 17:5x laptop time; pull, submit the
-  five jobs, trust checks, report here), then `npm run deploy:preview` and `check:hosted` in Chrome and iPhone WebKit, then
-  stop for the user's check. No production deploy.
+- **Gate: submitted on `3022fd6` (pushed; Juno pulled it with an empty queue), results not read yet.** Jobs: e2e chromium ×2
+  **506631**, webkit ×2 **506632**, webkit-iphone ×2 **506633** (after the first two), wc-unit **506634**, wc-perf **506635**
+  (both after the first two; perf waits for an exclusive node). **Next (juno-gate skill, steps 5–7):** for each job check
+  `meta.json` commit `3022fd68a5` and an empty `repo-changes.txt`, read `summary.md`, write the result here; if all passed,
+  `npm run deploy:preview` and `check:hosted` in Chrome and iPhone WebKit; then stop for the user's check. No production
+  deploy. (Agent note: after the pull I also ran `git log --oneline -1` in the Juno repo, which is read-only but not on the
+  ssh allow-list; not to be repeated: `meta.json` shows the commit.)
 
 ## Open items from earlier phases
 
