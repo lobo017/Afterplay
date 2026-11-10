@@ -127,3 +127,47 @@ Moved here verbatim from PROGRESS.md as each stage is reported (the phase is sti
   replaces it there); a real iPhone has not been tried yet (memory limit, Home Screen mode, the guide's steps on iOS 26).
 - Agent note: a stopped background `playwright test` left its runner orphaned (its shell's parent gone); not provably mine by
   parent PID, so it was not killed: it finished by itself. Stop a run with Ctrl+C-like means, not by stopping the shell task.
+
+## Stage 3 — presets and the first-run link
+
+**Stage 3 plan: presets and the first-run link (written before code, 2026-11-10)**
+- **Preset file** (`preset.json`, version 1; new `src/preset/preset.ts` parses and checks it): `appName` (Home Screen name),
+  `profile` (display name, title), `welcome` (title, message, from), `settings` (any app setting: theme, piece set, sound, the
+  new-game choices including the bot level), `usernames` (Lichess, Chess.com), `bots` (custom-named bots: name, rating, style).
+  Unknown fields are reported by the checker and ignored by the app (later stages add more).
+- **First-run link** = a path, `/start/<slug>/`. The build writes, next to each `start/<slug>/preset.json`, an `index.html` (the
+  app page with that preset's title, Home Screen name and manifest link) and a `manifest.webmanifest` (name and `start_url:
+  /start/<slug>/`), new `scripts/build-start-pages.mjs`. Why a path and static files: **a Home Screen app on iOS has its own
+  storage, separate from Safari's**, so whatever the link set up in Safari is gone in the installed app; with the manifest's
+  start URL pointing back at the link, the installed app applies the preset again on its first launch. Nothing depends on
+  changing the manifest from script (the app also does that, for when the service worker serves the plain page).
+  - On start the app reads the slug from the path; if that preset was not applied on this device yet it fetches
+    `/start/<slug>/preset.json` (same origin; once), applies it, and remembers the slug. Later launches fetch nothing and
+    never overwrite what the user changed since. A link that cannot be loaded shows a notice and the app works as usual.
+  - `start/**` is not precached (a preset is needed online, once). The service worker already answers any page path with the
+    app page offline. `serve.mjs` serves a folder's own `index.html` (as Pages does). `_headers`: `/start/*` is `no-cache` and
+    `noindex`.
+  - A committed sample (`public/start/sample/`, invented names) is what the tests and `check:hosted` use.
+  - **Personal presets** live in `gift.local/start/<slug>/preset.json` with an unguessable slug. `npm run build:local` (and
+    `deploy:preview -- --with-local-presets`) copies them into `dist/`; a plain build never does. Uploading one puts personal
+    text on Cloudflare at a secret URL: **not done without the user's say-so**.
+- **Profile** (new `src/preset/profile.ts`: display name, title, app name, custom bots, welcome; `localStorage` + mirrored into the
+  preferences record, so the JSON backup carries it): Play shows the display name instead of "You", a title badge, and the
+  custom bots as opponent chips (a bot is "that bot" when rating and style match); the PGN of a played game gets the names.
+  Settings › Profile edits name and title and can show the welcome message again.
+- **Welcome message:** a sheet shown once after the preset is applied; on an iPhone the Add to Home Screen guide follows it.
+  The guide and the page title use the app name.
+- **Green theme** (`green`: flat cream and green squares, own colour values) and the **Classic piece set** (`classic`: Colin M.L.
+  Burnett's pieces, the Wikipedia / Lichess default, GPL-2.0-or-later; fetched once by new `scripts/build-piece-set.mjs` from
+  lichess-org/lila at a pinned commit into a generated module; listed in LICENSES/).
+- **Tests:** unit (preset parsing, the first-run decision, profile store and backup, start-page generation, `_headers`, themes
+  and pieces; `phase3-board` expects 4 themes and 4 sets now); new e2e `phase11-presets.spec.ts` in all three projects (the
+  sample link: theme, pieces, names, bots, welcome once, then the guide on the iPhone, manifest and title, nothing re-applied
+  after a reload, a bad link, a played game's PGN names, the link opening offline); `check:hosted` checks the sample link.
+- Files: `src/preset/*` (new), `src/ui/welcome-sheet.ts`, `src/ui/settings-profile-section.ts` (new), `src/app.ts`,
+  `src/ui/play-controller.ts`, `src/ui/install-guide.ts`, `src/ui/settings-persistence.ts`, `src/render/themes.ts`,
+  `src/render/piece-sets.ts`, `src/render/classic-pieces.ts` (generated), `src/styles/main.css`, `scripts/serve.mjs`,
+  `scripts/deploy.mjs`, `scripts/check-hosted.mjs`, `vite.config.ts`, `public/_headers`, README, LICENSES.
+- Risks: iOS behaviour that Playwright's WebKit cannot show (does the Home Screen app really start at the manifest's
+  `start_url`, is its storage really empty, does the welcome show twice: once in Safari, once in the app); the first launch of
+  the installed app needs the network; a per-preset manifest shares the app's `id`; a secret URL is only as private as the link.
