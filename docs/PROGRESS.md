@@ -22,12 +22,13 @@ log to `docs/progress/phase-N.md` and keep only a summary here.
 | 7 | Repertoire, endgame & visualization | Done | White/Black repertoire trees (build, import, drill, review flag), 6 engine-verified endgame drills, coordinate/blindfold/guess-the-move; all feed Today with the puzzles | [phase-7](progress/phase-7.md) |
 | 8 | Library, insights, settings, offline | Done | Own service worker (precache + COOP/COEP, update banner) and an offline e2e gate; played games kept, colour/opening/date/accuracy filters, delete, worker bulk import; Insights tab; live-region announcements and keyboard play on every board; Settings for usernames, analysis lines, review depth | [phase-8](progress/phase-8.md) |
 | 9 | Performance pass & final audit | Done (closing gate on Juno, 2026-11-10) | Every budget measured (frame time, input latency, idle, startup, 50-game memory, review speed) and a 16-flow long-task audit; start-up split into tasks, lazy Review screen, Play bot-move task 16–27 → 7–9 ms; hints reach the review; full spec audit (all Done except two Partial and the optional Phase 10); Prettier enforced; measuring scripts guard against a locked screen; closing gate on Juno (unit 592, e2e 4 × 159, perf), results saved before they are shown, review tests hardened | [phase-9](progress/phase-9.md) |
+| 11 | Hosting, iPhone, presets | In progress (stage 1 of 7 done, 2026-11-10) | Cloudflare Pages (classic) with `_headers`, preview-first deploy scripts, automatic updates when nothing is in progress | — |
 | HPC | Automated checks on Juno | Done (2026-11-10) | `hpc/`: Apptainer + pinned Playwright image, jobs wc-unit / e2e / e2e-repeat / perf / calibrate / puzzles / summarize, per-job build, port and scratch folder, safe-delete helper, reports; `wc-calibrate` and `wc-puzzles` not yet run | [phase-9](progress/phase-9.md) |
 
 
 ## Current phase and next step
 
-Phases 0–9 are done. **Phase 9 was closed on 2026-11-10: its closing gate ran on Juno (Linux, headless)**: typecheck, lint, format check, build,
+**Phase 11 is in progress (stage 1 of 7 done: hosting and updates; plan and results in the Phase 11 section below).** Phases 0–9 are done. **Phase 9 was closed on 2026-11-10: its closing gate ran on Juno (Linux, headless)**: typecheck, lint, format check, build,
 592/592 unit tests, 4 of 4 full e2e runs (159/159 each) and all four perf scripts passed on commit `cefe783` (details below and in
 [phase-9](progress/phase-9.md)). **The Key measurements table at the bottom comes from earlier laptop runs; the Juno numbers are in the table
 under it** (regression baselines for a headless Linux node, not a user's screen). Phase 10 (native engine mode) is optional and not started.
@@ -92,6 +93,27 @@ report. Personal data (the gift preset, its messages, downloaded games, the oppo
   progress → the banner, then Reload.
 - Risks: Pages' 25 MiB file limit (largest file 4 MB: fine); the preview origin is a different origin from production (separate
   data and install, expected); Wrangler adds a large dev dependency (also to Juno's `npm ci`, counted against its quota).
+
+**Stage 1 result (2026-11-10): done, preview deployed, production waits for the user's check**
+- Commits `36b5bed` (hosting, deploy scripts, updates), `b69e87d` (README), `610a4d3` (`npm run check:hosted`, a stricter offline test).
+- **Decision: classic Cloudflare Pages.** Wrangler 4.160 hands `pages project create` to Workers static assets ("Pages, now part
+  of Workers"); that hand-off failed, and the user chose classic Pages with `--force` (the SPEC's host; a `*.pages.dev` URL carries
+  no account name). Only the create needed `--force`. Project `wizards-chess`, production URL `https://wizards-chess-4tu.pages.dev`
+  (the plain name was taken). Wrangler `^4.160.0` added (approved); npm 11 left the `esbuild` / `workerd` install scripts
+  unapproved, which a static upload does not need. Wrangler's usage metrics are off in the deploy script.
+- **Preview** `https://acc34cf1.wizards-chess-4tu.pages.dev` (alias `preview.wizards-chess-4tu.pages.dev`), build `aeedca6f9bb6`,
+  commit `b69e87d`. `check:hosted` in Chrome: 15/15 (COOP/COEP on the page, isolated, `sw.js` and `index.html` `no-cache`, all 30
+  files cached, mate found at depth 15 with 4 threads, the bot answers, offline reload still isolated and the bot still answers,
+  installable with no errors, no request outside the origin). `curl`: every path has the three isolation headers; hashed
+  `assets/*` and `stockfish/*` are `immutable`. `/_headers` itself is not served (Pages answers with the app page).
+- A brand-new `pages.dev` subdomain failed TLS for the first minutes (certificate being issued); it then answered normally.
+- **Juno gate on `36b5bed`, all passed:** setup 505777 (lockfile changed: `npm ci`; quota 21,345 → 23,359 files, 5.2 → 5.8 GB,
+  realsize 10.5 → 11.6 GB), wc-unit 505778 (typecheck, lint, format, build, 599/599 unit), wc-e2e-repeat 505779 (4 of 4 runs,
+  160/160 each, 11.4–11.7 min), wc-perf 505780 (all four passed: drag p95 16.67 ms in all four windows, 0 dropped, 0 long tasks;
+  start-up 240 ms; review 81 plies 17.0–17.1 s; 16 task flows clean; 50 games +0.39 MB heap, 8.3 KB per game, listeners +0).
+  `repo-changes.txt` empty in every job. (`610a4d3` only adds the hosted checker and makes one assertion stricter; it ran on the
+  laptop, 1/1, and joins the next gate.)
+- Fixed on the way: the offline e2e test's `data-mate` check matched `"false"` too (the depth check after it was the real one).
 
 
 - **Scenario-2 `perf:drag`** (analysis board, MultiPV 5, ghosts, navigation sweep) passed clean on Juno on the final code (p95 16.67 ms, 0 dropped).
