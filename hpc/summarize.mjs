@@ -120,7 +120,7 @@ function summarizeVitest(report, md) {
   }
   md.push(
     `**Unit tests (vitest):** ${report.numPassedTests} passed, ${report.numFailedTests} failed, ` +
-      `${report.numPendingTests ?? 0} skipped (${report.numTotalTests} tests in ${report.numTotalTestSuites} files)`,
+      `${report.numPendingTests ?? 0} skipped (${report.numTotalTests} tests in ${report.numTotalTestSuites} suites)`,
   );
   if (failures.length) {
     md.push('', 'Failures:');

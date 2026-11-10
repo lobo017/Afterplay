@@ -62,8 +62,7 @@ cluster (Juno); the laptop no longer runs them.
   `Extensions.loadUnpacked` are expected to work; `xvfb-run` is the fallback (`WC_HEADED=1`). Whether the GitHub repo is public
   is unknown (a private repo cannot be cloned by the setup job).
 
-**Part A (the `hpc/` setup) is written and committed ("HPC: Juno job setup"); nothing has run on Juno yet.** Waiting for approval of
-the scripts and the exact commands, then Part B (remove `preact`, setup job, `e2e-repeat` ×4, one `perf` job, close Phase 9).
+**Part A (the `hpc/` setup) is committed and running on Juno; Part B (close Phase 9) is in progress.** `preact` is removed.
 Differences from the brief, and why:
 - `wc-unit` also runs typecheck, lint, format check and build (separate steps, same job): AGENTS.md's gate needs them and they
   must run on Juno too. `wc-summarize` and `hpc/smoke.mjs` were added (arrays need a combined report; the setup needs a check
@@ -77,6 +76,21 @@ Differences from the brief, and why:
 - Not checked anywhere yet: apptainer flags (`--containall --no-home`, nested binds over `dist/` and `node_modules/.vite`), the
   `module` init in a job, `git clone` of the GitHub repo (is it public?), new headless Chromium loading the extension, and
   whether `/dev/shm` inside the container is big enough for Chromium.
+
+**Juno runs, 2026-11-09 evening** (all on repo commit `35b58d1`; project folder 4.1 GiB, 18Ki inodes; `~/work` was at 888Ki inodes /
+613 GiB before and 906Ki / 617 GiB after setup):
+- Setup attempt 1 (504970) failed in 9 s: `module` was undefined in the scrubbed job (`/etc/profile.d/lmod.sh` did not define it). Fixed
+  by sourcing Lmod's own init (`/opt/ohpc/admin/lmod/lmod/init/bash`) with a fallback to Juno's login MODULEPATH. Attempt 2 (**504976**)
+  passed: Apptainer mounts, own PID namespace (7 processes visible), headless Chromium 156, blank page p50 16.7 / p95 16.8 ms,
+  cross-origin isolated, extension loads in new headless (no `--headed` needed). Node in the image is v26.13.0.
+- **wc-unit 504982: passed** (typecheck, lint, format, build, 588/588 unit tests, 1 min 45 s; `repo-changes.txt` empty).
+- **wc-e2e-repeat 504985** (tasks 1–4, 4 runs) and **wc-perf 504989** submitted, not yet read. Results in
+  `~/work/wizard-chess-hpc/results/504985/task-N/` and `results/504989/`; Slurm mails the owner when each ends or fails.
+- **What to check next:** for every result, `meta.json` commit is `35b58d1` and `repo-changes.txt` is empty, else the result is void.
+  Then `summary.md` of each; for e2e: all 4 runs pass, and whether `phase5-review` "reviews the built-in sample game" failed in any
+  run (if so: trace the ≥ 50 ms task inside a full run and fix the cause, never raise the limit; if never, record that the earlier
+  failures were most likely the laptop). For perf: all four scripts pass, frame floor ≤ 17.0 ms. Then mark Phase 9 done, note that the
+  closing gate ran on Juno (Linux, headless) and that Key measurements come from earlier laptop runs, commit "Phase 9: closing gate".
 
 ### Phase 8 follow-ups and the Phase 9 result, in short
 
