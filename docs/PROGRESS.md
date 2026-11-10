@@ -84,13 +84,21 @@ Differences from the brief, and why:
   passed: Apptainer mounts, own PID namespace (7 processes visible), headless Chromium 156, blank page p50 16.7 / p95 16.8 ms,
   cross-origin isolated, extension loads in new headless (no `--headed` needed). Node in the image is v26.13.0.
 - **wc-unit 504982: passed** (typecheck, lint, format, build, 588/588 unit tests, 1 min 45 s; `repo-changes.txt` empty).
-- **wc-e2e-repeat 504985** (tasks 1–4, 4 runs) and **wc-perf 504989** submitted, not yet read. Results in
-  `~/work/wizard-chess-hpc/results/504985/task-N/` and `results/504989/`; Slurm mails the owner when each ends or fails.
-- **What to check next:** for every result, `meta.json` commit is `35b58d1` and `repo-changes.txt` is empty, else the result is void.
-  Then `summary.md` of each; for e2e: all 4 runs pass, and whether `phase5-review` "reviews the built-in sample game" failed in any
-  run (if so: trace the ≥ 50 ms task inside a full run and fix the cause, never raise the limit; if never, record that the earlier
-  failures were most likely the laptop). For perf: all four scripts pass, frame floor ≤ 17.0 ms. Then mark Phase 9 done, note that the
-  closing gate ran on Juno (Linux, headless) and that Key measurements come from earlier laptop runs, commit "Phase 9: closing gate".
+- **wc-perf 504989: passed** (6 min 19 s, exclusive node c-02-04): drag p95 16.67 ms in all four windows, 0 dropped, 0 long tasks, main thread
+  0.6–1.5 ms per frame; memory +0.26 MB over 50 games (6.8 KB/game); review of 81 plies 17.0–17.1 s at 1, 2 and 4 threads, 0 long tasks;
+  16 flows, 0 tasks ≥ 50 ms; blank page 16.7 ms. Baselines for a headless Linux node, not a screen.
+- **wc-e2e-repeat 504985, first round (commit `35b58d1`): all 4 runs failed, 2–3 tests each of 159 (11.5–12 min per run);** `meta.json` commit
+  and an empty `repo-changes.txt` checked for every task. `phase5-review` "reviews the built-in sample game" passed in all 4 runs. Failures:
+  - `phase7-trainers` "giving up, restarting and offering a draw too early": 4 of 4. The test read the saved progress the moment the
+    result showed; the app saves it a moment later (by design, `EndgameTrainer.finish`). Linux/timing (the profile folder is on a
+    network disk). Test fix: wait for the record. The same read without a wait in the rp-vs-r and lucena tests got the same fix.
+  - `phase6b-review` "Analyze this position (from Play)": 3 of 4, and `phase2-engine-restart` "threads set to 4 right after the engine
+    starts": 1 of 4 (its "2" twin has the same code). Both used `window.__wizardChessPlay` right after `goto`; since the start-up split
+    it exists only after the app mounts. Test fix: wait for it first.
+  - `phase8-leftovers` "phone: a key moment's sentence is complete": 1 of 4. **Real layout bug:** on phones the key-moment chips wrap into
+    two reserved rows; five chips with long labels (`4... Bxf3`, `10... cxb5`, …; which moments Quick finds varies per run) need a third
+    row, which was cut off. Fix: three rows reserved on phones (`7.3rem`); checked with five worst-case chips at 390 and 360 px.
+- Second round: to be submitted after these fixes are pushed.
 
 ### Phase 8 follow-ups and the Phase 9 result, in short
 

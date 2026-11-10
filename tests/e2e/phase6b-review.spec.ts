@@ -206,6 +206,7 @@ test.describe('Phase 6b — Review', () => {
   test('Analyze this position (from Play) opens the Analysis tab', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto('/');
+    await expect(page.getByTestId('play-layout')).toBeVisible();
     await page.evaluate(() => window.__wizardChessPlay!.controller.setBotMoveDelayMs(5));
     await page.getByTestId('play-layout').getByTestId('square-e2').click();
     await page.getByTestId('play-layout').getByTestId('square-e4').click();

@@ -6003,12 +6003,14 @@ label.wc-setting-row {
   box-shadow: inset 0 0 0 3px var(--accent-arcane);
 }
 
-/* Phones: the key moments wrap onto a second row instead of scrolling out of sight (two rows are
-   always reserved, so showing or hiding moments never moves what is below) */
+/* Phones: the key moments wrap onto further rows instead of scrolling out of sight. Three rows are always
+   reserved (3 x 2.1rem chips + 2 gaps of 0.35rem = 7rem, plus a little slack): five chips with long labels
+   (e.g. "10... cxb5") need a third row at 390px, and a row that is cut off would hide a key moment. Always
+   reserving the same height keeps showing or hiding moments from moving what is below */
 @media (max-width: 760px) {
   .wc-coach .wc-review-moments {
     flex-wrap: wrap;
-    height: 4.8rem;
+    height: 7.3rem;
     align-content: flex-start;
     overflow: hidden;
   }

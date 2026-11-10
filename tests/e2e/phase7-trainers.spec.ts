@@ -548,13 +548,17 @@ test.describe('Phase 7 — endgame trainer', () => {
     await page.getByTestId('btn-endgame-giveup').click();
     await expect(trainer).toHaveAttribute('data-endgame-state', 'failed');
     await expect(page.getByTestId('endgame-result')).toContainText('Given up');
-    const saved = await page.evaluate(async () => {
-      const api = await window.__wizardChessDrillsReady!;
-      return {
-        progress: await api.store.endgames.getProgress('philidor-position'),
-        cards: await api.store.endgames.listCards(),
-      };
-    });
+    const readSaved = () =>
+      page.evaluate(async () => {
+        const api = await window.__wizardChessDrillsReady!;
+        return {
+          progress: await api.store.endgames.getProgress('philidor-position'),
+          cards: await api.store.endgames.listCards(),
+        };
+      });
+    // The result shows at once; the progress and then the card are saved to IndexedDB a moment later
+    await expect.poll(async () => (await readSaved()).cards.length, { timeout: 15_000 }).toBe(1);
+    const saved = await readSaved();
     expect(saved.progress).toMatchObject({ completed: 0, attempts: 1, completions: 0, lastReached: false });
     expect(saved.cards[0]).toMatchObject({ id: 'endgame:philidor-position', state: 'learning' });
 
@@ -588,16 +592,19 @@ test.describe('Phase 7 — endgame trainer', () => {
     expect(['converted', 'checkmate']).toContain(end.how);
     expect(end.result).toBe('1-0');
     // No move count is kept for it: only that the result was reached
-    const progress = await page.evaluate(async () =>
-      (await window.__wizardChessDrillsReady!).store.endgames.getProgress('rp-vs-r'),
-    );
-    expect(progress).toMatchObject({
-      completed: 1,
-      bestMoves: null,
-      optimalMoves: null,
-      lastMoves: null,
-      lastReached: true,
-    });
+    // (the result shows at once and the progress is saved a moment later: wait for it)
+    await expect
+      .poll(
+        () => page.evaluate(async () => (await window.__wizardChessDrillsReady!).store.endgames.getProgress('rp-vs-r')),
+        { timeout: 15_000 },
+      )
+      .toMatchObject({
+        completed: 1,
+        bestMoves: null,
+        optimalMoves: null,
+        lastMoves: null,
+        lastReached: true,
+      });
     await expect(page.getByTestId('endgame-result')).not.toContainText('best possible');
   });
 
@@ -613,10 +620,16 @@ test.describe('Phase 7 — endgame trainer', () => {
     expect(await playOut(page, 60)).toBe('reached');
     const end = await page.evaluate(() => window.__wizardChessDrills!.getEndgames()!.getSession()!.end!);
     expect(['converted', 'checkmate']).toContain(end.how);
-    const progress = await page.evaluate(
-      async () => await (await window.__wizardChessDrillsReady!).store.endgames.getProgress('lucena-position'),
-    );
-    expect(progress).toMatchObject({ completed: 1, bestMoves: null, optimalMoves: null, lastMoves: null });
+    // (the result shows at once and the progress is saved a moment later: wait for it)
+    await expect
+      .poll(
+        () =>
+          page.evaluate(
+            async () => await (await window.__wizardChessDrillsReady!).store.endgames.getProgress('lucena-position'),
+          ),
+        { timeout: 15_000 },
+      )
+      .toMatchObject({ completed: 1, bestMoves: null, optimalMoves: null, lastMoves: null });
   });
 
   test('Philidor: after ten moves of holding, a draw offer is accepted and the draw is the result', async ({

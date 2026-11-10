@@ -69,6 +69,8 @@ test.describe('Phase 2 — changing engine threads restarts the worker', () => {
         crashed = true;
       });
       await page.goto('/');
+      // The test hook appears when the app mounts, one frame after load (the engine is created right then)
+      await page.waitForFunction(() => window.__wizardChessPlay !== undefined);
       const result = await page.evaluate(async (t) => {
         const engine = window.__wizardChessPlay!.engine;
         const timeout = (label: string) =>
