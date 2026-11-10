@@ -119,6 +119,32 @@ export class Timers {
   }
 }
 
+/** How long a result waits for its save before it is shown anyway (a blocked database must not freeze the screen). */
+export const SAVE_WAIT_MS = 400;
+
+export type SaveOutcome<T> = { saved: T } | { error: unknown } | { pending: Promise<T> };
+
+/**
+ * A drill's result is saved BEFORE it is shown: on a phone the app can be closed the moment the result appears, and
+ * IndexedDB only commits a moment after the write is requested. The caller starts the save first, then waits here
+ * (at most `maxMs`) and shows the result. `saved`: it is stored. `error`: the save failed. `pending`: it is taking
+ * longer than `maxMs`; show the result now and finish up when `pending` settles.
+ */
+export async function saveBeforeShow<T>(saving: Promise<T>, maxMs: number = SAVE_WAIT_MS): Promise<SaveOutcome<T>> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<'late'>((resolve) => {
+    timer = setTimeout(() => resolve('late'), maxMs);
+  });
+  try {
+    const first = await Promise.race([saving, late]);
+    return first === 'late' ? { pending: saving } : { saved: first };
+  } catch (error) {
+    return { error };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export function plural(n: number, one: string, many = `${one}s`): string {
   return `${n} ${n === 1 ? one : many}`;
 }

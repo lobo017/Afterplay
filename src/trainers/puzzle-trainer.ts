@@ -504,12 +504,12 @@ export class PuzzleTrainer {
             this.finishSolved(true);
             return;
           }
+          this.guard(this.record()); // stored first, shown after
           this.root.setAttribute('data-puzzle-state', 'wrong');
           this.setStatus(
             verdict.error ? `Couldn't check that move (${verdict.error}). Try again.` : 'That’s not it. Try again.',
             'wrong',
           );
-          this.guard(this.record());
           this.later(() => {
             if (seq !== this.loadSeq || l.session.status !== 'playing') return;
             this.board.setPosition(l.session.fen, { animate: true });
@@ -557,6 +557,7 @@ export class PuzzleTrainer {
   private finishSolved(alternative: boolean): void {
     const l = this.loaded;
     if (!l) return;
+    this.guard(this.record()); // stored first, shown after
     this.board.setInteractiveColor('none');
     this.root.setAttribute('data-puzzle-state', 'solved');
     const clean = l.session.outcome?.solved;
@@ -572,7 +573,6 @@ export class PuzzleTrainer {
     );
     this.options.audio.playGameOver(true);
     this.showLine();
-    this.guard(this.record());
     this.updateButtons();
   }
 
@@ -592,12 +592,12 @@ export class PuzzleTrainer {
     const seq = this.loadSeq;
     const rest = l.session.showSolution();
     if (rest.length === 0) return;
+    this.guard(this.record()); // stored first, shown after
     this.board.setInteractiveColor('none');
     this.board.clearUserAnnotations();
     this.root.setAttribute('data-puzzle-state', 'shown');
     this.setStatus('Solution shown.', 'shown');
     this.showLine();
-    this.guard(this.record());
     this.updateButtons();
     let fen = l.session.fen;
     rest.forEach((uci, i) => {

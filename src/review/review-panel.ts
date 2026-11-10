@@ -697,9 +697,9 @@ export class ReviewPanel {
       if (generation !== this.runGeneration) return result;
       this.result = result;
       this.positions = result.positions;
+      if (!result.cancelled) this.options.onReviewFinished?.(result, tree); // stored first, shown after
       this.state = result.cancelled ? 'cancelled' : 'done';
       this.acceptReview(result.review, true);
-      if (!result.cancelled) this.options.onReviewFinished?.(result, tree);
       return result;
     } catch (err) {
       if (generation !== this.runGeneration) return null;

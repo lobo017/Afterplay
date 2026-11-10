@@ -1260,9 +1260,10 @@ export class PlayController {
     this.gameResult = this.playerColor === 'w' ? '0-1' : '1-0';
     this.gameTree.setResult(this.gameResult);
     this.gameStatusText = `${this.playerColor === 'w' ? 'White' : 'Black'} resigned · ${this.gameResult}`;
+    this.notifyGameFinished(); // stored first, shown after
     this.audio.playGameOver(false);
     this.updateAllHud();
-    this.notifyGameFinished();
+    announce(this.gameStatusText);
   }
 
   public async offerDraw(forceAccept = false): Promise<boolean> {
@@ -1284,9 +1285,10 @@ export class PlayController {
       this.gameResult = '1/2-1/2';
       this.gameTree.setResult('1/2-1/2');
       this.gameStatusText = 'Game drawn by agreement · 1/2-1/2';
+      this.notifyGameFinished(); // stored first, shown after
       this.audio.playGameOver(false);
       this.updateAllHud();
-      this.notifyGameFinished();
+      announce(this.gameStatusText);
       return true;
     }
 
@@ -1307,9 +1309,10 @@ export class PlayController {
     this.gameTree.setResult(this.gameResult);
     const winner = flaggedColor === 'w' ? 'Black' : 'White';
     this.gameStatusText = `${winner} wins on time · ${this.gameResult}`;
+    this.notifyGameFinished(); // stored first, shown after
     this.audio.playGameOver(flaggedColor !== this.playerColor);
     this.updateAllHud();
-    this.notifyGameFinished();
+    announce(this.gameStatusText);
   }
 
   private finalizeGameOverFromRules(): void {
@@ -1320,12 +1323,13 @@ export class PlayController {
     this.board.setInteractiveColor('none');
     this.gameOver = true;
 
+    let playerWon = false;
     if (this.adapter.isCheckmate()) {
       const loser = this.adapter.turn();
       this.gameResult = loser === 'w' ? '0-1' : '1-0';
       const winnerLabel = loser === 'w' ? 'Black' : 'White';
       this.gameStatusText = `Checkmate — ${winnerLabel} wins · ${this.gameResult}`;
-      this.audio.playGameOver(loser !== this.playerColor);
+      playerWon = loser !== this.playerColor;
     } else {
       this.gameResult = '1/2-1/2';
       let reason = 'Draw';
@@ -1334,16 +1338,19 @@ export class PlayController {
       else if (this.adapter.isDrawByFiftyMoves()) reason = '50-move rule';
       else if (this.adapter.isInsufficientMaterial()) reason = 'Insufficient material';
       this.gameStatusText = `Draw by ${reason} · 1/2-1/2`;
-      this.audio.playGameOver(false);
     }
 
     this.gameTree.setResult(this.gameResult);
-    this.notifyGameFinished();
+    this.notifyGameFinished(); // stored first, shown after
+    this.audio.playGameOver(playerWon);
+    announce(this.gameStatusText);
   }
 
-  /** Hands the finished game, with its headers, to the library (a game with no move is not kept). */
+  /**
+   * Hands the finished game, with its headers, to the library (a game with no move is not kept). Called before the
+   * result is drawn, announced or heard, so the save is already requested when the player sees it.
+   */
   private notifyGameFinished(): void {
-    announce(this.gameStatusText);
     if (!this.onGameFinished || this.gameTree.getMainLine().length === 0) return;
     const config = TIME_CONTROL_PRESETS[this.timeControlId];
     const bot = `Stockfish ${getTierForRating(this.botRating)}`;

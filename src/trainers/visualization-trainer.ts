@@ -35,7 +35,9 @@ import {
   fromExecuted,
   playMoveSound,
   plural,
+  saveBeforeShow,
   trainerLayoutHtml,
+  type SaveOutcome,
 } from './trainer-kit';
 
 /** A game of mine to guess through. */
@@ -538,22 +540,38 @@ export class VisualizationTrainer {
     if (this.roundTimer) clearInterval(this.roundTimer);
     this.roundTimer = null;
     this.coordState = 'done';
+    // Saved first, shown after (see saveBeforeShow): a phone app closed as the result appears has stored it
+    const outcome = await saveBeforeShow(this.options.store.recordCoordinates({ correct: r.correct, wrong: r.wrong }));
+    if (seq !== this.seq) return;
     this.root.setAttribute('data-coord-state', 'done');
     this.els.coordTime.textContent = '0';
     this.els.coordTarget.textContent = '–';
     this.board.clearUserAnnotations();
     const accuracy = Math.round(r.accuracy * 100);
     this.setCoordStatus('Round over', 'done');
-    this.els.coordResult.textContent = `${r.correct} right · ${r.wrong} wrong · ${accuracy}% accuracy.`;
+    const base = `${r.correct} right · ${r.wrong} wrong · ${accuracy}% accuracy.`;
+    const after = (saved: { newBest: boolean; card: { dueDate: number } }) =>
+      `${saved.newBest ? ' New best!' : ''} ${this.nextText(saved.card.dueDate)}`;
+    this.els.coordResult.textContent = 'saved' in outcome ? `${base}${after(outcome.saved)}` : base;
     this.options.audio.playGameOver(gradeCoordinates(r) >= 2);
     this.updateButtons();
-    try {
-      const saved = await this.options.store.recordCoordinates({ correct: r.correct, wrong: r.wrong });
+    this.finishUpSave(outcome, this.els.coordResult, after);
+  }
+
+  /** A save that was slow or failed: say so on the result once it is known (the result itself is already showing). */
+  private finishUpSave<T>(outcome: SaveOutcome<T>, el: HTMLElement, after: (saved: T) => string): void {
+    const seq = this.seq;
+    const failed = (err: unknown) => {
       if (seq === this.seq) {
-        this.els.coordResult.textContent = `${this.els.coordResult.textContent}${saved.newBest ? ' New best!' : ''} ${this.nextText(saved.card.dueDate)}`;
+        el.textContent = `${el.textContent} Progress could not be saved: ${err instanceof Error ? err.message : String(err)}`;
       }
-    } catch (err) {
-      this.els.coordResult.textContent = `${this.els.coordResult.textContent} Progress could not be saved: ${err instanceof Error ? err.message : String(err)}`;
+    };
+    if ('error' in outcome) {
+      failed(outcome.error);
+    } else if ('pending' in outcome) {
+      void outcome.pending.then((saved) => {
+        if (seq === this.seq) el.textContent = `${el.textContent}${after(saved)}`;
+      }, failed);
     }
   }
 
@@ -708,29 +726,24 @@ export class VisualizationTrainer {
     if (!drill) return;
     const seq = this.seq;
     const total = drill.questions.length;
-    this.setBlindState('done');
-    this.setBlindStatus(
-      this.blindCorrect === total ? 'All right!' : 'Drill over',
-      this.blindCorrect === total ? 'solved' : 'done',
+    const correct = this.blindCorrect;
+    // Saved first, shown after (see saveBeforeShow): a phone app closed as the result appears has stored it
+    const outcome = await saveBeforeShow(
+      this.options.store.recordBlindfold({ plies: drill.moves.length, correct, total }),
     );
+    if (seq !== this.seq) return;
+    this.setBlindState('done');
+    this.setBlindStatus(correct === total ? 'All right!' : 'Drill over', correct === total ? 'solved' : 'done');
     this.els.blindStage.textContent = '–';
-    this.els.blindProgress.textContent = `${this.blindCorrect}/${total}`;
-    this.els.blindResult.textContent = `${this.blindCorrect} of ${total} right. ${drill.label}.`;
+    this.els.blindProgress.textContent = `${correct}/${total}`;
+    const base = `${correct} of ${total} right. ${drill.label}.`;
+    const after = (saved: { stats: { level: number }; card: { dueDate: number } }) =>
+      ` Next level: ${saved.stats.level} moves. ${this.nextText(saved.card.dueDate)}`;
+    this.els.blindResult.textContent = 'saved' in outcome ? `${base}${after(outcome.saved)}` : base;
     // The board shows where the pieces really are
     this.board.setPosition(drill.finalFen, { animate: false });
-    this.options.audio.playGameOver(this.blindCorrect === total);
-    try {
-      const saved = await this.options.store.recordBlindfold({
-        plies: drill.moves.length,
-        correct: this.blindCorrect,
-        total,
-      });
-      if (seq === this.seq) {
-        this.els.blindResult.textContent = `${this.els.blindResult.textContent} Next level: ${saved.stats.level} moves. ${this.nextText(saved.card.dueDate)}`;
-      }
-    } catch (err) {
-      this.els.blindResult.textContent = `${this.els.blindResult.textContent} Progress could not be saved: ${err instanceof Error ? err.message : String(err)}`;
-    }
+    this.options.audio.playGameOver(correct === total);
+    this.finishUpSave(outcome, this.els.blindResult, after);
   }
 
   // ------------------------------------------------------------------ guess the move
@@ -894,21 +907,21 @@ export class VisualizationTrainer {
     if (!game) return;
     const seq = this.seq;
     const total = this.guessList.length;
-    this.setGuessState('done');
+    const hits = this.guessHits;
     this.board.setInteractiveColor('none');
+    // Saved first, shown after (see saveBeforeShow): a phone app closed as the result appears has stored it
+    const outcome = await saveBeforeShow(this.options.store.recordGuess(game.id, { hits, total }));
+    if (seq !== this.seq) return;
+    this.setGuessState('done');
     this.setGuessStatus('Game over', 'done');
     this.els.guessPrompt.textContent = '';
     this.els.guessFeedback.textContent = '';
-    this.els.guessProgress.textContent = `${this.guessHits}/${total}`;
-    this.els.guessResult.textContent = `${this.guessHits} of ${plural(total, 'move')} matched. Grade: ${['', 'Again', 'Hard', 'Good', 'Easy'][gradeGuess({ hits: this.guessHits, total })]}.`;
-    this.options.audio.playGameOver(this.guessHits * 2 >= total);
-    try {
-      const saved = await this.options.store.recordGuess(game.id, { hits: this.guessHits, total });
-      if (seq === this.seq)
-        this.els.guessResult.textContent = `${this.els.guessResult.textContent} ${this.nextText(saved.card.dueDate)}`;
-    } catch (err) {
-      this.els.guessResult.textContent = `${this.els.guessResult.textContent} Progress could not be saved: ${err instanceof Error ? err.message : String(err)}`;
-    }
+    this.els.guessProgress.textContent = `${hits}/${total}`;
+    const base = `${hits} of ${plural(total, 'move')} matched. Grade: ${['', 'Again', 'Hard', 'Good', 'Easy'][gradeGuess({ hits, total })]}.`;
+    const after = (saved: { card: { dueDate: number } }) => ` ${this.nextText(saved.card.dueDate)}`;
+    this.els.guessResult.textContent = 'saved' in outcome ? `${base}${after(outcome.saved)}` : base;
+    this.options.audio.playGameOver(hits * 2 >= total);
+    this.finishUpSave(outcome, this.els.guessResult, after);
   }
 
   public destroy(): void {

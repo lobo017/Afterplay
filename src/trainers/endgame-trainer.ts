@@ -21,6 +21,7 @@ import {
   negateScore,
   playMoveSound,
   plural,
+  saveBeforeShow,
   trainerLayoutHtml,
 } from './trainer-kit';
 
@@ -486,7 +487,10 @@ export class EndgameTrainer {
     this.finish(s.giveUp());
   }
 
-  /** The drill is over: say how it went, record it, and grade its card. */
+  /**
+   * The drill is over: record it and grade its card, THEN say how it went. The save is started first and the result
+   * waits for it (briefly, see saveBeforeShow), so a phone app closed the moment the result shows has already stored it.
+   */
   private finish(end: EndgameEnd): void {
     const s = this.session!;
     const entry = this.entry!;
@@ -495,27 +499,50 @@ export class EndgameTrainer {
     this.busy = false;
     this.board.setInteractiveColor('none');
     this.board.setBestMoveArrow(null);
-    this.setState(end.reached ? 'reached' : 'failed');
-    this.setStatus(end.reached ? 'Target reached!' : 'Not this time', end.reached ? 'solved' : 'wrong');
+    this.updateButtons();
+    void this.showResultAfterSave(s, entry, end, this.options.store.record(entry, s.outcome));
+  }
+
+  private async showResultAfterSave(
+    s: EndgameSession,
+    entry: EndgamePositionEntry,
+    end: EndgameEnd,
+    saving: Promise<EndgameRecordResult>,
+  ): Promise<void> {
+    const outcome = await saveBeforeShow(saving);
+    if (this.session !== s) return; // restarted or left meanwhile; the record is stored all the same
+    const saved = 'saved' in outcome ? outcome.saved : null;
+    if (saved) this.lastRecord = saved;
     const moveText =
       endgameGoal(entry) === 'mate' && end.reached
         ? ` Mate in ${plural(s.moves, 'move')}; best possible is ${entry.optimalMoves}.`
         : '';
-    this.els.result.textContent = `${end.message}${moveText}`;
+    const failed =
+      'error' in outcome
+        ? ` (Progress could not be saved: ${outcome.error instanceof Error ? outcome.error.message : String(outcome.error)})`
+        : '';
+    this.setState(end.reached ? 'reached' : 'failed');
+    this.setStatus(end.reached ? 'Target reached!' : 'Not this time', end.reached ? 'solved' : 'wrong');
+    this.els.result.textContent = `${end.message}${moveText}${saved?.newBest ? ' New best!' : ''}${failed}`;
     this.options.audio.playGameOver(end.reached);
     this.updateButtons();
-    void this.options.store.record(entry, s.outcome).then(
-      (result) => {
-        if (this.session !== s) return;
-        this.lastRecord = result;
-        if (result.newBest) this.els.result.textContent = `${this.els.result.textContent} New best!`;
-        void this.renderList();
-      },
-      (err: unknown) => {
-        if (this.session === s)
-          this.els.result.textContent = `${this.els.result.textContent} (Progress could not be saved: ${err instanceof Error ? err.message : String(err)})`;
-      },
-    );
+    if (saved) {
+      void this.renderList();
+    } else if ('pending' in outcome) {
+      // Slow disk: the result is already showing; finish up when the save does
+      void outcome.pending.then(
+        (result) => {
+          if (this.session !== s) return;
+          this.lastRecord = result;
+          if (result.newBest) this.els.result.textContent = `${this.els.result.textContent} New best!`;
+          void this.renderList();
+        },
+        (err: unknown) => {
+          if (this.session === s)
+            this.els.result.textContent = `${this.els.result.textContent} (Progress could not be saved: ${err instanceof Error ? err.message : String(err)})`;
+        },
+      );
+    }
   }
 
   private updateButtons(): void {
