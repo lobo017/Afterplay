@@ -10,13 +10,21 @@ import { ChessClock, TIME_CONTROL_PRESETS, formatClockMs } from '../../src/ui/cl
 import { computeCapturedAndMaterial } from '../../src/ui/play-controller';
 
 describe('Phase 3 — 2D Board, Themes, Audio, Clocks & Legacy Regression Unit Tests', () => {
-  it('provides 3 board themes (including marble-obsidian and high-contrast) and 3 SVG piece sets', () => {
-    expect(Object.keys(BOARD_THEMES)).toEqual(['marble-obsidian', 'imperial-walnut', 'high-contrast']);
+  it('provides 4 board themes (including marble-obsidian, green and high-contrast) and 4 SVG piece sets', () => {
+    expect(Object.keys(BOARD_THEMES)).toEqual(['marble-obsidian', 'imperial-walnut', 'green', 'high-contrast']);
     expect(BOARD_THEMES['marble-obsidian'].lightSquareBase).toBe('#f2ede4');
     expect(BOARD_THEMES['marble-obsidian'].darkSquareBase).toBe('#121620');
     expect(BOARD_THEMES['high-contrast'].lightSquareBase).toBe('#ffffff');
 
-    expect(Object.keys(PIECE_SETS)).toEqual(['cathedral', 'staunton', 'high-contrast']);
+    // Phase 11: the flat green board (no veins or chamfer) and the Classic set (ready-made drawings, 45-unit box)
+    expect(BOARD_THEMES.green.lightSquareBase).toBe('#edeed4');
+    expect(BOARD_THEMES.green.darkSquareBase).toBe('#6f9654');
+    expect(BOARD_THEMES.green.lightSquareVein).toBe('transparent');
+
+    expect(Object.keys(PIECE_SETS)).toEqual(['cathedral', 'staunton', 'classic', 'high-contrast']);
+    expect(getPieceSvgMarkup('classic', 'w', 'k')).toContain('viewBox="0 0 45 45"');
+    expect(getPieceSvgMarkup('classic', 'w', 'k')).not.toBe(getPieceSvgMarkup('classic', 'b', 'k'));
+    expect(getPieceSvgMarkup('cathedral', 'w', 'k')).toContain('viewBox="0 0 100 100"');
 
     const pieces = ['p', 'n', 'b', 'r', 'q', 'k'] as const;
     const colors = ['w', 'b'] as const;

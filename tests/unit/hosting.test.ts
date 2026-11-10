@@ -56,6 +56,12 @@ describe('Cloudflare Pages headers (public/_headers)', () => {
     const config = fs.readFileSync('vite.config.ts', 'utf8');
     for (const name of config.match(/'stockfish-[^']+'/g) ?? []) expect(name).toMatch(/-[0-9a-f]{7}\.(js|wasm)'$/);
   });
+
+  it('keeps first-run links fresh and out of search engines', () => {
+    const start = rules.get('/start/*')!;
+    expect(start.get('cache-control')).toBe('no-cache');
+    expect(start.get('x-robots-tag')).toBe('noindex');
+  });
 });
 
 describe('deploy guard (scripts/deploy.mjs)', () => {
