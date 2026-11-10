@@ -98,7 +98,13 @@ Differences from the brief, and why:
   - `phase8-leftovers` "phone: a key moment's sentence is complete": 1 of 4. **Real layout bug:** on phones the key-moment chips wrap into
     two reserved rows; five chips with long labels (`4... Bxf3`, `10... cxb5`, …; which moments Quick finds varies per run) need a third
     row, which was cut off. Fix: three rows reserved on phones (`7.3rem`); checked with five worst-case chips at 390 and 360 px.
-- Second round: to be submitted after these fixes are pushed.
+- **Second round, wc-e2e-repeat 505518 (commit `14119ff`): 4 of 4 runs passed, 159/159 each** (11.2–11.7 min); `meta.json` commit matches and
+  `repo-changes.txt` is empty for all four. Round 1 and 2 together: `phase5-review` "reviews the built-in sample game" passed in all 8 Juno runs.
+- **Follow-up (commit `8cb6894`): results are saved before they are shown** (a phone app closed as a result appears must have stored it).
+  `saveBeforeShow` (400 ms cap) in the endgame trainer and the coordinate / blindfold / guess drills; the puzzle trainer, played games
+  (resign, draw, flag, rules) and the stored game's review now request their save before showing anything; the repertoire drill already
+  did. IndexedDB still commits asynchronously, so "before" means waited for (drills) or requested first (the rest). It changes app code,
+  so the closing gate (unit, e2e ×4, perf) runs again on the final commit.
 
 ### Phase 8 follow-ups and the Phase 9 result, in short
 
