@@ -46,6 +46,8 @@ Automated checks (unit, e2e, perf) and batch studies (bot calibration, puzzle ve
 The setup and every job script are in hpc/ (hpc/README.md). Perf numbers from Juno are regression baselines for the code on a
 headless Linux node, not user-experience measurements; the Key measurements in PROGRESS.md say which machine each number is from.
 
+The gate procedure (push, submit, trust checks, report, preview) lives in the project skill .claude/skills/juno-gate/SKILL.md.
+
 Juno safety rules (these override anything else):
 
 - One folder only. Everything created on Juno lives under ~/work/wizard-chess-hpc/ (subfolders: repo/, results/, cache/ for
