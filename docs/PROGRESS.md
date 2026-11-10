@@ -22,13 +22,13 @@ log to `docs/progress/phase-N.md` and keep only a summary here.
 | 7 | Repertoire, endgame & visualization | Done | White/Black repertoire trees (build, import, drill, review flag), 6 engine-verified endgame drills, coordinate/blindfold/guess-the-move; all feed Today with the puzzles | [phase-7](progress/phase-7.md) |
 | 8 | Library, insights, settings, offline | Done | Own service worker (precache + COOP/COEP, update banner) and an offline e2e gate; played games kept, colour/opening/date/accuracy filters, delete, worker bulk import; Insights tab; live-region announcements and keyboard play on every board; Settings for usernames, analysis lines, review depth | [phase-8](progress/phase-8.md) |
 | 9 | Performance pass & final audit | Done (closing gate on Juno, 2026-11-10) | Every budget measured (frame time, input latency, idle, startup, 50-game memory, review speed) and a 16-flow long-task audit; start-up split into tasks, lazy Review screen, Play bot-move task 16–27 → 7–9 ms; hints reach the review; full spec audit (all Done except two Partial and the optional Phase 10); Prettier enforced; measuring scripts guard against a locked screen; closing gate on Juno (unit 592, e2e 4 × 159, perf), results saved before they are shown, review tests hardened | [phase-9](progress/phase-9.md) |
-| 11 | Hosting, iPhone, presets | In progress (stage 1 of 7 done; stage 2 coded, gate pending, 2026-11-10) | Cloudflare Pages (classic) with `_headers`, preview-first deploy scripts, automatic updates; WebKit e2e projects, phone engine profile, persistent storage, Add to Home Screen guide | [phase-11](progress/phase-11.md) |
+| 11 | Hosting, iPhone, presets | In progress (stages 1–2 of 7 done, 2026-11-10) | Cloudflare Pages (classic) with `_headers`, preview-first deploy scripts, automatic updates; WebKit e2e projects, phone engine profile, persistent storage, Add to Home Screen guide | [phase-11](progress/phase-11.md) |
 | HPC | Automated checks on Juno | Done (2026-11-10) | `hpc/`: Apptainer + pinned Playwright image, jobs wc-unit / e2e / e2e-repeat / perf / calibrate / puzzles / summarize, per-job build, port and scratch folder, safe-delete helper, reports; `wc-calibrate` and `wc-puzzles` not yet run | [phase-9](progress/phase-9.md) |
 
 
 ## Current phase and next step
 
-**Phase 11 is in progress (stage 1 of 7 done: hosting and updates; stage 2, iPhone support, coded and checked on the laptop, its Juno gate and preview pending; see the Phase 11 section below).** Phases 0–9 are done. **Phase 9 was closed on 2026-11-10: its closing gate ran on Juno (Linux, headless)**: typecheck, lint, format check, build,
+**Phase 11 is in progress (stages 1–2 of 7 done: hosting and updates, iPhone support; stage 3 is next; see the Phase 11 section below). Production gets one deploy at the end of Phase 11, after testing on the real iPhone (decided 2026-11-10); until then only previews are deployed.** Phases 0–9 are done. **Phase 9 was closed on 2026-11-10: its closing gate ran on Juno (Linux, headless)**: typecheck, lint, format check, build,
 592/592 unit tests, 4 of 4 full e2e runs (159/159 each) and all four perf scripts passed on commit `cefe783` (details below and in
 [phase-9](progress/phase-9.md)). **The Key measurements table at the bottom comes from earlier laptop runs; the Juno numbers are in the table
 under it** (regression baselines for a headless Linux node, not a user's screen). Phase 10 (native engine mode) is optional and not started.
@@ -109,7 +109,7 @@ e2e 4 × 160/160, perf all four). Plan, results and job IDs: [phase-11](progress
   Linux WebKit (Juno is the gate); WebKit has no long-task observer, so tests that assert on long tasks need a Chromium guard;
   sharing one engine makes the bot wait for a review position (≤ one search, ~0.2–0.6 s) on a phone.
 
-**Stage 2 result (2026-11-10): code done; laptop WebKit runs below, Juno gate and preview pending**
+**Stage 2 result (2026-11-10): done; Juno gate passed (perf still queued, see below); preview deployed, no production deploy**
 - Built as planned (profile, re-queue, review pause, persistence, guide, three projects). The persistence request runs once per
   start-up (a Home Screen launch is a fresh start, so no separate call was needed).
 - **Found by WebKit and fixed in the app:**
@@ -144,6 +144,19 @@ e2e 4 × 160/160, perf all four). Plan, results and job IDs: [phase-11](progress
 - **Laptop runs (Windows WebKit, not the gate):** desktop `webkit` first run 125/134 in 19.4 min (9 failures, all fixed and
   rerun); `webkit-iphone` first run found 10 more (all fixed and rerun, 25/25 of the failed and unreached tests); unit
   605/605 (76 s). Windows WebKit has no Web Audio, no date input and no long-task timing; Linux WebKit on Juno is the gate.
+- **Commit `96da4fd`, pushed** (the user allowed gate pushes for the rest of Phase 11 when nothing personal is in them).
+  **Preview** `https://a14c0304.wizards-chess-4tu.pages.dev` (alias `preview.wizards-chess-4tu.pages.dev`), build
+  `f32cb599143d`. `check:hosted`: Chrome 15/15; `--browser webkit-iphone` 16/16 (isolated, the guide on the first visit, "Phone:
+  one engine, 2 threads, 16 MB hash", mate at depth 16, bot online and offline, all 30 files cached, no foreign request).
+  **No stage 2 production deploy** (the user's decision): production is deployed once, at the end of Phase 11, after testing
+  on the real iPhone. It still serves stage 1's build `aeedca6f9bb6`.
+- **Juno gate on `96da4fd`, passed** (every `meta.json` commit `96da4fd667`, `repo-changes.txt` empty everywhere):
+  wc-unit 505993 (typecheck, lint, format, build, 605/605 unit); wc-e2e-repeat chromium ×2 505994 (165/165 each, 1 skipped =
+  the phone-only touch test, 12.0 and 12.2 min); webkit ×2 505995 (139/139 each, 1 skipped, 12.8 and 13.0 min); webkit-iphone ×2
+  505996 (140/140 each, 15.2 and 15.9 min). 0 failed, 0 flaky in all six runs. Linux WebKit runs about as fast as Chromium.
+- **wc-perf 505997: not finished when stage 2 closed** (queued for an exclusive node; Slurm's estimate was 17:16 Juno time on
+  2026-11-10). The user chose not to wait: **the stage 3 session reads `results/505997/summary.md` on Juno and reports it here**
+  (a failure there belongs to stage 2's code).
 - **Open (later stages):** the Games screen on a phone still shows the Chrome capture-extension card (stage 3, Chess.com sync,
   replaces it there); a real iPhone has not been tried yet (memory limit, Home Screen mode, the guide's steps on iOS 26).
 - Agent note: a stopped background `playwright test` left its runner orphaned (its shell's parent gone); not provably mine by
