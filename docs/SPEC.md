@@ -641,3 +641,55 @@ also use a native Stockfish for stronger, faster analysis.
 
 **Done when:** unit and end-to-end tests pass on both backends, the fallback is tested,
 and the comparison is recorded in PROGRESS.md.
+
+### Phase 11 — Hosting, iPhone support, and gift setup
+- **Hosting:** deploy dist/ to Cloudflare Pages with COOP/COEP headers (_headers file),
+  plus a deploy script. Verify the engine, offline use, and install on the hosted URL.
+- **iPhone (Safari/WebKit):**
+  - Add Playwright WebKit to the e2e projects (desktop and iPhone-sized touch) and fix
+    what fails.
+  - A phone engine profile: smaller hash, fewer threads, one engine at a time; reviews
+    pause live analysis.
+  - Request persistent storage. The first-run flow explains "Add to Home Screen" with
+    pictures, since Safari can clear data for sites that aren't installed.
+  - Touch drag, premoves, and the board size on small screens.
+- **Chess.com sync in the app:** a user-tapped "Sync my Chess.com games" button using
+  the official public archive API (api.chess.com): the only runtime network request the
+  site makes, and only on tap. Verify that CORS works under COEP. Respect ETags, back off
+  on 429, fetch only new months, and explain the archive delay.
+- **Presets and first run:** a preset file can set theme, piece set, settings, usernames,
+  bot level, display name, home-screen app name, a profile title, custom bot names, and a
+  welcome message. A first-run link applies it automatically. Includes a green-board theme
+  and an openly licensed piece set similar to common defaults (no Chess.com assets).
+- **Personal data stays local:** presets with real names, usernames or messages, and any
+  downloaded game data, live in a git-ignored local folder and are never committed.
+- **Batch history import on Juno:** a job that reviews a whole PGN history at Standard
+  depth and produces a restore file (games, reviews, personal puzzles, insights, and the
+  Phase 11b data) that the first-run link can load.
+- **Updates:** a "New version available, reload" prompt; saved data survives updates.
+
+**Done when:** a fresh iPhone, given only the first-run link, can install the app,
+see a pre-reviewed history, solve its personal puzzles, play the bot, and sync new
+Chess.com games; and the WebKit e2e suite passes on Juno.
+
+### Phase 11b — Personal history features (generic; any user with a game history)
+- **Your Chess Story:** a swipeable, Spotify-Wrapped-style card sequence built from the
+  reviewed history: games played, time span, peak rating, favourite and nemesis openings,
+  best-accuracy game, Brilliant and Great move counts, longest win streak, most-played
+  time control. Plays once on first open, and can be replayed any time from Insights in a
+  full-screen presentation mode, for showing to other people.
+- **Best game:** the highest-accuracy win, pre-reviewed, opening in Review with the
+  coach-style key-moment walkthrough.
+- **Highlight reel:** every Brilliant and Great move from the history, each one tap away
+  from replaying that moment.
+- **Training plan:** a 30-day plan on Today, built from the most common mistake motifs
+  in the history.
+- **Play against yourself:** a bot that plays the user's own most frequent opening moves
+  (an opening book built from their history), then plays at about their rating. Plus
+  custom-named bots from the preset.
+- **Achievements:** a badge system (e.g. 100 games reviewed, first Brilliant, Lucena
+  win), with badges earned from the imported history already unlocked.
+- **Head-to-head:** records against the user's most frequent opponents, showing only
+  opponents the preset lists.
+- **Easter eggs:** preset-defined triggers (a specific move sequence or position) that
+  show a custom message. The trigger system is generic; the contents live in the preset.
