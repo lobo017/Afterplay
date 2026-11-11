@@ -59,7 +59,7 @@ under `env -i` with a system-only PATH (so no conda or other non-system git can 
 its own environment the same way:
 
 ```bash
-cd "$HOME/work/wizard-chess-hpc" && sbatch --job-name=wc-setup --partition=dev --nodes=1 --ntasks=1 --cpus-per-task=4 --mem=8G --time=00:45:00 --export=NONE --mail-type=END,FAIL --mail-user=<your-email> --chdir="$HOME/work/wizard-chess-hpc" --output="$HOME/work/wizard-chess-hpc/results/slurm/%x-%j.out" --wrap="[ -d repo/.git ] || /usr/bin/env -i HOME=\"$HOME\" PATH=/usr/bin:/bin GIT_TERMINAL_PROMPT=0 git clone --branch main https://github.com/lobo017/Wizard-Chess.git repo; exec /bin/bash repo/hpc/setup.sbatch"
+cd "$HOME/work/wizard-chess-hpc" && sbatch --job-name=wc-setup --partition=dev --nodes=1 --ntasks=1 --cpus-per-task=4 --mem=8G --time=00:45:00 --export=NONE --mail-type=END,FAIL --mail-user=<your-email> --chdir="$HOME/work/wizard-chess-hpc" --output="$HOME/work/wizard-chess-hpc/results/slurm/%x-%j.out" --wrap="[ -d repo/.git ] || /usr/bin/env -i HOME=\"$HOME\" PATH=/usr/bin:/bin GIT_TERMINAL_PROMPT=0 git clone --branch main https://github.com/lobo017/afterplay.git repo; exec /bin/bash repo/hpc/setup.sbatch"
 ```
 
 Later runs (it fast-forwards the repo, pulls a new image only if the Playwright version changed, and runs `npm ci` only if the
