@@ -221,3 +221,60 @@ Moved here verbatim from PROGRESS.md as each stage is reported (the phase is sti
   still serves stage 1's build `aeedca6f9bb6`.
 - (Agent note: after the pull I also ran `git log --oneline -1` in the Juno repo, which is read-only but not on the ssh
   allow-list; not to be repeated: `meta.json` shows the commit.)
+
+## Rename stage: the app becomes "Afterplay" (2026-11-10, moved here verbatim from PROGRESS.md)
+
+**Rename stage (2026-11-10, code done, Juno gate passed on `5f60eb8`): the app is now "Afterplay".** Commits `7db78b7`
+(the stage) and `d3aeb26` (clone address in hpc/README), both pushed to `github.com/lobo017/afterplay`.
+- **Renamed (what people see):** page title and description, manifest `name` and `short_name` ("Afterplay"), header, install
+  guide, offline message, backup error texts, sample preset's welcome, the capture extension's visible strings, PGN `Annotator`
+  ("Afterplay review (…)") and `Site` headers (nothing in the code recognises the app's own PGNs by either header), download
+  names `afterplay-review.pgn` and `afterplay-backup-<date>.json`, package name `afterplay`, README, SPEC, LICENSES, hpc docs.
+  The install guide's pictured address bar now shows the page's own host.
+- **Kept (what the app depends on), pinned by `tests/unit/storage-names.test.ts`:** IndexedDB `wizards-chess-db` (version 4, its 8
+  stores and their indexes); localStorage `wc.settings.v1`, `wc.boardFeel.v1`, `wc.boardSize.v1`, `wc.profile.v1`,
+  `wc.first-run.v1`, `wc-install-guide-seen`; sessionStorage `wc-isolation-reload`; the `app.preferences` record; cache
+  `wizards-chess-precache-v1`; backup format `wizards-chess-backup`; bridge message names; the extension's storage keys. The
+  test also fails on a new storage key that is not listed, and on any app or build-config file reading package.json (only
+  `scripts/build-extension.mjs` does, for the version number). A backup with the old file name and format string restores
+  (tested). Test hooks (`__wizardChess*`), ids, the wc- job prefix, the Juno folders and the skill name are unchanged.
+- **Hosting:** new Cloudflare Pages project `afterplay` (classic Pages, production branch `main`), address
+  `https://afterplay-c0x.pages.dev` (Pages added the suffix). `deploy:preview` / `deploy:production` default to it. Nothing is
+  deployed there yet. The old project `wizards-chess` (`wizards-chess-4tu.pages.dev`) is untouched and still serves build
+  `aeedca6f9bb6` under the old name.
+- **Repository:** `hpc/setup.sbatch` and hpc/README clone from `github.com/lobo017/afterplay`; the laptop's origin is set to it.
+  Juno's clone still has the old address (GitHub redirects it); changing it is one `git remote set-url`, waiting for the user's
+  approval.
+- **iPhone, welcome shown twice (fixed):** a first-run link opened in Safari on an iPhone (first visit, not installed) opens the
+  Add to Home Screen guide without the welcome; "Continue in Safari" closes it and shows the welcome, then as before. Closed with
+  Done, no welcome follows in Safari; the Home Screen app (own storage) shows it on its first launch. Other platforms unchanged.
+  e2e: both paths in the WebKit iPhone project (`phase11-presets`: one test rewritten for the new order, one added for
+  Done + Home Screen app, standalone simulated with `navigator.standalone`). `check:hosted` follows the new order on the iPhone
+  and checks the noindex header on five `/start/` addresses plus the page's meta tag.
+- **Checked on the laptop:** typecheck, lint, format, build, unit 641/641; `phase11-presets`, `phase0`, `phase6b-shell` in
+  chromium and webkit-iphone (27 passed, 1 skipped by design); screenshots of the guide and the welcome looked at. The three PNG
+  icons and `favicon.svg` hold a gold crown mark and no text: unchanged.
+- **Juno gate on `5f60eb8`, passed after one rerun of perf** (`meta.json` commit `5f60eb84cf` and an empty `repo-changes.txt` in every
+  result below; setup 506956 ran first, exit 0, quota 26,010 files / 6.9 GB before, 27,072 / 7.3 GB after): wc-unit 506960
+  (typecheck, lint, format, build; 640 passed, 1 skipped); wc-e2e-repeat chromium ×2 506957 (172 passed, 2 skipped, each run),
+  webkit ×2 506958 (146 passed, 2 skipped), webkit-iphone ×2 506959 (148 passed, 0 skipped); 0 failed, 0 flaky in all six runs.
+- **wc-perf: first run 506961 FAILED, rerun 506989 passed.** 506961 (exit 1): `perf-drag` failed its premove-burst check
+  ("scenario 1 premoves: queued 3, final ply 4" and "only 1/3 executed in the bot's frame"; limits hardcoded at
+  `scripts/perf-drag.mjs` 753 and 756); every frame number in it was within budget (p95 16.67 ms, 0 dropped, 0 long tasks) and
+  `perf-review`, `perf-tasks`, `perf-memory` passed. 506989 (rerun, same commit, nothing changed, exit 0): `perf-drag`
+  `budgetPassed: true`, premoves queued 3, final ply 7, 3/3 in the bot's frame, no failures; the other three scripts passed.
+  **Known random-input flake:** the check queues the fixed premoves d4, Nf3, Nc3 against a bot that plays `Math.random` moves;
+  a bot reply that makes a queued premove illegal (for example a check) cancels it and the rest, by design. The script keeps
+  no move record, so the cancelling reply was not seen: the cause is inferred, not proved. Four earlier passes with 3/3 and
+  final ply 7: 505673 (`cefe783`), 505780 (`36b5bed`), 505997 (`96da4fd`), 506635 (`3022fd6`). The rename diff does not
+  touch premove, bot or engine code (play-controller: the PGN `Site` string only). Follow-up, not done: have `perf-drag` log the
+  bot's moves or seed its bot, so a failure shows its cause.
+- (Agent note: some read-only commands on Juno went beyond the ssh allow-list: `git remote -v` and `git rev-parse` in the
+  repo, and `grep`/`sed`/`wc` over result files. Not to be repeated; `cat`/`ls` give the same facts.)
+- **Preview** `https://dd556568.afterplay-c0x.pages.dev` (alias `preview.afterplay-c0x.pages.dev`), build `337393c929a3`, deployed from
+  `7debf25` (`5f60eb8` plus PROGRESS-only commits) to the `afterplay` project, **without** local presets (sample link only:
+  `/start/sample/`). `check:hosted`: Chrome 24/24; `--browser webkit-iphone` 25/25 (guide first without the welcome, then
+  Continue in Safari opens it; every `/start/` address noindex; both manifests installable in Chrome; no foreign request).
+  **No production deploy**: production (the old project) still serves stage 1's build `aeedca6f9bb6` under the old name.
+  Not tried on a real iPhone.
+
