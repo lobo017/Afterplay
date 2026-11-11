@@ -94,7 +94,7 @@ export class SettingsPanel {
           <span class="wc-dot ${isolated ? '' : 'wc-dot-warn'}"></span>
           <span>${isolated ? 'COOP/COEP Isolated' : 'Single-Thread Mode'}</span>
         </span>
-        <span class="wc-badge" data-testid="network-badge"><span class="wc-dot"></span><span>Zero-Network Offline Shell</span></span>
+        <span class="wc-badge" data-testid="network-badge"><span class="wc-dot"></span><span>Offline shell · network only for the Chess.com sync</span></span>
         <span class="wc-badge" data-testid="core-badge"><span class="wc-dot"></span><span>Core Rules · PGN · IDB v${about.schemaVersion}</span></span>
         <span class="wc-badge" data-testid="engine-badge"><span class="wc-dot"></span><span>Stockfish 17.1 WASM · Bot 400–2400</span></span>
       </div>

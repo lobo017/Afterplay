@@ -173,7 +173,8 @@ only runtime network request, made only on that button (AGENTS.md, SPEC.md hard 
   route interception, invented player), and an 18th `perf:tasks` flow (a mocked sync of 120 games, then one with nothing new).
   No existing test was changed.
 - **Also changed:** Settings › About's "Runtime network" line said "0 External Requests"; it now says "Only the Chess.com sync,
-  when you press it". The "Zero-Network Offline Shell" badge is unchanged (an existing e2e test asserts its text).
+  when you press it", and the badge "Zero-Network Offline Shell" now reads "Offline shell · network only for the Chess.com
+  sync" (the e2e assertion on the badge in `phase6b-shell.spec.ts` follows, and now also checks the About line).
 - **Local checks (laptop, AC power):** typecheck, lint, format check, build; 690 unit tests + 1 skipped (59 files, 87 s); the new
   spec 12/12 in chromium, webkit and webkit-iphone; the settings and shell specs with it in chromium and webkit-iphone (28/28);
   screenshots looked at (phone and desktop); `perf:tasks` once, 18 flows, 0 tasks of 50 ms or more (a check that the new flow

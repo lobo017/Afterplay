@@ -122,7 +122,8 @@ test.describe('Phase 6b — app frame and navigation', () => {
     await expect(about.getByTestId('isolation-badge')).toContainText('COOP/COEP Isolated');
     await expect(about.getByTestId('core-badge')).toContainText('IDB v4');
     await expect(about.getByTestId('engine-badge')).toContainText('Stockfish 17.1 WASM');
-    await expect(about.getByTestId('network-badge')).toContainText('Zero-Network');
+    await expect(about.getByTestId('network-badge')).toHaveText('Offline shell · network only for the Chess.com sync');
+    await expect(about.getByTestId('stat-network')).toContainText('Only the Chess.com sync, when you press it');
     for (const id of ['threading', 'network', 'datasets', 'rules', 'pgn', 'storage', 'engine', 'bot']) {
       await expect(about.getByTestId(`stat-${id}`)).toBeVisible();
     }
