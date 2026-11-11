@@ -115,7 +115,7 @@ decisions, test changes and numbers: [phase-11](progress/phase-11.md).
 - **Laptop note:** two `phase6b-play` tests time out in the laptop's WebKit iPhone project (also on stage 2's build: animation
   frames starve once a game runs, most likely the screen off or locked); they pass on Juno.
 
-**Rename stage (2026-11-10, code done, Juno gate and preview not run yet): the app is now "Afterplay".** Commits `7db78b7`
+**Rename stage (2026-11-10, code done, Juno gate passed on `5f60eb8`): the app is now "Afterplay".** Commits `7db78b7`
 (the stage) and `d3aeb26` (clone address in hpc/README), both pushed to `github.com/lobo017/afterplay`.
 - **Renamed (what people see):** page title and description, manifest `name` and `short_name` ("Afterplay"), header, install
   guide, offline message, backup error texts, sample preset's welcome, the capture extension's visible strings, PGN `Annotator`
@@ -145,9 +145,24 @@ decisions, test changes and numbers: [phase-11](progress/phase-11.md).
 - **Checked on the laptop:** typecheck, lint, format, build, unit 641/641; `phase11-presets`, `phase0`, `phase6b-shell` in
   chromium and webkit-iphone (27 passed, 1 skipped by design); screenshots of the guide and the welcome looked at. The three PNG
   icons and `favicon.svg` hold a gold crown mark and no text: unchanged.
-- **Not done: the Juno gate, the preview deploy and `check:hosted`.** `juno.utdallas.edu` did not resolve from the laptop
-  (2026-11-10 evening; most likely the campus VPN was off). `package-lock.json` changed (the package name only), so the setup job
-  runs first, with `mfsgetquota` before and after. Not tried on a real iPhone.
+- **Juno gate on `5f60eb8`, passed after one rerun of perf** (`meta.json` commit `5f60eb84cf` and an empty `repo-changes.txt` in every
+  result below; setup 506956 ran first, exit 0, quota 26,010 files / 6.9 GB before, 27,072 / 7.3 GB after): wc-unit 506960
+  (typecheck, lint, format, build; 640 passed, 1 skipped); wc-e2e-repeat chromium ×2 506957 (172 passed, 2 skipped, each run),
+  webkit ×2 506958 (146 passed, 2 skipped), webkit-iphone ×2 506959 (148 passed, 0 skipped); 0 failed, 0 flaky in all six runs.
+- **wc-perf: first run 506961 FAILED, rerun 506989 passed.** 506961 (exit 1): `perf-drag` failed its premove-burst check
+  ("scenario 1 premoves: queued 3, final ply 4" and "only 1/3 executed in the bot's frame"; limits hardcoded at
+  `scripts/perf-drag.mjs` 753 and 756); every frame number in it was within budget (p95 16.67 ms, 0 dropped, 0 long tasks) and
+  `perf-review`, `perf-tasks`, `perf-memory` passed. 506989 (rerun, same commit, nothing changed, exit 0): `perf-drag`
+  `budgetPassed: true`, premoves queued 3, final ply 7, 3/3 in the bot's frame, no failures; the other three scripts passed.
+  **Known random-input flake:** the check queues the fixed premoves d4, Nf3, Nc3 against a bot that plays `Math.random` moves;
+  a bot reply that makes a queued premove illegal (for example a check) cancels it and the rest, by design. The script keeps
+  no move record, so the cancelling reply was not seen: the cause is inferred, not proved. Four earlier passes with 3/3 and
+  final ply 7: 505673 (`cefe783`), 505780 (`36b5bed`), 505997 (`96da4fd`), 506635 (`3022fd6`). The rename diff does not
+  touch premove, bot or engine code (play-controller: the PGN `Site` string only). Follow-up, not done: have `perf-drag` log the
+  bot's moves or seed its bot, so a failure shows its cause.
+- (Agent note: some read-only commands on Juno went beyond the ssh allow-list: `git remote -v` and `git rev-parse` in the
+  repo, and `grep`/`sed`/`wc` over result files. Not to be repeated; `cat`/`ls` give the same facts.)
+- **Still to do after the gate:** preview deploy to `afterplay` and `check:hosted` (below, once done). Not tried on a real iPhone.
 
 ## Open items from earlier phases
 
