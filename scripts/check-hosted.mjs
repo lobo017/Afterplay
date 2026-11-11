@@ -12,7 +12,8 @@
 //    still answers.
 // 5. Install (Chromium): a full manifest, and Chrome's own installability check finds nothing wrong.
 // 6. The sample first-run link (/start/sample/), as a first visitor: the host serves the link's own page and
-//    manifest, the preset is applied (look, names, welcome), and an unknown link says so.
+//    manifest, every /start/ address is noindex, the preset is applied (look, names, welcome; on an iPhone the Add to
+//    Home Screen guide first, then Continue in Safari), and an unknown link says so.
 // 7. Every request the pages made went to the hosted origin itself.
 //
 // Screenshots go to test-results/hosted/. Exit code 0 when every check passes. A dev-time script: it is the only
@@ -210,19 +211,48 @@ try {
       /noindex/.test(lh['x-robots-tag'] ?? ''),
     `cache-control ${lh['cache-control']}, x-robots-tag ${lh['x-robots-tag']}`,
   );
+  // Every address under /start/ (the page, its preset and manifest, and a link that does not exist) carries the
+  // noindex header; the link's page has the meta tag as well
+  const noindexMisses = [];
+  for (const p of [
+    '/start/sample/',
+    '/start/sample/index.html',
+    '/start/sample/preset.json',
+    '/start/sample/manifest.webmanifest',
+    '/start/no-such-link/',
+  ]) {
+    const r = await linkContext.request.get(new URL(p, origin).href, { timeout: 30_000 });
+    if (!/noindex/.test(r.headers()['x-robots-tag'] ?? '')) noindexMisses.push(`${p} (${r.status()}, no header)`);
+  }
+  if (!/<meta name="robots" content="noindex"\s*\/?>/.test(linkHtml))
+    noindexMisses.push('/start/sample/ (no meta tag)');
+  check('first-run link: every /start/ address is noindex', noindexMisses.length === 0, noindexMisses.join(', '));
   const shell = link.getByTestId('app-shell');
   const applied = await waitFor(async () => (await shell.getAttribute('data-first-run')) === 'applied', 30_000);
   check('first-run link: the preset is applied', Boolean(applied), (await shell.getAttribute('data-first-run')) ?? '');
+  if (iphone) {
+    // In Safari on an iPhone the guide comes first, without the welcome; "Continue in Safari" leads to it
+    const guide = await waitFor(() => link.getByTestId('install-guide').isVisible(), 10_000);
+    const welcomeEarly = await link.getByTestId('welcome-sheet').isVisible();
+    check(
+      'first-run link: the Add to Home Screen guide comes first, without the welcome',
+      Boolean(guide) && !welcomeEarly,
+    );
+    if (guide) {
+      await link.screenshot({ path: path.join(OUT, `${browserName}-first-run-guide.png`) });
+      await link.getByTestId('install-guide-continue').click();
+    }
+  }
   const welcome = await waitFor(() => link.getByTestId('welcome-sheet').isVisible(), 10_000);
-  check('first-run link: the welcome message opens', Boolean(welcome));
+  check(
+    iphone
+      ? 'first-run link: Continue in Safari opens the welcome message'
+      : 'first-run link: the welcome message opens',
+    Boolean(welcome),
+  );
   if (welcome) {
     await link.screenshot({ path: path.join(OUT, `${browserName}-first-run-welcome.png`) });
     await link.getByTestId('welcome-done').click();
-  }
-  if (iphone) {
-    const guide = await waitFor(() => link.getByTestId('install-guide').isVisible(), 10_000);
-    check('first-run link: the Add to Home Screen guide follows the welcome', Boolean(guide));
-    if (guide) await link.getByTestId('install-guide-done').click();
   }
   const look = await link.evaluate(() => {
     const frame = document.querySelector('[data-testid="play-layout"] [data-testid="chess-board-frame"]');

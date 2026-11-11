@@ -114,7 +114,7 @@ sw.addEventListener('fetch', (event) => {
       } catch (err) {
         // Offline and not cached: say so plainly rather than a browser error page
         if (request.mode === 'navigate') {
-          return new Response('Wizard’s Chess is offline and this page is not in its cache.', {
+          return new Response('Afterplay is offline and this page is not in its cache.', {
             status: 503,
             headers: { 'Content-Type': 'text/plain; charset=utf-8' },
           });

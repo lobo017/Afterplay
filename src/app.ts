@@ -373,7 +373,7 @@ export function mountAppShell(container: HTMLElement): {
       <header class="wc-topbar">
         <div class="wc-brand">
           <div class="wc-brand-mark" aria-hidden="true">${icon('crest')}</div>
-          <h1 class="wc-brand-title" data-testid="brand-title">Wizard's Chess</h1>
+          <h1 class="wc-brand-title" data-testid="brand-title">Afterplay</h1>
           <span class="wc-screen-title" data-testid="screen-title" aria-hidden="true">Play</span>
         </div>
         <nav class="wc-nav" aria-label="Main" data-testid="main-nav">
@@ -554,8 +554,10 @@ export function mountAppShell(container: HTMLElement): {
   registerActivity('game', () => playController.isGameInProgress());
 
   // The first-run link (/start/<slug>/, preset/first-run.ts): its preset is applied once on this device, then its
-  // welcome message is shown, and on an iPhone the Add to Home Screen guide follows. Without a link (or on every
-  // later launch) only the guide's own first-visit rule applies.
+  // welcome message is shown. In Safari on an iPhone (not the Home Screen app) the Add to Home Screen guide comes
+  // first, without the welcome: the Home Screen app has its own storage and shows the welcome on its first launch, so
+  // it would otherwise be read twice. "Continue in Safari" on the guide shows the welcome there instead. Without a
+  // link (or on every later launch) only the guide's own first-visit rule applies.
   const startSlug = typeof window !== 'undefined' ? startSlugFromPath(window.location.pathname) : null;
   let firstRun = loadFirstRunState();
   let guideAfterWelcome = false;
@@ -617,12 +619,15 @@ export function mountAppShell(container: HTMLElement): {
         .catch(() => undefined);
     }
   };
-  /** The welcome message if one is waiting, otherwise the install guide's own first-visit rule. */
+  /** The welcome message if one is waiting (after the guide in iPhone Safari), otherwise the guide's own rule. */
   const showWelcomeOrGuide = (): void => {
     const welcome = profile.get().welcome;
     if (welcome && firstRun.slug && !firstRun.welcomeSeen) {
-      guideAfterWelcome = true;
-      welcomeSheet.show(welcome);
+      const showWelcome = (): void => {
+        guideAfterWelcome = true;
+        welcomeSheet.show(welcome);
+      };
+      if (!installGuide.openForFirstRunLink(showWelcome)) showWelcome();
     } else {
       installGuide.openIfFirstRun();
     }

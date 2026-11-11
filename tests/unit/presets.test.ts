@@ -429,15 +429,15 @@ describe('Phase 11 — first-run link pages (scripts/lib/start-pages.mjs)', () =
   const INDEX = `<!doctype html>
 <html lang="en">
   <head>
-    <meta name="apple-mobile-web-app-title" content="Wizard's Chess" />
-    <title>Wizard's Chess</title>
+    <meta name="apple-mobile-web-app-title" content="Afterplay" />
+    <title>Afterplay</title>
     <script type="module" crossorigin src="/assets/index-abc.js"></script>
   <link rel="manifest" href="/manifest.webmanifest"></head>
   <body><div id="app"></div></body>
 </html>`;
   const MANIFEST = JSON.stringify({
-    name: "Wizard's Chess",
-    short_name: 'WizardChess',
+    name: 'Afterplay',
+    short_name: 'Afterplay',
     start_url: '/',
     scope: '/',
     id: '/',
@@ -457,7 +457,7 @@ describe('Phase 11 — first-run link pages (scripts/lib/start-pages.mjs)', () =
       icons: [{ src: '/icon-192.png' }],
     });
     const unnamed = JSON.parse(startManifest(MANIFEST, 'sample', '')) as Record<string, unknown>;
-    expect(unnamed).toMatchObject({ name: "Wizard's Chess", short_name: 'WizardChess', start_url: '/start/sample/' });
+    expect(unnamed).toMatchObject({ name: 'Afterplay', short_name: 'Afterplay', start_url: '/start/sample/' });
     expect(() => startManifest(MANIFEST, '../etc', 'x')).toThrow(/not a valid link name/);
   });
 
@@ -471,7 +471,7 @@ describe('Phase 11 — first-run link pages (scripts/lib/start-pages.mjs)', () =
     expect(html).not.toContain('href="/manifest.webmanifest"');
     // Without a name only the manifest and the robots tag change
     const unnamed = startIndexHtml(INDEX, 'sample', '');
-    expect(unnamed).toContain("<title>Wizard's Chess</title>");
+    expect(unnamed).toContain('<title>Afterplay</title>');
     expect(unnamed).toContain('/start/sample/manifest.webmanifest');
   });
 
@@ -479,7 +479,7 @@ describe('Phase 11 — first-run link pages (scripts/lib/start-pages.mjs)', () =
     expect(() =>
       startIndexHtml(INDEX.replace('<link rel="manifest" href="/manifest.webmanifest">', ''), 's-1', 'A'),
     ).toThrow(/manifest link/);
-    expect(() => startIndexHtml(INDEX.replace("<title>Wizard's Chess</title>", ''), 's-1', 'A')).toThrow(/title/);
+    expect(() => startIndexHtml(INDEX.replace('<title>Afterplay</title>', ''), 's-1', 'A')).toThrow(/title/);
     expect(() => startIndexHtml(INDEX, 'Bad Slug', 'A')).toThrow(/not a valid link name/);
   });
 

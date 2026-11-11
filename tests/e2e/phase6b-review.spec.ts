@@ -187,7 +187,7 @@ test.describe('Phase 6b — Review', () => {
     ]);
     await page.getByTestId('btn-review-export').click();
     await expect(page.getByTestId('pgn-sheet')).toBeVisible();
-    expect(await page.getByTestId('textarea-pgn').inputValue()).toContain('[Annotator "Wizard\'s Chess review');
+    expect(await page.getByTestId('textarea-pgn').inputValue()).toContain('[Annotator "Afterplay review');
     await page.keyboard.press('Escape');
   });
 

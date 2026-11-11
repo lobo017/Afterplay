@@ -213,10 +213,10 @@ describe('Phase 6b — backup files', () => {
 
   it('rejects files that are not backups', () => {
     expect(() => summarizeBackup('nope')).toThrow(/not JSON/);
-    expect(() => summarizeBackup('{"format":"other"}')).toThrow(/not a Wizard/);
+    expect(() => summarizeBackup('{"format":"other"}')).toThrow(/not an Afterplay/);
   });
 
   it('names the file by date', () => {
-    expect(backupFileName(new Date(2026, 9, 9))).toBe('wizards-chess-backup-2026-10-09.json');
+    expect(backupFileName(new Date(2026, 9, 9))).toBe('afterplay-backup-2026-10-09.json');
   });
 });

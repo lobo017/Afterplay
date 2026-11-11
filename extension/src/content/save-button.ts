@@ -6,7 +6,7 @@ export type SaveButtonState =
   'ready' | 'in-progress' | 'saving' | 'saved' | 'already-queued' | 'already-delivered' | 'not-imported' | 'failed';
 
 const LABELS: Record<SaveButtonState, string> = {
-  ready: "Save to Wizard's Chess",
+  ready: 'Save to Afterplay',
   'in-progress': 'Game in progress',
   saving: 'Saving…',
   saved: 'Saved ✓',
@@ -62,7 +62,7 @@ export class SaveButton {
     root.innerHTML = `<style>${STYLE}</style>
       <div class="wc">
         <span class="note" data-testid="wc-save-note" role="status"></span>
-        <button type="button" data-testid="wc-save-button" title="Wizard's Chess capture"><span class="mark" aria-hidden="true">♛</span><span class="label"></span></button>
+        <button type="button" data-testid="wc-save-button" title="Afterplay capture"><span class="mark" aria-hidden="true">♛</span><span class="label"></span></button>
       </div>`;
     this.button = root.querySelector('button')!;
     this.label = root.querySelector('.label')!;

@@ -97,12 +97,12 @@ describe('deploy guard (scripts/deploy.mjs)', () => {
   it("reads the deployment URL from Wrangler's output file, or its console text", () => {
     const ndjson = [
       '{"type":"wrangler-session","version":1}',
-      '{"type":"pages-deploy-detailed","version":1,"url":"https://abc123.wizards-chess.pages.dev","alias":"https://preview.wizards-chess.pages.dev"}',
+      '{"type":"pages-deploy-detailed","version":1,"url":"https://abc123.afterplay.pages.dev","alias":"https://preview.afterplay.pages.dev"}',
     ].join('\n');
-    expect(deploymentUrlOf(ndjson, '')).toBe('https://abc123.wizards-chess.pages.dev');
-    expect(
-      deploymentUrlOf('', '✨ Deployment complete! Take a peek over at https://f00d.wizards-chess.pages.dev\n'),
-    ).toBe('https://f00d.wizards-chess.pages.dev');
+    expect(deploymentUrlOf(ndjson, '')).toBe('https://abc123.afterplay.pages.dev');
+    expect(deploymentUrlOf('', '✨ Deployment complete! Take a peek over at https://f00d.afterplay.pages.dev\n')).toBe(
+      'https://f00d.afterplay.pages.dev',
+    );
     expect(deploymentUrlOf('not json', 'nothing here')).toBeNull();
   });
 
@@ -111,7 +111,7 @@ describe('deploy guard (scripts/deploy.mjs)', () => {
       commit: 'a'.repeat(40),
       fingerprint: 'f'.repeat(64),
       buildId: 'f'.repeat(12),
-      url: 'https://x.wizards-chess.pages.dev',
+      url: 'https://x.afterplay.pages.dev',
       deployedAt: '2026-11-10T00:00:00Z',
     };
     const same = { commit: record.commit, fingerprint: record.fingerprint };

@@ -1438,7 +1438,7 @@ export class PlayController {
     const pad = (n: number) => String(n).padStart(2, '0');
     const tree = this.gameTree;
     tree.setHeader('Event', `Casual game vs ${bot} (${this.botRating})`);
-    tree.setHeader('Site', "Wizard's Chess");
+    tree.setHeader('Site', 'Afterplay');
     tree.setHeader('Date', `${now.getFullYear()}.${pad(now.getMonth() + 1)}.${pad(now.getDate())}`);
     tree.setHeader('UTCDate', `${now.getUTCFullYear()}.${pad(now.getUTCMonth() + 1)}.${pad(now.getUTCDate())}`);
     tree.setHeader('UTCTime', `${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}:${pad(now.getUTCSeconds())}`);

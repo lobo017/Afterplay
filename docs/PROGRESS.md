@@ -1,4 +1,6 @@
-# Wizard's Chess — Progress
+# Afterplay — Progress
+
+The app was called Wizard's Chess before the rename stage of 2026-11-10; the archives in `docs/progress/` keep that name.
 
 This is the short, always-read file. The full per-phase logs (plans, results, test counts, probes)
 are archived verbatim in `docs/progress/`; open one only when the work needs that history.
@@ -112,6 +114,18 @@ decisions, test changes and numbers: [phase-11](progress/phase-11.md).
   shows in Safari and once more in the installed app; the installed app's first launch needs the network.
 - **Laptop note:** two `phase6b-play` tests time out in the laptop's WebKit iPhone project (also on stage 2's build: animation
   frames starve once a game runs, most likely the screen off or locked); they pass on Juno.
+
+**Rename stage (2026-11-10, in progress): the app becomes "Afterplay".** Plan: (1) rename everything a user or reader sees
+(page, manifest, header, guide, sample preset, extension strings, PGN `Annotator` / `Site` headers, download file names, package
+name, README, SPEC, AGENTS, LICENSES); (2) keep every internal name (IndexedDB `wizards-chess-db` and its stores, the `wc.*` /
+`wc-*` localStorage keys, cache `wizards-chess-precache-v1`, backup format `wizards-chess-backup`, test hooks, ids, the wc- job
+prefix, the Juno folders, the skill name) and pin them with a new unit test (`tests/unit/storage-names.test.ts`); (3) a new
+Cloudflare Pages project `afterplay` (the old `wizards-chess-4tu` stays untouched), deploy scripts and docs pointed at it; (4)
+repository address → `github.com/lobo017/afterplay` in `hpc/setup.sbatch` and the laptop's origin (Juno's remote: one command, run
+only after the user's approval); (5) iPhone Safari: a first-run link shows the Add to Home Screen guide first, with "Continue in
+Safari" leading to the welcome (`src/app.ts`, `src/ui/install-guide.ts`, `tests/e2e/phase11-presets.spec.ts`); `check:hosted`
+checks noindex on `/start/`. Risks: tests that assert the old visible name (updated with it, none weakened); a storage name
+changing by accident (the new test); the installed production app at the old address keeps its old name until the final deploy.
 
 ## Open items from earlier phases
 

@@ -162,7 +162,7 @@ describe('Phase 5 — game review assembly', () => {
   it('writes an annotated PGN that parses back with evals, NAGs, comments and the best line', () => {
     const { tree, positions, review: r } = review('miss-ignores-hanging-knight');
     const pgn = buildAnnotatedPgn(tree, r, positions, 'Stockfish 17.1');
-    expect(pgn).toContain('[Annotator "Wizard\'s Chess review (Stockfish 17.1, depth 18)"]');
+    expect(pgn).toContain('[Annotator "Afterplay review (Stockfish 17.1, depth 18)"]');
     const parsed = parsePgn(pgn);
     const main = parsed.getMainLine().filter((n) => n.parentId !== null);
     expect(main.map((n) => n.san)).toEqual(['Nd4', 'h6']);

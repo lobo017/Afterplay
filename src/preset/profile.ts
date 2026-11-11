@@ -24,7 +24,7 @@ export const EMPTY_PROFILE: Readonly<Profile> = Object.freeze({
 });
 
 /** The app's own name, used wherever the profile names none. */
-export const DEFAULT_APP_NAME = "Wizard's Chess";
+export const DEFAULT_APP_NAME = 'Afterplay';
 
 /** Where the profile lives on this device (read synchronously at start-up, so the first frame has the names). */
 export const PROFILE_STORAGE_KEY = 'wc.profile.v1';

@@ -44,10 +44,10 @@ export function summarizeBackup(json: string): BackupSummary {
   try {
     parsed = JSON.parse(json) as Partial<BackupPayload>;
   } catch {
-    throw new Error('This file is not a Wizard’s Chess backup (not JSON).');
+    throw new Error('This file is not an Afterplay backup (not JSON).');
   }
   if (parsed.format !== 'wizards-chess-backup') {
-    throw new Error('This file is not a Wizard’s Chess backup.');
+    throw new Error('This file is not an Afterplay backup.');
   }
   const len = (v: unknown) => (Array.isArray(v) ? v.length : 0);
   const settings = Array.isArray(parsed.settings) ? parsed.settings : [];
@@ -76,7 +76,7 @@ const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? '' : 's'}`;
 
 export function backupFileName(now: Date): string {
   const pad = (n: number) => String(n).padStart(2, '0');
-  return `wizards-chess-backup-${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}.json`;
+  return `afterplay-backup-${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}.json`;
 }
 
 /**

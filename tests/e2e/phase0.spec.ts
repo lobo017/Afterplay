@@ -39,7 +39,7 @@ test.describe('Phase 0 — Application Shell & Offline Isolation', () => {
 
     // Verify shell renders cleanly
     await expect(page.getByTestId('app-shell')).toBeVisible();
-    await expect(page.getByRole('heading', { name: "Wizard's Chess" })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Afterplay' })).toBeVisible();
     await expect(page.getByTestId('isolation-badge')).toContainText('COOP/COEP Isolated');
 
     // Verify dev overlay is hidden initially and toggles on backtick (`) key

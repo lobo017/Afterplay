@@ -416,7 +416,7 @@ export function buildAnnotatedPgn(
   // Earlier engine annotations (an imported Lichess analysis, an earlier review) go first,
   // so every NAG, eval and engine comment in the export is this review's
   stripEngineAnnotations(copy);
-  copy.setHeader('Annotator', `Wizard's Chess review (${engineName}, ${budgetLabel(review)})`);
+  copy.setHeader('Annotator', `Afterplay review (${engineName}, ${budgetLabel(review)})`);
 
   for (const move of review.moves) {
     const node = copy.getNode(move.nodeId);

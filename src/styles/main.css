@@ -6144,6 +6144,8 @@ label.wc-setting-row {
 
 .wc-install-actions {
   display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
   justify-content: flex-end;
   margin-top: 1.1rem;
 }

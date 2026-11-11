@@ -8,7 +8,7 @@
 #SBATCH --time=00:45:00
 #SBATCH --export=NONE
 #
-# Setup of the Wizard's Chess checks on Juno. Run from the project folder (see hpc/README.md for the exact command;
+# Setup of the Afterplay checks on Juno. Run from the project folder (see hpc/README.md for the exact command;
 # --chdir and --output must point into ~/work/wizard-chess-hpc). It:
 #   1. updates (or on the first run clones) the repo in ~/work/wizard-chess-hpc/repo from GitHub
 #   2. tests the safe-delete helper
@@ -19,7 +19,7 @@
 #
 # The whole script is one function that is parsed before it runs, because step 1 may rewrite this very file.
 set -euo pipefail
-WC_REPO_URL="https://github.com/lobo017/Wizard-Chess.git"
+WC_REPO_URL="https://github.com/lobo017/afterplay.git"
 _home="${HOME:-$(getent passwd "$(id -un)" | cut -d: -f6)}"
 # shellcheck source=lib/paths.sh
 . "$_home/work/wizard-chess-hpc/repo/hpc/lib/paths.sh"

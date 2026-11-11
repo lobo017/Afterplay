@@ -1,4 +1,4 @@
-# Wizard's Chess
+# Afterplay
 
 An offline-first chess learning, playing, and Stockfish analysis suite built for locked 60/120 fps performance and zero runtime network requests.
 
@@ -58,7 +58,7 @@ Wrangler (a dev dependency) and always go to a preview URL first:
 
 ```bash
 npx wrangler login                                   # once, in a browser
-npx wrangler pages project create wizards-chess --production-branch=main --force   # once (--force: classic Pages, see below)
+npx wrangler pages project create afterplay --production-branch=main --force   # once (--force: classic Pages, see below)
 npm run deploy:preview                               # needs a clean git tree: builds, uploads, prints the URL and a build id
 npm run deploy:production -- --checked <build id>    # the same dist/, no rebuild
 ```
@@ -73,8 +73,9 @@ URL is its own origin, so its saved data and home-screen install are separate fr
 
 Since Wrangler 4.15x, `pages project create` hands new projects to Workers static assets unless
 given `--force`; this app stays on classic Pages (decided 2026-11-10). Later `pages deploy` commands
-run against the existing Pages project and need no flag. The production URL is
-`https://wizards-chess-4tu.pages.dev` (Pages added a suffix: the plain name was taken).
+run against the existing Pages project and need no flag. The Pages project is `afterplay`, at
+`https://afterplay-c0x.pages.dev` (Pages added a suffix: the plain name was taken). The app was called Wizard's Chess before
+2026-11-10; the earlier project `wizards-chess` (`https://wizards-chess-4tu.pages.dev`) still holds the last build under that name.
 
 ### On an iPhone or iPad
 
@@ -122,7 +123,7 @@ Every field but `version` is optional.
 |---|---|
 | `appName` | The app's name: page title, the heading, and the name under the Home Screen icon (up to 30 characters; a phone shows about 12) |
 | `profile` | `displayName` replaces "You" in Play and in the PGN of games played here; `title` is a short badge before it (also editable in Settings › Profile) |
-| `welcome` | A message shown once after the set-up (plain text; a blank line starts a paragraph). Settings › Profile shows it again |
+| `welcome` | A message shown once after the set-up (plain text; a blank line starts a paragraph). Settings › Profile shows it again. In Safari on an iPhone the Add to Home Screen guide comes first and the welcome waits for the Home Screen app's first launch (or for **Continue in Safari** on the guide) |
 | `settings` | Any app setting by its name in `src/ui/app-settings.ts` (`boardTheme`, `pieceSet`, `sound`, `reviewPreset`, …); `newGame` holds the bot level (`botRating` 400–2400), `botStyle`, `timeControlId`, `color`, think times and takebacks |
 | `usernames` | Your Lichess and Chess.com names, so the app knows your side in your games |
 | `bots` | Up to eight bots with names of their own: the usual bot at that `rating` and `style` (`solid`, `aggressive`, `gambiteer`), offered as buttons on the New game card |
@@ -240,7 +241,7 @@ npm run build:ext     # builds the unpacked extension into dist-ext/
 
 1. Open `chrome://extensions`, switch on **Developer mode**.
 2. **Load unpacked** → choose the `dist-ext/` folder.
-3. Pin "Wizard's Chess capture" to the toolbar. The badge counts captured games the site
+3. Pin "Afterplay capture" to the toolbar. The badge counts captured games the site
    hasn't collected yet.
 4. In the extension's popup, open **Settings** and enter your Lichess and Chess.com
    usernames (they decide which games are yours, and the site uses them for "Review as").
@@ -258,7 +259,7 @@ works as usual.
 
 ### How games are captured
 
-- **Save button** on game pages, and **Save game to Wizard's Chess** in the right-click menu
+- **Save button** on game pages, and **Save game to Afterplay** in the right-click menu
   of game links.
 - **Automatic capture** (Settings; on by default; your usernames tell the extension which
   games are yours):

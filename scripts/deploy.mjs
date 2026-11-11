@@ -9,7 +9,7 @@
 // preview deployed, and --checked names that preview's build id: production only ever gets a build someone checked.
 // The headers (COOP/COEP for the engine's threads, caching) come from public/_headers, copied into dist/.
 //
-// Environment: WC_PAGES_PROJECT (default "wizards-chess"). Wrangler's usage metrics are switched off. What goes to
+// Environment: WC_PAGES_PROJECT (default "afterplay"). Wrangler's usage metrics are switched off. What goes to
 // Cloudflare is dist/, the commit hash and a message naming the build id; nothing else.
 import { spawn, spawnSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -25,7 +25,7 @@ const DIST = path.join(ROOT, 'dist');
 const RECORD_DIR = path.join(ROOT, '.deploy');
 const PREVIEW_RECORD = path.join(RECORD_DIR, 'preview.json');
 const PRODUCTION_RECORD = path.join(RECORD_DIR, 'production.json');
-const PROJECT = process.env.WC_PAGES_PROJECT || 'wizards-chess';
+const PROJECT = process.env.WC_PAGES_PROJECT || 'afterplay';
 const PRODUCTION_BRANCH = 'main';
 const PREVIEW_BRANCH = 'preview';
 // Cloudflare Pages limits (free plan): files per deployment and bytes per file
@@ -115,7 +115,7 @@ async function pagesDeploy(branch, commit, buildId) {
       `--project-name=${PROJECT}`,
       `--branch=${branch}`,
       `--commit-hash=${commit}`,
-      `--commit-message=Wizard's Chess build ${buildId}`,
+      `--commit-message=Afterplay build ${buildId}`,
       '--commit-dirty=false',
     ],
     { WRANGLER_SEND_METRICS: 'false', WRANGLER_OUTPUT_FILE_PATH: outputFile },

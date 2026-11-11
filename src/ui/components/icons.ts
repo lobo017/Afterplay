@@ -1,5 +1,5 @@
 /**
- * The app's line icons, drawn for Wizard's Chess (24 × 24, stroked with currentColor).
+ * The app's line icons, drawn for Afterplay (24 × 24, stroked with currentColor).
  * Inline SVG strings, so they cost no requests and follow the text colour.
  */
 

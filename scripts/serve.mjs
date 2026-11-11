@@ -99,7 +99,7 @@ const handleRequest = (req, res) => {
 const server = http.createServer(handleRequest);
 
 server.listen(port, CANONICAL_HOST, () => {
-  console.log(`Wizard's Chess offline server running at http://${CANONICAL_HOST}:${port}`);
+  console.log(`Afterplay offline server running at http://${CANONICAL_HOST}:${port}`);
   console.log('COOP/COEP headers enabled (Cross-Origin Isolated).');
   console.log(`http://localhost:${port} redirects here (one origin, one game library).`);
 });

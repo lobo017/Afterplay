@@ -1,4 +1,4 @@
-# Wizard's Chess — Offline Chess Learning Tool: Specification
+# Afterplay — Offline Chess Learning Tool: Specification
 
 ## Goal
 The best fully offline chess learning and analysis tool. It should be smooth (locked

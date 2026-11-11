@@ -342,7 +342,7 @@ export interface OpenDatabaseOptions {
 }
 
 /**
- * Open the Wizard's Chess IndexedDB database and run all pending versioned migrations
+ * Open the Afterplay IndexedDB database and run all pending versioned migrations
  * up to `options.version` (defaults to `LATEST_SCHEMA_VERSION`).
  */
 export async function openWizardChessDB(options?: OpenDatabaseOptions): Promise<IDBPDatabase<WizardChessDBSchema>> {
@@ -393,7 +393,7 @@ export async function openWizardChessDB(options?: OpenDatabaseOptions): Promise<
 }
 
 /**
- * Delete a Wizard's Chess IndexedDB database by name.
+ * Delete an Afterplay IndexedDB database by name.
  */
 export async function deleteWizardChessDB(dbName: string = DEFAULT_DB_NAME): Promise<void> {
   await deleteDB(dbName);

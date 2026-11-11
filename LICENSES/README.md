@@ -1,6 +1,6 @@
 # Third-Party Licenses & Dataset Attributions
 
-Wizard's Chess is licensed under **GPL-3.0-or-later** (see root `LICENSE`).
+Afterplay is licensed under **GPL-3.0-or-later** (see root `LICENSE`).
 Every runtime dependency, development tool, and bundled dataset used by this project is listed below along with its license.
 
 ## Runtime Dependencies
@@ -32,7 +32,7 @@ Every runtime dependency, development tool, and bundled dataset used by this pro
 |--------------|--------|--------------|-------------|
 | `data/openings.json` | [`lichess-org/chess-openings`](https://github.com/lichess-org/chess-openings) | `CC0-1.0` | Public domain ECO opening classifications (`a.tsv`–`e.tsv`) keyed by normalized EPD — see `LICENSES/CC0-1.0.txt` |
 | `data/puzzles.json` | [Lichess Open Puzzle Database](https://database.lichess.org/#puzzles) | `CC0-1.0` | Public domain tactical puzzles (`lichess_db_puzzle.csv.zst`), stratified 20k subset — see `LICENSES/CC0-1.0.txt` |
-| `data/endgames.json` | Wizard's Chess Contributors | `GPL-3.0-or-later` | Hand-curated fundamental endgame training positions (K+Q v K, K+R v K, K+P opposition, Lucena, Philidor, R+P v R) |
+| `data/endgames.json` | Afterplay Contributors | `GPL-3.0-or-later` | Hand-curated fundamental endgame training positions (K+Q v K, K+R v K, K+P opposition, Lucena, Philidor, R+P v R) |
 
 ## Bundled artwork
 

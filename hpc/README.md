@@ -1,4 +1,4 @@
-# Wizard's Chess on Juno (UT Dallas SLURM cluster)
+# Afterplay on Juno (UT Dallas SLURM cluster)
 
 Automated checks (unit, e2e, perf) and batch studies (bot calibration, puzzle verification) run here, not on the laptop.
 Everything runs inside the official Playwright container (Apptainer), pinned to the Playwright version in

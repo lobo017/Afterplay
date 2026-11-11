@@ -5,7 +5,8 @@ import { startServer, waitForOfflineReady, type Server } from './helpers/server'
 
 // Phase 11 stage 3: presets and the first-run link. `/start/sample/` is the committed sample link (invented names:
 // public/start/sample/preset.json); the build writes its page and manifest (scripts/build-start-pages.mjs).
-// Runs in every project; the order "welcome, then the Add to Home Screen guide" only exists on the iPhone.
+// Runs in every project. On an iPhone in Safari the Add to Home Screen guide comes first, without the welcome
+// (the Home Screen app shows it on its first launch); "Continue in Safari" shows the welcome there instead.
 const SCREENSHOT_DIR = path.join('test-results', 'phase11-screens');
 const SAMPLE = '/start/sample/';
 
@@ -177,7 +178,7 @@ test.describe('Phase 11 — presets and the first-run link', () => {
     await expect(page.getByTestId('app-notice')).toBeHidden();
     await expect(playFrame(page)).toHaveAttribute('data-theme', 'marble-obsidian');
     await expect(page.getByTestId('bottom-player-name')).toHaveText('You (White)');
-    await expect(page).toHaveTitle("Wizard's Chess");
+    await expect(page).toHaveTitle('Afterplay');
     expect(await page.evaluate(() => document.querySelector('link[rel="manifest"]')?.getAttribute('href'))).toBe(
       '/manifest.webmanifest',
     );
@@ -197,8 +198,8 @@ test.describe('Phase 11 — presets and the first-run link', () => {
     await expect(page.getByTestId('top-player-name')).toHaveText('Stockfish Club (1400)');
     await expect(page.getByTestId('custom-bots')).toBeHidden();
     await expect(page.getByTestId('bot-rating-label')).toHaveText('1400 Elo (Club)');
-    await expect(page).toHaveTitle("Wizard's Chess");
-    await expect(page.getByTestId('brand-title')).toHaveText("Wizard's Chess");
+    await expect(page).toHaveTitle('Afterplay');
+    await expect(page.getByTestId('brand-title')).toHaveText('Afterplay');
     await page.getByTestId('btn-settings').click();
     await expect(page.getByTestId('input-display-name')).toHaveValue('');
     await expect(page.getByTestId('row-welcome-message')).toBeHidden();
@@ -214,7 +215,7 @@ test.describe('Phase 11 — presets and the first-run link', () => {
     await expect(page.getByTestId('bottom-player-title')).toHaveText('CM');
   });
 
-  test('on an iPhone the Add to Home Screen guide follows the welcome and uses the app name', async ({
+  test('iPhone Safari: the link opens the Add to Home Screen guide without the welcome; Continue in Safari shows it', async ({
     page,
     browser,
   }) => {
@@ -229,31 +230,92 @@ test.describe('Phase 11 — presets and the first-run link', () => {
       const first = await context.newPage();
       await openLink(first, SAMPLE, 'applied');
       const guide = first.getByTestId('install-guide');
-      await expect(first.getByTestId('welcome-sheet')).toBeVisible();
-      // The guide waits for the welcome
-      await first.waitForTimeout(1200);
-      await expect(guide).toBeHidden();
-      await screenshot(first, 'preset-welcome-first-visit');
-      await closeWelcome(first);
+      const welcome = first.getByTestId('welcome-sheet');
+      // The guide comes first, named as the preset says, and the welcome stays away
       await expect(guide).toBeVisible();
       await expect(first.getByTestId('install-guide-intro')).toContainText("Ada's Chess runs as an app");
       await expect(first.getByTestId('install-picture-home')).toContainText("Ada's Chess");
+      // The pictured address bar shows this page's own host
+      const host = new URL(first.url()).host;
+      await expect(first.getByTestId('install-picture-share')).toContainText(host.slice(0, 12));
+      await first.waitForTimeout(1200);
+      await expect(welcome).toBeHidden();
       await first.getByTestId('install-step-4').scrollIntoViewIfNeeded();
+      await expect(first.getByTestId('install-guide-continue')).toBeVisible();
+      await expect(first.getByTestId('install-guide-continue')).toHaveText('Continue in Safari');
       await screenshot(first, 'preset-install-guide');
-      await first.getByTestId('install-guide-done').click();
+      // Continue in Safari: the welcome, then the app as before
+      await first.getByTestId('install-guide-continue').click();
+      await expect(guide).toBeHidden();
+      await expect(welcome).toBeVisible();
+      await expect(first.getByTestId('welcome-title')).toHaveText('Welcome, Ada');
+      await screenshot(first, 'preset-welcome-after-continue');
+      await closeWelcome(first);
+      await first.waitForTimeout(1200);
       await expect(guide).toBeHidden();
       // Both seen: neither opens again
       await openLink(first, SAMPLE, 'already');
       await first.waitForTimeout(1500);
-      await expect(first.getByTestId('welcome-sheet')).toBeHidden();
+      await expect(welcome).toBeHidden();
       await expect(guide).toBeHidden();
       await context.close();
     } else {
+      // Every other platform: the welcome at once, and never the guide
       await openLink(page, SAMPLE, 'applied');
+      await expect(page.getByTestId('install-guide')).toBeHidden();
       await closeWelcome(page);
       await page.waitForTimeout(1200);
       await expect(page.getByTestId('install-guide')).toBeHidden();
     }
+  });
+
+  test('iPhone: the guide closed with Done shows no welcome in Safari; the Home Screen app shows it on its first launch', async ({
+    browser,
+  }) => {
+    test.skip(!isPhoneProject(), 'the Home Screen path exists only on an iPhone');
+    const iphone = {
+      ...devices['iPhone 13'],
+      baseURL: test.info().project.use.baseURL,
+      serviceWorkers: 'block' as const,
+      storageState: { cookies: [], origins: [] },
+    };
+    // Safari: the guide, closed with Done (the user goes on to add the app to the Home Screen)
+    const safari = await browser.newContext(iphone);
+    const tab = await safari.newPage();
+    await openLink(tab, SAMPLE, 'applied');
+    await expect(tab.getByTestId('install-guide')).toBeVisible();
+    await tab.getByTestId('install-guide-done').click();
+    await expect(tab.getByTestId('install-guide')).toBeHidden();
+    await tab.waitForTimeout(1200);
+    await expect(tab.getByTestId('welcome-sheet')).toBeHidden();
+    // Opened again from Settings, the guide has no "Continue in Safari"
+    await tab.getByTestId('btn-settings').click();
+    await expect(tab.getByTestId('settings-sheet')).toBeVisible();
+    await tab.getByTestId('btn-install-guide').click();
+    await expect(tab.getByTestId('install-guide')).toBeVisible();
+    await expect(tab.getByTestId('install-guide-continue')).toBeHidden();
+    await safari.close();
+
+    // The Home Screen app: its own empty storage, started at the link (the link's manifest), running standalone
+    const homeScreen = await browser.newContext(iphone);
+    await homeScreen.addInitScript(() => {
+      Object.defineProperty(Navigator.prototype, 'standalone', { get: () => true, configurable: true });
+    });
+    const app = await homeScreen.newPage();
+    await openLink(app, SAMPLE, 'applied');
+    await expect(app.getByTestId('welcome-sheet')).toBeVisible();
+    await expect(app.getByTestId('welcome-title')).toHaveText('Welcome, Ada');
+    await expect(app.getByTestId('install-guide')).toBeHidden();
+    await screenshot(app, 'preset-welcome-home-screen');
+    await closeWelcome(app);
+    await app.waitForTimeout(1200);
+    await expect(app.getByTestId('install-guide')).toBeHidden();
+    // Its second launch: neither
+    await openLink(app, SAMPLE, 'already');
+    await app.waitForTimeout(1500);
+    await expect(app.getByTestId('welcome-sheet')).toBeHidden();
+    await expect(app.getByTestId('install-guide')).toBeHidden();
+    await homeScreen.close();
   });
 
   test('a welcome that was not closed is shown again; one that was is not', async ({ page }) => {

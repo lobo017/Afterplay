@@ -180,8 +180,8 @@ async function updateBadge(): Promise<void> {
   await chrome.action.setTitle({
     title:
       waiting === 0
-        ? "Wizard's Chess capture: every captured game is on the analysis site"
-        : `Wizard's Chess capture: ${waiting} game${waiting === 1 ? '' : 's'} not on the analysis site yet (sent when it is open in a tab)`,
+        ? 'Afterplay capture: every captured game is on the analysis site'
+        : `Afterplay capture: ${waiting} game${waiting === 1 ? '' : 's'} not on the analysis site yet (sent when it is open in a tab)`,
   });
 }
 
@@ -235,7 +235,7 @@ function setupContextMenu(): void {
   void chrome.contextMenus.removeAll().then(() => {
     chrome.contextMenus.create({
       id: CONTEXT_MENU_ID,
-      title: "Save game to Wizard's Chess",
+      title: 'Save game to Afterplay',
       contexts: ['link'],
       targetUrlPatterns: ['https://lichess.org/*', 'https://www.chess.com/*', 'https://chess.com/*'],
     });
@@ -795,7 +795,7 @@ chrome.runtime.onStartup.addListener(() => {
   for (const site of BACKFILL_SITES) void runAutoSync(site, 'startup');
 });
 
-/** "Save game to Wizard's Chess" on a game link. */
+/** "Save game to Afterplay" on a game link. */
 async function onContextMenuClick(info: chrome.contextMenus.OnClickData): Promise<void> {
   if (info.menuItemId !== CONTEXT_MENU_ID || !info.linkUrl) return;
   const link = info.linkUrl;

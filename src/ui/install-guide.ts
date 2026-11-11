@@ -58,6 +58,15 @@ const HIGHLIGHT = 'var(--accent-gold)';
 /** How much of the app's name fits under an icon in the pictures. */
 const PICTURE_NAME_CHARS = 16;
 
+/** How much of the page's host fits in the pictured address bar. */
+const PICTURE_HOST_CHARS = 18;
+
+/** The host as the pictured address bar shows it: cut with an ellipsis when it is long. */
+export function shortHost(host: string): string {
+  const chars = [...host];
+  return chars.length > PICTURE_HOST_CHARS ? `${chars.slice(0, PICTURE_HOST_CHARS - 1).join('')}…` : host;
+}
+
 /** Safari's bottom bar with the ⋯ menu open, "Share" highlighted (and the older toolbar's Share button). */
 const PICTURE_SHARE = `
 <svg viewBox="0 0 240 150" role="img" aria-labelledby="ig-p1" class="wc-install-pic" data-testid="install-picture-share">
@@ -71,7 +80,7 @@ const PICTURE_SHARE = `
   <text x="124" y="84" class="wc-ig-text-dim">Bookmarks</text>
   <rect x="18" y="106" width="204" height="28" rx="14" class="wc-ig-card"/>
   <path d="M34 114l-6 6 6 6" class="wc-ig-stroke"/>
-  <text x="64" y="124" class="wc-ig-text-dim">wizards-chess…</text>
+  <text x="64" y="124" class="wc-ig-text-dim" data-page-host></text>
   <circle cx="204" cy="120" r="10" fill="none" stroke="${HIGHLIGHT}" stroke-width="2.5"/>
   <text x="204" y="124" text-anchor="middle" class="wc-ig-text">⋯</text>
 </svg>`;
@@ -101,7 +110,7 @@ const PICTURE_CONFIRM = `
   <text x="207" y="31" text-anchor="middle" class="wc-ig-text">Add</text>
   <rect x="20" y="46" width="200" height="40" rx="10" class="wc-ig-card"/>
   <image href="/icon-192.png" x="28" y="52" width="28" height="28"/>
-  <text x="66" y="71" class="wc-ig-text" data-app-name="short">Wizard's Chess</text>
+  <text x="66" y="71" class="wc-ig-text" data-app-name="short">Afterplay</text>
   <rect x="20" y="94" width="200" height="36" rx="10" class="wc-ig-card"/>
   <text x="32" y="116" class="wc-ig-text">Open as Web App</text>
   <rect x="176" y="102" width="34" height="20" rx="10" fill="${HIGHLIGHT}"/>
@@ -122,7 +131,7 @@ const PICTURE_HOME = `
     .join('')}
   <image href="/icon-192.png" x="174" y="76" width="36" height="36"/>
   <rect x="170" y="72" width="44" height="44" rx="12" fill="none" stroke="${HIGHLIGHT}" stroke-width="2.5"/>
-  <text x="192" y="132" text-anchor="middle" class="wc-ig-text-small" data-app-name="short">Wizard's Chess</text>
+  <text x="192" y="132" text-anchor="middle" class="wc-ig-text-small" data-app-name="short">Afterplay</text>
 </svg>`;
 
 const STEPS: ReadonlyArray<{ title: string; text: string; picture: string }> = [
@@ -143,13 +152,16 @@ const STEPS: ReadonlyArray<{ title: string; text: string; picture: string }> = [
   },
   {
     title: 'Open it from the Home Screen',
-    text: 'From now on, start <span data-app-name>Wizard’s Chess</span> from its icon. It opens full screen, works offline and keeps your games.',
+    text: 'From now on, start <span data-app-name>Afterplay</span> from its icon. It opens full screen, works offline and keeps your games.',
     picture: PICTURE_HOME,
   },
 ];
 
 export class InstallGuide {
   private readonly sheet: Sheet;
+  private readonly continueButton: HTMLButtonElement;
+  /** Set while the guide is open for a first-run link: what "Continue in Safari" goes on to. */
+  private onContinue: (() => void) | null = null;
 
   constructor(parent: HTMLElement) {
     this.sheet = new Sheet(parent, {
@@ -157,13 +169,16 @@ export class InstallGuide {
       testId: 'install-guide',
       // Closed in any way (Done, ×, backdrop, Escape): it does not open by itself again
       onToggle: (open) => {
-        if (!open) writeSeen();
+        if (open) return;
+        writeSeen();
+        this.onContinue = null;
+        this.continueButton.hidden = true;
       },
     });
     this.sheet.body.innerHTML = `
       <p class="wc-install-intro" data-testid="install-guide-intro">
         Safari can clear the saved games, puzzles and progress of a website you haven’t opened for a while.
-        Added to your Home Screen, <span data-app-name>Wizard’s Chess</span> runs as an app and keeps them.
+        Added to your Home Screen, <span data-app-name>Afterplay</span> runs as an app and keeps them.
       </p>
       <ol class="wc-install-steps">
         ${STEPS.map(
@@ -175,11 +190,21 @@ export class InstallGuide {
         ).join('')}
       </ol>
       <div class="wc-install-actions">
+        <button type="button" class="wc-btn wc-btn-secondary" data-testid="install-guide-continue" hidden>Continue in Safari</button>
         <button type="button" class="wc-btn wc-btn-primary" data-testid="install-guide-done">Done</button>
       </div>`;
+    // The address bar in the first picture shows this page's own host, as Safari does
+    const host = this.sheet.body.querySelector('[data-page-host]');
+    if (host) host.textContent = shortHost(typeof location === 'undefined' ? '' : location.host);
     this.sheet.body
       .querySelector('[data-testid="install-guide-done"]')
       ?.addEventListener('click', () => this.sheet.close());
+    this.continueButton = this.sheet.body.querySelector('[data-testid="install-guide-continue"]') as HTMLButtonElement;
+    this.continueButton.addEventListener('click', () => {
+      const next = this.onContinue;
+      this.sheet.close();
+      next?.();
+    });
   }
 
   /** The name the guide uses for the app (a preset can give it one); long names are cut in the pictures. */
@@ -201,6 +226,20 @@ export class InstallGuide {
 
   public isOpen(): boolean {
     return this.sheet.isOpen();
+  }
+
+  /**
+   * A first-run link opened in Safari on an iPhone or iPad (first visit, not installed): the guide comes first and
+   * offers "Continue in Safari", which closes it and calls `onContinue`. Closed any other way, nothing follows: the
+   * link's welcome then waits for the Home Screen app (or the next visit in Safari). Returns false, opening nothing,
+   * when the guide's own first-visit rule does not apply.
+   */
+  public openForFirstRunLink(onContinue: () => void, env: InstallEnvironment = readInstallEnvironment()): boolean {
+    if (!shouldAutoOpenInstallGuide(env, readSeen())) return false;
+    this.onContinue = onContinue;
+    this.continueButton.hidden = false;
+    this.open();
+    return true;
   }
 
   /** Opens the guide if this is the first visit in iOS/iPadOS and the app isn't installed. */

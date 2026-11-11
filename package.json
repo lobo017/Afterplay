@@ -1,8 +1,8 @@
 {
-  "name": "wizards-chess",
+  "name": "afterplay",
   "version": "0.1.0",
   "private": true,
-  "description": "Wizard's Chess — Offline Chess Learning and Stockfish Analysis Tool",
+  "description": "Afterplay — Offline Chess Learning and Stockfish Analysis Tool",
   "license": "GPL-3.0-or-later",
   "type": "module",
   "scripts": {

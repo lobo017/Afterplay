@@ -185,7 +185,7 @@ test.describe('Phase 8 — offline', () => {
         icons: Array<{ src: string; sizes: string; type: string; purpose?: string }>;
       }>;
     });
-    expect(manifest).toMatchObject({ name: "Wizard's Chess", start_url: '/', display: 'standalone' });
+    expect(manifest).toMatchObject({ name: 'Afterplay', start_url: '/', display: 'standalone' });
     for (const size of ['192x192', '512x512']) {
       expect(
         manifest.icons.some((i) => i.sizes === size && i.type === 'image/png' && (i.purpose ?? 'any').includes('any')),
@@ -205,7 +205,7 @@ test.describe('Phase 8 — offline', () => {
       title: document.querySelector<HTMLMetaElement>('meta[name="apple-mobile-web-app-title"]')?.content ?? null,
     }));
     expect(apple.capable).toBe('yes');
-    expect(apple.title).toBe("Wizard's Chess");
+    expect(apple.title).toBe('Afterplay');
     const appleIcon = await page.request.get(apple.icon!);
     expect(appleIcon.status()).toBe(200);
     expect(appleIcon.headers()['content-type']).toContain('image/png');
@@ -231,7 +231,7 @@ test.describe('Phase 8 — offline', () => {
           indexPath,
           fs
             .readFileSync(indexPath, 'utf8')
-            .replace("<title>Wizard's Chess</title>", "<title>Wizard's Chess (new build)</title>"),
+            .replace('<title>Afterplay</title>', '<title>Afterplay (new build)</title>'),
         );
         // (a real build also lists the page's new revision in the worker's file list)
         const swPath = path.join(dir, 'sw.js');
@@ -276,7 +276,7 @@ test.describe('Phase 8 — offline', () => {
         .catch(() => undefined);
     }, 100);
     await page.evaluate(async () => (await navigator.serviceWorker.getRegistration())!.update());
-    await expect.poll(() => page.title(), { timeout: 60_000 }).toBe("Wizard's Chess (new build)");
+    await expect.poll(() => page.title(), { timeout: 60_000 }).toBe('Afterplay (new build)');
     clearInterval(watchBanner);
     expect(bannerSeen, 'no banner when nothing is in progress').toBe(false);
     expect(await page.evaluate(() => (navigator.serviceWorker.controller as ServiceWorker).scriptURL)).toBe(
@@ -306,7 +306,7 @@ test.describe('Phase 8 — offline', () => {
     await page.evaluate(async () => (await navigator.serviceWorker.getRegistration())!.update());
     await expect(page.getByTestId('update-banner')).toBeVisible({ timeout: 60_000 });
     await expect(page.getByTestId('update-banner')).toContainText('New version available');
-    expect(await page.title()).toBe("Wizard's Chess");
+    expect(await page.title()).toBe('Afterplay');
     await page.screenshot({ path: path.join(SCREENSHOT_DIR, 'update-banner.png') });
     await page.getByTestId('btn-update-later').click();
     await expect(page.getByTestId('update-banner')).toBeHidden();
@@ -315,11 +315,11 @@ test.describe('Phase 8 — offline', () => {
     await resume(page);
     await expect(page.getByTestId('update-banner')).toBeVisible({ timeout: 10_000 });
     await page.waitForTimeout(2500);
-    expect(await page.title()).toBe("Wizard's Chess");
+    expect(await page.title()).toBe('Afterplay');
 
     // Reload takes the new build
     await Promise.all([page.waitForEvent('load'), page.getByTestId('btn-update-reload').click()]);
-    await expect.poll(() => page.title(), { timeout: 30_000 }).toBe("Wizard's Chess (new build)");
+    await expect.poll(() => page.title(), { timeout: 30_000 }).toBe('Afterplay (new build)');
     fs.rmSync(build.dir, { recursive: true, force: true });
   });
 });

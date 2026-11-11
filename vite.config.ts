@@ -91,8 +91,8 @@ export default defineConfig({
       injectRegister: false,
       manifest: {
         id: '/',
-        name: "Wizard's Chess",
-        short_name: 'WizardChess',
+        name: 'Afterplay',
+        short_name: 'Afterplay',
         description: 'Fully offline chess learning and Stockfish analysis tool',
         start_url: '/',
         scope: '/',

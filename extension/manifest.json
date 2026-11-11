@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Wizard's Chess capture",
+  "name": "Afterplay capture",
   "short_name": "WC capture",
-  "description": "Captures your Lichess and Chess.com games for the offline Wizard's Chess analysis site.",
+  "description": "Captures your Lichess and Chess.com games for the offline Afterplay analysis site.",
   "version": "0.0.0",
   "minimum_chrome_version": "127",
   "icons": {
@@ -12,7 +12,7 @@
     "128": "icons/icon-128.png"
   },
   "action": {
-    "default_title": "Wizard's Chess capture",
+    "default_title": "Afterplay capture",
     "default_popup": "popup.html",
     "default_icon": {
       "16": "icons/icon-16.png",

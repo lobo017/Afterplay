@@ -150,7 +150,7 @@ test.describe('Phase 6b — Settings', () => {
     const downloadPromise = page.waitForEvent('download');
     await page.getByTestId('btn-backup-download').click();
     const download = await downloadPromise;
-    expect(download.suggestedFilename()).toMatch(/^wizards-chess-backup-\d{4}-\d{2}-\d{2}\.json$/);
+    expect(download.suggestedFilename()).toMatch(/^afterplay-backup-\d{4}-\d{2}-\d{2}\.json$/);
     const file = path.join('test-results', 'phase6b-backup.json');
     await download.saveAs(file);
     await expect(page.getByTestId('backup-status')).toContainText('Backup saved: 1 game');
@@ -196,7 +196,7 @@ test.describe('Phase 6b — Settings', () => {
     await page
       .getByTestId('backup-file-input')
       .setInputFiles({ name: 'x.json', mimeType: 'application/json', buffer: Buffer.from('{"hello":1}') });
-    await expect(page.getByTestId('backup-status')).toHaveText('This file is not a Wizard’s Chess backup.');
+    await expect(page.getByTestId('backup-status')).toHaveText('This file is not an Afterplay backup.');
     await expect(page.getByTestId('backup-confirm')).toBeHidden();
 
     // The real one: a confirmation, then everything is back

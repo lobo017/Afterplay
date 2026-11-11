@@ -436,9 +436,9 @@ test.describe('Phase 5 — Game review', () => {
     await page.getByTestId('review-menu').click(); // Export is in the review's ⋯ menu
     await page.getByTestId('btn-review-export').click();
     const download = await downloadPromise;
-    expect(download.suggestedFilename()).toBe('wizards-chess-review.pgn');
+    expect(download.suggestedFilename()).toBe('afterplay-review.pgn');
     const pgn = await page.getByTestId('textarea-pgn').inputValue();
-    expect(pgn).toContain('[Annotator "Wizard\'s Chess review (Stockfish');
+    expect(pgn).toContain('[Annotator "Afterplay review (Stockfish');
     expect(pgn).toContain('Quick, 0.2 s per move');
     expect(pgn).toContain('$4');
     expect(pgn).toContain('Blunder.');
@@ -526,7 +526,7 @@ test.describe('Phase 5 — Game review', () => {
     expect(pgn).not.toMatch(/was best|Checkmate is now unavoidable/);
     // The app's own sentences may quote an evaluation change; nothing else may
     expect(pgn.replace(/Review:[^}]*/g, '')).not.toMatch(/→/);
-    expect(pgn).toContain('[Annotator "Wizard\'s Chess review');
+    expect(pgn).toContain('[Annotator "Afterplay review');
     const exported = await page.evaluate((text) => {
       const tree = window.__wizardChessCore!.parsePgn(text);
       return tree

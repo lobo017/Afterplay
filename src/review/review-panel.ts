@@ -1436,7 +1436,7 @@ export class ReviewPanel {
       const url = URL.createObjectURL(new Blob([pgn], { type: 'application/x-chess-pgn' }));
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'wizards-chess-review.pgn';
+      a.download = 'afterplay-review.pgn';
       a.style.display = 'none';
       document.body.appendChild(a);
       a.click();

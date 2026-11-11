@@ -246,7 +246,7 @@ async function runCalibration() {
   }
 
   console.log('\n========================================================================================');
-  console.log(' Wizard Chess — Bot Strength Self-Play Calibration (400–2400 Elo vs Reference Levels)');
+  console.log(' Afterplay — Bot Strength Self-Play Calibration (400–2400 Elo vs Reference Levels)');
   console.log('========================================================================================\n');
 
   const summaryRows = [];

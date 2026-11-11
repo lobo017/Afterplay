@@ -171,7 +171,7 @@ test.describe('Phase 6b — app frame and navigation', () => {
     expect(Math.round(nav.width)).toBe(390);
     await expect(page.getByTestId('screen-title')).toHaveText('Play');
     // The app's heading gives way to the screen name: out of sight (a 1 px clipped box), still there for screen readers
-    const heading = page.getByRole('heading', { name: "Wizard's Chess" });
+    const heading = page.getByRole('heading', { name: 'Afterplay' });
     await expect(heading).toBeAttached();
     const headingBox = (await heading.boundingBox())!;
     expect(headingBox.width).toBeLessThanOrEqual(1);

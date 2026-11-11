@@ -528,7 +528,7 @@ function renderDebug(
   els.debugCopy.hidden = false;
   els.debugInject.hidden = !(page && !content && tab?.id !== undefined);
   lastReport = [
-    `Wizard's Chess capture — debug report ${new Date().toISOString()}`,
+    `Afterplay capture — debug report ${new Date().toISOString()}`,
     ...rows.map(([l, v]) => `${l}: ${v}`),
     'Events:',
     ...(content?.events ?? []).map((e) => `  ${clockTime(e.at)} ${e.text}`),

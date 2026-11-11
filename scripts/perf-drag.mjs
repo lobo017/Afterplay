@@ -794,7 +794,7 @@ ${formatProcesses(killed)}`,
     report.failures = failures;
     report.budgetPassed = failures.length === 0;
 
-    log("\n=== Wizard's Chess Perf Report (perf:drag) ===");
+    log('\n=== Afterplay Perf Report (perf:drag) ===');
     log(JSON.stringify(report, null, 2));
 
     if (!report.budgetPassed) {
