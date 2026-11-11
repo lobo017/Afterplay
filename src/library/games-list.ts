@@ -515,6 +515,14 @@ export class GamesList {
     if (fresh.length > 0) this.options.queue.enqueue(fresh, AUTO_ANALYZE_PRESET);
   }
 
+  /**
+   * Queues games for the review auto-analyze gives a new game. The Chess.com sync calls this at the end of a small run
+   * (its games carry the history method, which the rule above leaves alone); games already waiting keep their place.
+   */
+  public queueAutoReviews(ids: readonly string[]): void {
+    if (ids.length > 0) this.options.queue.enqueue(ids, AUTO_ANALYZE_PRESET);
+  }
+
   /** Called when the auto-analyze switch changes here (Settings has the same switch). */
   public onAutoAnalyzeChange(listener: (on: boolean) => void): void {
     this.autoListeners.add(listener);

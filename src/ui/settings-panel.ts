@@ -101,7 +101,7 @@ export class SettingsPanel {
       <dl class="wc-about-stats">
         ${[
           ['threading', 'Engine threading', threadMode],
-          ['network', 'Runtime network', '0 External Requests'],
+          ['network', 'Runtime network', 'Only the Chess.com sync, when you press it'],
           ['offline', 'Offline use', 'Checking…'],
           ['datasets', 'Bundled datasets', 'Openings · 20k Puzzles · Endgames'],
           ['rules', 'Rules &amp; variants', 'Standard + Chess960 (Perft Verified)'],

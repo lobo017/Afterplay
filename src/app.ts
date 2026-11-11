@@ -13,6 +13,13 @@ import { AppSettingsStore, type AppSettings } from './ui/app-settings';
 import { SETTINGS_ORDER, mountAppSettingsSections } from './ui/settings-sections';
 import { mountBoardFeelSection } from './ui/settings-feel-section';
 import { mountDataSection } from './ui/settings-data-section';
+import {
+  abortableSleep,
+  browserFetch,
+  describeSyncResult,
+  librarySyncStore,
+  runChessComSync,
+} from './sync/chesscom-sync';
 import { Preferences, loadStoredAppSettings } from './ui/settings-persistence';
 import { icon, type IconName } from './ui/components/icons';
 import { initBoardSize } from './render/board-size';
@@ -1162,14 +1169,35 @@ export function mountAppShell(container: HTMLElement): {
   });
   /** Brings every screen's data up to date after a restore. */
   let afterRestore: () => Promise<void> = async () => undefined;
-  mountDataSection({
+  /** Brings Train up to date after a sync added games (the Games list follows the library by itself). */
+  let afterSync: () => Promise<void> = async () => undefined;
+  const dataSection = mountDataSection({
     panel: settings,
     order: SETTINGS_ORDER.data,
     getBackend: () => storageReady,
     beforeBackup: () => preferences.mirrorNow(),
     applyPreferences: (snapshot) => preferences.apply(snapshot),
     afterRestore: () => afterRestore(),
+    // The app's one use of the network: only from the sync button, only Chess.com's public archive API
+    runSync: async (onProgress, signal) => {
+      const api = await libraryReady;
+      const result = await runChessComSync({
+        username: api.library.getMyAccounts()?.chesscom ?? '',
+        fetchImpl: browserFetch,
+        sleep: (ms) => abortableSleep(ms, signal),
+        now: () => Date.now(),
+        store: librarySyncStore(api.library),
+        isOnline: () => navigator.onLine !== false,
+        signal,
+        onProgress,
+        isAutoAnalyzeOn: () => api.gamesList.isAutoAnalyzeOn(),
+        queueReviews: (ids) => api.gamesList.queueAutoReviews(ids),
+      });
+      if (result.added.length > 0) await afterSync();
+      return describeSyncResult(result);
+    },
   });
+  registerActivity('chesscom-sync', () => dataSection.isSyncRunning());
 
   const libraryReady: Promise<WizardChessLibraryApi> = WizardChessStorage.create().then(async (storage) => {
     const lib = new GameLibrary(storage);
@@ -1343,6 +1371,10 @@ export function mountAppShell(container: HTMLElement): {
       await syncPersonal();
       await today.refresh();
       await tiles.refresh();
+      await refreshTrainCount();
+    };
+    afterSync = async () => {
+      if (currentMode === 'train' && trainView === 'hub') await today.refresh();
       await refreshTrainCount();
     };
     if (currentMode === 'train' && trainView === 'hub') {

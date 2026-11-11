@@ -229,9 +229,15 @@ imports are not reviewed automatically). Opening an analyzed game shows its save
 without running the engine again. **Paste PGN**, **Open PGN file…** and dropping `.pgn`
 files on the list import games directly; the same game is never stored twice.
 
-The website itself stays offline. Games from Lichess and Chess.com come through a separate
-Chrome extension, the only component that touches the network (lichess.org,
-www.chess.com, api.chess.com).
+The website itself stays offline, with one exception: pressing **Sync my Chess.com games**
+(Settings › Your data) reads your public game archives from `https://api.chess.com/pub/...`,
+using the Chess.com username under Settings › Your games. Nothing is requested from that
+host at any other time, and nothing else from any host. A sync never deletes a game, and a
+game already in the library is not added twice. Chess.com's archive can be up to 12 hours
+behind a finished game.
+
+Games from Lichess and Chess.com also come through a separate Chrome extension, which talks
+to lichess.org, www.chess.com and api.chess.com.
 
 ### Loading the extension
 
@@ -369,7 +375,7 @@ Move classifications are an icon plus a name, never colour alone.
 
 ## Dataset Generation (`scripts/` -> `data/`)
 
-Runtime code makes **zero network requests**. All datasets live in `data/` and are generated via dev-time scripts under `scripts/`:
+Runtime code makes **zero network requests** (the one exception is the Chess.com sync button, above). All datasets live in `data/` and are generated via dev-time scripts under `scripts/`:
 
 ```bash
 npm run data:openings   # Fetch lichess-org/chess-openings TSVs -> data/openings.json

@@ -18,6 +18,27 @@ export interface ImportBatch {
   totalGames: number;
 }
 
+/** One game checked on its own: its record, or why it has none. */
+export type SingleGameCheck = { record: NewGameRecord } | { problem: 'no-moves' | 'invalid' };
+
+/**
+ * Checks a text that should hold exactly one game and makes its record, as the restore file's builder does
+ * (hpc/history/lib/history.mjs, buildRestorePayload): the app's PGN check, exactly one legal game, and the record
+ * builder with the capture method. Pure, so the worker and the tests run the same code.
+ */
+export function checkSingleGame(pgn: string, method: string | null): SingleGameCheck {
+  let checked: ReturnType<typeof checkPgnText>;
+  try {
+    checked = checkPgnText(pgn);
+  } catch {
+    return { problem: 'invalid' };
+  }
+  if (checked.games.length !== 1) {
+    return { problem: checked.games.length === 0 && checked.errors[0] === 'no moves.' ? 'no-moves' : 'invalid' };
+  }
+  return { record: buildGameRecord(checked.games[0]!, { capturedAt: null, method }) };
+}
+
 /** "Game 2: no moves." with the game's number in the whole text rather than in its group. */
 function renumber(error: string, offset: number, groupSize: number, wholeTextGames: number): string {
   if (wholeTextGames <= 1) return error;

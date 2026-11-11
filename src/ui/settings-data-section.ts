@@ -1,4 +1,5 @@
 import type { BackupPayload } from '../storage/db';
+import type { SyncProgress, SyncReport } from '../sync/chesscom-sync';
 import { icon } from './components/icons';
 import type { SettingsPanel } from './settings-panel';
 import { PREFERENCES_SETTING_KEY, parsePreferences, type PreferencesSnapshot } from './settings-persistence';
@@ -26,6 +27,24 @@ export interface DataSectionOptions {
   applyPreferences: (snapshot: PreferencesSnapshot) => void;
   /** After a restore: brings the screens' data up to date (games list, Train). */
   afterRestore: () => Promise<void>;
+  /**
+   * Runs one Chess.com sync (the only thing in the app that uses the network, and only from this button), reporting
+   * progress; aborting `signal` stops it. Resolves with what to tell the user.
+   */
+  runSync: (onProgress: (progress: SyncProgress) => void, signal: AbortSignal) => Promise<SyncReport>;
+}
+
+export interface DataSection {
+  /** True while a sync is running (an update of the app waits for it). */
+  isSyncRunning: () => boolean;
+}
+
+export const SYNC_BUTTON_LABEL = 'Sync my Chess.com games';
+
+/** "7 of 31 months · 12 games added" while a sync runs. */
+export function syncProgressText(progress: SyncProgress): string {
+  const added = progress.added > 0 ? ` · ${progress.added} ${progress.added === 1 ? 'game' : 'games'} added` : '';
+  return `${progress.monthsDone} of ${progress.monthsTotal} ${progress.monthsTotal === 1 ? 'month' : 'months'}${added}`;
 }
 
 /** What a backup file holds, counted for the confirmation. */
@@ -81,15 +100,17 @@ export function backupFileName(now: Date): string {
 
 /**
  * Settings › Your data: download a JSON backup of everything (games, reviews, puzzles and
- * their schedule, and every setting), and restore one after a confirmation.
+ * their schedule, and every setting), restore one after a confirmation, and sync new games from Chess.com.
  */
-export function mountDataSection(options: DataSectionOptions): void {
+export function mountDataSection(options: DataSectionOptions): DataSection {
   const body = options.panel.addSection('data', 'Your data', options.order);
   body.innerHTML = `
     <p class="wc-setting-hint wc-setting-hint-block">Everything stays on this device. A backup is one JSON file with your games, reviews, puzzles and their schedule, and all of these settings.</p>
-    <div class="wc-action-bar">
+    <p class="wc-setting-hint wc-setting-hint-block" data-testid="sync-hint">Sync adds your new Chess.com games, for the username under Your games. It is the only time Afterplay uses the network, and only when you press the button. Chess.com can take up to 12 hours to list a finished game. A sync never deletes anything.</p>
+    <div class="wc-action-bar wc-action-bar-wrap">
       <button type="button" class="wc-btn wc-btn-secondary wc-btn-inline" data-testid="btn-backup-download">${icon('download')}Download a backup</button>
       <button type="button" class="wc-btn wc-btn-secondary wc-btn-inline" data-testid="btn-backup-restore">${icon('upload')}Restore a backup…</button>
+      <button type="button" class="wc-btn wc-btn-secondary wc-btn-inline wc-sync-btn" data-testid="btn-chesscom-sync" data-state="idle">${icon('games')}<span data-testid="chesscom-sync-label">${SYNC_BUTTON_LABEL}</span></button>
       <input type="file" accept=".json,application/json" class="wc-games-file-input" data-testid="backup-file-input" tabindex="-1" aria-hidden="true" />
     </div>
     <div class="wc-confirm-end" data-testid="backup-confirm" role="alertdialog" aria-label="Restore this backup?" hidden>
@@ -99,7 +120,11 @@ export function mountDataSection(options: DataSectionOptions): void {
         <button type="button" class="wc-btn wc-btn-danger" data-testid="btn-backup-confirm">Restore</button>
       </div>
     </div>
-    <p class="wc-setting-status" data-testid="backup-status" role="status"></p>`;
+    <p class="wc-setting-status" data-testid="backup-status" role="status"></p>
+    <div class="wc-sync-report">
+      <p class="wc-setting-status wc-sync-progress" data-testid="sync-progress" aria-live="off"></p>
+      <div class="wc-sync-status" data-testid="sync-status" role="status" data-tone=""></div>
+    </div>`;
 
   const q = <T extends HTMLElement>(id: string) => body.querySelector(`[data-testid="${id}"]`) as T;
   const status = q<HTMLElement>('backup-status');
@@ -163,6 +188,55 @@ export function mountDataSection(options: DataSectionOptions): void {
     confirm.hidden = true;
     q<HTMLButtonElement>('btn-backup-restore').focus();
   });
+  // --- Chess.com sync ---
+  const syncButton = q<HTMLButtonElement>('btn-chesscom-sync');
+  const syncLabel = q<HTMLElement>('chesscom-sync-label');
+  const syncProgress = q<HTMLElement>('sync-progress');
+  const syncStatus = q<HTMLElement>('sync-status');
+  let syncAbort: AbortController | null = null;
+  const showSync = (report: SyncReport): void => {
+    syncStatus.setAttribute('data-tone', report.tone);
+    syncStatus.replaceChildren(
+      ...report.lines.map((line) => {
+        const p = document.createElement('p');
+        p.className = 'wc-setting-status';
+        p.textContent = line;
+        return p;
+      }),
+    );
+  };
+  syncButton.addEventListener('click', () => {
+    if (syncAbort) {
+      // Pressed again while running: stop after the step it is in
+      syncAbort.abort();
+      syncLabel.textContent = 'Stopping…';
+      syncButton.disabled = true;
+      return;
+    }
+    const abort = new AbortController();
+    syncAbort = abort;
+    syncButton.setAttribute('data-state', 'running');
+    syncLabel.textContent = 'Stop';
+    syncProgress.textContent = 'Asking Chess.com for your games…';
+    showSync({ tone: '', lines: [] });
+    void (async () => {
+      try {
+        const report = await options.runSync((progress) => {
+          if (!abort.signal.aborted) syncProgress.textContent = syncProgressText(progress);
+        }, abort.signal);
+        showSync(report);
+      } catch (err) {
+        showSync({ tone: 'bad', lines: [`The sync failed: ${err instanceof Error ? err.message : String(err)}`] });
+      } finally {
+        syncAbort = null;
+        syncProgress.textContent = '';
+        syncLabel.textContent = SYNC_BUTTON_LABEL;
+        syncButton.disabled = false;
+        syncButton.setAttribute('data-state', 'idle');
+      }
+    })();
+  });
+
   q<HTMLButtonElement>('btn-backup-confirm').addEventListener('click', () => {
     const text = pending;
     if (!text) return;
@@ -187,4 +261,5 @@ export function mountDataSection(options: DataSectionOptions): void {
       }
     })();
   });
+  return { isSyncRunning: () => syncAbort !== null };
 }

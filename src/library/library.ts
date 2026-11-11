@@ -5,8 +5,9 @@ import type { UserAccount } from '../review/perspective';
 import type { StoredGameRecord, WizardChessStorage } from '../storage/db';
 import type { SaveOutcome } from './bridge-client';
 import type { Color } from '../core/rules';
-import { accountsFromSettings, buildGameRecord, myColor } from './game-record';
+import { accountsFromSettings, buildGameRecord, myColor, type NewGameRecord } from './game-record';
 import { PgnImportClient } from './pgn-import-client';
+import type { SingleGameCheck } from './pgn-import-core';
 import type { SavedReview } from './saved-review';
 
 const ACCOUNTS_SETTING = 'library.myAccounts';
@@ -145,6 +146,43 @@ export class GameLibrary {
       updated: [],
     });
     return outcome;
+  }
+
+  /** The ids of every stored game (no records read). */
+  public listIds(): Promise<string[]> {
+    return this.storage.listGameIds();
+  }
+
+  /** One game checked on its own, off the page's thread (the Chess.com sync's new games). */
+  public checkSingleGame(pgn: string, method: string | null): Promise<SingleGameCheck> {
+    return this.importer.checkSingle(pgn, method);
+  }
+
+  /**
+   * Stores games a sync read. Only games not stored yet are written: a stored game is never changed or removed, so its
+   * review and anything else kept with it stay. Returns the ids stored.
+   */
+  public async saveSyncedGames(records: readonly NewGameRecord[]): Promise<string[]> {
+    if (records.length === 0) return [];
+    const saved = await this.storage.saveNewGames(records);
+    const savedSet = new Set(saved);
+    this.emit({
+      added: saved,
+      methods: Object.fromEntries(
+        records.filter((r) => savedSet.has(r.id)).map((r) => [r.id, r.captureMethod ?? null]),
+      ),
+      updated: [],
+    });
+    return saved;
+  }
+
+  /** A value the library's storage keeps under a settings key (the sync's own record of what it has read). */
+  public readSetting<T>(key: string): Promise<T | undefined> {
+    return this.storage.getSetting<T>(key);
+  }
+
+  public writeSetting<T>(key: string, value: T): Promise<void> {
+    return this.storage.setSetting(key, value);
   }
 
   /**

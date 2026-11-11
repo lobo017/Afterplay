@@ -32,9 +32,13 @@ captures games from Lichess and Chess.com so they're ready to analyze later.
 
 ## Hard constraints
 - The website makes zero runtime network requests. All assets, the engine, and its
-  network file are cached by the service worker.
-- The only component allowed to touch the network at runtime is the capture extension
-  (extension/, Phase 5b), and only to lichess.org, www.chess.com, and api.chess.com.
+  network file are cached by the service worker. The one exception (Phase 11): when the
+  user presses "Sync my Chess.com games", the app may request
+  `https://api.chess.com/pub/...` (the player's archive list and monthly archives);
+  nothing is requested from that host at any other time, and nothing else from any host.
+- Apart from that, the only component allowed to touch the network at runtime is the
+  capture extension (extension/, Phase 5b), and only to lichess.org, www.chess.com, and
+  api.chess.com.
 - The engine and all heavy work run in workers. No main-thread task over 50 ms.
 - Exact chess rules: castling, en passant, promotion, threefold repetition, the 50-move
   rule, insufficient material, and Chess960 FEN round-trip.

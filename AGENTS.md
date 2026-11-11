@@ -23,11 +23,14 @@
 - No placeholder code, no TODO-stubbed features, and no buttons that do nothing. If
   something can't be done, write that in PROGRESS.md.
 - Never break earlier phases. All earlier end-to-end tests must keep passing.
-- The website makes zero runtime network requests. The only exception is the capture
-  extension in extension/ (Phase 5b), which may access lichess.org, www.chess.com, and
-  api.chess.com. Network access is also allowed in dev-time scripts under scripts/
-  (e.g. dataset downloads). If your sandbox blocks a download, write the script and tell
-  me the command to run.
+- The website makes zero runtime network requests, with one exception: when the user presses
+  "Sync my Chess.com games" (Settings › Your data), the app may request `https://api.chess.com/pub/...`
+  (the public archive API: the player's archive list and monthly archives). Nothing is requested from that
+  host at any other time (not at start-up, not in the background, not on a timer), and nothing else may be
+  fetched from that host or from any other host. The capture extension in extension/ (Phase 5b) is separate
+  and may access lichess.org, www.chess.com, and api.chess.com. Network access is also allowed in dev-time
+  scripts under scripts/ (e.g. dataset downloads). If your sandbox blocks a download, write the script and
+  tell me the command to run.
 - Ask me before: adding a dependency not named in the spec, deleting or weakening tests,
   changing the license, or doing anything destructive outside this repo.
 - legacy/index.html is the old 3D app. Use it as reference only (port the audio synth and

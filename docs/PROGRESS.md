@@ -24,13 +24,13 @@ log to `docs/progress/phase-N.md` and keep only a summary here.
 | 7 | Repertoire, endgame & visualization | Done | White/Black repertoire trees (build, import, drill, review flag), 6 engine-verified endgame drills, coordinate/blindfold/guess-the-move; all feed Today with the puzzles | [phase-7](progress/phase-7.md) |
 | 8 | Library, insights, settings, offline | Done | Own service worker (precache + COOP/COEP, update banner) and an offline e2e gate; played games kept, colour/opening/date/accuracy filters, delete, worker bulk import; Insights tab; live-region announcements and keyboard play on every board; Settings for usernames, analysis lines, review depth | [phase-8](progress/phase-8.md) |
 | 9 | Performance pass & final audit | Done (closing gate on Juno, 2026-11-10) | Every budget measured (frame time, input latency, idle, startup, 50-game memory, review speed) and a 16-flow long-task audit; start-up split into tasks, lazy Review screen, Play bot-move task 16–27 → 7–9 ms; hints reach the review; full spec audit (all Done except two Partial and the optional Phase 10); Prettier enforced; measuring scripts guard against a locked screen; closing gate on Juno (unit 592, e2e 4 × 159, perf), results saved before they are shown, review tests hardened | [phase-9](progress/phase-9.md) |
-| 11 | Hosting, iPhone, presets | In progress (stages 1–3 of 7 done and the Afterplay rename, 2026-11-10) | Cloudflare Pages (classic) with `_headers`, preview-first deploy scripts, automatic updates; WebKit e2e projects, phone engine profile, persistent storage, Add to Home Screen guide; preset files and first-run links, profile, green board, Classic pieces | [phase-11](progress/phase-11.md) |
+| 11 | Hosting, iPhone, presets | In progress (stages 1–4 and the Afterplay rename done; stage 6, the Chess.com sync, awaits its Juno gate, 2026-11-11) | Cloudflare Pages (classic) with `_headers`, preview-first deploy scripts, automatic updates; WebKit e2e projects, phone engine profile, persistent storage, Add to Home Screen guide; preset files and first-run links, profile, green board, Classic pieces | [phase-11](progress/phase-11.md) |
 | HPC | Automated checks on Juno | Done (2026-11-10) | `hpc/`: Apptainer + pinned Playwright image, jobs wc-unit / e2e / e2e-repeat / perf / calibrate / puzzles / summarize, per-job build, port and scratch folder, safe-delete helper, reports; `wc-calibrate` and `wc-puzzles` not yet run | [phase-9](progress/phase-9.md) |
 
 
 ## Current phase and next step
 
-**Phase 11 is in progress (stages 1–3 of 7 done: hosting and updates, iPhone support, presets and the first-run link; stage 4 is next, after the user's check of the stage 3 preview; see the Phase 11 section below). Production gets one deploy at the end of Phase 11, after testing on the real iPhone (decided 2026-11-10); until then only previews are deployed.** Phases 0–9 are done. **Phase 9 was closed on 2026-11-10: its closing gate ran on Juno (Linux, headless)**: typecheck, lint, format check, build,
+**Phase 11 is in progress (done: hosting and updates, iPhone support, presets and the first-run link, the rename, the history jobs of stage 4; stage 6, the in-app Chess.com sync, has its code and local checks and awaits the Juno gate and a preview; see the Phase 11 section below). Production gets one deploy at the end of Phase 11, after testing on the real iPhone (decided 2026-11-10); until then only previews are deployed.** Phases 0–9 are done. **Phase 9 was closed on 2026-11-10: its closing gate ran on Juno (Linux, headless)**: typecheck, lint, format check, build,
 592/592 unit tests, 4 of 4 full e2e runs (159/159 each) and all four perf scripts passed on commit `cefe783` (details below and in
 [phase-9](progress/phase-9.md)). **The Key measurements table at the bottom comes from earlier laptop runs; the Juno numbers are in the table
 under it** (regression baselines for a headless Linux node, not a user's screen). Phase 10 (native engine mode) is optional and not started.
@@ -139,22 +139,49 @@ and the opponent shortlist are personal: they are in the scratch folder and go t
   cannot load it from a first-run link yet (Settings › Your data › Restore takes it); the raw files stay in
   `~/scratch/wizard-chess-hpc/history/` until deleted by hand; the opponent for head-to-head is the user's pick.
 
-Plan (as written before the work):
-- **Files:** `hpc/jobs/history.sbatch` (job `wc-history`, modes `download` / `review` / `restore`), `hpc/container/history.sh`,
-  `hpc/history/download.mjs` (monthly archives from the public API, 1 s between requests, one retry per failed month),
-  `hpc/history/report.mjs` (totals, years, colours, results, time controls, openings, ratings, opponents, a shortlist),
-  `hpc/history/build-restore.mjs` (a backup-format file built with the app's own PGN check and record builder, loaded through
-  Vite), `hpc/history/lib/` (the shared logic), `tests/unit/history-import.test.ts` (invented games; plus a check of a real
-  restore file that runs only when `WC_RESTORE_FILE` is set), `hpc/README.md`.
-- **Where the data lives:** only in `~/scratch/wizard-chess-hpc/history/` on Juno (raw files, reports, restore file, and the
-  player's name in `player.txt`) and afterwards in `gift.local/history/` on the laptop. Nothing personal in the repo, in a
-  commit message, in a job log under `~/work`, or on an sbatch line.
-- **Deviations:** the `history/` scratch folder is kept between jobs (not a `<job-id>/` folder: it has to outlive the download
-  job); two `curl` requests from the login node and one `printf >` (writing `player.txt`) are outside the ssh allow-list, each
-  approved by the user.
-- **Risks:** compute nodes may not reach the API as the login node does (the job stops, no other route is tried); Vite module
-  loading has not run on Juno before (`wc-puzzles` uses it but was never submitted); real archives may hold shapes the invented
-  test games lack (counted and skipped by reason, never a crash).
+Stage 4's plan as written before the work (files, where the data lives, deviations, risks):
+[phase-11](progress/phase-11.md).
+
+**Stage 6 (2026-11-11, code done; Juno gate and preview not run yet): "Sync my Chess.com games" in the app.** A button in
+Settings › Your data reads the player's public monthly archives from `api.chess.com` and adds the games with the restore
+file's ids and records, so a restore and a sync, in either order and any number of times, keep every game once. It is the site's
+only runtime network request, made only on that button (AGENTS.md, SPEC.md hard constraints, README).
+- **Reachability, measured before any code:** a page on the preview origin (COEP `require-corp`, cross-origin isolated) read
+  the archive list (200), a month (200, games with PGN) and an unknown player (404) in WebKit as an iPhone 13 and in Chrome,
+  also with the service worker in control. A public example account was used. No proxy is needed.
+- **Deviation from the spec ("Respect ETags"):** a page cannot use them. The `ETag` header is not exposed to scripts, a
+  request with `If-None-Match` is refused by the API's CORS preflight, and `Last-Modified` is the response's own time. Instead
+  a month is final once it was stored at least 24 h after it ended (UTC) and is never asked for again; open months are. The
+  browser's own cache still revalidates (default cache mode). `Retry-After` is read if the browser exposes it, else 15 s.
+- **How it works:** `src/sync/chesscom-archive.ts` (addresses, the month list, the final-month rule, a game's id from its
+  headers) and `src/sync/chesscom-sync.ts` (the run and its messages). The list, then one month a second, oldest first; each
+  game goes through the same steps as the restore builder (no PGN, variant, no moves, the app's one-game PGN check in the import
+  worker, `buildGameRecord`, `playerColor` from the player); a month's new games are stored (`saveNewGames`, insert only)
+  before the next month is asked for, then the month is noted in the setting `sync.chesscom`. A game the library holds is
+  found from its headers, so no move is parsed for it. Nothing is deleted or overwritten.
+- **Errors:** offline (no request), unknown player, a list that cannot be read, a dropped connection or a timeout (the run
+  stops, what was stored stays, the next run continues), a failed month (the others go on; asked again next time), too many
+  requests (one wait, one retry, stop). Stop on the button ends a run after its current step. No message quotes an address.
+- **Auto-analyze:** archive games were never auto-reviewed (`BACKFILL_METHODS`), so the sync has its own rule: with
+  Auto-analyze on, a run that added at most `SYNC_AUTO_REVIEW_MAX_GAMES` (100) queues those games for a Quick review when it
+  ends; a bigger run queues none and shows "N games added; reviews not queued (more than 100 at once)". Reviews queued earlier
+  are not touched.
+- **Tests added:** `tests/unit/chesscom-sync.test.ts` (27: list parsing, the records equal the restore builder's, sync twice,
+  restore then sync and sync then restore, offline and every error path, pacing and request shape, never overwrites, Stop, the
+  auto-analyze rule), `tests/unit/network-exception.test.ts` (5: the API host is named in one file, `fetch` is called in three
+  known files, the sync starts only from the button), `tests/e2e/phase11-sync.spec.ts` (4 tests × 3 projects, API mocked by
+  route interception, invented player), and an 18th `perf:tasks` flow (a mocked sync of 120 games, then one with nothing new).
+  No existing test was changed.
+- **Also changed:** Settings › About's "Runtime network" line said "0 External Requests"; it now says "Only the Chess.com sync,
+  when you press it". The "Zero-Network Offline Shell" badge is unchanged (an existing e2e test asserts its text).
+- **Local checks (laptop, AC power):** typecheck, lint, format check, build; 690 unit tests + 1 skipped (59 files, 87 s); the new
+  spec 12/12 in chromium, webkit and webkit-iphone; the settings and shell specs with it in chromium and webkit-iphone (28/28);
+  screenshots looked at (phone and desktop); `perf:tasks` once, 18 flows, 0 tasks of 50 ms or more (a check that the new flow
+  runs, not a baseline).
+- **Open:** the Juno gate and the preview; a sync on a real iPhone (Playwright's WebKit is not Safari); a first sync after the
+  restore file still reads every month once (about a second each, all "already here"); the final-month rule trusts the device
+  clock; a game deleted in the app comes back on the next sync only if its month is still open; the Games screen on a phone
+  still shows the capture-extension card.
 
 ## Open items from earlier phases
 

@@ -9,7 +9,8 @@
 // start-up (~35-50 ms on the first layout of a cold process) happen there. What the tour covers: Play (a game with the bot, takeback), Review (opening it,
 // a Quick review of the sample game, stepping through it), the Games list (a bulk import, filters, sort, a
 // background review queue, Insights), Train (the hub, puzzles, the three other trainers), Settings (backup and
-// restore of the whole library).
+// restore of the whole library, and a Chess.com sync whose API is answered by this script: nothing here reaches the
+// real network).
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -81,6 +82,32 @@ const gamePgn = (i) =>
 [Date "2026.0${1 + (i % 9)}.1${i % 9}"]
 
 ${i % 2 ? SICILIAN : SCHOLAR} ${i % 3 === 0 ? '1/2-1/2' : '1-0'}`;
+
+// The Chess.com sync's flow: an invented player with two finished months of games, served by route interception.
+const SYNC_PLAYER = 'Perf_Player1';
+const SYNC_GAMES_PER_MONTH = 60;
+const SYNC_MONTHS = ['2024-05', '2024-06'];
+const syncBase = `https://api.chess.com/pub/player/${SYNC_PLAYER.toLowerCase()}/games`;
+const syncMonthUrl = (month) => `${syncBase}/${month.slice(0, 4)}/${month.slice(5, 7)}`;
+const syncGame = (month, i) => {
+  const id = Number(month.replace('-', '')) * 1000 + i;
+  const url = `https://www.chess.com/game/live/${id}`;
+  const date = `${month.replace('-', '.')}.${String(1 + (i % 28)).padStart(2, '0')}`;
+  const mine = i % 2 === 0;
+  const pgn = `[Event "Live Chess"]
+[Site "Chess.com"]
+[Date "${date}"]
+[White "${mine ? SYNC_PLAYER : `Rival${i}`}"]
+[Black "${mine ? `Rival${i}` : SYNC_PLAYER}"]
+[Result "1-0"]
+[UTCDate "${date}"]
+[UTCTime "18:02:11"]
+[TimeControl "600"]
+[Link "${url}"]
+
+${i % 2 ? SICILIAN : SCHOLAR} 1-0`;
+  return { url, pgn };
+};
 
 async function run() {
   log(
@@ -351,6 +378,41 @@ async function run() {
       await settle(800);
     });
     fs.rmSync(backupFile, { force: true });
+
+    // ---- Settings: a Chess.com sync (two months of new games, then a second sync that finds nothing new)
+    const syncRequests = [];
+    await context.route('https://api.chess.com/**', async (route) => {
+      const url = route.request().url();
+      syncRequests.push(url);
+      const headers = { 'access-control-allow-origin': '*' };
+      if (url === `${syncBase}/archives`) {
+        return route.fulfill({ status: 200, headers, json: { archives: SYNC_MONTHS.map(syncMonthUrl) } });
+      }
+      const month = SYNC_MONTHS.find((m) => syncMonthUrl(m) === url);
+      if (!month) return route.fulfill({ status: 404, headers, json: { message: 'not found' } });
+      const games = Array.from({ length: SYNC_GAMES_PER_MONTH }, (_, i) => syncGame(month, i));
+      return route.fulfill({ status: 200, headers, json: { games } });
+    });
+    const syncTotal = SYNC_MONTHS.length * SYNC_GAMES_PER_MONTH;
+    await flow(
+      `settings: Chess.com sync of ${syncTotal} games (API mocked), then a sync with nothing new`,
+      async () => {
+        const name = page.getByTestId('input-chesscom-username');
+        await name.fill(SYNC_PLAYER);
+        await name.blur();
+        const button = page.getByTestId('btn-chesscom-sync');
+        const status = page.getByTestId('sync-status');
+        await button.click();
+        await status.filter({ hasText: `Added ${syncTotal} games.` }).waitFor({ timeout: 120_000 });
+        await settle();
+        await button.click();
+        await status.filter({ hasText: 'No new games.' }).waitFor({ timeout: 60_000 });
+        await settle(800);
+      },
+    );
+    if (syncRequests.length !== SYNC_MONTHS.length + 2) {
+      throw new Error(`the sync flow made ${syncRequests.length} API requests, expected ${SYNC_MONTHS.length + 2}`);
+    }
 
     // ---- report
     const tour = await page.evaluate(() => window.__tour);

@@ -1369,6 +1369,43 @@ select.wc-select option {
 .wc-setting-status[data-tone='bad'] {
   color: #fca5a5;
 }
+
+/* Your data: three buttons wrap on a phone; the sync button keeps its width when its label becomes "Stop" */
+.wc-action-bar-wrap {
+  flex-wrap: wrap;
+}
+
+.wc-sync-btn {
+  min-width: 15.5rem;
+}
+
+.wc-sync-progress {
+  font-variant-numeric: tabular-nums;
+}
+
+/* One reserved line under the buttons: the progress while a sync runs, then its result (which may be longer) */
+.wc-sync-report {
+  min-height: 1.2rem;
+}
+
+.wc-sync-progress:empty,
+.wc-sync-status:empty {
+  display: none;
+}
+
+.wc-sync-status {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.wc-sync-status[data-tone='ok'] .wc-setting-status:first-child {
+  color: var(--status-ok);
+}
+
+.wc-sync-status[data-tone='bad'] .wc-setting-status:first-child {
+  color: #fca5a5;
+}
 .wc-dev-overlay-title {
   font-weight: 700;
   color: var(--accent-gold);
