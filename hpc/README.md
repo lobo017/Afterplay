@@ -91,6 +91,45 @@ At most 4 of your jobs run at once (an array's `%4` counts against that). Job na
 cancelled: `scancel <job id>`. Time limits are hard (Slurm kills the job); inside, every step has its own shorter limit so
 the report is still written. The calibrate limit is an estimate: tighten it after the first run.
 
+## History import (one player's Chess.com games)
+
+`wc-history` downloads a player's monthly archives from Chess.com's public API, reports on them and builds a restore file
+in the app's backup format. Everything personal stays in one scratch folder, which is kept between jobs (unlike a job's own
+`<job-id>/` folder); nothing personal is in the repo, on an sbatch line or in a log under `results/`:
+
+```
+~/scratch/wizard-chess-hpc/history/
+  player.txt                the username, one line (you write it, see below)
+  raw/YYYY-MM.json          the monthly archives as served
+  download-summary.txt      months, files, sizes, failed months
+  report.txt  summary.txt  shortlist.txt
+  restore.json  restore-summary.txt  restore-validation.txt
+```
+
+Write the username once, by hand, into a folder only you can read (it is deliberately not a job argument, since Slurm
+keeps a job's submit line):
+
+```bash
+umask 077 && mkdir -p "$HOME/scratch/wizard-chess-hpc/history" && printf "%s\n" "<username>" > "$HOME/scratch/wizard-chess-hpc/history/player.txt"
+```
+
+Then, one after the other (dev · 2 CPUs · 4 GB · 40 min each; in practice a few minutes):
+
+| Command | What it does |
+|---|---|
+| `SB $JOBS/history.sbatch" download` | The archive list, then each month with 1 second between requests; a failed month is tried once more, then listed. Stops if the list itself is not served (no other route is tried). |
+| `SB $JOBS/history.sbatch" review` | `report.txt` (totals, years, colours, results, time controls, openings, ratings, every opponent), `summary.txt` (no names), `shortlist.txt` (the opponents played most often). No file holds a game's moves. |
+| `SB $JOBS/history.sbatch" restore` | `restore.json`: every game through the app's own PGN check and record builder (games only), then the app's backup import run against the file in the unit test harness (`restore-validation.txt`). |
+
+Copy the results to the laptop's git-ignored folder:
+
+```powershell
+scp juno:scratch/wizard-chess-hpc/history/restore.json juno:scratch/wizard-chess-hpc/history/report.txt C:\dev\wizard-chess\gift.local\history\
+```
+
+The scripts are in `hpc/history/` and run anywhere with `--dir <folder>`; `tests/unit/history-import.test.ts` covers them
+with invented games.
+
 ## Monitoring
 
 ```bash

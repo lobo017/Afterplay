@@ -127,6 +127,24 @@ failed** on `perf-drag`'s premove check and the rerun **506989 passed** (a known
 - **Open:** `perf-drag` should log the bot's moves or seed its bot so a premove-check failure shows its cause; a real iPhone is
   not tried; production still serves the old build under the old name until the final deploy.
 
+**Stage 4 (2026-11-10, in progress): a player's Chess.com history on Juno (download, report, restore file).** No app code
+changes, so no full gate. Plan:
+- **Files:** `hpc/jobs/history.sbatch` (job `wc-history`, modes `download` / `review` / `restore`), `hpc/container/history.sh`,
+  `hpc/history/download.mjs` (monthly archives from the public API, 1 s between requests, one retry per failed month),
+  `hpc/history/report.mjs` (totals, years, colours, results, time controls, openings, ratings, opponents, a shortlist),
+  `hpc/history/build-restore.mjs` (a backup-format file built with the app's own PGN check and record builder, loaded through
+  Vite), `hpc/history/lib/` (the shared logic), `tests/unit/history-import.test.ts` (invented games; plus a check of a real
+  restore file that runs only when `WC_RESTORE_FILE` is set), `hpc/README.md`.
+- **Where the data lives:** only in `~/scratch/wizard-chess-hpc/history/` on Juno (raw files, reports, restore file, and the
+  player's name in `player.txt`) and afterwards in `gift.local/history/` on the laptop. Nothing personal in the repo, in a
+  commit message, in a job log under `~/work`, or on an sbatch line.
+- **Deviations:** the `history/` scratch folder is kept between jobs (not a `<job-id>/` folder: it has to outlive the download
+  job); two `curl` requests from the login node and one `printf >` (writing `player.txt`) are outside the ssh allow-list, each
+  approved by the user.
+- **Risks:** compute nodes may not reach the API as the login node does (the job stops, no other route is tried); Vite module
+  loading has not run on Juno before (`wc-puzzles` uses it but was never submitted); real archives may hold shapes the invented
+  test games lack (counted and skipped by reason, never a crash).
+
 ## Open items from earlier phases
 
 - **Scenario-2 `perf:drag`** (analysis board, MultiPV 5, ghosts, navigation sweep) passed clean on Juno on the final code (p95 16.67 ms, 0 dropped).
