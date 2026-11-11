@@ -127,8 +127,19 @@ failed** on `perf-drag`'s premove check and the rerun **506989 passed** (a known
 - **Open:** `perf-drag` should log the bot's moves or seed its bot so a premove-check failure shows its cause; a real iPhone is
   not tried; production still serves the old build under the old name until the final deploy.
 
-**Stage 4 (2026-11-10, in progress): a player's Chess.com history on Juno (download, report, restore file).** No app code
-changes, so no full gate. Plan:
+**Stage 4 (2026-11-11, done on Juno; delivery to the laptop waits for the user): a player's Chess.com history (download,
+report, restore file).** No app code changes, so no full gate. **Result** (commit `fdf6323`; every job's `meta.json` commit
+checked, `repo-changes.txt` empty): the API answered 200 from the login node and from a compute node; `wc-history download`
+508107 (every listed month saved, none failed, none retried, 1½ min), `review` 508123 (6 s), `restore` 508129 (build 35 s, then
+the app's `importBackupJson` took the whole file in the unit test harness: every game imported, every id a game key, every
+stored PGN read again by the app's parser, 39 s). The only games left out were ones with no moves. Vite module loading works in
+the container. Local: typecheck, lint, format check, 658 unit tests + 1 skipped (the real-file check). The numbers, the report
+and the opponent shortlist are personal: they are in the scratch folder and go to `gift.local/history/`, not here.
+- **Open:** the restore file holds games only (no reviews, puzzles or settings: the batch review stage adds those); the app
+  cannot load it from a first-run link yet (Settings › Your data › Restore takes it); the raw files stay in
+  `~/scratch/wizard-chess-hpc/history/` until deleted by hand; the opponent for head-to-head is the user's pick.
+
+Plan (as written before the work):
 - **Files:** `hpc/jobs/history.sbatch` (job `wc-history`, modes `download` / `review` / `restore`), `hpc/container/history.sh`,
   `hpc/history/download.mjs` (monthly archives from the public API, 1 s between requests, one retry per failed month),
   `hpc/history/report.mjs` (totals, years, colours, results, time controls, openings, ratings, opponents, a shortlist),
