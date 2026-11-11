@@ -22,13 +22,13 @@ log to `docs/progress/phase-N.md` and keep only a summary here.
 | 7 | Repertoire, endgame & visualization | Done | White/Black repertoire trees (build, import, drill, review flag), 6 engine-verified endgame drills, coordinate/blindfold/guess-the-move; all feed Today with the puzzles | [phase-7](progress/phase-7.md) |
 | 8 | Library, insights, settings, offline | Done | Own service worker (precache + COOP/COEP, update banner) and an offline e2e gate; played games kept, colour/opening/date/accuracy filters, delete, worker bulk import; Insights tab; live-region announcements and keyboard play on every board; Settings for usernames, analysis lines, review depth | [phase-8](progress/phase-8.md) |
 | 9 | Performance pass & final audit | Done (closing gate on Juno, 2026-11-10) | Every budget measured (frame time, input latency, idle, startup, 50-game memory, review speed) and a 16-flow long-task audit; start-up split into tasks, lazy Review screen, Play bot-move task 16–27 → 7–9 ms; hints reach the review; full spec audit (all Done except two Partial and the optional Phase 10); Prettier enforced; measuring scripts guard against a locked screen; closing gate on Juno (unit 592, e2e 4 × 159, perf), results saved before they are shown, review tests hardened | [phase-9](progress/phase-9.md) |
-| 11 | Hosting, iPhone, presets | In progress (stages 1–2 of 7 done, 2026-11-10) | Cloudflare Pages (classic) with `_headers`, preview-first deploy scripts, automatic updates; WebKit e2e projects, phone engine profile, persistent storage, Add to Home Screen guide | [phase-11](progress/phase-11.md) |
+| 11 | Hosting, iPhone, presets | In progress (stages 1–3 of 7 done, 2026-11-10) | Cloudflare Pages (classic) with `_headers`, preview-first deploy scripts, automatic updates; WebKit e2e projects, phone engine profile, persistent storage, Add to Home Screen guide; preset files and first-run links, profile, green board, Classic pieces | [phase-11](progress/phase-11.md) |
 | HPC | Automated checks on Juno | Done (2026-11-10) | `hpc/`: Apptainer + pinned Playwright image, jobs wc-unit / e2e / e2e-repeat / perf / calibrate / puzzles / summarize, per-job build, port and scratch folder, safe-delete helper, reports; `wc-calibrate` and `wc-puzzles` not yet run | [phase-9](progress/phase-9.md) |
 
 
 ## Current phase and next step
 
-**Phase 11 is in progress (stages 1–2 of 7 done: hosting and updates, iPhone support; stage 3 is next; see the Phase 11 section below). Production gets one deploy at the end of Phase 11, after testing on the real iPhone (decided 2026-11-10); until then only previews are deployed.** Phases 0–9 are done. **Phase 9 was closed on 2026-11-10: its closing gate ran on Juno (Linux, headless)**: typecheck, lint, format check, build,
+**Phase 11 is in progress (stages 1–3 of 7 done: hosting and updates, iPhone support, presets and the first-run link; stage 4 is next, after the user's check of the stage 3 preview; see the Phase 11 section below). Production gets one deploy at the end of Phase 11, after testing on the real iPhone (decided 2026-11-10); until then only previews are deployed.** Phases 0–9 are done. **Phase 9 was closed on 2026-11-10: its closing gate ran on Juno (Linux, headless)**: typecheck, lint, format check, build,
 592/592 unit tests, 4 of 4 full e2e runs (159/159 each) and all four perf scripts passed on commit `cefe783` (details below and in
 [phase-9](progress/phase-9.md)). **The Key measurements table at the bottom comes from earlier laptop runs; the Juno numbers are in the table
 under it** (regression baselines for a headless Linux node, not a user's screen). Phase 10 (native engine mode) is optional and not started.
@@ -96,57 +96,22 @@ flaky. Preview build `f32cb599143d`, `check:hosted` 15/15 (Chrome) and 16/16 (iP
 - **Open:** a real iPhone has not been tried yet (memory limit, Home Screen mode, the guide's steps on iOS 26). The Games screen
   on a phone still shows the Chrome capture-extension card (the Chess.com sync stage replaces it there).
 
-**Stage 3 (2026-11-10): presets and the first-run link.** A preset file (`preset.json`: app name, profile, welcome,
-settings, usernames, named bots) and a first-run link `/start/<slug>/` that applies it once per device; the build writes each
-link's own page and manifest (`start_url` = the link) because an iPhone's Home Screen app has its own empty storage; the
-Tournament Green board and the Classic (Cburnett, GPL-2.0-or-later) pieces; Settings › Profile; personal presets only in
-`gift.local/start/` (`build:local`, `deploy:preview -- --with-local-presets`). The plan is in [phase-11](progress/phase-11.md).
-
-**Stage 3 result (2026-11-10): done; Juno gate passed; preview: see below; no production deploy**
-- Built as planned. Decisions made on the way:
-  - **A bot is a named bot by its rating and style** (no extra setting): the New game card shows the profile's bots as
-    buttons; a tap sets rating and style; Play and the PGN (`White`/`Black`, `Event`, `WhiteTitle`/`BlackTitle`) use the names.
-  - **The board waiting at the start position takes the preset's bot and time control** (`adoptPendingChoices`); a game with
-    a move played is never touched.
-  - What a preset does not name stays as it was (settings, profile fields, the other username). The profile travels in the
-    preferences record (backup and restore); which link a device applied and whether its welcome was seen are device facts
-    (`localStorage` only), so a restore cannot make a link apply twice.
-  - The page title and the iOS Home Screen title are changed only when a profile names the app (the update tests caught the
-    first version overwriting a new build's title).
-  - An unknown or unreadable link, or no network on the first run: a notice that waits for OK; the app works as usual.
-- **Tests changed (none weakened):** `phase3-board` expects 4 themes and 4 piece sets; the two tests that list the Settings
-  sections (`phase6b-settings`, `phase6b-play`) expect **Profile** first; the test server of `phase8-offline` moved to
-  `tests/e2e/helpers/server.ts` (shared with the new spec), unchanged.
-- **Laptop runs (not the gate):** unit 632/632 (232 s; on Juno one of them, the check of personal presets, is skipped: no
-  `gift.local/` there); `phase11-presets.spec.ts` 7/7 in each of the three projects; the neighbouring specs (settings, shell,
-  play, a11y, offline, screens, iphone) in Chromium 23/23 and 31/31 after the two fixes above. `check:hosted` against a local
-  server: 20/23, the three misses being headers only the host sends (`no-cache`, `noindex`). Screenshots looked at (desktop and
-  iPhone: board, welcome, guide, Settings).
-- **Laptop WebKit, not caused by this stage:** in `webkit-iphone` on the laptop, `phase6b-play` "a game in progress never ends…"
-  and "in game: tabs…" timed out on a click that never became stable. The same two fail against a build of stage 2
-  (`fe5d0c9`, temporary worktree, removed) and a probe shows the page getting 4 animation frames in 2.5 s once a game runs,
-  on stage 2's deployed build too: the laptop (most likely its screen off or locked, as in Phase 9). They passed on Juno in
-  stage 2; Juno is the gate.
-- **Personal preset:** drafted in `gift.local/start/<random name>/preset.json` with notes in `gift.local/README.md` on what is
-  still the user's to decide (message, username, level, bot names). Valid (the unit check passes). **Not uploaded anywhere**:
-  the preview of this stage is built without `--with-local-presets`.
-- **Open / to check on the real iPhone:** that the Home Screen app starts at the link (manifest `start_url`) and applies the
-  preset in its own empty storage; the welcome shows once in Safari and once more in the installed app (separate storage:
-  cannot be told apart from here); the first launch of the installed app needs the network. Coordinates sit close to the
-  Classic pieces' bases on a 390 px board (same positions as every theme).
-- **Juno gate on `3022fd6`, passed** (every `meta.json` commit `3022fd68a5`, `repo-changes.txt` empty, exit 0 everywhere):
-  wc-unit 506634 (typecheck, lint, format, build; unit 631 passed, 1 skipped = the check of personal presets, no
-  `gift.local/` on Juno); wc-e2e-repeat chromium ×2 506631 (172/172 each, 1 skipped = the phone-only touch test, 12.0 and
-  12.1 min); webkit ×2 506632 (146/146 each, 1 skipped, 13.4 and 13.6 min); webkit-iphone ×2 506633 (147/147 each, 15.4 and
-  16.4 min). 0 failed, 0 flaky in all six runs: the two `phase6b-play` tests that timed out in the laptop's WebKit pass there.
-  wc-perf 506635, all four scripts: `perf:drag` p95 16.67 ms in all four windows, 0 dropped, 0 long tasks, main thread
-  1.16–1.42 ms per frame, input 0.41 and 0.58 ms, start-up 246 ms, idle 0 rAF; `perf:review` 81 plies 17.0–17.1 s at 1, 2
-  and 4 threads, 0 long tasks; `perf:tasks` 17 flows, 0 tasks of 50 ms or more; `perf:memory` 50 games −0.09 MB heap (2.3 KB
-  per game), listeners +0. No regression against stage 2 (505997).
-- **Preview:** not deployed yet when this was written. Next: `npm run deploy:preview` (without `--with-local-presets`), then
-  `check:hosted` in Chrome and iPhone WebKit, then stop for the user's check. No production deploy.
-- (Agent note: after the pull I also ran `git log --oneline -1` in the Juno repo, which is read-only but not on the ssh
-  allow-list; not to be repeated: `meta.json` shows the commit.)
+**Stage 3 (2026-11-10, done, preview only): presets and the first-run link.** A preset file (`preset.json`: app name,
+profile, welcome, settings, usernames, named bots) and a first-run link `/start/<slug>/` that applies it once per device; the
+build writes each link's own page and manifest (`start_url` = the link) because an iPhone's Home Screen app has its own empty
+storage; the Tournament Green board and the Classic (Cburnett, GPL-2.0-or-later) pieces; Settings › Profile; a sample link
+`/start/sample/`. Commit `3022fd6`; Juno gate passed: unit 631 + 1 skipped (506634), e2e chromium ×2 172/172 (506631), webkit
+×2 146/146 (506632), webkit-iphone ×2 147/147 (506633), 0 failed, 0 flaky, perf all four (506635). Preview build
+`ac2ddadcf5ce` (`https://7a509bcb.wizards-chess-4tu.pages.dev`), `check:hosted` 23/23 (Chrome) and 24/24 (iPhone WebKit). Plan,
+decisions, test changes and numbers: [phase-11](progress/phase-11.md).
+- **Personal presets** live only in `gift.local/start/<random name>/preset.json` (`npm run build:local`). A draft is there, with
+  `gift.local/README.md` listing what is still the user's to decide. **Nothing personal has been uploaded.** For the gift to
+  work from a link the preset has to be on the host at its secret address (`deploy:preview -- --with-local-presets`): **the
+  user's decision, not taken yet.**
+- **Open, for the real iPhone:** does the Home Screen app start at the link and set itself up in its own storage; the welcome
+  shows in Safari and once more in the installed app; the installed app's first launch needs the network.
+- **Laptop note:** two `phase6b-play` tests time out in the laptop's WebKit iPhone project (also on stage 2's build: animation
+  frames starve once a game runs, most likely the screen off or locked); they pass on Juno.
 
 ## Open items from earlier phases
 
