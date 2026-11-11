@@ -115,17 +115,39 @@ decisions, test changes and numbers: [phase-11](progress/phase-11.md).
 - **Laptop note:** two `phase6b-play` tests time out in the laptop's WebKit iPhone project (also on stage 2's build: animation
   frames starve once a game runs, most likely the screen off or locked); they pass on Juno.
 
-**Rename stage (2026-11-10, in progress): the app becomes "Afterplay".** Plan: (1) rename everything a user or reader sees
-(page, manifest, header, guide, sample preset, extension strings, PGN `Annotator` / `Site` headers, download file names, package
-name, README, SPEC, AGENTS, LICENSES); (2) keep every internal name (IndexedDB `wizards-chess-db` and its stores, the `wc.*` /
-`wc-*` localStorage keys, cache `wizards-chess-precache-v1`, backup format `wizards-chess-backup`, test hooks, ids, the wc- job
-prefix, the Juno folders, the skill name) and pin them with a new unit test (`tests/unit/storage-names.test.ts`); (3) a new
-Cloudflare Pages project `afterplay` (the old `wizards-chess-4tu` stays untouched), deploy scripts and docs pointed at it; (4)
-repository address → `github.com/lobo017/afterplay` in `hpc/setup.sbatch` and the laptop's origin (Juno's remote: one command, run
-only after the user's approval); (5) iPhone Safari: a first-run link shows the Add to Home Screen guide first, with "Continue in
-Safari" leading to the welcome (`src/app.ts`, `src/ui/install-guide.ts`, `tests/e2e/phase11-presets.spec.ts`); `check:hosted`
-checks noindex on `/start/`. Risks: tests that assert the old visible name (updated with it, none weakened); a storage name
-changing by accident (the new test); the installed production app at the old address keeps its old name until the final deploy.
+**Rename stage (2026-11-10, code done, Juno gate and preview not run yet): the app is now "Afterplay".** Commits `7db78b7`
+(the stage) and `d3aeb26` (clone address in hpc/README), both pushed to `github.com/lobo017/afterplay`.
+- **Renamed (what people see):** page title and description, manifest `name` and `short_name` ("Afterplay"), header, install
+  guide, offline message, backup error texts, sample preset's welcome, the capture extension's visible strings, PGN `Annotator`
+  ("Afterplay review (…)") and `Site` headers (nothing in the code recognises the app's own PGNs by either header), download
+  names `afterplay-review.pgn` and `afterplay-backup-<date>.json`, package name `afterplay`, README, SPEC, LICENSES, hpc docs.
+  The install guide's pictured address bar now shows the page's own host.
+- **Kept (what the app depends on), pinned by `tests/unit/storage-names.test.ts`:** IndexedDB `wizards-chess-db` (version 4, its 8
+  stores and their indexes); localStorage `wc.settings.v1`, `wc.boardFeel.v1`, `wc.boardSize.v1`, `wc.profile.v1`,
+  `wc.first-run.v1`, `wc-install-guide-seen`; sessionStorage `wc-isolation-reload`; the `app.preferences` record; cache
+  `wizards-chess-precache-v1`; backup format `wizards-chess-backup`; bridge message names; the extension's storage keys. The
+  test also fails on a new storage key that is not listed, and on any app or build-config file reading package.json (only
+  `scripts/build-extension.mjs` does, for the version number). A backup with the old file name and format string restores
+  (tested). Test hooks (`__wizardChess*`), ids, the wc- job prefix, the Juno folders and the skill name are unchanged.
+- **Hosting:** new Cloudflare Pages project `afterplay` (classic Pages, production branch `main`), address
+  `https://afterplay-c0x.pages.dev` (Pages added the suffix). `deploy:preview` / `deploy:production` default to it. Nothing is
+  deployed there yet. The old project `wizards-chess` (`wizards-chess-4tu.pages.dev`) is untouched and still serves build
+  `aeedca6f9bb6` under the old name.
+- **Repository:** `hpc/setup.sbatch` and hpc/README clone from `github.com/lobo017/afterplay`; the laptop's origin is set to it.
+  Juno's clone still has the old address (GitHub redirects it); changing it is one `git remote set-url`, waiting for the user's
+  approval.
+- **iPhone, welcome shown twice (fixed):** a first-run link opened in Safari on an iPhone (first visit, not installed) opens the
+  Add to Home Screen guide without the welcome; "Continue in Safari" closes it and shows the welcome, then as before. Closed with
+  Done, no welcome follows in Safari; the Home Screen app (own storage) shows it on its first launch. Other platforms unchanged.
+  e2e: both paths in the WebKit iPhone project (`phase11-presets`: one test rewritten for the new order, one added for
+  Done + Home Screen app, standalone simulated with `navigator.standalone`). `check:hosted` follows the new order on the iPhone
+  and checks the noindex header on five `/start/` addresses plus the page's meta tag.
+- **Checked on the laptop:** typecheck, lint, format, build, unit 641/641; `phase11-presets`, `phase0`, `phase6b-shell` in
+  chromium and webkit-iphone (27 passed, 1 skipped by design); screenshots of the guide and the welcome looked at. The three PNG
+  icons and `favicon.svg` hold a gold crown mark and no text: unchanged.
+- **Not done: the Juno gate, the preview deploy and `check:hosted`.** `juno.utdallas.edu` did not resolve from the laptop
+  (2026-11-10 evening; most likely the campus VPN was off). `package-lock.json` changed (the package name only), so the setup job
+  runs first, with `mfsgetquota` before and after. Not tried on a real iPhone.
 
 ## Open items from earlier phases
 
