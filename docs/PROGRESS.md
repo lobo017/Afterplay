@@ -102,7 +102,7 @@ link's own page and manifest (`start_url` = the link) because an iPhone's Home S
 Tournament Green board and the Classic (Cburnett, GPL-2.0-or-later) pieces; Settings › Profile; personal presets only in
 `gift.local/start/` (`build:local`, `deploy:preview -- --with-local-presets`). The plan is in [phase-11](progress/phase-11.md).
 
-**Stage 3 result (2026-11-10): built; the Juno gate and the preview are the next step (see "Gate" below)**
+**Stage 3 result (2026-11-10): done; Juno gate passed; preview: see below; no production deploy**
 - Built as planned. Decisions made on the way:
   - **A bot is a named bot by its rating and style** (no extra setting): the New game card shows the profile's bots as
     buttons; a tap sets rating and style; Play and the PGN (`White`/`Black`, `Event`, `WhiteTitle`/`BlackTitle`) use the names.
@@ -134,13 +134,19 @@ Tournament Green board and the Classic (Cburnett, GPL-2.0-or-later) pieces; Sett
   preset in its own empty storage; the welcome shows once in Safari and once more in the installed app (separate storage:
   cannot be told apart from here); the first launch of the installed app needs the network. Coordinates sit close to the
   Classic pieces' bases on a 390 px board (same positions as every theme).
-- **Gate: submitted on `3022fd6` (pushed; Juno pulled it with an empty queue), results not read yet.** Jobs: e2e chromium ×2
-  **506631**, webkit ×2 **506632**, webkit-iphone ×2 **506633** (after the first two), wc-unit **506634**, wc-perf **506635**
-  (both after the first two; perf waits for an exclusive node). **Next (juno-gate skill, steps 5–7):** for each job check
-  `meta.json` commit `3022fd68a5` and an empty `repo-changes.txt`, read `summary.md`, write the result here; if all passed,
-  `npm run deploy:preview` and `check:hosted` in Chrome and iPhone WebKit; then stop for the user's check. No production
-  deploy. (Agent note: after the pull I also ran `git log --oneline -1` in the Juno repo, which is read-only but not on the
-  ssh allow-list; not to be repeated: `meta.json` shows the commit.)
+- **Juno gate on `3022fd6`, passed** (every `meta.json` commit `3022fd68a5`, `repo-changes.txt` empty, exit 0 everywhere):
+  wc-unit 506634 (typecheck, lint, format, build; unit 631 passed, 1 skipped = the check of personal presets, no
+  `gift.local/` on Juno); wc-e2e-repeat chromium ×2 506631 (172/172 each, 1 skipped = the phone-only touch test, 12.0 and
+  12.1 min); webkit ×2 506632 (146/146 each, 1 skipped, 13.4 and 13.6 min); webkit-iphone ×2 506633 (147/147 each, 15.4 and
+  16.4 min). 0 failed, 0 flaky in all six runs: the two `phase6b-play` tests that timed out in the laptop's WebKit pass there.
+  wc-perf 506635, all four scripts: `perf:drag` p95 16.67 ms in all four windows, 0 dropped, 0 long tasks, main thread
+  1.16–1.42 ms per frame, input 0.41 and 0.58 ms, start-up 246 ms, idle 0 rAF; `perf:review` 81 plies 17.0–17.1 s at 1, 2
+  and 4 threads, 0 long tasks; `perf:tasks` 17 flows, 0 tasks of 50 ms or more; `perf:memory` 50 games −0.09 MB heap (2.3 KB
+  per game), listeners +0. No regression against stage 2 (505997).
+- **Preview:** not deployed yet when this was written. Next: `npm run deploy:preview` (without `--with-local-presets`), then
+  `check:hosted` in Chrome and iPhone WebKit, then stop for the user's check. No production deploy.
+- (Agent note: after the pull I also ran `git log --oneline -1` in the Juno repo, which is read-only but not on the ssh
+  allow-list; not to be repeated: `meta.json` shows the commit.)
 
 ## Open items from earlier phases
 
