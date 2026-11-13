@@ -138,6 +138,16 @@ Home Screen app does not share Safari's storage, so the installed app starts emp
 link, its first launch applies the preset again. (That launch needs the network; later ones do not.) A link's
 files are not part of the offline cache, and `public/_headers` keeps `/start/*` out of search engines.
 
+**The link on later visits.** From the second visit on, the service worker answers instead of the host, and it
+answers a link with that link's own page as well (`src/sw-links.ts`): Add to Home Screen reads the manifest of
+the page as it was served, and the plain page's manifest would install an app that starts at `/` and is never
+set up. The worker's file is public, so no link is listed in it. It learns a link when somebody opens it: the
+host is asked once, and if the answer is that link's page, the link's name and app name are remembered on the
+device (a cache of their own, kept across updates). After that the worker writes the page itself from the
+cached build, with the function the build uses, so the link opens with no network. A link the worker has not
+seen while the device is offline gets the plain page, and an address that is not a link always does.
+`npm run check:hosted` checks the second visit, the offline visit, and that `sw.js` names no link.
+
 **Personal presets** (real names, usernames, messages) never go into the repository. Put them in the
 git-ignored `gift.local/start/<name>/preset.json`, with a long random `<name>` (lower-case letters, digits and
 hyphens), since the name is all that keeps the link private:

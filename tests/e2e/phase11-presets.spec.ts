@@ -363,7 +363,7 @@ test.describe('Phase 11 — the first-run link offline', () => {
     await expect(playFrame(page)).toHaveAttribute('data-theme', 'green');
     await expect(page.getByTestId('bottom-player-name')).toHaveText('Ada (White)');
     await expect(page.getByTestId('top-player-name')).toHaveText('Professor Rook (800)');
-    // The plain app page came from the cache; the app put the link's name and manifest back
+    // The worker wrote the link's page from its cache (phase11-link-worker.spec.ts reads the page as served)
     await expect(page).toHaveTitle("Ada's Chess");
     expect(await page.evaluate(() => document.querySelector('link[rel="manifest"]')?.getAttribute('href'))).toBe(
       '/start/sample/manifest.webmanifest',

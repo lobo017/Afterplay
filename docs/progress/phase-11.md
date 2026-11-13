@@ -414,3 +414,72 @@ only runtime network request, made only on that button (AGENTS.md, SPEC.md hard 
   restore file still reads every month once (about a second each, all "already here"); the final-month rule trusts the device
   clock; a game deleted in the app comes back on the next sync only if its month is still open; the Games screen on a phone
   still shows the capture-extension card.
+
+
+## Link fix (2026-11-13): a first-run link with the service worker in control
+
+**What went wrong (found on a real iPhone, 2026-11-13).** A Home Screen app added from the sample link started as the plain
+app: default bot, empty profile, no welcome. Cause: the host serves a link's own page (its manifest, `start_url` = the link)
+only while no service worker controls the browser. From the second visit on, `src/sw.ts` answered every page navigation with
+the precached plain page, whose manifest starts at `/`; the app swapped the manifest link in about 100 ms after load, which
+is too late for an install that reads the page as served. The installed app then started at `/` in its own empty storage,
+where no preset is ever fetched. Confirmed on the phone: after clearing the site's data, a first visit installed correctly.
+Nothing tested a second visit: `check:hosted` and the e2e tests read the first-visit page only.
+
+**Plan (written and approved before the code).**
+- No per-link data in the worker's file list: `sw.js` is public and a personal link's name is its only secret, so
+  `vite.config.ts` keeps `start/**` out of the precache. Links are learned on the device, from the address somebody opens.
+- A known link: the worker writes the link's page from the precached plain page with the build's own function
+  (`startIndexHtml`, `scripts/lib/start-pages.mjs`): no network, and always this build's file names.
+- A link not seen yet: the host is asked once (5 s at most). If the answer is that link's own page (it names
+  `/start/<slug>/manifest.webmanifest`), the slug and the app name are remembered; otherwise, or with no answer, the plain
+  page as before (an unknown link keeps the app's manifest).
+- Remembered: slug and app name only, in a cache of its own, `wizards-chess-links-v1`, which `dropOldFiles` never touches,
+  so it survives updates. Every answer still goes through `isolated()`. The app's own runtime swap stays as a second layer.
+- Tests first, failing on the old build: two visits in one context; a new link while the worker is in control; the installed
+  launch path (the `start_url` of the second visit's manifest, opened with empty storage and standalone on, then offline).
+
+**Files.** `src/sw.ts` (the caches and the one network call), `src/sw-links.ts` (new: the logic, no `fetch(`),
+`src/preset/start-path.ts` (new: the slug rule and paths, out of `preset.ts`, which re-exports them, so the worker does not
+bundle the bot code), `scripts/lib/start-pages.mjs` + `.d.mts` (`isStartPageOf`, `pageAppName`: reading a page the way
+`startIndexHtml` wrote it), `scripts/check-hosted.mjs`, `README.md`, `tests/unit/sw-links.test.ts` (new, 16),
+`tests/unit/storage-names.test.ts` (the new cache name pinned; every `caches.open` in the worker is one of the two names),
+`tests/e2e/phase11-link-worker.spec.ts` (new, 3 tests × 3 projects).
+
+**Deviations from the plan, with reasons.**
+- *The first answer for a new link is the worker's own page, not the host's response passed through.* The host's page may be
+  from a newer build than the worker's cache; passing it through would show the new build once and the cached one on every
+  later visit. The host's response is only read (is it this link's page, what is its name); the answer is always written
+  from the cache.
+- *A link is also learned without a navigation.* On a first visit (and on an installed app's first launch) no worker answers
+  the navigation, so the worker would not know the link, and the next launch offline would get the plain page. When a window
+  asks for the cache status (`STATUS`, which the page sends as the worker activates), the worker looks at that window's
+  address and learns its link before it answers; "Ready: all N files are cached" therefore also means the link opens offline.
+- `scripts/lib/start-pages.d.mts` already existed (the plan listed it as new); it gained two declarations.
+
+**Tests before the fix (commit `b0a511f`, fresh build, laptop).** All three new tests failed in all three projects (9 of 9):
+the second visit and the new link were served `/manifest.webmanifest`, title "Afterplay", `start_url` "/"; the installed
+launch ended with `data-first-run="none"` instead of `applied`.
+
+**Known limits.** Playwright cannot press Add to Home Screen: the tests model the chain, not iOS. A device that already runs
+the old worker gets the old answer until the new worker has taken over (automatic when nothing is in progress, else the
+banner), so a link should be added to the Home Screen after that, or after clearing the site's data. An installed app that
+was never opened online cannot be set up offline (its storage and worker are its own). A link that is taken off the host
+stays known on devices that learned it. A learned link's app name is not refreshed when its preset changes on the host
+(a preset is applied once per device anyway).
+
+### Stage 6 gate and preview (PROGRESS.md, moved here verbatim on 2026-11-13 to keep that file short)
+
+- **Juno gate on `16f9236`, 2026-11-12** (every job's `meta.json` commit `16f92360cd`, `repo-changes.txt` empty): setup 510591 (repo
+  fast-forwarded to `16f9236`, smoke test ok; its `meta.json` records the commit from before the pull); e2e chromium ×2 510701 (176 passed
+  + 2 skipped each run), webkit ×2 510702 (150 + 2 skipped), webkit-iphone ×2 510703 (152 + 0 skipped), 0 failed and 0 flaky in all six runs;
+  unit 510706 (typecheck, lint, format, build ok; 689 passed, 2 skipped); perf 510707 passed all four scripts: drag p95 16.67 ms in all four
+  windows, 0 dropped, 0 long tasks, start-up 254.65 ms; review 17.0–17.1 s at 1, 2 and 4 threads; tasks 18 flows, 0 of 50 ms or more;
+  memory 50 games +0.3 MB, listeners +0. Juno quota after setup: 27,252 files, realsize 14.68 GB (limits 300k, 50 GB).
+- **Preview:** build `c05c931e365e` (commit `16f92360`), `https://be469e05.afterplay-c0x.pages.dev`; `check:hosted` Chrome 24/24, iPhone
+  WebKit 25/25. No preset uploaded, production untouched.
+
+**Local checks for the worker fix (laptop, AC power, 2026-11-13).** typecheck, lint, format check, build; the unit files it
+touches (`sw-links`, `storage-names`, `presets`, `network-exception`, `hosting`: 64 passed); `phase11-link-worker`,
+`phase11-presets` and `phase8-offline` together in chromium, webkit and webkit-iphone: 43 passed, 2 skipped (the
+iPhone-only Home Screen test in the two desktop projects, as before), 0 failed. The built `sw.js` (7.7 kB) names no link.

@@ -9,10 +9,25 @@
  *   revision changes. Nothing else is ever cached, and nothing is requested at runtime.
  * - Fetch: a precached file comes from the cache; a page navigation (the app uses hash routes)
  *   gets index.html. Whatever is served from the same origin gets the isolation headers.
+ * - First-run links (`/start/<slug>/`): a navigation to one gets that link's own page, with the
+ *   link's manifest, on every visit. The links are not in the file list (a personal link's name
+ *   is secret, and this file is public): one is learned when it is opened, and remembered in a
+ *   cache of its own (sw-links.ts).
  * - Update: a new worker waits until the page says to take over (`SKIP_WAITING`, from the
  *   "Update ready" banner), so an open game is never reloaded under its player. The first
  *   install takes over at once.
  */
+
+import { startPath, startSlugFromPath } from './preset/start-path';
+import {
+  LINKS_CACHE,
+  LINK_TIMEOUT_MS,
+  linkRecordText,
+  linkRecordUrl,
+  pageForLink,
+  readLinkRecord,
+  type LinkStore,
+} from './sw-links';
 
 interface PrecacheEntry {
   url: string;
@@ -45,6 +60,64 @@ function isolated(response: Response): Response {
   headers.set('Cross-Origin-Embedder-Policy', 'require-corp');
   headers.set('Cross-Origin-Resource-Policy', 'same-origin');
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
+
+/** This build's plain page, from the cache. */
+async function plainPage(): Promise<Response | undefined> {
+  return INDEX ? (await caches.open(CACHE)).match(INDEX) : undefined;
+}
+
+const linkStore: LinkStore = {
+  plainPage: async () => (await (await plainPage())?.text()) ?? null,
+  recall: async (slug) => {
+    const hit = await (await caches.open(LINKS_CACHE)).match(linkRecordUrl(sw.registration.scope, slug));
+    return hit ? readLinkRecord(slug, await hit.text()) : null;
+  },
+  remember: async (link) => {
+    const record = new Response(linkRecordText(link), { headers: { 'Content-Type': 'application/json' } });
+    await (await caches.open(LINKS_CACHE)).put(linkRecordUrl(sw.registration.scope, link.slug), record);
+  },
+  hostPage: async (slug) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), LINK_TIMEOUT_MS);
+    try {
+      const response = await fetch(new URL(startPath(slug), sw.registration.scope).href, {
+        cache: 'no-cache',
+        credentials: 'same-origin',
+        signal: controller.signal,
+      });
+      return response.ok ? await response.text() : null;
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
+  },
+};
+
+/** One look-up per link at a time (a page asks for the status several times as the worker starts). */
+const linkLookups = new Map<string, Promise<string | null>>();
+function linkPageHtml(slug: string): Promise<string | null> {
+  let lookup = linkLookups.get(slug);
+  if (!lookup) {
+    lookup = pageForLink(slug, linkStore)
+      .catch(() => null)
+      .finally(() => linkLookups.delete(slug));
+    linkLookups.set(slug, lookup);
+  }
+  return lookup;
+}
+
+/** The answer to a navigation to a first-run link: the link's own page, or null for the usual answer. */
+async function linkResponse(slug: string): Promise<Response | null> {
+  const html = await linkPageHtml(slug);
+  const plain = html === null ? undefined : await plainPage();
+  if (html === null || !plain) return null;
+  // The cached page's own headers, for a body that is no longer the cached one
+  const headers = new Headers(plain.headers);
+  for (const name of ['Content-Length', 'Content-Encoding', 'ETag', 'Last-Modified']) headers.delete(name);
+  headers.set('Content-Type', 'text/html; charset=utf-8');
+  return isolated(new Response(html, { status: 200, headers }));
 }
 
 async function precache(): Promise<void> {
@@ -85,11 +158,19 @@ sw.addEventListener('message', (event) => {
   const data = event.data as { type?: string } | null;
   if (data?.type === 'SKIP_WAITING') void sw.skipWaiting();
   if (data?.type === 'STATUS') {
-    void caches.open(CACHE).then(async (cache) => {
-      let cached = 0;
-      for (const entry of manifest) if (await cache.match(keyOf(entry))) cached++;
-      event.source?.postMessage({ type: 'STATUS', files: manifest.length, cached });
-    });
+    const source = event.source;
+    event.waitUntil(
+      (async () => {
+        // A window that was opened at a first-run link before this worker answered for it (a first visit, or an
+        // installed app's first launch): the link is learned now, before the app is called ready for offline use
+        const slug = source instanceof Client ? startSlugFromPath(new URL(source.url).pathname) : null;
+        if (slug) await linkPageHtml(slug);
+        const cache = await caches.open(CACHE);
+        let cached = 0;
+        for (const entry of manifest) if (await cache.match(keyOf(entry))) cached++;
+        source?.postMessage({ type: 'STATUS', files: manifest.length, cached });
+      })(),
+    );
   }
 });
 
@@ -101,6 +182,10 @@ sw.addEventListener('fetch', (event) => {
   if (request.cache === 'only-if-cached' && request.mode !== 'same-origin') return;
   event.respondWith(
     (async () => {
+      // A first-run link gets its own page (its manifest starts an installed app at the link)
+      const slug = request.mode === 'navigate' ? startSlugFromPath(url.pathname) : null;
+      const linkAnswer = slug ? await linkResponse(slug) : null;
+      if (linkAnswer) return linkAnswer;
       let key = byPath.get(url.pathname);
       // The app's pages: "/", and its hash routes (everything without a file extension)
       if (!key && request.mode === 'navigate' && !/\.[a-z0-9]+$/i.test(url.pathname)) key = INDEX;

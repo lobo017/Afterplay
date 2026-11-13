@@ -14,6 +14,10 @@
 // 6. The sample first-run link (/start/sample/), as a first visitor: the host serves the link's own page and
 //    manifest, every /start/ address is noindex, the preset is applied (look, names, welcome; on an iPhone the Add to
 //    Home Screen guide first, then Continue in Safari), and an unknown link says so.
+//    Then the same link again, once the service worker controls that browser: the worker must serve the link's own
+//    page too (an install reads the manifest of the page as served; the plain page's starts the app at "/", where it
+//    is never set up), and once more with no network, as an installed app opens it. The worker's public file names
+//    no link.
 // 7. Every request the pages made went to the hosted origin itself.
 //
 // Screenshots go to test-results/hosted/. Exit code 0 when every check passes. A dev-time script: it is the only
@@ -289,6 +293,75 @@ try {
     const errors = installabilityErrors.map((e) => e.errorId).filter((id) => id !== 'in-incognito');
     check('first-run link: Chrome finds it installable', errors.length === 0, errors.join(', ') || 'no errors');
   }
+
+  // The second visit: by now the service worker controls this browser and answers for the link itself. What it
+  // serves is read as it arrives, before the app's own scripts touch the title or the manifest link.
+  const linkWorker = await waitFor(async () => {
+    const t = await link.getByTestId('stat-offline').textContent();
+    return (
+      /^Ready: all \d+ files are cached$/.test(t ?? '') &&
+      (await link.evaluate(() => navigator.serviceWorker.controller !== null))
+    );
+  }, 180_000);
+  const servedPage = (html) => ({
+    manifest: /<link rel="manifest" href="([^"]*)"/.exec(html)?.[1] ?? null,
+    title: /<title>([^<]*)<\/title>/.exec(html)?.[1] ?? null,
+    appleTitle: /<meta name="apple-mobile-web-app-title" content="([^"]*)"/.exec(html)?.[1] ?? null,
+  });
+  const isLinksOwn = (served) =>
+    served.manifest === '/start/sample/manifest.webmanifest' &&
+    served.title === "Ada's Chess" &&
+    served.appleTitle === "Ada's Chess";
+  const secondResponse = await link.goto(linkUrl, { waitUntil: 'load', timeout: 60_000 });
+  const second = servedPage((await secondResponse?.text()) ?? '');
+  const secondFromWorker = secondResponse?.fromServiceWorker() ?? false;
+  check(
+    "first-run link, second visit: the worker serves the link's own page",
+    Boolean(linkWorker) && secondFromWorker && isLinksOwn(second),
+    `from the worker: ${secondFromWorker}; ${JSON.stringify(second)}`,
+  );
+  const secondManifest = second.manifest
+    ? await linkContext.request
+        .get(new URL(second.manifest, origin).href, { timeout: 30_000 })
+        .then((r) => r.json())
+        .catch(() => null)
+    : null;
+  check(
+    'first-run link, second visit: the manifest it names starts the installed app at the link',
+    Boolean(secondManifest && secondManifest.start_url === '/start/sample/' && secondManifest.name === "Ada's Chess"),
+    secondManifest ? `${secondManifest.name}, start_url ${secondManifest.start_url}` : 'no manifest',
+  );
+  const stillSetUp = await waitFor(async () => (await shell.getAttribute('data-first-run')) === 'already', 30_000);
+  check(
+    'first-run link, second visit: still set up and isolated',
+    Boolean(stillSetUp) && (await link.evaluate(() => window.crossOriginIsolated)),
+    (await shell.getAttribute('data-first-run')) ?? '',
+  );
+  // With no network, as an installed app opens it on every later launch
+  await linkContext.setOffline(true);
+  const offlineResponse = await link.goto(linkUrl, { waitUntil: 'load', timeout: 60_000 }).catch(() => null);
+  const offlinePage = servedPage((await offlineResponse?.text().catch(() => '')) ?? '');
+  const offlineSetUp = offlineResponse
+    ? await waitFor(async () => (await shell.getAttribute('data-first-run')) === 'already', 30_000)
+    : false;
+  check(
+    "first-run link, offline: the link's own page, still set up",
+    isLinksOwn(offlinePage) && Boolean(offlineSetUp),
+    JSON.stringify(offlinePage),
+  );
+  await linkContext.setOffline(false);
+  // The worker's file is public, and a personal link's name is its only secret: no link may be listed in it
+  const workerText = await (await linkContext.request.get(new URL('/sw.js', origin).href, { timeout: 30_000 })).text();
+  const localStart = path.join('gift.local', 'start');
+  const localSlugs = fs.existsSync(localStart) ? fs.readdirSync(localStart) : [];
+  const namedLinks = [
+    workerText.includes('start/sample') && 'the sample link',
+    // (which one is never printed)
+    localSlugs.some((slug) => workerText.includes(slug)) && 'a personal link',
+    /\/start\/[a-z0-9][a-z0-9-]{1,62}[a-z0-9]\//.test(workerText) && 'a /start/<name>/ address',
+  ].filter(Boolean);
+  check('the worker file names no first-run link', namedLinks.length === 0, namedLinks.join(', '));
+
   // An unknown link: the app opens as usual and says the link is not known
   await link.goto(new URL('/start/no-such-link/', origin).href, { waitUntil: 'load', timeout: 60_000 });
   const unknown = await waitFor(async () => (await shell.getAttribute('data-first-run')) === 'failed', 30_000);

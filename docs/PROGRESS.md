@@ -130,17 +130,29 @@ reads "Offline shell · network only for the Chess.com sync". Full log: [phase-1
 - **Deviation from the spec ("Respect ETags"):** a page cannot use them (`ETag` is not exposed to scripts, `If-None-Match` is refused by
   the API's CORS preflight). A month is final once it was stored at least 24 h after it ended (UTC) and is never asked for again; open
   months are; the browser's own cache still revalidates.
-- **Juno gate on `16f9236`, 2026-11-12** (every job's `meta.json` commit `16f92360cd`, `repo-changes.txt` empty): setup 510591 (repo
-  fast-forwarded to `16f9236`, smoke test ok; its `meta.json` records the commit from before the pull); e2e chromium ×2 510701 (176 passed
-  + 2 skipped each run), webkit ×2 510702 (150 + 2 skipped), webkit-iphone ×2 510703 (152 + 0 skipped), 0 failed and 0 flaky in all six runs;
-  unit 510706 (typecheck, lint, format, build ok; 689 passed, 2 skipped); perf 510707 passed all four scripts: drag p95 16.67 ms in all four
-  windows, 0 dropped, 0 long tasks, start-up 254.65 ms; review 17.0–17.1 s at 1, 2 and 4 threads; tasks 18 flows, 0 of 50 ms or more;
-  memory 50 games +0.3 MB, listeners +0. Juno quota after setup: 27,252 files, realsize 14.68 GB (limits 300k, 50 GB).
-- **Preview:** build `c05c931e365e` (commit `16f92360`), `https://be469e05.afterplay-c0x.pages.dev`; `check:hosted` Chrome 24/24, iPhone
-  WebKit 25/25. No preset uploaded, production untouched.
+- **Juno gate on `16f9236`, 2026-11-12, passed:** unit 510706 (689 passed, 2 skipped), e2e chromium ×2 510701 (176 + 2 skipped), webkit ×2
+  510702 (150 + 2), webkit-iphone ×2 510703 (152), 0 failed, 0 flaky; perf 510707 all four (drag p95 16.67 ms, start-up 255 ms, review
+  17.0–17.1 s, 18 flows clean, +0.3 MB). Preview build `c05c931e365e`, `check:hosted` Chrome 24/24, iPhone WebKit 25/25. Full numbers: phase-11.
 - **Open:** a sync on a real iPhone; the first sync after a restore reads every month once; the final-month rule trusts the device clock;
   a deleted game returns if its month is still open; the Games screen on a phone still shows the capture-extension card; the 2 skipped tests
   per Chromium and desktop WebKit run, and Juno's 2 unit skips against the laptop's 1, were not looked up.
+
+**Link fix (2026-11-13, code done; Juno gate and preview not run yet): a first-run link with the service worker in control.** A real
+iPhone showed it: a Home Screen app added on a second visit started as the plain app, because from the second visit on the worker answered
+`/start/<slug>/` with the precached plain page, whose manifest starts at `/` (the app's own swap of the manifest link, ~100 ms after load,
+is too late for an install). The worker now answers a link with that link's own page on every visit (`src/sw-links.ts`). Links are never
+listed in `sw.js` (it is public; a personal link's name is its only secret): one is learned when it is opened (the host is asked once; slug
+and app name are kept in the cache `wizards-chess-links-v1`, which survives updates), then written from the cached build with the build's
+own function, so it also opens with no network. Plan, deviations and limits: [phase-11](progress/phase-11.md).
+- **Tests, written first:** `phase11-link-worker.spec.ts` (two visits; a new link while the worker is in control; the installed launch
+  path: the `start_url` of the second visit's manifest, opened with empty storage and standalone on, then offline; 3 tests × 3 projects)
+  failed 9 of 9 on `b0a511f` and pass on the fix; `sw-links.test.ts` (16); the new cache name is pinned in `storage-names.test.ts`;
+  `check:hosted` gained the second visit, the offline visit and "sw.js names no link" (5 checks).
+- **Deviations from the plan:** the first answer for a new link is written from the cache too (the host's page is only read: a newer
+  build's page would otherwise show once); and a link is also learned when its window asks for the cache status, because no worker answers
+  a first visit's navigation ("Ready: all N files are cached" now also means the link opens offline).
+- **Open:** a device that still runs the old worker gets the old answer until the new worker took over (add to the Home Screen after
+  that, or after clearing the site's data); Playwright cannot press Add to Home Screen (the tests model the chain, not iOS); a real iPhone.
 ## Open items from earlier phases
 
 - **Scenario-2 `perf:drag`** (analysis board, MultiPV 5, ghosts, navigation sweep) passed clean on Juno on the final code (p95 16.67 ms, 0 dropped).

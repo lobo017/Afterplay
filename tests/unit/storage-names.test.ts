@@ -10,6 +10,7 @@ import { PROFILE_STORAGE_KEY } from '../../src/preset/profile';
 import { BOARD_FEEL_STORAGE_KEY } from '../../src/render/board-feel';
 import { BOARD_SIZE_STORAGE_KEY } from '../../src/render/board-size';
 import { DEFAULT_DB_NAME, LATEST_SCHEMA_VERSION, WizardChessStorage, deleteWizardChessDB } from '../../src/storage/db';
+import { LINKS_CACHE } from '../../src/sw-links';
 import { INSTALL_GUIDE_SEEN_KEY } from '../../src/ui/install-guide';
 import { backupFileName, summarizeBackup } from '../../src/ui/settings-data-section';
 import { APP_SETTINGS_STORAGE_KEY, PREFERENCES_SETTING_KEY } from '../../src/ui/settings-persistence';
@@ -109,8 +110,15 @@ describe('Storage names stay what installed copies already use', () => {
     expect([...used].sort()).toEqual([...known].sort());
   });
 
-  it('the service worker cache name', () => {
+  it('the service worker cache names', () => {
     expect(source('src/sw.ts')).toContain("const CACHE = 'wizards-chess-precache-v1';");
+    // The first-run links a device has learned (sw-links.ts): a rename would make an installed app forget its link
+    expect(LINKS_CACHE).toBe('wizards-chess-links-v1');
+    const cacheNames = new Set<string>();
+    for (const rel of ['src/sw.ts', 'src/sw-links.ts']) {
+      for (const m of source(rel).matchAll(/caches\.open\(\s*([^,)\s]+)/g)) cacheNames.add(m[1]!);
+    }
+    expect([...cacheNames].sort()).toEqual(['CACHE', 'LINKS_CACHE']);
   });
 
   it('the bridge message names the extension and the site share', () => {

@@ -1,11 +1,21 @@
 // First-run links (/start/<slug>/, src/preset/first-run.ts): the page and the manifest written beside each preset.
-// Pure functions, shared by scripts/build-start-pages.mjs and its unit test.
+// Pure functions, shared by scripts/build-start-pages.mjs, the service worker (src/sw-links.ts, which writes the same
+// page from its cache) and their unit tests.
 
-/** The same rule as START_SLUG_PATTERN in src/preset/preset.ts. */
+/** The same rule as START_SLUG_PATTERN in src/preset/start-path.ts. */
 export const START_SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$/;
 const APP_NAME_MAX = 30;
 
 const escapeHtml = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const unescapeHtml = (s) =>
+  s
+    .replace(/&quot;/g, '"')
+    .replace(/&gt;/g, '>')
+    .replace(/&lt;/g, '<')
+    .replace(/&amp;/g, '&');
+
+const MANIFEST_LINK = /<link rel="manifest" href="([^"]*)"\s*\/?>/;
+const HOME_SCREEN_TITLE = /<meta name="apple-mobile-web-app-title" content="([^"]*)"\s*\/?>/;
 
 /** The preset's app name ('' when it names none); throws when the text is not a version 1 preset. */
 export function presetAppName(presetText) {
@@ -49,7 +59,7 @@ export function startIndexHtml(indexHtml, slug, appName) {
   if (!START_SLUG_PATTERN.test(slug)) throw new Error(`"${slug}" is not a valid link name`);
   let html = replaceOnce(
     indexHtml,
-    /<link rel="manifest" href="[^"]*"\s*\/?>/,
+    MANIFEST_LINK,
     `<link rel="manifest" href="/start/${slug}/manifest.webmanifest">`,
     'manifest link',
   );
@@ -58,10 +68,21 @@ export function startIndexHtml(indexHtml, slug, appName) {
     html = replaceOnce(html, /<title>[^<]*<\/title>/, `<title>${name}</title>`, 'title');
     html = replaceOnce(
       html,
-      /<meta name="apple-mobile-web-app-title" content="[^"]*"\s*\/?>/,
+      HOME_SCREEN_TITLE,
       `<meta name="apple-mobile-web-app-title" content="${name}" />`,
       'apple-mobile-web-app-title',
     );
   }
   return replaceOnce(html, /<head>/, '<head>\n    <meta name="robots" content="noindex" />', '<head>');
+}
+
+/** Whether a page is this link's own (it names the link's manifest), as startIndexHtml writes it. */
+export function isStartPageOf(html, slug) {
+  return START_SLUG_PATTERN.test(slug) && MANIFEST_LINK.exec(html)?.[1] === `/start/${slug}/manifest.webmanifest`;
+}
+
+/** The Home Screen name a page carries ('' when it has none): the app's own, or the one startIndexHtml wrote. */
+export function pageAppName(html) {
+  const found = HOME_SCREEN_TITLE.exec(html);
+  return found ? unescapeHtml(found[1]) : '';
 }
