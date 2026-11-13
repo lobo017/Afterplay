@@ -105,7 +105,7 @@ export interface ReviewPanelOptions {
   initialPreset?: ReviewPreset;
   /** The depth select was changed by the user. */
   onPresetChange?: (preset: ReviewPreset) => void;
-  /** My accounts, for the default "Review as" side (the built-in default when absent). */
+  /** My accounts, for the default "Review as" side (none when absent: Both). */
   getAccounts?: () => readonly UserAccount[];
   /** Called when a review run finishes (not when it is cancelled or fails). */
   onReviewFinished?: (result: ReviewRunResult, tree: GameTree) => void;

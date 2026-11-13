@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test, type Page } from '@playwright/test';
+import { saveMyAccounts } from './helpers/accounts';
 import { startLayoutShiftRecorder, stopLayoutShiftRecorder } from './helpers/layout-shift';
 
 // The Games list on its own: the website without the capture extension.
@@ -83,6 +84,8 @@ test.describe('Phase 5b — Games list (no extension)', () => {
   test('paste, drop and open PGN files; metadata, filters and sort; zero network requests', async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     const external = await openGames(page);
+    // My Lichess name, as Settings › Your games saves it (the app has no built-in account)
+    await saveMyAccounts(page);
     await expect(page.getByTestId('games-empty')).toBeVisible();
     // Nothing answers the bridge: the site says so and carries on
     await expect(page.getByTestId('games-extension-status')).toHaveAttribute('data-state', 'not-detected');
@@ -113,7 +116,7 @@ test.describe('Phase 5b — Games list (no extension)', () => {
     await expect(page.getByTestId('games-row')).toHaveCount(6);
     await expect(page.getByTestId('games-count')).toHaveText('6 games');
 
-    // Metadata of the Lichess game (my account Lobo017 as Black, the built-in default)
+    // Metadata of the Lichess game (my account Lobo017 as Black, saved above)
     const lichessRow = page.locator('[data-game-id="lichess:Bjl39T9x"]');
     await expect(lichessRow.getByTestId('games-row-color')).toHaveAttribute('data-color', 'b');
     await expect(lichessRow.getByTestId('games-row-opponent')).toContainText('GEU3');
@@ -164,6 +167,34 @@ test.describe('Phase 5b — Games list (no extension)', () => {
 
     await page.screenshot({ path: path.join(SCREENSHOT_DIR, 'games-list-desktop.png'), fullPage: true });
     expect(external).toEqual([]);
+  });
+
+  test('with no username saved no game is mine; my name saved in Settings makes it mine', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openGames(page);
+    // A fresh app knows nobody: the app has no account of its own, whatever the players are called
+    expect(await page.evaluate(() => window.__wizardChessLibrary!.library.getMyAccounts())).toBeNull();
+    expect(await page.evaluate(() => window.__wizardChessLibrary!.library.getUserAccounts())).toEqual([]);
+    await pastePgn(page, LICHESS_PGN);
+    const row = page.locator('[data-game-id="lichess:Bjl39T9x"]');
+    await expect(row.getByTestId('games-row-color')).toHaveAttribute('data-color', 'none');
+    await expect(row.getByTestId('games-row-opponent')).not.toContainText('me 1397');
+    // Wins and losses are mine or nobody's
+    await page.getByTestId('games-filter-result').selectOption('loss');
+    await expect(page.getByTestId('games-row')).toHaveCount(0);
+    await page.getByTestId('games-filter-result').selectOption('all');
+    await expect(page.getByTestId('games-row')).toHaveCount(1);
+
+    // Settings › Your games: nothing filled in; my Lichess name entered there makes the game mine
+    await page.getByTestId('btn-settings').click();
+    await expect(page.getByTestId('input-lichess-username')).toHaveValue('');
+    await expect(page.getByTestId('input-chesscom-username')).toHaveValue('');
+    await page.getByTestId('input-lichess-username').fill('Lobo017');
+    await page.getByTestId('input-lichess-username').press('Tab');
+    await page.keyboard.press('Escape');
+    await expect(row.getByTestId('games-row-color')).toHaveAttribute('data-color', 'b');
+    await expect(row.getByTestId('games-row-opponent')).toContainText('1374 · me 1397');
+    await expect(row.getByTestId('games-row-result')).toHaveText('W');
   });
 
   test('Analyze on Standard (the default), the saved review on open without the engine, auto-analyze on Quick', async ({

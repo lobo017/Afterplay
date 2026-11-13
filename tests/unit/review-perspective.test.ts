@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DEFAULT_USER_ACCOUNTS,
   defaultPerspective,
   movesOfClass,
   perspectiveErrors,
@@ -8,6 +9,7 @@ import {
   playerHeading,
   playerInfo,
   stepCycle,
+  type UserAccount,
 } from '../../src/review/perspective';
 import { findKeyMoments } from '../../src/review/review-game';
 import type { GameReview, MoveClassification, ReviewedMove } from '../../src/review/types';
@@ -53,24 +55,37 @@ function reviewOf(moves: ReviewedMove[]): GameReview {
 
 describe('review perspective', () => {
   it('defaults to my side when one player is my Lichess account, otherwise Both', () => {
+    // The app has no built-in account: mine is given, as the library gives the saved ones
+    const me: UserAccount[] = [{ site: 'lichess', username: 'Lobo017' }];
     const lichess = { Site: 'https://lichess.org/Bjl39T9x', White: 'GEU3', Black: 'Lobo017' };
-    expect(defaultPerspective(lichess)).toBe('b');
+    expect(defaultPerspective(lichess, me)).toBe('b');
     // Lichess usernames are case-insensitive
-    expect(defaultPerspective({ ...lichess, White: 'lobo017', Black: 'GEU3' })).toBe('w');
+    expect(defaultPerspective({ ...lichess, White: 'lobo017', Black: 'GEU3' }, me)).toBe('w');
     // No Site header: the name alone decides
-    expect(defaultPerspective({ White: 'Lobo017', Black: 'Someone' })).toBe('w');
+    expect(defaultPerspective({ White: 'Lobo017', Black: 'Someone' }, me)).toBe('w');
     // Same name on another site is somebody else
-    expect(defaultPerspective({ Site: 'Chess.com', White: 'Lobo017', Black: 'x' })).toBe('both');
+    expect(defaultPerspective({ Site: 'Chess.com', White: 'Lobo017', Black: 'x' }, me)).toBe('both');
     // Neither player, or both players (a game against myself)
-    expect(defaultPerspective({ White: 'Paul Morphy', Black: 'Duke Karl' })).toBe('both');
-    expect(defaultPerspective({ White: 'Lobo017', Black: 'Lobo017' })).toBe('both');
-    expect(defaultPerspective({})).toBe('both');
+    expect(defaultPerspective({ White: 'Paul Morphy', Black: 'Duke Karl' }, me)).toBe('both');
+    expect(defaultPerspective({ White: 'Lobo017', Black: 'Lobo017' }, me)).toBe('both');
+    expect(defaultPerspective({}, me)).toBe('both');
     // Other accounts can be passed in (Phase 5b settings)
     expect(
       defaultPerspective({ Site: 'https://www.chess.com/game/1', White: 'a', Black: 'Me' }, [
         { site: 'chesscom', username: 'me' },
       ]),
     ).toBe('b');
+  });
+
+  it('with no account saved, no name is mine: every game opens on Both', () => {
+    expect(DEFAULT_USER_ACCOUNTS).toEqual([]);
+    const lichess = { Site: 'https://lichess.org/Bjl39T9x', White: 'GEU3', Black: 'Lobo017' };
+    expect(defaultPerspective(lichess)).toBe('both');
+    expect(defaultPerspective({ ...lichess, White: 'Lobo017', Black: 'GEU3' })).toBe('both');
+    expect(defaultPerspective({ White: 'Lobo017', Black: 'Someone' })).toBe('both');
+    expect(defaultPerspective(lichess, [])).toBe('both');
+    // An empty name in the headers is nobody's, with or without accounts
+    expect(defaultPerspective({ White: '', Black: 'x' }, [{ site: 'lichess', username: '' }])).toBe('both');
   });
 
   it('reads names and ratings from the headers', () => {

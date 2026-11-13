@@ -4,6 +4,7 @@ import { expect, test, type Page, type Request } from '@playwright/test';
 import { Chess } from 'chess.js';
 import { ensureOracle, exactMateDistance } from '../helpers/dtm-oracle';
 import { bestAttackerMove, blackToMoveValue } from '../helpers/dtm-play';
+import { saveMyAccounts } from './helpers/accounts';
 
 // Phase 7: the repertoire, endgame and visualization trainers in the Train hub. One drill of
 // each is completed through the UI; they feed the same Today schedule as puzzles; the review
@@ -313,6 +314,8 @@ test.describe('Phase 7 — repertoire trainer', () => {
   test('the review says where a game of mine leaves my repertoire (only my own games)', async ({ page }) => {
     test.setTimeout(150_000);
     await openTrain(page);
+    // My Lichess name is saved first (the app has no built-in account): "my own games" are Lobo017's
+    await saveMyAccounts(page);
     await page.getByTestId('btn-trainer-repertoire').click();
     await importRepertoire(page, WHITE_REPERTOIRE);
     await expect(page.getByTestId('rep-summary')).toContainText('13 moves');
@@ -824,6 +827,8 @@ test.describe('Phase 7 — visualization drills', () => {
   test('guess the move: my own game, move by move, with the result kept', async ({ page }) => {
     test.setTimeout(90_000);
     await openTrain(page);
+    // My Lichess name is saved first (the app has no built-in account), so MY_GAME is mine when it is stored
+    await saveMyAccounts(page);
     await page.evaluate(async (pgn) => {
       const lib = await window.__wizardChessLibraryReady!;
       const out = await lib.library.importPgnText(pgn);

@@ -12,11 +12,11 @@ export interface UserAccount {
 }
 
 /**
- * The fallback for my accounts, used to pick my side of an imported game until the capture
- * extension has sent the usernames from its settings (library/game-record.ts,
- * accountsFromSettings).
+ * My accounts before any are saved: none. Until a username is entered (Settings › Your games), comes with a
+ * first-run link's preset, or is sent by the capture extension, no game is taken for mine: a review opens on Both,
+ * and a stored game has no "my color" (library/game-record.ts, accountsFromSettings).
  */
-export const DEFAULT_USER_ACCOUNTS: readonly UserAccount[] = [{ site: 'lichess', username: 'Lobo017' }];
+export const DEFAULT_USER_ACCOUNTS: readonly UserAccount[] = [];
 
 const SITE_HOST: Record<UserAccount['site'], string> = {
   lichess: 'lichess.org',

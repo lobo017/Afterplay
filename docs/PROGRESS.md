@@ -153,6 +153,16 @@ own function, so it also opens with no network. Plan, deviations and limits: [ph
   a first visit's navigation ("Ready: all N files are cached" now also means the link opens offline).
 - **Open:** a device that still runs the old worker gets the old answer until the new worker took over (add to the Home Screen after
   that, or after clearing the site's data); Playwright cannot press Add to Home Screen (the tests model the chain, not iOS); a real iPhone.
+
+**No built-in account (2026-11-13, with the link fix): `DEFAULT_USER_ACCOUNTS` is empty.** `src/review/perspective.ts` named one Lichess
+user as "me" until usernames were saved, so on anybody else's fresh install that name's games counted as theirs. Now nobody is "me" until a
+username is entered (Settings › Your games), comes with a preset, or is sent by the capture extension: a review opens on Both, a stored
+game has no "my color", Insights count nothing. A library with saved usernames is unaffected.
+- **Deviation from the spec** (Phase 5, "Lichess `Lobo017` for now; Phase 5b adds a settings field"): the settings field exists, so the
+  interim name is gone. The name stays in fixtures, docs and the extension's tests as an example player.
+- **Tests that relied on the default now save the account themselves, no assertion loosened** (`tests/e2e/helpers/accounts.ts`); the one
+  assertion that stated the default itself (`accountsFromSettings(null)`) now expects none. The list with reasons: [phase-11](progress/phase-11.md).
+
 ## Open items from earlier phases
 
 - **Scenario-2 `perf:drag`** (analysis board, MultiPV 5, ghosts, navigation sweep) passed clean on Juno on the final code (p95 16.67 ms, 0 dropped).

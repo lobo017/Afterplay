@@ -68,7 +68,7 @@ export function buildGameRecord(game: ValidGame, meta: CaptureMeta = {}): NewGam
   };
 }
 
-/** My accounts as the review's perspective uses them; the built-in default until set. */
+/** My accounts as the review's perspective uses them; none until one is set. */
 export function accountsFromSettings(accounts: MyAccounts | null | undefined): UserAccount[] {
   const out: UserAccount[] = [];
   if (accounts?.lichess.trim()) out.push({ site: 'lichess', username: accounts.lichess.trim() });

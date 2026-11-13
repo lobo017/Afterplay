@@ -88,9 +88,11 @@ describe('Phase 5b — game records', () => {
     expect(myColor({ white: 'lobocc', black: 'X', source: 'chesscom' }, accounts)).toBe('w');
     expect(myColor({ white: 'lobocc', black: 'X', source: 'paste' }, accounts)).toBe('w');
     expect(myColor({ white: 'A', black: 'B', source: 'lichess' }, accounts)).toBeNull();
-    // Until the extension sends usernames, the built-in default account applies
-    expect(accountsFromSettings(null)).toEqual([{ site: 'lichess', username: 'Lobo017' }]);
-    expect(accountsFromSettings({ lichess: '', chesscom: '' })).toEqual([{ site: 'lichess', username: 'Lobo017' }]);
+    // Until a username is saved there is no account at all (no built-in one), and no game is mine
+    expect(accountsFromSettings(null)).toEqual([]);
+    expect(accountsFromSettings({ lichess: '', chesscom: '' })).toEqual([]);
+    expect(accountsFromSettings({ lichess: '  ', chesscom: ' ' })).toEqual([]);
+    expect(myColor({ white: 'GEU3', black: 'Lobo017', source: 'lichess' }, accountsFromSettings(null))).toBeNull();
   });
 
   it('formats results, time controls and dates for the list', () => {
@@ -179,6 +181,8 @@ describe('Phase 5b — game library', () => {
 
   it('saves a finished review apart from the game and shows it again on a fresh parse of the game', async () => {
     const { library, storage } = await openLibrary();
+    // My Lichess name, as Settings › Your games saves it (the app has no built-in account)
+    await library.setMyAccounts({ lichess: 'Lobo017', chesscom: '' });
     await library.importPgnText(lichessGame.pgn);
     const result = lichessRunResult();
     const saved = toSavedReview(result, 1234)!;
@@ -192,7 +196,7 @@ describe('Phase 5b — game library', () => {
       whiteAccuracy: result.review.white.accuracy,
       blackAccuracy: result.review.black.accuracy,
     });
-    // My side is Black (Lobo017, the default account): the record carries my accuracy
+    // My side is Black (Lobo017, the account saved above): the record carries my accuracy
     expect(record?.accuracy).toBe(result.review.black.accuracy);
     expect(JSON.stringify(record)).not.toContain('whiteWinSeries');
 

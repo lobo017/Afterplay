@@ -79,7 +79,7 @@ export class GameLibrary {
     return this.accounts;
   }
 
-  /** My accounts for "my color" and the review's default side (built-in default until sent). */
+  /** My accounts for "my color" and the review's default side (none until set or sent). */
   public getUserAccounts(): UserAccount[] {
     return accountsFromSettings(this.accounts);
   }

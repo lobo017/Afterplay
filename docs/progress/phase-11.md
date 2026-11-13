@@ -483,3 +483,49 @@ stays known on devices that learned it. A learned link's app name is not refresh
 touches (`sw-links`, `storage-names`, `presets`, `network-exception`, `hosting`: 64 passed); `phase11-link-worker`,
 `phase11-presets` and `phase8-offline` together in chromium, webkit and webkit-iphone: 43 passed, 2 skipped (the
 iPhone-only Home Screen test in the two desktop projects, as before), 0 failed. The built `sw.js` (7.7 kB) names no link.
+
+
+## No built-in account (2026-11-13): `DEFAULT_USER_ACCOUNTS` becomes `[]`
+
+`src/review/perspective.ts` named one Lichess user as "me" for as long as no username was saved (the spec's interim rule from
+Phase 5, before the settings field existed). On a fresh install that is somebody else's, that name's games counted as theirs.
+The list is now empty: until a username is entered (Settings › Your games), comes with a first-run link's preset or is sent by
+the capture extension, nobody is "me". A review opens on Both, a stored game has no "my color" (the Games list's colour cell,
+"me" rating, W/L result and the win/loss filter), Insights count nothing, guess-the-move has no game, the repertoire note stays
+away, and the sync says "Add your Chess.com username under Your games first." Call sites unchanged in code:
+`perspective.ts` (the default argument of `defaultPerspective`), `game-record.ts` (`accountsFromSettings`), `review-panel.ts`,
+`app.ts`. A library that has usernames saved behaves as before.
+
+**Every changed test, and why.** Found by running the whole unit suite (3 failed) and the whole Chromium e2e suite (7 failed,
+all on "my side" expectations) on the change. Each now saves the account itself, as the app's own settings do; no expected
+value was weakened or removed.
+
+| Test | Change | Reason |
+|---|---|---|
+| unit `review-perspective` › *defaults to my side when one player is my Lichess account, otherwise Both* | all 7 `defaultPerspective(headers)` calls pass `me` (Lichess `Lobo017`); expected values unchanged | they relied on the default argument |
+| unit `review-perspective` › *with no account saved, no name is mine: every game opens on Both* | new | states the new default |
+| unit `library` › *works out my color from my accounts on the game's site* | `accountsFromSettings(null)` and of two empty names now expect `[]` (was the built-in account); two assertions added (blank names; no "my color" without accounts) | **the one changed expectation**: these two lines asserted the removed default itself |
+| unit `library` › *saves a finished review apart from the game…* | saves `{ lichess: 'Lobo017' }` before the import; assertions unchanged | `record.accuracy` is my side's accuracy, which needs a side |
+| e2e `phase5-review` › *Review perspective*: Black, White, Both (helper `reviewMyLichessGame`) | the helper saves the account before the game is imported | Black expects the review to open on my side; Both expects the board left flipped from it; White shares the helper |
+| e2e `phase5b-games` › *paste, drop and open PGN files; metadata, filters and sort…* | saves the account after opening the list | my colour, "me 1397", the W result and the win filter of the Lichess game |
+| e2e `phase5b-games` › *with no username saved no game is mine; my name saved in Settings makes it mine* | new | the new default, and the way out of it, in the app |
+| e2e `phase6b-screens` › *games, today and puzzles (desktop / phone)* | saves the account before the paste | it passed either way, but its fixture is "one mine, one not": the screenshots and the no-side-scroll check keep covering a row of mine |
+| e2e `phase7-trainers` › *the review says where a game of mine leaves my repertoire (only my own games)* | saves the account first | only my games are flagged |
+| e2e `phase7-trainers` › *guess the move: my own game, move by move…* | saves the account before the import | the drill takes games of mine |
+| e2e `phase8-insights` › *charts of my reviewed games…* and *phone: charts with data fit the screen* (helper `prepare`) | the helper saves the account before the paste | Insights count my games |
+
+Also `scripts/perf-tasks.mjs`: the tour's 300 games are "mine" by that name, so the script saves it before the Games flows
+(outside the flows, still audited as "between flows"); without it the import would work out no colour and the Insights flow
+would draw nothing. The flows themselves are unchanged.
+
+**Left alone, on purpose:** the name in fixtures, docs and comments (an example player); `phase6.spec.ts`,
+`phase5b-games` "Chess.com username" and `personal-puzzles.test.ts`, which already gave their accounts; the capture
+extension and its tests (their own settings); `phase6b-games` and `phase6b-settings`, whose rows with that name are now
+nobody's and whose assertions never depended on whose they are.
+
+**Local checks for both commits (laptop, AC power, 2026-11-13).** typecheck, lint, format check, build; unit 707 passed +
+1 skipped (60 files, 98 s). E2e on the laptop: the whole Chromium suite once on the account change before the tests were
+adjusted (172 passed, 2 skipped, 7 failed, the 7 in the table above), then the five adjusted specs in chromium (44/44),
+webkit and webkit-iphone (88/88), and the new Games test in all three (3/3). `perf:tasks` once with the edited script: every
+flow ran, 0 tasks of 50 ms or more (a check that the script runs, not a baseline). The full suites in WebKit, the repeats
+and perf are the Juno gate's.

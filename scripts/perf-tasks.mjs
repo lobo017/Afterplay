@@ -279,6 +279,13 @@ async function run() {
     });
 
     // ---- Games
+    // The tour's games are "mine" by this Lichess name (gamePgn above): the app has no built-in account, so the
+    // name is saved first, as Settings › Your games saves it. Insights and "my color" then have something to show.
+    // (Outside the flows; a long task here would still be reported, as "between flows".)
+    await page.evaluate(async () => {
+      const api = await window.__wizardChessLibraryReady;
+      await api.library.setMyAccounts({ lichess: 'Lobo017', chesscom: '' });
+    });
     await flow('games: open the list', async () => {
       await page.getByTestId('mode-tab-games').click();
       await page.getByTestId('games-list').waitFor({ state: 'visible' });

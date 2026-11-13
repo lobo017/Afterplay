@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
+import { saveMyAccounts } from './helpers/accounts';
 
 // Phase 8: Insights (a tab in Games). Charts of accuracy by phase, blunders per 10 moves,
 // common motifs, results by opening and the puzzle rating; every data point opens what is
@@ -8,7 +9,7 @@ import { expect, test, type Page } from '@playwright/test';
 const SCREENSHOT_DIR = path.join('test-results', 'phase8-screens');
 fs.mkdirSync(SCREENSHOT_DIR, { recursive: true });
 
-// Lobo017 is the default account: White here, and the queen is given away on move 3
+// Lobo017 is my account (prepare() saves it): White here, and the queen is given away on move 3
 const BLUNDER = `[Event "Casual"]
 [White "Lobo017"]
 [Black "Opp"]
@@ -37,6 +38,8 @@ async function prepare(page: Page): Promise<void> {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/#games');
   await expect(page.getByTestId('games-list')).toBeVisible();
+  // My Lichess name, as Settings › Your games saves it (the app has no built-in account): Insights count my games
+  await saveMyAccounts(page);
   await paste(page, `${BLUNDER}\n\n${SICILIAN}`);
   await expect(page.getByTestId('games-row')).toHaveCount(2);
   // Review both on Quick, through the Games list's own queue

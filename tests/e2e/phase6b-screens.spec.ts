@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
+import { saveMyAccounts } from './helpers/accounts';
 
 // Phase 6b: screenshots of every screen at desktop and phone width, for the UX audit and
 // for checking each redesign step. Each test also checks the page never scrolls sideways.
@@ -118,6 +119,8 @@ for (const vp of VIEWPORTS) {
       await page.goto('/');
       await page.getByTestId('mode-tab-games').click();
       await page.evaluate(() => window.__wizardChessLibraryReady);
+      // My Lichess name is saved (the app has no built-in account), so the first game below is shown as mine
+      await saveMyAccounts(page);
       await expect(page.getByTestId('games-list')).toBeVisible();
       await shot(page, vp.name, 'games-empty');
 

@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
+import { saveMyAccounts } from './helpers/accounts';
 import {
   FORTY_MOVE_PGN,
   startLayoutShiftRecorder,
@@ -592,6 +593,8 @@ type SnapshotMove = ReviewSnapshot['moves'][number];
 
 async function reviewMyLichessGame(page: Page): Promise<ReviewSnapshot> {
   await openAnalysis(page);
+  // My Lichess name is saved first (the app has no built-in account), so the game below is mine
+  await saveMyAccounts(page);
   await page.evaluate((pgn) => window.__wizardChessAnalysis!.controller.importPgn(pgn), MY_LICHESS_PGN);
   await page.getByTestId('btn-review-start').click();
   await expect(page.getByTestId('review-panel')).toHaveAttribute('data-state', 'done', { timeout: 90_000 });
