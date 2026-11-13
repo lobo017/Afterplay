@@ -24,13 +24,12 @@ log to `docs/progress/phase-N.md` and keep only a summary here.
 | 7 | Repertoire, endgame & visualization | Done | White/Black repertoire trees (build, import, drill, review flag), 6 engine-verified endgame drills, coordinate/blindfold/guess-the-move; all feed Today with the puzzles | [phase-7](progress/phase-7.md) |
 | 8 | Library, insights, settings, offline | Done | Own service worker (precache + COOP/COEP, update banner) and an offline e2e gate; played games kept, colour/opening/date/accuracy filters, delete, worker bulk import; Insights tab; live-region announcements and keyboard play on every board; Settings for usernames, analysis lines, review depth | [phase-8](progress/phase-8.md) |
 | 9 | Performance pass & final audit | Done (closing gate on Juno, 2026-11-10) | Every budget measured (frame time, input latency, idle, startup, 50-game memory, review speed) and a 16-flow long-task audit; start-up split into tasks, lazy Review screen, Play bot-move task 16–27 → 7–9 ms; hints reach the review; full spec audit (all Done except two Partial and the optional Phase 10); Prettier enforced; measuring scripts guard against a locked screen; closing gate on Juno (unit 592, e2e 4 × 159, perf), results saved before they are shown, review tests hardened | [phase-9](progress/phase-9.md) |
-| 11 | Hosting, iPhone, presets | In progress (stages 1–4, 6 and the Afterplay rename done; stage 6, the Chess.com sync, passed its Juno gate and is on a preview, 2026-11-13) | Cloudflare Pages (classic) with `_headers`, preview-first deploy scripts, automatic updates; WebKit e2e projects, phone engine profile, persistent storage, Add to Home Screen guide; preset files and first-run links, profile, green board, Classic pieces | [phase-11](progress/phase-11.md) |
+| 11 | Hosting, iPhone, presets | In progress (stages 1–4, 6 and the Afterplay rename done; the first-run link fix and the empty default account passed their Juno gate on `5f3274e`, 2026-11-13) | Cloudflare Pages (classic) with `_headers`, preview-first deploy scripts, automatic updates; WebKit e2e projects, phone engine profile, persistent storage, Add to Home Screen guide; preset files and first-run links, profile, green board, Classic pieces | [phase-11](progress/phase-11.md) |
 | HPC | Automated checks on Juno | Done (2026-11-10) | `hpc/`: Apptainer + pinned Playwright image, jobs wc-unit / e2e / e2e-repeat / perf / calibrate / puzzles / summarize, per-job build, port and scratch folder, safe-delete helper, reports; `wc-calibrate` and `wc-puzzles` not yet run | [phase-9](progress/phase-9.md) |
-
 
 ## Current phase and next step
 
-**Phase 11 is in progress (done: hosting and updates, iPhone support, presets and the first-run link, the rename, the history jobs of stage 4; stage 6, the in-app Chess.com sync, passed its Juno gate on `16f9236` and is on a preview, build `c05c931e365e`; see the Phase 11 section below). Production gets one deploy at the end of Phase 11, after testing on the real iPhone (decided 2026-11-10); until then only previews are deployed.** Phases 0–9 are done. **Phase 9 was closed on 2026-11-10: its closing gate ran on Juno (Linux, headless)**: typecheck, lint, format check, build,
+**Phase 11 is in progress (done: hosting and updates, iPhone support, presets and the first-run link, the rename, the history jobs of stage 4; stage 6, the in-app Chess.com sync; the first-run link fix and the empty default account, Juno gate passed on `5f3274e`, 2026-11-13; see the Phase 11 section below). Production gets one deploy at the end of Phase 11, after testing on the real iPhone (decided 2026-11-10); until then only previews are deployed.** Phases 0–9 are done. **Phase 9 was closed on 2026-11-10: its closing gate ran on Juno (Linux, headless)**: typecheck, lint, format check, build,
 592/592 unit tests, 4 of 4 full e2e runs (159/159 each) and all four perf scripts passed on commit `cefe783` (details below and in
 [phase-9](progress/phase-9.md)). **The Key measurements table at the bottom comes from earlier laptop runs; the Juno numbers are in the table
 under it** (regression baselines for a headless Linux node, not a user's screen). Phase 10 (native engine mode) is optional and not started.
@@ -122,46 +121,25 @@ shortlist are personal: they are in the scratch folder and go to `gift.local/his
   Plan, files, deviations, risks: [phase-11](progress/phase-11.md).
 
 **Stage 6 (2026-11-11, done; Juno gate passed 2026-11-12, preview only): "Sync my Chess.com games" in the app.** A button in
-Settings › Your data reads the player's public monthly archives from `api.chess.com` and adds the games with the restore file's ids and
-records, so a restore and a sync, in either order and any number of times, keep every game once. It is the site's only runtime network
-request, made only on that button (AGENTS.md, SPEC.md, `network-exception.test.ts`). Code: `src/sync/chesscom-archive.ts`, `chesscom-sync.ts`;
-tests: `chesscom-sync.test.ts` (27), `network-exception.test.ts` (5), `phase11-sync.spec.ts` (4 × 3 projects), an 18th `perf:tasks` flow. The badge
-reads "Offline shell · network only for the Chess.com sync". Full log: [phase-11](progress/phase-11.md).
-- **Deviation from the spec ("Respect ETags"):** a page cannot use them (`ETag` is not exposed to scripts, `If-None-Match` is refused by
-  the API's CORS preflight). A month is final once it was stored at least 24 h after it ended (UTC) and is never asked for again; open
-  months are; the browser's own cache still revalidates.
-- **Juno gate on `16f9236`, 2026-11-12, passed:** unit 510706 (689 passed, 2 skipped), e2e chromium ×2 510701 (176 + 2 skipped), webkit ×2
-  510702 (150 + 2), webkit-iphone ×2 510703 (152), 0 failed, 0 flaky; perf 510707 all four (drag p95 16.67 ms, start-up 255 ms, review
-  17.0–17.1 s, 18 flows clean, +0.3 MB). Preview build `c05c931e365e`, `check:hosted` Chrome 24/24, iPhone WebKit 25/25. Full numbers: phase-11.
+Settings › Your data reads the player's public monthly archives from `api.chess.com` and adds the games with the restore file's ids, so a
+restore and a sync, in any order, keep every game once. It is the site's only runtime network request, made only on that button
+(`network-exception.test.ts`). Gate on `16f9236`: unit 510706, e2e 510701–510703, perf 510707; preview build `c05c931e365e`.
+- **Deviation from the spec ("Respect ETags"):** a page cannot use them; a month is final once stored 24 h after it ended (UTC).
 - **Open:** a sync on a real iPhone; the first sync after a restore reads every month once; the final-month rule trusts the device clock;
-  a deleted game returns if its month is still open; the Games screen on a phone still shows the capture-extension card; the 2 skipped tests
-  per Chromium and desktop WebKit run, and Juno's 2 unit skips against the laptop's 1, were not looked up.
+  a deleted game returns if its month is still open; the Games screen on a phone still shows the capture-extension card.
 
-**Link fix (2026-11-13, code done; Juno gate and preview not run yet): a first-run link with the service worker in control.** A real
-iPhone showed it: a Home Screen app added on a second visit started as the plain app, because from the second visit on the worker answered
-`/start/<slug>/` with the precached plain page, whose manifest starts at `/` (the app's own swap of the manifest link, ~100 ms after load,
-is too late for an install). The worker now answers a link with that link's own page on every visit (`src/sw-links.ts`). Links are never
-listed in `sw.js` (it is public; a personal link's name is its only secret): one is learned when it is opened (the host is asked once; slug
-and app name are kept in the cache `wizards-chess-links-v1`, which survives updates), then written from the cached build with the build's
-own function, so it also opens with no network. Plan, deviations and limits: [phase-11](progress/phase-11.md).
-- **Tests, written first:** `phase11-link-worker.spec.ts` (two visits; a new link while the worker is in control; the installed launch
-  path: the `start_url` of the second visit's manifest, opened with empty storage and standalone on, then offline; 3 tests × 3 projects)
-  failed 9 of 9 on `b0a511f` and pass on the fix; `sw-links.test.ts` (16); the new cache name is pinned in `storage-names.test.ts`;
-  `check:hosted` gained the second visit, the offline visit and "sw.js names no link" (5 checks).
-- **Deviations from the plan:** the first answer for a new link is written from the cache too (the host's page is only read: a newer
-  build's page would otherwise show once); and a link is also learned when its window asks for the cache status, because no worker answers
-  a first visit's navigation ("Ready: all N files are cached" now also means the link opens offline).
-- **Open:** a device that still runs the old worker gets the old answer until the new worker took over (add to the Home Screen after
-  that, or after clearing the site's data); Playwright cannot press Add to Home Screen (the tests model the chain, not iOS); a real iPhone.
-
-**No built-in account (2026-11-13, with the link fix): `DEFAULT_USER_ACCOUNTS` is empty.** `src/review/perspective.ts` named one Lichess
-user as "me" until usernames were saved, so on anybody else's fresh install that name's games counted as theirs. Now nobody is "me" until a
-username is entered (Settings › Your games), comes with a preset, or is sent by the capture extension: a review opens on Both, a stored
-game has no "my color", Insights count nothing. A library with saved usernames is unaffected.
-- **Deviation from the spec** (Phase 5, "Lichess `Lobo017` for now; Phase 5b adds a settings field"): the settings field exists, so the
-  interim name is gone. The name stays in fixtures, docs and the extension's tests as an example player.
-- **Tests that relied on the default now save the account themselves, no assertion loosened** (`tests/e2e/helpers/accounts.ts`); the one
-  assertion that stated the default itself (`accountsFromSettings(null)`) now expects none. The list with reasons: [phase-11](progress/phase-11.md).
+**Link fix and no built-in account (2026-11-13, done; Juno gate passed on `5f3274e`; preview with it: next).** Full log: [phase-11](progress/phase-11.md).
+- **Link fix (`1af20a8`):** a real iPhone showed a Home Screen app, added on a second visit, starting as the plain app: the service worker
+  answered `/start/<slug>/` with the precached plain page, whose manifest starts at `/`. It now answers a link with that link's own page on
+  every visit (`src/sw-links.ts`). No link is listed in `sw.js`: one is learned when it is opened and kept in the cache
+  `wizards-chess-links-v1`, then written from the cached build, so it opens offline. Tests first (`phase11-link-worker.spec.ts`, 9 of 9
+  failing before); `check:hosted` gained the second visit, the offline visit and "sw.js names no link".
+- **No built-in account (`5f3274e`):** `DEFAULT_USER_ACCOUNTS` is empty, so nobody is "me" until a username is saved (a deviation from the
+  spec's interim Phase 5 rule). Tests that relied on the default save the account themselves; no assertion loosened.
+- **Juno gate on `5f3274e`, 2026-11-13, passed** (every `meta.json` commit matched, every `repo-changes.txt` empty): e2e chromium ×2 512032
+  (180 + 2 skipped), webkit ×2 512035 (154 + 2), webkit-iphone ×2 512037 (156), 0 failed, 0 flaky; unit 512038 (706 passed, 2 skipped);
+  perf 512039 all four (drag p95 16.67 ms, 0 dropped, start-up 250 ms; review 17.0–17.1 s; tasks 0 of 50 ms or more; +0.18 MB).
+- **Open:** a device still on the old worker gets the old answer until the new one took over; the tests model Add to Home Screen, not iOS.
 
 ## Open items from earlier phases
 

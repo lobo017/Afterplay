@@ -51,14 +51,15 @@ If `package-lock.json` or the Playwright version changed, run the setup job firs
 
 ## 3. Submit
 
-With `SB` and `JOBS` as in hpc/README.md (mail flags included). Two waves keep it at 4 running jobs:
+With `SB` and `JOBS` as in hpc/README.md (mail flags included). Two waves keep it at 4 running jobs, and perf waits for
+all three e2e groups: it must never run beside an e2e job.
 
 ```
 SB --array=1-2%2 $JOBS/e2e-repeat.sbatch" -- --project=chromium          # → A
 SB --array=1-2%2 $JOBS/e2e-repeat.sbatch" -- --project=webkit            # → B
-SB --dependency=afterany:A:B --array=1-2%2 $JOBS/e2e-repeat.sbatch" -- --project=webkit-iphone
+SB --dependency=afterany:A:B --array=1-2%2 $JOBS/e2e-repeat.sbatch" -- --project=webkit-iphone   # → C
 SB --dependency=afterany:A:B $JOBS/unit.sbatch"
-SB --dependency=afterany:A:B $JOBS/perf.sbatch"
+SB --dependency=afterany:A:B:C $JOBS/perf.sbatch"
 ```
 
 Record the five job IDs.

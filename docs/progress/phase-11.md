@@ -529,3 +529,71 @@ adjusted (172 passed, 2 skipped, 7 failed, the 7 in the table above), then the f
 webkit and webkit-iphone (88/88), and the new Games test in all three (3/3). `perf:tasks` once with the edited script: every
 flow ran, 0 tasks of 50 ms or more (a check that the script runs, not a baseline). The full suites in WebKit, the repeats
 and perf are the Juno gate's.
+
+
+### Stage 6, link fix and account blocks (PROGRESS.md as of commit 5f3274e, moved here verbatim on 2026-11-13)
+
+**Stage 6 (2026-11-11, done; Juno gate passed 2026-11-12, preview only): "Sync my Chess.com games" in the app.** A button in
+Settings › Your data reads the player's public monthly archives from `api.chess.com` and adds the games with the restore file's ids and
+records, so a restore and a sync, in either order and any number of times, keep every game once. It is the site's only runtime network
+request, made only on that button (AGENTS.md, SPEC.md, `network-exception.test.ts`). Code: `src/sync/chesscom-archive.ts`, `chesscom-sync.ts`;
+tests: `chesscom-sync.test.ts` (27), `network-exception.test.ts` (5), `phase11-sync.spec.ts` (4 × 3 projects), an 18th `perf:tasks` flow. The badge
+reads "Offline shell · network only for the Chess.com sync". Full log: [phase-11](progress/phase-11.md).
+- **Deviation from the spec ("Respect ETags"):** a page cannot use them (`ETag` is not exposed to scripts, `If-None-Match` is refused by
+  the API's CORS preflight). A month is final once it was stored at least 24 h after it ended (UTC) and is never asked for again; open
+  months are; the browser's own cache still revalidates.
+- **Juno gate on `16f9236`, 2026-11-12, passed:** unit 510706 (689 passed, 2 skipped), e2e chromium ×2 510701 (176 + 2 skipped), webkit ×2
+  510702 (150 + 2), webkit-iphone ×2 510703 (152), 0 failed, 0 flaky; perf 510707 all four (drag p95 16.67 ms, start-up 255 ms, review
+  17.0–17.1 s, 18 flows clean, +0.3 MB). Preview build `c05c931e365e`, `check:hosted` Chrome 24/24, iPhone WebKit 25/25. Full numbers: phase-11.
+- **Open:** a sync on a real iPhone; the first sync after a restore reads every month once; the final-month rule trusts the device clock;
+  a deleted game returns if its month is still open; the Games screen on a phone still shows the capture-extension card; the 2 skipped tests
+  per Chromium and desktop WebKit run, and Juno's 2 unit skips against the laptop's 1, were not looked up.
+
+**Link fix (2026-11-13, code done; Juno gate and preview not run yet): a first-run link with the service worker in control.** A real
+iPhone showed it: a Home Screen app added on a second visit started as the plain app, because from the second visit on the worker answered
+`/start/<slug>/` with the precached plain page, whose manifest starts at `/` (the app's own swap of the manifest link, ~100 ms after load,
+is too late for an install). The worker now answers a link with that link's own page on every visit (`src/sw-links.ts`). Links are never
+listed in `sw.js` (it is public; a personal link's name is its only secret): one is learned when it is opened (the host is asked once; slug
+and app name are kept in the cache `wizards-chess-links-v1`, which survives updates), then written from the cached build with the build's
+own function, so it also opens with no network. Plan, deviations and limits: [phase-11](progress/phase-11.md).
+- **Tests, written first:** `phase11-link-worker.spec.ts` (two visits; a new link while the worker is in control; the installed launch
+  path: the `start_url` of the second visit's manifest, opened with empty storage and standalone on, then offline; 3 tests × 3 projects)
+  failed 9 of 9 on `b0a511f` and pass on the fix; `sw-links.test.ts` (16); the new cache name is pinned in `storage-names.test.ts`;
+  `check:hosted` gained the second visit, the offline visit and "sw.js names no link" (5 checks).
+- **Deviations from the plan:** the first answer for a new link is written from the cache too (the host's page is only read: a newer
+  build's page would otherwise show once); and a link is also learned when its window asks for the cache status, because no worker answers
+  a first visit's navigation ("Ready: all N files are cached" now also means the link opens offline).
+- **Open:** a device that still runs the old worker gets the old answer until the new worker took over (add to the Home Screen after
+  that, or after clearing the site's data); Playwright cannot press Add to Home Screen (the tests model the chain, not iOS); a real iPhone.
+
+**No built-in account (2026-11-13, with the link fix): `DEFAULT_USER_ACCOUNTS` is empty.** `src/review/perspective.ts` named one Lichess
+user as "me" until usernames were saved, so on anybody else's fresh install that name's games counted as theirs. Now nobody is "me" until a
+username is entered (Settings › Your games), comes with a preset, or is sent by the capture extension: a review opens on Both, a stored
+game has no "my color", Insights count nothing. A library with saved usernames is unaffected.
+- **Deviation from the spec** (Phase 5, "Lichess `Lobo017` for now; Phase 5b adds a settings field"): the settings field exists, so the
+  interim name is gone. The name stays in fixtures, docs and the extension's tests as an example player.
+- **Tests that relied on the default now save the account themselves, no assertion loosened** (`tests/e2e/helpers/accounts.ts`); the one
+  assertion that stated the default itself (`accountsFromSettings(null)`) now expects none. The list with reasons: [phase-11](progress/phase-11.md).
+
+### Juno gate on `5f3274e`, 2026-11-13: passed
+
+Submitted in two waves: e2e chromium and webkit first, then webkit-iphone and unit after both, and perf after all three e2e
+groups (`--dependency=afterany:A:B:C`: perf must never run beside an e2e job; the skill said `A:B` and was corrected). Every
+job's `meta.json` commit was `5f3274e25580baa0154cd3dcf1f818fa8852c022` and every `repo-changes.txt` was empty; all eight tasks
+`COMPLETED`, exit 0:0. Perf started 8 s after the last e2e task ended.
+
+| Job | Result |
+|---|---|
+| e2e chromium ×2, 512032 | 180 passed, 0 failed, 0 flaky, 2 skipped in both runs (13 min 18 s, 13 min 3 s) |
+| e2e webkit ×2, 512035 | 154 passed, 0 failed, 0 flaky, 2 skipped in both runs (13 min 20 s, 13 min 42 s) |
+| e2e webkit-iphone ×2, 512037 | 156 passed, 0 failed, 0 flaky, 0 skipped in both runs (16 min 10 s, 16 min 48 s) |
+| unit, 512038 | typecheck, lint, format, build ok; 706 passed, 0 failed, 2 skipped (708 tests, 47 s) |
+| perf, 512039 | all four scripts passed (below) |
+
+Perf (headless Linux node: regression baselines, not a screen): `perf:drag` p95 16.67 ms and p99 16.67 ms in all four windows,
+0 dropped, 0 long tasks, main thread 0.68–1.34 ms per frame, input 0.41 and 0.73 ms, start-up 250.05 ms, idle rAF 0 (limits: p95
+17.2 ms, start-up 1,500 ms); `perf:review` 17.0–17.1 s in all 12 runs at 1, 2 and 4 threads, 0 long tasks (limit: 30 s for the
+1-thread Quick review), with one dropped frame of 1036 in the first run (alone, 1 thread, round 1), which its pass rule does not
+count; `perf:tasks` every flow ok, 0 tasks of 50 ms or more; `perf:memory` 50 games, 5.1 KB per game (+0.18 MB), reachable DOM
+−10, listeners +0 (limits: 25 KB per game, 60 nodes). Each project has four more e2e tests than the stage 6 gate (the three
+link-worker tests and the new Games test). Juno's 2 unit skips against the laptop's 1 are still not looked up.
