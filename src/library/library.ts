@@ -11,6 +11,8 @@ import type { SingleGameCheck } from './pgn-import-core';
 import type { SavedReview } from './saved-review';
 
 const ACCOUNTS_SETTING = 'library.myAccounts';
+/** Accounts added after the first one per site (`myAccounts` keeps the first, the extension's message format). */
+const MORE_ACCOUNTS_SETTING = 'library.moreAccounts';
 const AUTO_ANALYZE_SETTING = 'library.autoAnalyze';
 
 export interface ImportOutcome {
@@ -43,6 +45,24 @@ export interface LibraryChange {
   updated: string[];
 }
 
+/** A stored list of added accounts, kept only where each entry is a site and a non-empty name; no repeats. */
+function cleanMoreAccounts(value: unknown): UserAccount[] {
+  if (!Array.isArray(value)) return [];
+  const out: UserAccount[] = [];
+  const seen = new Set<string>();
+  for (const item of value as unknown[]) {
+    if (typeof item !== 'object' || item === null) continue;
+    const { site, username } = item as Partial<UserAccount>;
+    if ((site !== 'lichess' && site !== 'chesscom') || typeof username !== 'string') continue;
+    const name = username.trim();
+    const key = `${site}:${name.toLowerCase()}`;
+    if (name === '' || seen.has(key)) continue;
+    seen.add(key);
+    out.push({ site, username: name });
+  }
+  return out;
+}
+
 /** Lets other work run between games, so a big import never becomes one long task. */
 const yieldToEventLoop = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
@@ -53,6 +73,7 @@ const yieldToEventLoop = () => new Promise<void>((resolve) => setTimeout(resolve
 export class GameLibrary {
   private readonly listeners = new Set<(change: LibraryChange) => void>();
   private accounts: MyAccounts | null = null;
+  private moreAccounts: UserAccount[] = [];
   private readonly accountListeners = new Set<() => void>();
 
   constructor(
@@ -61,7 +82,12 @@ export class GameLibrary {
   ) {}
 
   public async init(): Promise<void> {
+    await this.loadAccounts();
+  }
+
+  private async loadAccounts(): Promise<void> {
     this.accounts = (await this.storage.getSetting<MyAccounts>(ACCOUNTS_SETTING)) ?? null;
+    this.moreAccounts = cleanMoreAccounts(await this.storage.getSetting<unknown>(MORE_ACCOUNTS_SETTING));
   }
 
   public onChange(listener: (change: LibraryChange) => void): () => void {
@@ -81,7 +107,20 @@ export class GameLibrary {
 
   /** My accounts for "my color" and the review's default side (none until set or sent). */
   public getUserAccounts(): UserAccount[] {
-    return accountsFromSettings(this.accounts);
+    return accountsFromSettings(this.accounts, this.moreAccounts);
+  }
+
+  /** The accounts added after the first one per site. */
+  public getMoreAccounts(): UserAccount[] {
+    return this.moreAccounts.map((a) => ({ ...a }));
+  }
+
+  public async setMoreAccounts(accounts: readonly UserAccount[]): Promise<void> {
+    const next = cleanMoreAccounts(accounts);
+    if (JSON.stringify(next) === JSON.stringify(this.moreAccounts)) return;
+    this.moreAccounts = next;
+    await this.storage.setSetting(MORE_ACCOUNTS_SETTING, next);
+    for (const l of this.accountListeners) l();
   }
 
   public async setMyAccounts(accounts: MyAccounts): Promise<void> {
@@ -100,7 +139,7 @@ export class GameLibrary {
 
   /** Reads my usernames again from storage (after a restore). */
   public async reloadAccounts(): Promise<void> {
-    this.accounts = (await this.storage.getSetting<MyAccounts>(ACCOUNTS_SETTING)) ?? null;
+    await this.loadAccounts();
     for (const l of this.accountListeners) l();
   }
 

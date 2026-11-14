@@ -69,10 +69,14 @@ export function buildGameRecord(game: ValidGame, meta: CaptureMeta = {}): NewGam
 }
 
 /** My accounts as the review's perspective uses them; none until one is set. */
-export function accountsFromSettings(accounts: MyAccounts | null | undefined): UserAccount[] {
+export function accountsFromSettings(
+  accounts: MyAccounts | null | undefined,
+  more: readonly UserAccount[] = [],
+): UserAccount[] {
   const out: UserAccount[] = [];
   if (accounts?.lichess.trim()) out.push({ site: 'lichess', username: accounts.lichess.trim() });
   if (accounts?.chesscom.trim()) out.push({ site: 'chesscom', username: accounts.chesscom.trim() });
+  out.push(...more.map((a) => ({ site: a.site, username: a.username })));
   return out.length > 0 ? out : [...DEFAULT_USER_ACCOUNTS];
 }
 

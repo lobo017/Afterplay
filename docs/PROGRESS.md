@@ -141,6 +141,9 @@ restore and a sync, in any order, keep every game once. It is the site's only ru
   perf 512039 all four (drag p95 16.67 ms, 0 dropped, start-up 250 ms; review 17.0–17.1 s; tasks 0 of 50 ms or more; +0.18 MB).
 - **Open:** a device still on the old worker gets the old answer until the new one took over; the tests model Add to Home Screen, not iOS.
 
+**Chess Story, build session 1 (2026-11-13, not committed; no UI, no network).** `src/story/stats.ts` (`computeStoryStats`: three scopes, duplicates, exclusions, streaks, openings, best win, 12-month trend per site), `src/story/text.ts` (`storyCards`: fixed templates from `StoryStats`), `library.moreAccounts` + `getMoreAccounts`/`setMoreAccounts` in `library.ts`, `getUserAccounts()` returns both. Tests: `story-stats` 46, `story-text` 15, `story-accounts` 6; unit suite 775 passed, 1 skipped; typecheck, lint, format:check clean. Files are named `stats.ts`/`text.ts` as the session brief says (the spec says `story-stats.ts`/`story-text.ts`).
+- **Choices where the spec was silent:** a game with no time control the code can read counts in totals but in no class (`unclassified`); "rated win" = the opponent has a stored rating (the rated flag is not stored); the trend's "rated games" are those in the 12-month window; unpaired duplicates are matched one to one, the Lichess side dropping out of the total; the Lichess card is made only when Lichess games are stored (spec section 11), so spec section 5's "one line for a site with no games" applies to Chess.com only.
+
 ## Open items from earlier phases
 
 - **Scenario-2 `perf:drag`** (analysis board, MultiPV 5, ghosts, navigation sweep) passed clean on Juno on the final code (p95 16.67 ms, 0 dropped).
