@@ -18,6 +18,7 @@ import {
  *   "appName": "…",                                   the Home Screen name
  *   "profile": { "displayName": "…", "title": "…" },
  *   "welcome": { "title": "…", "message": "…", "from": "…" },
+ *   "story": { "intro": "…", "closing": "…" },          optional text on the first and last Chess Story cards
  *   "settings": { "boardTheme": "green", "newGame": { "botRating": 1200 } },   any app setting
  *   "usernames": { "lichess": "…", "chesscom": "…" },
  *   "bots": [{ "name": "…", "rating": 1200, "style": "solid" }]
@@ -33,6 +34,8 @@ export const PRESET_LIMITS = {
   welcomeTitle: 80,
   welcomeMessage: 2000,
   welcomeFrom: 60,
+  /** The Story's intro or closing: one paragraph on a card. */
+  storyText: 500,
   username: 40,
   botName: 30,
   bots: 8,
@@ -52,6 +55,12 @@ export interface WelcomeMessage {
   from: string;
 }
 
+/** The optional paragraphs on the Story's first and last cards. Plain text, never read for numbers. */
+export interface StoryText {
+  intro: string;
+  closing: string;
+}
+
 export interface PresetUsernames {
   lichess: string;
   chesscom: string;
@@ -64,6 +73,8 @@ export interface Preset {
   displayName: string;
   title: string;
   welcome: WelcomeMessage | null;
+  /** Absent when the preset has no story text. */
+  story?: StoryText;
   /** Only the settings the preset names; everything else keeps its value. */
   settings: AppSettingsPatch;
   usernames: PresetUsernames | null;
@@ -237,6 +248,21 @@ export function parseWelcome(value: unknown, problems: string[] = []): WelcomeMe
   return welcome;
 }
 
+/** One paragraph for a Story card: cleaned like the welcome, on one line, cut at the limit. Null when there is none. */
+export function parseStoryText(value: unknown, problems: string[] = []): StoryText | null {
+  if (value === undefined || value === null) return null;
+  if (!isObject(value)) {
+    problems.push('story: must be an object');
+    return null;
+  }
+  noteUnknownKeys(value, ['intro', 'closing'], 'story.', problems);
+  const story: StoryText = {
+    intro: textField(value, 'intro', 'story.', PRESET_LIMITS.storyText, problems),
+    closing: textField(value, 'closing', 'story.', PRESET_LIMITS.storyText, problems),
+  };
+  return story.intro || story.closing ? story : null;
+}
+
 /** Checks a preset file's content. The app uses whatever is valid and ignores the rest. */
 export function parsePreset(input: unknown): ParsedPreset {
   const problems: string[] = [];
@@ -244,7 +270,12 @@ export function parsePreset(input: unknown): ParsedPreset {
   if (input.version !== PRESET_VERSION) {
     return { preset: null, problems: [`version: this app reads version ${PRESET_VERSION} presets`] };
   }
-  noteUnknownKeys(input, ['version', 'appName', 'profile', 'welcome', 'settings', 'usernames', 'bots'], '', problems);
+  noteUnknownKeys(
+    input,
+    ['version', 'appName', 'profile', 'welcome', 'story', 'settings', 'usernames', 'bots'],
+    '',
+    problems,
+  );
 
   let displayName = '';
   let title = '';
@@ -272,6 +303,7 @@ export function parsePreset(input: unknown): ParsedPreset {
     }
   }
 
+  const story = parseStoryText(input.story, problems);
   return {
     preset: {
       version: PRESET_VERSION,
@@ -279,6 +311,7 @@ export function parsePreset(input: unknown): ParsedPreset {
       displayName,
       title,
       welcome: parseWelcome(input.welcome, problems),
+      ...(story ? { story } : {}),
       settings: parseSettings(input.settings, problems),
       usernames,
       bots: parseBots(input.bots, problems),

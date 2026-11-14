@@ -111,6 +111,7 @@ address: nothing is fetched and nothing you changed since is overwritten.
   "appName": "Ada's Chess",
   "profile": { "displayName": "Ada", "title": "Countess" },
   "welcome": { "title": "Welcome, Ada", "message": "First paragraph.\n\nSecond paragraph.", "from": "A friend" },
+  "story": { "intro": "A line for the first Story card.", "closing": "A line for the last one." },
   "settings": { "boardTheme": "green", "pieceSet": "classic", "newGame": { "botRating": 800, "timeControlId": "10+0" } },
   "usernames": { "lichess": "", "chesscom": "ada-sample" },
   "bots": [{ "name": "Professor Rook", "rating": 800, "style": "solid" }]
@@ -124,6 +125,7 @@ Every field but `version` is optional.
 | `appName` | The app's name: page title, the heading, and the name under the Home Screen icon (up to 30 characters; a phone shows about 12) |
 | `profile` | `displayName` replaces "You" in Play and in the PGN of games played here; `title` is a short badge before it (also editable in Settings › Profile) |
 | `welcome` | A message shown once after the set-up (plain text; a blank line starts a paragraph). Settings › Profile shows it again. In Safari on an iPhone the Add to Home Screen guide comes first and the welcome waits for the Home Screen app's first launch (or for **Continue in Safari** on the guide) |
+| `story` | Optional `intro` and `closing` text (plain text, one paragraph, up to 500 characters each) shown on the first and last cards of Games › Story. It is never read for numbers: every number on a card comes from the games |
 | `settings` | Any app setting by its name in `src/ui/app-settings.ts` (`boardTheme`, `pieceSet`, `sound`, `reviewPreset`, …); `newGame` holds the bot level (`botRating` 400–2400), `botStyle`, `timeControlId`, `color`, think times and takebacks |
 | `usernames` | Your Lichess and Chess.com names, so the app knows your side in your games |
 | `bots` | Up to eight bots with names of their own: the usual bot at that `rating` and `style` (`solid`, `aggressive`, `gambiteer`), offered as buttons on the New game card |

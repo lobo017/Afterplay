@@ -1,5 +1,12 @@
 import type { GamesList } from '../library/games-list';
 import type { GameLibrary } from '../library/library';
+import {
+  SITE_NAME,
+  addMoreAccount,
+  moreAccountsHtml,
+  removeMoreAccount,
+  type AccountSite,
+} from '../library/more-accounts';
 import { switchRowHtml } from './components/controls';
 import type { SettingsPanel } from './settings-panel';
 
@@ -22,11 +29,49 @@ export function mountGamesSettings(panel: SettingsPanel, library: GameLibrary, l
       <span class="wc-setting-label">Chess.com username<span class="wc-setting-hint">Marks your side in Chess.com games</span></span>
       <input type="text" class="wc-select wc-setting-text" autocomplete="off" spellcheck="false" maxlength="40" value="" data-testid="input-chesscom-username" />
     </label>
+    <div class="wc-setting-more-accounts" data-testid="settings-more-accounts"></div>
     ${switchRowHtml('toggle-auto-analyze', 'Auto-analyze new games', false, 'A Quick review of each new captured or imported game')}`;
   const q = <T extends HTMLElement>(id: string) => body.querySelector(`[data-testid="${id}"]`) as T;
   const lichess = q<HTMLInputElement>('input-lichess-username');
   const chesscom = q<HTMLInputElement>('input-chesscom-username');
   const auto = q<HTMLInputElement>('toggle-auto-analyze');
+  // Added accounts (after the first one per site): the same list and functions as on Games › Story
+  const more = q<HTMLElement>('settings-more-accounts');
+  const drafts: Record<AccountSite, string> = { chesscom: '', lichess: '' };
+  const errors: Record<AccountSite, string> = { chesscom: '', lichess: '' };
+  const showMore = (): void => {
+    if (more.contains(document.activeElement) && document.activeElement instanceof HTMLInputElement) return;
+    const accounts = library.getMoreAccounts();
+    more.innerHTML = (['chesscom', 'lichess'] as const)
+      .map(
+        (site) =>
+          `<p class="wc-setting-hint wc-setting-hint-block">${SITE_NAME[site]} accounts you added. Their games count as yours; removing one keeps its games but stops counting them.</p>${moreAccountsHtml(site, accounts, { idPrefix: 'settings-more', draft: drafts[site], error: errors[site] })}`,
+      )
+      .join('');
+  };
+  more.addEventListener('input', (e) => {
+    const input = e.target as HTMLInputElement;
+    if (input.matches('input[data-more-input]')) drafts[input.dataset.site as AccountSite] = input.value;
+  });
+  more.addEventListener('click', (e) => {
+    const button = (e.target as HTMLElement).closest<HTMLElement>('[data-more-action]');
+    if (!button) return;
+    const site = button.dataset.site as AccountSite;
+    void (async () => {
+      if (button.dataset.moreAction === 'add') {
+        const result = await addMoreAccount(library, site, drafts[site]);
+        errors[site] = result.ok ? '' : result.message;
+        if (result.ok) drafts[site] = '';
+      } else {
+        await removeMoreAccount(library, site, button.dataset.username ?? '');
+      }
+      more.querySelectorAll('input').forEach((i) => i.blur());
+      showMore();
+      void list.refresh();
+    })();
+  });
+  showMore();
+  library.onAccountsChange(showMore);
   const show = (): void => {
     const a = library.getMyAccounts();
     if (document.activeElement !== lichess) lichess.value = a?.lichess ?? '';

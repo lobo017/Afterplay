@@ -24,7 +24,7 @@
   something can't be done, write that in PROGRESS.md.
 - Never break earlier phases. All earlier end-to-end tests must keep passing.
 - The website makes zero runtime network requests, with one exception: when the user presses
-  "Sync my Chess.com games" (Settings › Your data), the app may request `https://api.chess.com/pub/...`
+  'Sync my Chess.com games' (Settings › Your data) or 'Start import' / 'Continue' on Games › Story, the app may request `https://api.chess.com/pub/...`
   (the public archive API: the player's archive list and monthly archives). Nothing is requested from that
   host at any other time (not at start-up, not in the background, not on a timer), and nothing else may be
   fetched from that host or from any other host. The capture extension in extension/ (Phase 5b) is separate

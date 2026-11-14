@@ -6486,3 +6486,64 @@ label.wc-setting-row {
   color: var(--text-marble);
   font-size: 0.95rem;
 }
+
+/* Chess Story: a wrong username, and the added-accounts list (Story form and Settings › Your games) */
+.wc-story-error {
+  margin: 0;
+  color: #fca5a5;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.wc-more-accounts-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.wc-more-accounts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.wc-more-account {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.95rem;
+}
+
+.wc-more-account-name {
+  overflow-wrap: anywhere;
+}
+
+.wc-more-account-remove,
+.wc-more-accounts-btn {
+  min-height: 44px;
+  min-width: 44px;
+  font-size: 0.9rem;
+}
+
+.wc-more-accounts-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.wc-more-accounts-input {
+  flex: 1 1 10rem;
+  min-height: 44px;
+  font-size: 1rem;
+}
+
+.wc-setting-more-accounts {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.25rem 0 0.5rem;
+}

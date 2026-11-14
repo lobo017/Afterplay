@@ -1,6 +1,15 @@
 import type { BotStyleId } from '../engine/bot';
 import type { FeelStorage } from '../render/board-feel';
-import { PRESET_LIMITS, cleanText, parseBots, parseWelcome, type CustomBot, type WelcomeMessage } from './preset';
+import {
+  PRESET_LIMITS,
+  cleanText,
+  parseBots,
+  parseStoryText,
+  parseWelcome,
+  type CustomBot,
+  type StoryText,
+  type WelcomeMessage,
+} from './preset';
 
 /**
  * Who uses this copy of the app and what it is called: a display name and title (shown in Play and written into the
@@ -13,6 +22,8 @@ export interface Profile {
   appName: string;
   bots: CustomBot[];
   welcome: WelcomeMessage | null;
+  /** The optional intro and closing paragraphs of the Chess Story; absent when there are none. */
+  story?: StoryText;
 }
 
 export const EMPTY_PROFILE: Readonly<Profile> = Object.freeze({
@@ -39,12 +50,14 @@ export const PROFILE_STORAGE_KEY = 'wc.profile.v1';
 /** Fills in and cleans every field; anything malformed falls back to empty. */
 export function sanitizeProfile(input: unknown): Profile {
   const src = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>;
+  const story = parseStoryText(src.story ?? null);
   return {
     displayName: cleanText(src.displayName, PRESET_LIMITS.displayName),
     title: cleanText(src.title, PRESET_LIMITS.title),
     appName: cleanText(src.appName, PRESET_LIMITS.appName),
     bots: parseBots(src.bots ?? []),
     welcome: parseWelcome(src.welcome ?? null),
+    ...(story ? { story } : {}),
   };
 }
 

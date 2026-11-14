@@ -1,13 +1,21 @@
 /**
  * Games › Story: the account form, then the cards. One column in a vertical scroll with CSS scroll-snap (no gesture
  * code). The numbers come from `computeStoryStats` and the sentences from `storyCards`; nothing here reads a preset.
- * This version shows the gift's cards (intro, totals, Chess.com, Lichess, closing). "Start import" is a placeholder
- * until the sync runner is shared: it is disabled and says so.
+ * This version shows the gift's cards (intro, totals, Chess.com, Lichess, closing). "Start import" and "Continue" ask
+ * the app's shared sync runner (app.ts) for the Chess.com games; the view only shows how far it is and what went
+ * wrong, in plain words.
  */
 import type { GameLibrary } from '../library/library';
 import { computeStoryStats, type ScopeStats, type StoryStats } from './stats';
-import { storyCards, type StoryCard, type StoryCardId } from './text';
+import { storyCards, type PersonalText, type StoryCard, type StoryCardId } from './text';
 import type { StoryLanding } from './landing';
+import {
+  SITE_NAME,
+  addMoreAccount,
+  moreAccountsHtml,
+  removeMoreAccount,
+  type AccountSite,
+} from '../library/more-accounts';
 
 /** The cards this version shows, in order (the others are built after the gift). */
 export const SHOWN_CARDS: readonly StoryCardId[] = ['intro', 'totals', 'chesscom', 'lichess', 'closing'];
@@ -19,14 +27,31 @@ export type LoadStatus =
   | { kind: 'loading'; loaded: number; total: number }
   | { kind: 'paused'; loaded: number; total: number; message: string };
 
+/** Where the Chess.com import is. The file load has its own status (LoadStatus). */
+export type SyncStatus =
+  | { kind: 'idle' }
+  | { kind: 'running'; line: string }
+  | { kind: 'paused'; line: string; message: string }
+  /** The username is wrong: the message sits on the field of the account with that name. */
+  | { kind: 'field-error'; username: string; message: string }
+  /** Something to say that is neither progress nor a failure (another sync is running; the import finished). */
+  | { kind: 'notice'; message: string };
+
 export interface StoryViewOptions {
   container: HTMLElement;
   library: GameLibrary;
   getLanding(): StoryLanding;
   /** "Skip for now": the app remembers it and opens Play. */
   onSkip(): void;
-  /** "Continue" after a paused load. */
+  /** "Continue" after a paused load of the link's history file. */
   onContinue(): void;
+  /**
+   * "Start import" and "Continue" on a paused import: the app runs the shared sync runner for every Chess.com
+   * account. Called from the click handler only, once per press.
+   */
+  onStartImport(): Promise<void>;
+  /** The preset's optional intro and closing paragraphs (never read for numbers). */
+  getPersonal?(): PersonalText;
   /** Called after each render; `finished` is true when cards (not the form) are showing and no load is running. */
   onRendered?(finished: boolean): void;
 }
@@ -49,6 +74,9 @@ export class StoryView {
   private readonly root: HTMLElement;
   private stats: StoryStats | null = null;
   private load: LoadStatus = { kind: 'idle' };
+  private sync: SyncStatus = { kind: 'idle' };
+  private readonly moreDrafts: Record<AccountSite, string> = { chesscom: '', lichess: '' };
+  private readonly moreErrors: Record<AccountSite, string> = { chesscom: '', lichess: '' };
   private timer: ReturnType<typeof setTimeout> | null = null;
   private lastCount = 0;
   private counting = false;
@@ -70,6 +98,10 @@ export class StoryView {
     this.root.addEventListener('click', (e) => this.onClick(e));
     this.root.addEventListener('input', (e) => {
       const input = e.target as HTMLInputElement | null;
+      if (input?.matches('input[data-more-input]')) {
+        this.moreDrafts[input.dataset.site as AccountSite] = input.value;
+        return;
+      }
       if (input?.matches('input[data-account]')) {
         this.drafts[input.dataset.account as 'chesscom' | 'lichess'] = input.value;
         this.draftsDirty = true;
@@ -85,6 +117,15 @@ export class StoryView {
   public setLoad(status: LoadStatus): void {
     this.load = status;
     this.render();
+  }
+
+  public setSync(status: SyncStatus): void {
+    this.sync = status;
+    this.render();
+  }
+
+  public getSync(): SyncStatus {
+    return this.sync;
   }
 
   /** Recounts now (a count already running is asked to run once more). */
@@ -129,6 +170,15 @@ export class StoryView {
   }
 
   private onClick(e: Event): void {
+    const more = (e.target as HTMLElement).closest<HTMLElement>('[data-more-action]');
+    if (more) {
+      const site = more.dataset.site as AccountSite;
+      // Safari does not focus a button it was tapped on: the typed-in field would keep a recount from redrawing
+      this.root.querySelectorAll<HTMLElement>('input[data-more-input]').forEach((i) => i.blur());
+      if (more.dataset.moreAction === 'add') void this.addAccount(site);
+      else void removeMoreAccount(this.options.library, site, more.dataset.username ?? '');
+      return;
+    }
     const button = (e.target as HTMLElement).closest<HTMLElement>('[data-story-action]');
     if (!button) return;
     switch (button.dataset.storyAction) {
@@ -141,10 +191,33 @@ export class StoryView {
       case 'continue':
         this.options.onContinue();
         break;
+      case 'start-import':
+      case 'import-continue':
+        void this.runImport();
+        break;
+
       case 'top':
         this.root.querySelector('.wc-story-scroll')?.scrollTo({ top: 0, behavior: 'smooth' });
         break;
     }
+  }
+
+  /** "Start import" and "Continue": what was typed is saved first, then the app's sync runner starts. */
+  private async runImport(): Promise<void> {
+    if (this.draftsDirty) await this.saveAccounts();
+    await this.options.onStartImport();
+  }
+
+  private async addAccount(site: AccountSite): Promise<void> {
+    const result = await addMoreAccount(this.options.library, site, this.moreDrafts[site]);
+    if (result.ok) {
+      this.moreDrafts[site] = '';
+      this.moreErrors[site] = '';
+    } else {
+      this.moreErrors[site] = result.message;
+    }
+    this.lastHtml = '';
+    this.render();
   }
 
   private async saveAccounts(): Promise<void> {
@@ -161,25 +234,64 @@ export class StoryView {
 
   private formHtml(): string {
     if (!this.draftsDirty) this.syncDrafts();
-    const field = (site: 'chesscom' | 'lichess', label: string): string =>
-      `<label class="wc-story-field"><span>${label}</span><input class="wc-input" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" data-account="${site}" data-testid="story-account-${site}" value="${escapeHtml(this.drafts[site])}"></label>`;
+    const accounts = this.options.library.getMoreAccounts();
+    const sync = this.sync;
+    const primary = this.options.library.getMyAccounts()?.chesscom.trim().toLowerCase() ?? '';
+    // A wrong username is told on its own field: the first one, or the added one the sync was in
+    const fieldError = sync.kind === 'field-error' ? sync : null;
+    const onPrimary = fieldError !== null && (fieldError.username.toLowerCase() === primary || primary === '');
+    const field = (site: AccountSite, label: string): string => {
+      const error = site === 'chesscom' && fieldError && onPrimary ? fieldError.message : '';
+      const added =
+        site === 'chesscom' && fieldError && !onPrimary
+          ? `${SITE_NAME.chesscom} account ${fieldError.username}: ${fieldError.message}`
+          : '';
+      return `<label class="wc-story-field"><span>${label}</span><input class="wc-input" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" data-account="${site}" data-testid="story-account-${site}" value="${escapeHtml(this.drafts[site])}"${error ? ' aria-invalid="true"' : ''}></label>
+      <p class="wc-story-error" role="alert" data-testid="story-account-${site}-error"${error ? '' : ' hidden'}>${escapeHtml(error)}</p>
+      ${moreAccountsHtml(site, accounts, { idPrefix: 'story-more', draft: this.moreDrafts[site], error: this.moreErrors[site] || added })}`;
+    };
+    const busy = sync.kind === 'running';
     return `<section class="wc-story-card wc-story-form" data-testid="story-form" aria-label="Your accounts">
       <p class="wc-story-label">Your accounts</p>
       <p class="wc-story-sentence">Add your usernames so the Story can tell which games, and which side, are yours.</p>
       ${field('chesscom', 'Chess.com username')}
       ${field('lichess', 'Lichess username')}
+      <p class="wc-story-note">Start import asks Chess.com for your games, for every Chess.com account above, newest month first. Nothing is asked until you press it.</p>
       <p class="wc-story-note">Lichess import is not available yet. The name is saved and marks your side in Lichess games you open here.</p>
       <div class="wc-story-actions">
         <button type="button" class="wc-btn wc-btn-secondary wc-story-btn" data-story-action="save" data-testid="story-save">Save usernames</button>
-        <button type="button" class="wc-btn wc-btn-primary wc-story-btn" data-testid="story-start-import" disabled aria-describedby="story-import-note">Start import</button>
+        <button type="button" class="wc-btn wc-btn-primary wc-story-btn" data-story-action="start-import" data-testid="story-start-import"${busy ? ' disabled' : ''}>Start import</button>
         <button type="button" class="wc-btn wc-btn-ghost wc-story-btn" data-story-action="skip" data-testid="story-skip">Skip for now</button>
       </div>
-      <p class="wc-story-note" id="story-import-note">Importing with a button comes in a later update. Games that came with your link load by themselves.</p>
+      <p class="wc-story-note" data-testid="story-import-note"${sync.kind === 'notice' ? '' : ' hidden'}>${sync.kind === 'notice' ? escapeHtml(sync.message) : ''}</p>
       <p class="wc-story-note" data-testid="story-form-saved"${this.saved ? '' : ' hidden'}>Saved.</p>
     </section>`;
   }
 
+  private syncBannerHtml(): string {
+    const s = this.sync;
+    if (s.kind === 'running') {
+      return `<div class="wc-story-banner" data-testid="story-sync-status" data-state="running" role="status">
+        <strong>${escapeHtml(s.line)}</strong>
+        <span>The numbers grow as games arrive.</span></div>`;
+    }
+    if (s.kind === 'paused') {
+      return `<div class="wc-story-banner" data-testid="story-sync-status" data-state="paused" role="status">
+        <strong>${escapeHtml(s.line)}</strong>
+        <span>${escapeHtml(s.message)}</span>
+        <button type="button" class="wc-btn wc-btn-primary wc-story-btn" data-story-action="import-continue" data-testid="story-sync-continue">Continue</button></div>`;
+    }
+    if (s.kind === 'notice' && this.stats && this.stats.all.games > 0) {
+      return `<div class="wc-story-banner" data-testid="story-sync-status" data-state="notice" role="status"><span>${escapeHtml(s.message)}</span></div>`;
+    }
+    return '';
+  }
+
   private bannerHtml(): string {
+    return this.syncBannerHtml() + this.loadBannerHtml();
+  }
+
+  private loadBannerHtml(): string {
     const l = this.load;
     if (l.kind === 'loading') {
       return `<div class="wc-story-banner" data-testid="story-load-status" data-state="loading" role="status">
@@ -229,7 +341,7 @@ export class StoryView {
     const stats = this.stats;
     if (!stats) return;
     // A field being typed in is not rebuilt by a recount
-    if (this.root.querySelector('input[data-account]:focus')) {
+    if (this.root.querySelector('input[data-account]:focus, input[data-more-input]:focus')) {
       this.updateBanner();
       return;
     }
@@ -238,10 +350,10 @@ export class StoryView {
     // A new user sees the form first; with no counted games it stays above the empty cards
     const formOnly = landing === 'new' && this.load.kind === 'idle';
     const keepTop = this.root.querySelector('.wc-story-scroll')?.scrollTop ?? 0;
-    const cards = storyCards(stats).filter((c) => SHOWN_CARDS.includes(c.id));
+    const cards = storyCards(stats, this.options.getPersonal?.() ?? {}).filter((c) => SHOWN_CARDS.includes(c.id));
     const body = formOnly
       ? this.formHtml()
-      : `${empty ? this.formHtml() : ''}${cards.map((c) => this.cardHtml(c, stats)).join('')}`;
+      : `${empty || this.sync.kind === 'field-error' ? this.formHtml() : ''}${cards.map((c) => this.cardHtml(c, stats)).join('')}`;
     const html = `${this.bannerHtml()}<div class="wc-story-scroll" data-testid="story-scroll" tabindex="0" role="region" aria-label="Your Chess Story">${body}</div>`;
     if (html !== this.lastHtml || !this.root.querySelector('.wc-story-scroll')) {
       this.lastHtml = html;
@@ -249,17 +361,16 @@ export class StoryView {
       const next = this.root.querySelector('.wc-story-scroll');
       if (next && keepTop > 0) next.scrollTop = keepTop;
     }
-    this.options.onRendered?.(!formOnly && this.load.kind === 'idle');
+    this.options.onRendered?.(
+      !formOnly && this.load.kind === 'idle' && (this.sync.kind === 'idle' || this.sync.kind === 'notice'),
+    );
   }
 
   private updateBanner(): void {
     this.lastHtml = '';
-    const old = this.root.querySelector('.wc-story-banner');
+    this.root.querySelectorAll('.wc-story-banner').forEach((b) => b.remove());
     const holder = document.createElement('div');
     holder.innerHTML = this.bannerHtml();
-    const fresh = holder.firstElementChild;
-    if (old && fresh) old.replaceWith(fresh);
-    else if (old) old.remove();
-    else if (fresh) this.root.prepend(fresh);
+    this.root.prepend(...Array.from(holder.children));
   }
 }

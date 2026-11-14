@@ -115,13 +115,18 @@ export interface SyncStore {
   writeState(state: SyncState): Promise<void>;
 }
 
-export function librarySyncStore(library: GameLibrary): SyncStore {
+/** The settings key of an added account's month record: each added Chess.com account syncs with a key of its own. */
+export function syncStateKeyFor(username: string, isFirstAccount: boolean): string {
+  return isFirstAccount ? SYNC_STATE_SETTING : `${SYNC_STATE_SETTING}.${username.trim().toLowerCase()}`;
+}
+
+export function librarySyncStore(library: GameLibrary, stateKey: string = SYNC_STATE_SETTING): SyncStore {
   return {
     listGameIds: () => library.listIds(),
     checkSingleGame: (pgn, method) => library.checkSingleGame(pgn, method),
     saveSyncedGames: (records) => library.saveSyncedGames(records),
-    readState: () => library.readSetting<unknown>(SYNC_STATE_SETTING),
-    writeState: (state) => library.writeSetting(SYNC_STATE_SETTING, state),
+    readState: () => library.readSetting<unknown>(stateKey),
+    writeState: (state) => library.writeSetting(stateKey, state),
   };
 }
 
@@ -151,6 +156,8 @@ export interface SyncDeps {
   /** Queues reviews for games this run added (see SYNC_AUTO_REVIEW_MAX_GAMES). */
   queueReviews: (ids: string[]) => void;
   timeoutMs?: number;
+  /** Which month is read first: the oldest (the default, the Settings button) or the newest (the Story's import). */
+  monthOrder?: 'oldest' | 'newest';
 }
 
 export type SyncFailure =
@@ -325,7 +332,7 @@ export async function runChessComSync(deps: SyncDeps): Promise<SyncResult> {
   const listed = list.kind === 'ok' ? monthsFromList(list.body, username) : null;
   if (!listed) return finish('failed', 'list', 'not an archive list');
 
-  const { months } = listed;
+  const months = deps.monthOrder === 'newest' ? [...listed.months].reverse() : listed.months;
   result.monthsTotal = months.length;
   const known = new Set(await deps.store.listGameIds());
   /** Every game met in this run, added or already here: a game can be listed in two months. */

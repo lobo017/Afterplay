@@ -41,14 +41,31 @@ describe('The network exception is one address, in one place', () => {
     expect(filesWith(/XMLHttpRequest|new WebSocket|EventSource|sendBeacon|importScripts\(/)).toEqual([]);
   });
 
-  it('the sync is started from the Settings button and nowhere else', () => {
+  it('the sync is started from the Settings button or from Start import / Continue on the Story, and nowhere else', () => {
     expect(filesWith(/\brunChessComSync\(/)).toEqual(['app.ts', 'sync/chesscom-sync.ts']);
     const app = files.find((f) => f.name === 'app.ts')!.text;
+    // One network call in the whole app, inside the one shared runner
     expect(app.match(/runChessComSync\(/g)).toHaveLength(1);
-    // In app.ts the call sits inside the data section's runSync, which only the button's click handler calls
-    expect(app).toMatch(/runSync: async \(onProgress, signal\) => \{[^]*?runChessComSync\(/);
+    expect(app).toMatch(/const runSharedSync = async[^]*?runChessComSync\(/);
+    // The runner has two callers: the Settings button's runSync and the Story's runStoryImport
+    expect(app.match(/runSharedSync\(/g)).toHaveLength(2);
+    expect(app).toMatch(/runSync: async \(onProgress, signal\) => \{[^]*?runSharedSync\(/);
+    expect(app).toMatch(/const runStoryImport = async[^]*?runSharedSync\(/);
+    // runStoryImport is called from one place: the Story view's start handler
+    expect(app.match(/runStoryImport\(/g)).toHaveLength(1);
+    expect(app).toMatch(/onStartImport: \(\) => runStoryImport\(\)/);
+
+    // Settings: one runSync call, in the button's click handler
     const section = files.find((f) => f.name === 'ui/settings-data-section.ts')!.text;
     expect(section.match(/options\.runSync\(/g)).toHaveLength(1);
     expect(section).toMatch(/syncButton\.addEventListener\('click'/);
+
+    // Story: one onStartImport call (in runImport), which only the 'Start import' and 'Continue' clicks reach
+    const story = files.find((f) => f.name === 'story/view.ts')!.text;
+    expect(story.match(/options\.onStartImport\(/g)).toHaveLength(1);
+    expect(story.match(/this\.runImport\(/g)).toHaveLength(1);
+    expect(story).toMatch(/case 'start-import':\s*case 'import-continue':\s*void this\.runImport\(\)/);
+    // Nothing else in the Story starts a run: no timer, no idle callback
+    expect(story).not.toMatch(/setInterval|requestIdleCallback/);
   });
 });

@@ -19,7 +19,18 @@ import {
   describeSyncResult,
   librarySyncStore,
   runChessComSync,
+  syncStateKeyFor,
+  type SyncProgress,
+  type SyncReport,
+  type SyncResult,
 } from './sync/chesscom-sync';
+import { chesscomAccountsOf } from './library/more-accounts';
+import {
+  STORY_SYNC_IMPORT_SETTING,
+  importFailureOf,
+  importProgressLine,
+  parseSyncImportRecord,
+} from './story/sync-import';
 import { Preferences, loadStoredAppSettings } from './ui/settings-persistence';
 import { icon, type IconName } from './ui/components/icons';
 import { initBoardSize } from './render/board-size';
@@ -628,6 +639,7 @@ export function mountAppShell(container: HTMLElement): {
       ...(preset.appName ? { appName: preset.appName } : {}),
       ...(preset.bots.length > 0 ? { bots: preset.bots } : {}),
       ...(preset.welcome ? { welcome: welcomeWithAppName(preset.welcome, preset.appName) } : {}),
+      ...(preset.story ? { story: preset.story } : {}),
     });
     firstRun = { slug, welcomeSeen: false };
     saveFirstRunState(firstRun);
@@ -1194,33 +1206,92 @@ export function mountAppShell(container: HTMLElement): {
   let afterRestore: () => Promise<void> = async () => undefined;
   /** Brings Train up to date after a sync added games (the Games list follows the library by itself). */
   let afterSync: () => Promise<void> = async () => undefined;
-  const dataSection = mountDataSection({
+  // The one Chess.com sync runner. The Settings button and the Story's "Start import" both come here, so only one run
+  // exists at a time. It syncs the saved Chess.com account, then each added one, one after another, each with its own
+  // month record; the first account that does not finish ends the run (Continue starts it again: finished months are
+  // skipped). Nothing is retried by itself.
+  type SyncOwner = 'settings' | 'story';
+  let syncOwner: SyncOwner | null = null;
+  interface AccountRun {
+    username: string;
+    result: SyncResult;
+  }
+  const runSharedSync = async (o: {
+    owner: SyncOwner;
+    monthOrder: 'oldest' | 'newest';
+    signal: AbortSignal;
+    /** `addedBefore`: games added by the accounts that finished earlier in this run. */
+    onProgress: (progress: SyncProgress, account: { index: number; count: number; addedBefore: number }) => void;
+  }): Promise<{ kind: 'busy'; by: SyncOwner } | { kind: 'ran'; results: AccountRun[] }> => {
+    if (syncOwner !== null) return { kind: 'busy', by: syncOwner };
+    syncOwner = o.owner;
+    try {
+      const api = await libraryReady;
+      const saved = api.library.getMyAccounts()?.chesscom.trim().toLowerCase() ?? '';
+      const names = chesscomAccountsOf(api.library);
+      // No account at all: the sync itself says so ("Add your Chess.com username first")
+      const accounts = names.length > 0 ? names : [''];
+      const results: AccountRun[] = [];
+      let addedBefore = 0;
+      for (const [index, username] of accounts.entries()) {
+        const result = await runChessComSync({
+          username,
+          fetchImpl: browserFetch,
+          sleep: (ms) => abortableSleep(ms, o.signal),
+          now: () => Date.now(),
+          store: librarySyncStore(api.library, syncStateKeyFor(username, username.toLowerCase() === saved)),
+          isOnline: () => navigator.onLine !== false,
+          signal: o.signal,
+          monthOrder: o.monthOrder,
+          onProgress: (progress) => o.onProgress(progress, { index, count: accounts.length, addedBefore }),
+          isAutoAnalyzeOn: () => api.gamesList.isAutoAnalyzeOn(),
+          queueReviews: (ids) => api.gamesList.queueAutoReviews(ids),
+        });
+        results.push({ username, result });
+        addedBefore += result.added.length;
+        if (result.status !== 'done' || result.monthsFailed.length > 0) break;
+      }
+      if (addedBefore > 0) await afterSync();
+      return { kind: 'ran', results };
+    } finally {
+      syncOwner = null;
+    }
+  };
+  /** One account: its report as it was. Several: each account's lines under its name. */
+  const describeAccountResults = (results: AccountRun[]): SyncReport => {
+    const only = results[0];
+    if (results.length === 1 && only) return describeSyncResult(only.result);
+    const reports = results.map((r) => ({ username: r.username, report: describeSyncResult(r.result) }));
+    return {
+      tone: reports.some((r) => r.report.tone === 'bad')
+        ? 'bad'
+        : reports.every((r) => r.report.tone === 'ok')
+          ? 'ok'
+          : '',
+      lines: reports.flatMap((r) => r.report.lines.map((line, i) => (i === 0 ? `${r.username}: ${line}` : line))),
+    };
+  };
+  mountDataSection({
     panel: settings,
     order: SETTINGS_ORDER.data,
     getBackend: () => storageReady,
     beforeBackup: () => preferences.mirrorNow(),
     applyPreferences: (snapshot) => preferences.apply(snapshot),
     afterRestore: () => afterRestore(),
-    // The app's one use of the network: only from the sync button, only Chess.com's public archive API
+    // The app's use of the network: only from a press (this button, or "Start import" / "Continue" on Games › Story),
+    // only Chess.com's public archive API, only through runSharedSync
     runSync: async (onProgress, signal) => {
-      const api = await libraryReady;
-      const result = await runChessComSync({
-        username: api.library.getMyAccounts()?.chesscom ?? '',
-        fetchImpl: browserFetch,
-        sleep: (ms) => abortableSleep(ms, signal),
-        now: () => Date.now(),
-        store: librarySyncStore(api.library),
-        isOnline: () => navigator.onLine !== false,
-        signal,
-        onProgress,
-        isAutoAnalyzeOn: () => api.gamesList.isAutoAnalyzeOn(),
-        queueReviews: (ids) => api.gamesList.queueAutoReviews(ids),
-      });
-      if (result.added.length > 0) await afterSync();
-      return describeSyncResult(result);
+      const out = await runSharedSync({ owner: 'settings', monthOrder: 'oldest', signal, onProgress });
+      if (out.kind === 'busy') {
+        return {
+          tone: 'bad',
+          lines: ['An import is running on Games › Story. Wait for it to finish, then sync again.'],
+        };
+      }
+      return describeAccountResults(out.results);
     },
   });
-  registerActivity('chesscom-sync', () => dataSection.isSyncRunning());
+  registerActivity('chesscom-sync', () => syncOwner !== null);
 
   const libraryReady: Promise<WizardChessLibraryApi> = WizardChessStorage.create().then(async (storage) => {
     const lib = new GameLibrary(storage);
@@ -1282,10 +1353,25 @@ export function mountAppShell(container: HTMLElement): {
       onContinue: () => {
         void readImportRecord(lib).then((rec) => runHistoryLoad(rec.file.slug || firstRun.slug));
       },
+      onStartImport: () => runStoryImport(),
+      getPersonal: () => ({ intro: profile.get().story?.intro, closing: profile.get().story?.closing }),
       onRendered: markSeenIfDue,
     });
     storyView = story;
     void story.recount();
+    // An import that stopped part-way, or was cut off by closing the app, is offered again with Continue
+    void lib.readSetting<unknown>(STORY_SYNC_IMPORT_SETTING).then((value) => {
+      const rec = parseSyncImportRecord(value);
+      if (rec.status !== 'partial' || syncOwner !== null) return;
+      story.setSync({
+        kind: 'paused',
+        line:
+          rec.monthsTotal > 0
+            ? `Import paused at ${rec.monthsDone} of ${rec.monthsTotal} months`
+            : 'Import paused: no month was read yet',
+        message: rec.failure || 'The import stopped before it finished. Press Continue to go on.',
+      });
+    });
     // A load that stopped part-way (or was cut off by closing the app) is offered again
     void readImportRecord(lib).then((rec) => {
       if (rec.file.status !== 'partial' || historyRunning) return;
@@ -1472,6 +1558,95 @@ export function mountAppShell(container: HTMLElement): {
     gamesRootEl.appendChild(msg);
   });
   publishReady('__wizardChessLibraryReady', libraryReady);
+
+  // "Start import" and "Continue" on Games › Story: the shared runner (above), newest month first, with progress. A bad
+  // username shows on its field; offline, a timeout, the network and the rate limit pause with Continue.
+  const runStoryImport = async (): Promise<void> => {
+    const view = storyView;
+    if (!view) return;
+    if (syncOwner !== null) {
+      view.setSync({
+        kind: 'notice',
+        message:
+          'A sync is already running (see Settings › Your data). Wait for it to finish, then press Start import.',
+      });
+      return;
+    }
+    const { library: lib } = await libraryReady;
+    const before = landing;
+    const previous = parseSyncImportRecord(await lib.readSetting<unknown>(STORY_SYNC_IMPORT_SETTING));
+    /** Games of earlier runs of this import (a Continue goes on counting). */
+    const base = previous.status === 'partial' ? previous.games : 0;
+    let monthsDone = 0;
+    let monthsTotal = 0;
+    let games = base;
+    let accountIndex = 0;
+    let accountCount = 1;
+    const line = (): string => importProgressLine({ monthsDone, monthsTotal, games, accountIndex, accountCount });
+    const record = (status: 'running' | 'partial' | 'done' | 'never', failure = ''): Promise<void> =>
+      lib
+        .writeSetting(STORY_SYNC_IMPORT_SETTING, { version: 1, status, monthsDone, monthsTotal, games, failure })
+        .catch(() => undefined);
+    if (landing === 'new') setLanding('importing');
+    view.setSync({ kind: 'running', line: line() });
+    await record('running');
+    const out = await runSharedSync({
+      owner: 'story',
+      monthOrder: 'newest',
+      signal: new AbortController().signal,
+      onProgress: (progress, account) => {
+        monthsDone = progress.monthsDone;
+        monthsTotal = progress.monthsTotal;
+        accountIndex = account.index;
+        accountCount = account.count;
+        games = base + account.addedBefore + progress.added;
+        view.setSync({ kind: 'running', line: line() });
+        view.scheduleRecount();
+        void record('running');
+      },
+    });
+    if (out.kind === 'busy') {
+      view.setSync({
+        kind: 'notice',
+        message: 'A sync is already running. Wait for it to finish, then press Start import.',
+      });
+      return;
+    }
+    const last = out.results[out.results.length - 1];
+    if (!last) return;
+    games = base + out.results.reduce((sum, r) => sum + r.result.added.length, 0);
+    await view.recount();
+    const failedMonths = out.results.flatMap((r) => r.result.monthsFailed);
+    if (last.result.status === 'done' && failedMonths.length === 0) {
+      await record('done');
+      if (landing === 'importing') setLanding('ready');
+      view.setSync({
+        kind: 'notice',
+        message: `Import finished: ${games.toLocaleString('en-US')} ${games === 1 ? 'game' : 'games'} added.`,
+      });
+      return;
+    }
+    const failure = last.result.failure;
+    const mapped = failure ? importFailureOf(failure, last.result.detail) : null;
+    if (mapped?.kind === 'field') {
+      await record('never', mapped.message);
+      // Nothing to show yet: the form comes back, where the field says what is wrong
+      if (before === 'new' && landing === 'importing' && (view.getStats()?.all.games ?? 0) === 0) setLanding('new');
+      view.setSync({ kind: 'field-error', username: last.username, message: mapped.message });
+      return;
+    }
+    const message =
+      mapped?.message ??
+      (failedMonths.length > 0
+        ? `${failedMonths.length} ${failedMonths.length === 1 ? 'month' : 'months'} could not be read. Press Continue to read ${failedMonths.length === 1 ? 'it' : 'them'} again.`
+        : 'The import was stopped. Press Continue to go on.');
+    await record('partial', message);
+    view.setSync({
+      kind: 'paused',
+      line: monthsTotal > 0 ? `Import paused at ${monthsDone} of ${monthsTotal} months` : 'Import paused',
+      message,
+    });
+  };
 
   // The link's game history (preset/first-run.ts fetches it, story/history-loader.ts stores it): batches of 200 that
   // never overwrite, so a load that stopped continues where it was. A link with no history file changes nothing.
