@@ -151,6 +151,17 @@ restore and a sync, in any order, keep every game once. It is the site's only ru
 - unit 513482: 806 passed, 2 skipped. perf 513483: all four scripts passed.
 - All eight result folders passed the trust checks. The three failures seen on the laptop passed on Juno.
 
+**Engine review data in the history file (plan of 2026-11-14, step 2: summary type and guard; no Juno access, not committed).**
+Read-only Juno checks done (node 64 CPUs / 375 GB, `normal` 2-day limit, `restore.json` 12,811,136 bytes, purge policy not posted).
+- Plan: `GameAnalysisSummary` gains optional `depth`, `summaryOnly`, `plies`, `sides` (`src/storage/db.ts`); `src/review/summary.ts`
+  (`summarizeReview`, used by `library.saveReview`); `hasSavedReview(record)` replaces the bare `analysis` test in `app.ts` (4),
+  `insights-view.ts`, `puzzle-store.ts` (2), `game-rows.ts`, `games-list.ts`; new unit tests with invented games.
+- Risks: a summary-only game must not look reviewed to the puzzle sync, Insights or the Analyze button; old records stay valid.
+- Done, unit suite green: the Today count (`countUnreviewed`) leaves out games reviewed in advance; the Games list shows "Reviewed in advance".
+- **One existing assertion changed (approved 2026-11-14):** in `tests/unit/library.test.ts`, "saves a finished review apart from the game…",
+  `expect(record?.analysis).toEqual({…})` became `toMatchObject` with the same four fields, because `saveReview` now also writes `plies` and
+  `sides`. A new test beside it checks those extra fields.
+
 ## Open items from earlier phases
 
 - **Scenario-2 `perf:drag`** (analysis board, MultiPV 5, ghosts, navigation sweep) passed clean on Juno on the final code (p95 16.67 ms, 0 dropped).

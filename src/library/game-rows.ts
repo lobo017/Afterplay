@@ -2,7 +2,7 @@ import type { StoredGameSource } from '../capture/game-id';
 import { localDateTime, playedAtDetail, readPgnHeaders, type PlayedAt } from '../capture/pgn-time';
 import type { Color } from '../core/rules';
 import type { UserAccount } from '../review/perspective';
-import type { StoredGameRecord } from '../storage/db';
+import { hasSavedReview, type StoredGameRecord } from '../storage/db';
 import { myColor, resultFor, type MyResult } from './game-record';
 
 /** One library game as the list and the insights see it. */
@@ -48,6 +48,14 @@ export function gameAccuracy(row: GameRow): number | null {
   if (!a || row.color !== null) return null;
   const sides = [a.whiteAccuracy, a.blackAccuracy].filter((v): v is number => v !== null);
   return sides.length === 0 ? null : sides.reduce((x, y) => x + y, 0) / sides.length;
+}
+
+/**
+ * Games with no review of any kind (the Today screen's count). A game reviewed in advance
+ * (summary only) is not in it, though it has no stored review to open.
+ */
+export function countUnreviewed(records: readonly StoredGameRecord[]): number {
+  return records.filter((r) => !r.analysis).length;
 }
 
 /** When each stored game was played, from its PGN's UTC headers (parsed once per record). */
@@ -125,7 +133,7 @@ export function matchesFilter(row: GameRow, filter: GameFilter): boolean {
   if ((filter.result === 'win' || filter.result === 'loss') && (row.color === null || row.result !== filter.result))
     return false;
   if (filter.color !== 'all' && row.color !== filter.color) return false;
-  const analyzed = Boolean(r.analysis);
+  const analyzed = hasSavedReview(r);
   if (filter.analyzed === 'analyzed' && !analyzed) return false;
   if (filter.analyzed === 'not-analyzed' && analyzed) return false;
   const opening = filter.opening.trim().toLowerCase();

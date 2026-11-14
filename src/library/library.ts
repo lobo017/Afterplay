@@ -2,6 +2,7 @@ import { playKey } from '../capture/game-id';
 import { checkPgnText, describeImportProblem, importProblemOf } from '../capture/pgn-games';
 import type { BridgeGame, MyAccounts } from '../capture/protocol';
 import type { UserAccount } from '../review/perspective';
+import { summarizeReview } from '../review/summary';
 import type { StoredGameRecord, WizardChessStorage } from '../storage/db';
 import type { SaveOutcome } from './bridge-client';
 import type { Color } from '../core/rules';
@@ -314,6 +315,7 @@ export class GameLibrary {
         savedAt: review.savedAt,
         whiteAccuracy: review.review.white.accuracy,
         blackAccuracy: review.review.black.accuracy,
+        ...summarizeReview(review.review),
       },
       accuracy: side?.accuracy ?? null,
       playerColor: color ?? record.playerColor,

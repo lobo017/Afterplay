@@ -42,11 +42,47 @@ export interface StoredGameRecord {
   analysis?: GameAnalysisSummary | null;
 }
 
+/** One side's numbers from a finished review (all optional counts are per side). */
+export interface SideAnalysisSummary {
+  /** The side's moves that were reviewed. */
+  moves: number;
+  /** Lichess ACPL (mean centipawn loss), rounded to 0.1. */
+  acpl: number | null;
+  inaccuracy: number;
+  mistake: number;
+  blunder: number;
+  miss: number;
+  brilliant: number;
+  great: number;
+  /** The side's lowest win% (0–100) after any of its moves, or at the start; null with no move. */
+  low: number | null;
+  /** The side's largest single-move loss in win% points, and the ply of that move. */
+  drop: number;
+  dropPly: number | null;
+}
+
 export interface GameAnalysisSummary {
   preset: SavedReview['preset'];
   savedAt: number;
   whiteAccuracy: number | null;
   blackAccuracy: number | null;
+  // Fields below are optional, so records written before them stay valid.
+  /** A fixed-depth batch review (then `preset` is null). */
+  depth?: number;
+  /** True when no full review is stored in the reviews store: only these numbers exist. */
+  summaryOnly?: boolean;
+  /** Plies of the reviewed main line. */
+  plies?: number;
+  sides?: { w?: SideAnalysisSummary; b?: SideAnalysisSummary };
+}
+
+/**
+ * True when a full review is stored for the game. A batch summary (`summaryOnly`) has numbers
+ * only, so it is not a saved review: nothing to open, nothing to make puzzles from.
+ */
+export function hasSavedReview(record: Pick<StoredGameRecord, 'analysis'>): boolean {
+  const a = record.analysis;
+  return Boolean(a) && a?.summaryOnly !== true;
 }
 
 /** A finished game review, keyed by its game's id (schema v4). */

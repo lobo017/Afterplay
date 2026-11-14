@@ -38,7 +38,13 @@ import { boardFeel, type BoardFeelStore } from './render/board-feel';
 import { DEFAULT_POSITION, RulesAdapter, validateChessFen } from './core/rules';
 import { GameTree, nagToGlyph, resolveNagCode } from './core/game-tree';
 import { parseCommentAnnotations, parsePgn, parsePgnGames, writePgn } from './core/pgn';
-import { LATEST_SCHEMA_VERSION, WizardChessStorage, deleteWizardChessDB, openWizardChessDB } from './storage/db';
+import {
+  LATEST_SCHEMA_VERSION,
+  WizardChessStorage,
+  deleteWizardChessDB,
+  hasSavedReview,
+  openWizardChessDB,
+} from './storage/db';
 import {
   AnalysisCache,
   EngineCancelledError,
@@ -90,6 +96,7 @@ import { mainLinePlies } from './review/review-game';
 import { DEFAULT_USER_ACCOUNTS } from './review/perspective';
 import { GameLibrary } from './library/library';
 import { myColor } from './library/game-record';
+import { countUnreviewed } from './library/game-rows';
 import { GamesList } from './library/games-list';
 import { InsightsView } from './library/insights-view';
 import { Tabs, tabListHtml, tabPanelAttrs } from './ui/components/tabs';
@@ -1051,7 +1058,7 @@ export function mountAppShell(container: HTMLElement): {
         color,
         loadBestMoves: async () => {
           const best = new Map<number, string>();
-          const saved = record.analysis ? await lib.getReview(record.id) : undefined;
+          const saved = hasSavedReview(record) ? await lib.getReview(record.id) : undefined;
           for (const m of saved?.review.moves ?? []) if (m.bestMoveUci) best.set(m.ply, m.bestMoveUci);
           return best;
         },
@@ -1185,7 +1192,7 @@ export function mountAppShell(container: HTMLElement): {
   /** Opens a Games list game on the analysis board, with its saved review if it has one. */
   const openLibraryGame = async (record: StoredGameRecord): Promise<boolean> => {
     if (!library) return false;
-    const saved = record.analysis ? await library.getReview(record.id) : undefined;
+    const saved = hasSavedReview(record) ? await library.getReview(record.id) : undefined;
     setMode('review', false);
     openingGame = true;
     const ok = analysisController.importPgn(record.pgn);
@@ -1457,7 +1464,7 @@ export function mountAppShell(container: HTMLElement): {
       for (const id of change.updated) {
         void (async () => {
           const record = await lib.get(id);
-          if (!record?.analysis) return;
+          if (!record || !hasSavedReview(record)) return;
           await puzzleStore.syncReviewedGame(record, await lib.getReview(id), lib.getUserAccounts());
           if (currentMode === 'train' && trainView === 'hub') await todayScreen?.refresh();
           void refreshTrainCount();
@@ -1469,7 +1476,7 @@ export function mountAppShell(container: HTMLElement): {
       container: todayRootEl,
       store: puzzleStore,
       syncPersonal,
-      countUnanalyzed: async () => (await lib.list()).filter((g) => !g.analysis).length,
+      countUnanalyzed: async () => countUnreviewed(await lib.list()),
       drills: drillStore,
       onStartPuzzles: (mode) => void openPuzzles(mode),
       onStartDrill: (kind) => void startDrill(kind),

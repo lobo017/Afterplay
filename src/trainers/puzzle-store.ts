@@ -1,7 +1,13 @@
 import type { PuzzleEntry } from '../core/datasets';
 import type { UserAccount } from '../review/perspective';
 import type { SavedReview } from '../library/saved-review';
-import type { StoredGameRecord, StoredPuzzleRecord, StoredSrsCardRecord, WizardChessStorage } from '../storage/db';
+import {
+  hasSavedReview,
+  type StoredGameRecord,
+  type StoredPuzzleRecord,
+  type StoredSrsCardRecord,
+  type WizardChessStorage,
+} from '../storage/db';
 import { newCard, reviewCard, type SrsCard } from './fsrs';
 import { DEFAULT_PLAYER, ratePuzzleAttempt, type GlickoRating } from './glicko2';
 import { scanPersonalPuzzles, type PersonalPuzzle } from './personal-puzzles';
@@ -256,7 +262,7 @@ export class PuzzleStore {
     const personal = await this.storage.listPuzzles('personal');
     let scanned = 0;
     for (const game of games) {
-      const savedAt = game.analysis?.savedAt;
+      const savedAt = hasSavedReview(game) ? game.analysis?.savedAt : undefined;
       const has = personal.filter((p) => p.sourceGameId === game.id);
       if (savedAt === undefined) {
         if (has.length > 0) await this.syncGame(game, undefined, accounts, now, has);
@@ -285,7 +291,7 @@ export class PuzzleStore {
     const key = accountsKey(accounts);
     const state = (await this.storage.getSetting<PersonalSyncState>(SYNC_SETTING)) ?? { accountsKey: key, games: {} };
     // Only mark it scanned when the accounts are the ones the other games were scanned with
-    if (state.accountsKey === key && game.analysis?.savedAt !== undefined) {
+    if (state.accountsKey === key && hasSavedReview(game) && game.analysis?.savedAt !== undefined) {
       await this.storage.setSetting(SYNC_SETTING, {
         ...state,
         games: { ...state.games, [game.id]: game.analysis.savedAt },

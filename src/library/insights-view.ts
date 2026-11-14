@@ -1,4 +1,5 @@
 import type { Color } from '../core/rules';
+import { hasSavedReview } from '../storage/db';
 import type { PuzzleRatingState } from '../trainers/puzzle-store';
 import type { GameFilter } from './game-rows';
 import { toRow, type GameRow } from './game-rows';
@@ -177,7 +178,7 @@ export class InsightsView {
     const mine = rows.filter((r) => r.color !== null);
     const reviewed: ReviewedGameInput[] = [];
     for (const row of mine) {
-      if (!row.record.analysis) continue;
+      if (!hasSavedReview(row.record)) continue;
       const review = await this.options.library.getReview(row.record.id);
       if (review) reviewed.push({ row, review });
     }

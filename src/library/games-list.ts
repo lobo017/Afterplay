@@ -1,7 +1,7 @@
 import type { StoredGameSource } from '../capture/game-id';
 import { formatPlayedAt, localDateTime } from '../capture/pgn-time';
 import { REVIEW_PRESET_MOVETIME_MS, type ReviewPreset } from '../review/types';
-import type { StoredGameRecord } from '../storage/db';
+import { hasSavedReview, type StoredGameRecord } from '../storage/db';
 import type { ExtensionStatus } from './bridge-client';
 import { formatTimeControl, type MyResult } from './game-record';
 import {
@@ -585,6 +585,10 @@ export class GamesList {
       return `<span class="wc-games-badge wc-games-badge-failed" data-analysis="failed" title="${escapeHtml(job.error)}">Failed</span>`;
     }
     const a = row.record.analysis;
+    if (a?.summaryOnly) {
+      const acc = row.accuracy === null ? '' : ` · ${row.accuracy.toFixed(1)}%`;
+      return `<span class="wc-games-badge wc-games-badge-done" data-analysis="advance" title="Reviewed in advance${a.depth ? ` at depth ${a.depth}` : ''}">Reviewed in advance${acc}</span>`;
+    }
     if (a) {
       const acc = row.accuracy === null ? '' : ` · ${row.accuracy.toFixed(1)}%`;
       return `<span class="wc-games-badge wc-games-badge-done" data-analysis="analyzed" title="Reviewed on ${a.preset ? PRESET_LABEL[a.preset] : 'custom'}">Analyzed${acc}</span>`;
@@ -656,7 +660,7 @@ export class GamesList {
         : rows.length === this.records.length
           ? `${rows.length} game${rows.length === 1 ? '' : 's'}`
           : `${rows.length} of ${this.records.length} games`;
-    const analyzedCount = this.records.filter((r) => r.analysis).length;
+    const analyzedCount = this.records.filter((r) => hasSavedReview(r)).length;
     this.els.summary.textContent =
       this.records.length === 0
         ? ''

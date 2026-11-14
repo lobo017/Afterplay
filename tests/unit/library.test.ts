@@ -190,7 +190,7 @@ describe('Phase 5b — game library', () => {
     await library.saveReview('lichess:Bjl39T9x', saved);
 
     const record = await library.get('lichess:Bjl39T9x');
-    expect(record?.analysis).toEqual({
+    expect(record?.analysis).toMatchObject({
       preset: 'standard',
       savedAt: 1234,
       whiteAccuracy: result.review.white.accuracy,
@@ -210,6 +210,20 @@ describe('Phase 5b — game library', () => {
     );
     expect(restored.review.keyMoments.every((k) => plies.some((p) => p.nodeId === k.nodeId))).toBe(true);
     expect(restored.positions).toHaveLength(47);
+    storage.close();
+  });
+
+  it('also keeps a compact summary of both sides on the game record, without the summary-only flag', async () => {
+    const { library, storage } = await openLibrary();
+    await library.importPgnText(lichessGame.pgn);
+    const result = lichessRunResult();
+    await library.saveReview('lichess:Bjl39T9x', toSavedReview(result, 1234)!);
+
+    const analysis = (await library.get('lichess:Bjl39T9x'))?.analysis;
+    expect(analysis?.plies).toBe(46);
+    expect(analysis?.summaryOnly).toBeUndefined();
+    expect(analysis?.sides?.w?.moves).toBe(23);
+    expect(analysis?.sides?.b?.moves).toBe(23);
     storage.close();
   });
 
