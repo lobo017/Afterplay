@@ -8,10 +8,12 @@
 #SBATCH --time=00:40:00
 #SBATCH --export=NONE
 #
-# One player's Chess.com history: sbatch ... hpc/jobs/history.sbatch download | review | restore
+# One player's Chess.com history: sbatch ... hpc/jobs/history.sbatch download | review | restore | engine-merge [--allow-partial]
 #   download  the monthly archives from the public API into ~/scratch/wizard-chess-hpc/history/raw/
 #   review    report.txt, summary.txt and shortlist.txt from the raw files
 #   restore   restore.json (the app's backup format) from the raw files, then the app's own import run against it
+#   engine-merge  restore-reviewed.json from restore.json and the engine part files (history-engine.sbatch); a partial
+#                 merge happens only with --allow-partial. The app's import test on it is a separate step.
 # Everything personal stays in ~/scratch/wizard-chess-hpc/history/: the raw files, the reports, the restore file, and
 # the player's name in player.txt (put there by hand, see hpc/README.md; never an argument of this job, so it is in no
 # Slurm record). This folder is kept between jobs; the job's own scratch folder is removed as usual. The logs under
@@ -26,9 +28,9 @@ wc_scrub_env "$@"
 
 mode="${1:-}"
 case "$mode" in
-  download | review | restore) ;;
+  download | review | restore | engine-merge) ;;
   *)
-    echo "usage: history.sbatch download|review|restore" >&2
+    echo "usage: history.sbatch download|review|restore|engine-merge [--allow-partial]" >&2
     exit 2
     ;;
 esac
@@ -41,5 +43,5 @@ if [ ! -s "$hist/player.txt" ]; then
 fi
 WC_EXTRA_BINDS=(--bind "$hist:/history")
 rc=0
-wc_container bash /work/repo/hpc/container/history.sh "$mode" || rc=$?
+wc_container bash /work/repo/hpc/container/history.sh "$mode" "${@:2}" || rc=$?
 exit "$rc"
