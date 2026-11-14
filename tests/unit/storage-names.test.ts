@@ -11,6 +11,7 @@ import { BOARD_FEEL_STORAGE_KEY } from '../../src/render/board-feel';
 import { BOARD_SIZE_STORAGE_KEY } from '../../src/render/board-size';
 import { DEFAULT_DB_NAME, LATEST_SCHEMA_VERSION, WizardChessStorage, deleteWizardChessDB } from '../../src/storage/db';
 import { LINKS_CACHE } from '../../src/sw-links';
+import { STORY_LANDING_KEY } from '../../src/story/landing';
 import { INSTALL_GUIDE_SEEN_KEY } from '../../src/ui/install-guide';
 import { backupFileName, summarizeBackup } from '../../src/ui/settings-data-section';
 import { APP_SETTINGS_STORAGE_KEY, PREFERENCES_SETTING_KEY } from '../../src/ui/settings-persistence';
@@ -76,6 +77,7 @@ describe('Storage names stay what installed copies already use', () => {
       PROFILE_STORAGE_KEY,
       FIRST_RUN_STORAGE_KEY,
       INSTALL_GUIDE_SEEN_KEY,
+      STORY_LANDING_KEY,
       PREFERENCES_SETTING_KEY,
     }).toEqual({
       APP_SETTINGS_STORAGE_KEY: 'wc.settings.v1',
@@ -84,6 +86,7 @@ describe('Storage names stay what installed copies already use', () => {
       PROFILE_STORAGE_KEY: 'wc.profile.v1',
       FIRST_RUN_STORAGE_KEY: 'wc.first-run.v1',
       INSTALL_GUIDE_SEEN_KEY: 'wc-install-guide-seen',
+      STORY_LANDING_KEY: 'wc.story.v1',
       PREFERENCES_SETTING_KEY: 'app.preferences',
     });
     // Not exported (src/pwa.ts runs in the page only)
@@ -99,6 +102,7 @@ describe('Storage names stay what installed copies already use', () => {
       'PROFILE_STORAGE_KEY',
       'FIRST_RUN_STORAGE_KEY',
       'INSTALL_GUIDE_SEEN_KEY',
+      'STORY_LANDING_KEY',
       'ISOLATION_RELOAD_KEY',
       // settings-persistence.ts loops over four of the constants above with a variable of this name
       'key',

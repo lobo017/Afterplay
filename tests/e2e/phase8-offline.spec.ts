@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
+import { skipStoryLanding } from './helpers/landing';
 import { startServer, waitForOfflineReady, type Server } from './helpers/server';
 
 // Phase 8, the offline gate: after the first load the app needs no network. The test serves the
@@ -52,6 +53,7 @@ test.describe('Phase 8 — offline', () => {
   // Each test serves the build on an origin of its own, which the iPhone project's "install guide seen" storage state
   // does not cover: mark it seen here too, so the guide does not cover the board
   test.beforeEach(async ({ page }) => {
+    await skipStoryLanding(page.context());
     await page.addInitScript(() => localStorage.setItem('wc-install-guide-seen', '1'));
   });
   test.afterEach(async () => {

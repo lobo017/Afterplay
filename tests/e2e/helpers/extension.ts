@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium, expect, type BrowserContext, type Page, type Route, type Worker } from '@playwright/test';
+import { skipStoryLanding } from './landing';
 import { EXTENSION_HEADLESS, SITE_URL, SITE_URL_LOCALHOST, extensionChannel } from './site';
 
 export { SITE_URL, SITE_URL_LOCALHOST };
@@ -98,6 +99,8 @@ export async function launchWithExtension(options: LaunchOptions = {}): Promise<
     ignoreDefaultArgs: ['--disable-extensions'],
     ...(options.timezoneId ? { timezoneId: options.timezoneId } : {}),
   });
+  // The site opens on Play (src/story/landing.ts); this persistent context has no project storage state
+  await skipStoryLanding(context);
   const mocks: MockRule[] = [];
   const externalRequests: string[] = [];
   await context.route('**/*', async (route) => {

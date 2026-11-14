@@ -22,3 +22,5 @@ export function startSlugFromPath(pathname: string): string | null {
 export const startPath = (slug: string): string => `${START_PATH_PREFIX}${slug}/`;
 export const presetUrl = (slug: string): string => `${START_PATH_PREFIX}${slug}/preset.json`;
 export const startManifestUrl = (slug: string): string => `${START_PATH_PREFIX}${slug}/manifest.webmanifest`;
+/** A link's optional game history, beside its preset (first-run.ts, story/history-loader.ts). */
+export const historyUrl = (slug: string): string => `${START_PATH_PREFIX}${slug}/history.json`;

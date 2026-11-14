@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { devices, expect, test, type Page } from '@playwright/test';
+import { skipStoryLanding } from './helpers/landing';
 import { presetAppName, startIndexHtml, startManifest } from '../../scripts/lib/start-pages.mjs';
 import { startServer, waitForOfflineReady, type Server } from './helpers/server';
 
@@ -115,6 +116,7 @@ test.describe('Phase 11 — a first-run link with the worker in control', () => 
   let server: Server | null = null;
   let buildDir: string | null = null;
   test.beforeEach(async ({ page }) => {
+    await skipStoryLanding(page.context());
     // Its own origin, which the iPhone project's "install guide seen" storage state does not cover
     await page.addInitScript(() => localStorage.setItem('wc-install-guide-seen', '1'));
   });
@@ -205,6 +207,7 @@ test.describe('Phase 11 — a first-run link with the worker in control', () => 
       serviceWorkers: 'allow',
       storageState: { cookies: [], origins: [] },
     });
+    await skipStoryLanding(homeScreen);
     try {
       await homeScreen.addInitScript(() => {
         Object.defineProperty(Navigator.prototype, 'standalone', { get: () => true, configurable: true });

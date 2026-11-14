@@ -105,7 +105,10 @@ import { WelcomeSheet } from './ui/welcome-sheet';
 import { mountNotice } from './ui/notice';
 import { startSlugFromPath, type Preset } from './preset/preset';
 import { DEFAULT_APP_NAME, ProfileStore, welcomeWithAppName, type Profile } from './preset/profile';
-import { loadFirstRunPreset, loadFirstRunState, saveFirstRunState } from './preset/first-run';
+import { loadFirstRunPreset, loadFirstRunState, loadHistoryFile, saveFirstRunState } from './preset/first-run';
+import { landingScreen, readLanding, writeLanding, type StoryLanding } from './story/landing';
+import { STORY_IMPORT_SETTING, readImportRecord, storeHistory } from './story/history-loader';
+import { StoryView } from './story/view';
 import { applyAppIdentity } from './preset/app-identity';
 
 /** The four destinations. Review holds the analysis board; Train holds Today and the puzzles. */
@@ -140,6 +143,7 @@ export function modeFromLocation(search: string, hash: string): AppWorkspaceMode
     case 'puzzles':
       return 'train';
     case 'games':
+    case 'story':
       return 'games';
     default:
       return null;
@@ -465,6 +469,24 @@ export function mountAppShell(container: HTMLElement): {
   gamesRootEl.id = 'wc-games-root';
   gamesRootEl.className = 'wc-games-root';
   gamesRootEl.innerHTML = '<p class="wc-games-loading" data-testid="games-loading">Opening the game library…</p>';
+  // Where the app opens (story/landing.ts): read here, before the first frame. A #link that names a screen wins.
+  let landing: StoryLanding = readLanding();
+  const setLanding = (value: StoryLanding): void => {
+    landing = value;
+    writeLanding(value);
+  };
+  const requestedAtStart =
+    typeof window !== 'undefined' ? modeFromLocation(window.location.search, window.location.hash) : null;
+  const startOnStory =
+    typeof window !== 'undefined' &&
+    (window.location.hash === '#story' || (requestedAtStart === null && landingScreen(landing) !== 'play'));
+  let storyView: StoryView | null = null;
+  let historyRunning = false;
+  // A request cut off because the page is going away is not a failure: the load goes on at the next start
+  let pageLeaving = false;
+  if (typeof window !== 'undefined') {
+    for (const type of ['pagehide', 'beforeunload']) window.addEventListener(type, () => (pageLeaving = true));
+  }
   // Train: a hub (Today: what's due) and a session view (the puzzle trainer)
   const trainRootEl = document.createElement('div');
   trainRootEl.id = 'wc-train-root';
@@ -597,7 +619,7 @@ export function mountAppShell(container: HTMLElement): {
   profile.subscribe(applyIdentity);
   applyIdentity(profile.get());
 
-  const applyPreset = (slug: string, preset: Preset): void => {
+  const applyPreset = (slug: string, preset: Preset): Promise<void> => {
     appSettings.set(preset.settings);
     // What the preset names replaces what was there; what it leaves out stays
     profile.set({
@@ -613,18 +635,17 @@ export function mountAppShell(container: HTMLElement): {
     // The board waiting at the start position takes the preset's bot and time control
     playController.adoptPendingChoices();
     const usernames = preset.usernames;
-    if (usernames) {
-      void libraryReady
-        .then(async (api) => {
-          const mine = api.library.getMyAccounts();
-          await api.library.setMyAccounts({
-            lichess: usernames.lichess || mine?.lichess || '',
-            chesscom: usernames.chesscom || mine?.chesscom || '',
-          });
-          await api.gamesList.refresh();
-        })
-        .catch(() => undefined);
-    }
+    if (!usernames) return Promise.resolve();
+    return libraryReady
+      .then(async (api) => {
+        const mine = api.library.getMyAccounts();
+        await api.library.setMyAccounts({
+          lichess: usernames.lichess || mine?.lichess || '',
+          chesscom: usernames.chesscom || mine?.chesscom || '',
+        });
+        await api.gamesList.refresh();
+      })
+      .catch(() => undefined);
   };
   /** The welcome message if one is waiting (after the guide in iPhone Safari), otherwise the guide's own rule. */
   const showWelcomeOrGuide = (): void => {
@@ -644,7 +665,9 @@ export function mountAppShell(container: HTMLElement): {
     if (startSlug !== null && startSlug !== firstRun.slug) {
       const opened = performance.now();
       void loadFirstRunPreset({ pathname: window.location.pathname, appliedSlug: firstRun.slug }).then((result) => {
-        if (result.kind === 'loaded') applyPreset(result.slug, result.preset);
+        // The link's game history (if it has one) loads once the preset is applied, with no press
+        if (result.kind === 'loaded')
+          void applyPreset(result.slug, result.preset).then(() => runHistoryLoad(result.slug));
         else if (result.kind === 'failed') showNotice(result.message);
         shellEl.dataset.firstRun = result.kind === 'loaded' ? 'applied' : result.kind;
         setTimeout(showWelcomeOrGuide, Math.max(0, INSTALL_GUIDE_DELAY_MS - (performance.now() - opened)));
@@ -1215,22 +1238,68 @@ export function mountAppShell(container: HTMLElement): {
       saveGames: (games) => lib.saveBridgeGames(games),
       setAccounts: (accounts) => lib.setMyAccounts(accounts),
     });
+    const initialGamesTab = startOnStory ? 'story' : 'library';
     gamesRootEl.innerHTML = `
       <div class="wc-games-tabs">${tabListHtml(
         'games',
         [
           { id: 'library', label: 'Library' },
           { id: 'insights', label: 'Insights' },
+          { id: 'story', label: 'Story' },
         ],
-        'library',
+        initialGamesTab,
         'Games views',
       )}</div>
-      <div class="wc-games-pane" ${tabPanelAttrs('games', 'library', 'library')}></div>
-      <div class="wc-games-pane" ${tabPanelAttrs('games', 'insights', 'library')}></div>`;
+      <div class="wc-games-pane" ${tabPanelAttrs('games', 'library', initialGamesTab)}></div>
+      <div class="wc-games-pane" ${tabPanelAttrs('games', 'insights', initialGamesTab)}></div>
+      <div class="wc-games-pane" ${tabPanelAttrs('games', 'story', initialGamesTab)}></div>`;
     const libraryPane = gamesRootEl.querySelector('[data-tab-panel="library"]') as HTMLElement;
     const insightsPane = gamesRootEl.querySelector('[data-tab-panel="insights"]') as HTMLElement;
+    const storyPane = gamesRootEl.querySelector('[data-tab-panel="story"]') as HTMLElement;
     gamesTabs = new Tabs(gamesRootEl, (id) => {
       if (id === 'insights') void insightsView?.refresh();
+      if (id === 'story') storyView?.shown();
+    });
+    // "Seen": the first time the Story is on screen with a finished import (it then opens Play on later launches)
+    const markSeenIfDue = (finished: boolean): void => {
+      if (!finished || landing !== 'ready') return;
+      if (currentMode !== 'games' || gamesTabs?.getSelected() !== 'story' || document.visibilityState === 'hidden') {
+        return;
+      }
+      setLanding('seen');
+    };
+    const story = new StoryView({
+      container: storyPane,
+      library: lib,
+      getLanding: () => landing,
+      onSkip: () => {
+        setLanding('skipped');
+        setMode('play', false);
+        if (window.location.hash === '#story') {
+          history.replaceState(null, '', window.location.pathname + window.location.search);
+        }
+      },
+      onContinue: () => {
+        void readImportRecord(lib).then((rec) => runHistoryLoad(rec.file.slug || firstRun.slug));
+      },
+      onRendered: markSeenIfDue,
+    });
+    storyView = story;
+    void story.recount();
+    // A load that stopped part-way (or was cut off by closing the app) is offered again
+    void readImportRecord(lib).then((rec) => {
+      if (rec.file.status !== 'partial' || historyRunning) return;
+      // Cut off by a reload or by closing the app (a first visit reloads once when the worker takes over): go on by
+      // itself. A load that reported a failure waits for Continue.
+      if (rec.file.interrupted && rec.file.slug) void runHistoryLoad(rec.file.slug);
+      else {
+        story.setLoad({
+          kind: 'paused',
+          loaded: rec.file.loaded,
+          total: rec.file.total,
+          message: rec.file.failure || 'The load stopped before it finished.',
+        });
+      }
     });
     const list = new GamesList({
       container: libraryPane,
@@ -1404,6 +1473,59 @@ export function mountAppShell(container: HTMLElement): {
   });
   publishReady('__wizardChessLibraryReady', libraryReady);
 
+  // The link's game history (preset/first-run.ts fetches it, story/history-loader.ts stores it): batches of 200 that
+  // never overwrite, so a load that stopped continues where it was. A link with no history file changes nothing.
+  const runHistoryLoad = async (slug: string): Promise<void> => {
+    if (historyRunning) return;
+    historyRunning = true;
+    try {
+      const { library: lib } = await libraryReady;
+      const view = storyView;
+      const prior = (await readImportRecord(lib)).file;
+      const same = prior.slug === slug;
+      const loaded = same ? prior.loaded : 0;
+      const total = same ? prior.total : 0;
+      const write = (status: 'running' | 'partial' | 'never', failure = ''): Promise<void> =>
+        lib.writeSetting(STORY_IMPORT_SETTING, { version: 1, file: { status, loaded, total, slug, failure } });
+      // Marked before the request: a reload that cuts the request off (a first visit reloads once when the worker
+      // takes over) is found at the next start and goes on by itself
+      await write('running');
+      const result = await loadHistoryFile({ slug });
+      if (result.kind === 'none') {
+        await write('never');
+        view?.setLoad({ kind: 'idle' });
+        return;
+      }
+      if (result.kind === 'failed' && pageLeaving) return;
+      if (landing === 'new') setLanding('importing');
+      if (result.kind === 'failed') {
+        await write('partial', result.message);
+        view?.setLoad({ kind: 'paused', loaded, total, message: result.message });
+        return;
+      }
+      view?.setLoad({ kind: 'loading', loaded: 0, total: result.games.length });
+      const { state } = await storeHistory({
+        slug,
+        games: result.games,
+        monthRecord: result.monthRecord,
+        store: lib,
+        onProgress: (done, all) => view?.setLoad({ kind: 'loading', loaded: done, total: all }),
+        onBatch: () => view?.scheduleRecount(),
+      });
+      if (state.status === 'done') {
+        if (landing === 'importing') setLanding('ready');
+        view?.setLoad({ kind: 'idle' });
+      } else {
+        view?.setLoad({ kind: 'paused', loaded: state.loaded, total: state.total, message: state.failure });
+      }
+      await view?.recount();
+    } catch {
+      // libraryReady failed: the games screen already says so
+    } finally {
+      historyRunning = false;
+    }
+  };
+
   /** Board look, effects and sound follow the settings (Play and Review follow them themselves). */
   const applyAppSettings = (next: AppSettings, prev: AppSettings | null): void => {
     const boards = [
@@ -1430,10 +1552,12 @@ export function mountAppShell(container: HTMLElement): {
   if (typeof window !== 'undefined') {
     const requested = modeFromLocation(window.location.search, window.location.hash);
     if (requested) setMode(requested, false);
+    else if (landingScreen(landing) !== 'play') setMode('games', false);
     // A typed or followed #link switches destination without a reload
     window.addEventListener('hashchange', () => {
       const mode = modeFromLocation('', window.location.hash);
       if (mode) setMode(mode, false);
+      if (window.location.hash === '#story') gamesTabs?.select('story');
     });
   }
 

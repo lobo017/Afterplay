@@ -15,7 +15,7 @@ import {
   killAllChildTrees,
   killCommandHint,
 } from './lib/process-guard.mjs';
-import { browserLaunchOptions, isHeadlessServer } from './lib/browser.mjs';
+import { browserLaunchOptions, isHeadlessServer, skipStoryLanding } from './lib/browser.mjs';
 import { FRAME_FLOOR_P50_MAX_MS, floorFailureHint, measureFrameFloor } from './lib/frame-floor.mjs';
 
 const PORT = Number(process.env.PERF_PORT || 4179);
@@ -654,6 +654,7 @@ ${formatProcesses(killed)}`,
       // The app's service worker would cache the build in the background during a measurement
       serviceWorkers: 'block',
     });
+    await skipStoryLanding(context);
     const environmentFloor = await measureFrameFloor(context);
     log(
       `[environment] blank page: p50 ${environmentFloor.p50FrameMs} ms, p95 ${environmentFloor.p95FrameMs} ms ` +

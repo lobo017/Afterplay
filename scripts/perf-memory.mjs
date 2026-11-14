@@ -18,7 +18,7 @@ import path from 'node:path';
 import process from 'node:process';
 import { chromium } from '@playwright/test';
 import { formatGb, formatProcesses, freeMemoryBytes, installCleanup, killAllChildTrees } from './lib/process-guard.mjs';
-import { browserLaunchOptions } from './lib/browser.mjs';
+import { browserLaunchOptions, skipStoryLanding } from './lib/browser.mjs';
 
 const PORT = Number(process.env.PERF_PORT || 4181);
 const BASE_URL = `http://127.0.0.1:${PORT}`;
@@ -255,6 +255,7 @@ async function run() {
       handleSIGHUP: false,
     });
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, serviceWorkers: 'block' });
+    await skipStoryLanding(context);
     const page = await context.newPage();
     page.on('pageerror', (err) => logError('[page error]', err.message));
     await page.goto(BASE_URL, { waitUntil: 'domcontentloaded' });

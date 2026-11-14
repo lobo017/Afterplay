@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { devices, expect, test, type Page } from '@playwright/test';
+import { skipStoryLanding } from './helpers/landing';
 
 // Phase 11 stage 2: iPhone support. Runs in every project; the parts that only make sense on a phone (one engine, the
 // first-run install guide, real touch input) run in `webkit-iphone` (iPhone 13 in WebKit: 390 × 664, touch, iPhone
@@ -142,6 +143,7 @@ test.describe('Phase 11 — iPhone support', () => {
         // (Playwright gives hand-made contexts the project's options too, including its "guide seen" storage state)
         storageState: { cookies: [], origins: [] },
       });
+      await skipStoryLanding(context);
       const first = await context.newPage();
       await first.goto('/');
       const guide = first.getByTestId('install-guide');

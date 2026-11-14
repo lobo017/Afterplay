@@ -11,6 +11,15 @@ const CHROME_ONLY_SPECS = [/phase5b-extension\.spec/, /phase5b-live-capture\.spe
 const WEBKIT_TEST_TIMEOUT_MS = 60_000;
 /** The localStorage entry the install guide writes once it has been seen (src/ui/install-guide.ts). */
 const INSTALL_GUIDE_SEEN = { name: 'wc-install-guide-seen', value: '1' };
+/**
+ * Where the app opens (src/story/landing.ts): without this value a new browser opens on the Chess Story's form, so every
+ * test starts on Play with it set to "skipped". The Story tests (phase11-story.spec.ts) clear it.
+ */
+const LANDING_SKIPPED = { name: 'wc.story.v1', value: 'skipped' };
+const storage = (...localStorage: Array<{ name: string; value: string }>) => ({
+  cookies: [],
+  origins: [{ origin: SITE_URL, localStorage }],
+});
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -37,6 +46,7 @@ export default defineConfig({
       use: {
         ...devices['Desktop Chrome'],
         ...(channel ? { channel } : {}),
+        storageState: storage(LANDING_SKIPPED),
       },
     },
     // Safari's engine (Playwright's WebKit build), at desktop size and as an iPhone (390 × 664, touch,
@@ -45,7 +55,7 @@ export default defineConfig({
       name: 'webkit',
       testIgnore: CHROME_ONLY_SPECS,
       timeout: WEBKIT_TEST_TIMEOUT_MS,
-      use: { ...devices['Desktop Safari'] },
+      use: { ...devices['Desktop Safari'], storageState: storage(LANDING_SKIPPED) },
     },
     {
       name: 'webkit-iphone',
@@ -55,7 +65,7 @@ export default defineConfig({
         ...devices['iPhone 13'],
         // The first-run "Add to Home Screen" guide would cover the board in every test; its own test opens a
         // context without this (tests/e2e/phase11-iphone.spec.ts).
-        storageState: { cookies: [], origins: [{ origin: SITE_URL, localStorage: [INSTALL_GUIDE_SEEN] }] },
+        storageState: storage(INSTALL_GUIDE_SEEN, LANDING_SKIPPED),
       },
     },
   ],

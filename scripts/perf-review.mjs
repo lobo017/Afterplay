@@ -30,7 +30,7 @@ import {
   killAllChildTrees,
   killCommandHint,
 } from './lib/process-guard.mjs';
-import { browserLaunchOptions } from './lib/browser.mjs';
+import { browserLaunchOptions, skipStoryLanding } from './lib/browser.mjs';
 import { FRAME_FLOOR_P50_MAX_MS, measureFrameFloor } from './lib/frame-floor.mjs';
 
 const PORT = Number(process.env.PERF_PORT || 4180);
@@ -205,6 +205,7 @@ function installSamplers() {
 
 async function runOne(browser, threads, scenario) {
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, serviceWorkers: 'block' });
+  await skipStoryLanding(context);
   const page = await context.newPage();
   page.on('pageerror', (err) => logError('[page error]', err));
   try {

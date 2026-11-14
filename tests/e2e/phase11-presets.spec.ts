@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { devices, expect, test, type Page } from '@playwright/test';
+import { skipStoryLanding } from './helpers/landing';
 import { startServer, waitForOfflineReady, type Server } from './helpers/server';
 
 // Phase 11 stage 3: presets and the first-run link. `/start/sample/` is the committed sample link (invented names:
@@ -136,6 +137,8 @@ test.describe('Phase 11 — presets and the first-run link', () => {
   });
 
   test('a game against a named bot is stored with both names and my title', async ({ page }) => {
+    // This test counts the library: the sample link's invented history (Chess Story) is kept out of it
+    await page.route('**/start/sample/history.json', (route) => route.fulfill({ status: 404, body: 'none' }));
     await openLink(page, SAMPLE, 'applied');
     await closeWelcome(page);
     await page.getByTestId('custom-bot-1').click();
@@ -227,6 +230,7 @@ test.describe('Phase 11 — presets and the first-run link', () => {
         serviceWorkers: 'block',
         storageState: { cookies: [], origins: [] },
       });
+      await skipStoryLanding(context);
       const first = await context.newPage();
       await openLink(first, SAMPLE, 'applied');
       const guide = first.getByTestId('install-guide');
@@ -281,6 +285,7 @@ test.describe('Phase 11 — presets and the first-run link', () => {
     };
     // Safari: the guide, closed with Done (the user goes on to add the app to the Home Screen)
     const safari = await browser.newContext(iphone);
+    await skipStoryLanding(safari);
     const tab = await safari.newPage();
     await openLink(tab, SAMPLE, 'applied');
     await expect(tab.getByTestId('install-guide')).toBeVisible();
@@ -298,6 +303,7 @@ test.describe('Phase 11 — presets and the first-run link', () => {
 
     // The Home Screen app: its own empty storage, started at the link (the link's manifest), running standalone
     const homeScreen = await browser.newContext(iphone);
+    await skipStoryLanding(homeScreen);
     await homeScreen.addInitScript(() => {
       Object.defineProperty(Navigator.prototype, 'standalone', { get: () => true, configurable: true });
     });
@@ -335,6 +341,7 @@ test.describe('Phase 11 — the first-run link offline', () => {
   test.use({ serviceWorkers: 'allow' });
   let server: Server | null = null;
   test.beforeEach(async ({ page }) => {
+    await skipStoryLanding(page.context());
     // Its own origin, which the iPhone project's "install guide seen" storage state does not cover
     await page.addInitScript(() => localStorage.setItem('wc-install-guide-seen', '1'));
   });

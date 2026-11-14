@@ -6316,3 +6316,173 @@ label.wc-setting-row {
   top: 4.5rem;
   max-width: min(34rem, calc(100% - 1.5rem));
 }
+
+/* ==========================================================================
+   Chess Story (Games › Story): one column of 358 px cards in a vertical scroll with scroll-snap
+   ========================================================================== */
+
+.wc-story-root {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.wc-story-scroll {
+  height: calc(100dvh - 13rem);
+  min-height: 22rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-snap-type: y mandatory;
+  scroll-padding: 16px;
+  /* The workspace already keeps 8 px at the sides on a phone, so a 358 px card sits 16 px from a 390 px screen edge */
+  padding: 16px max(8px, env(safe-area-inset-right, 0px)) calc(16px + env(safe-area-inset-bottom, 0px))
+    max(8px, env(safe-area-inset-left, 0px));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.wc-story-card {
+  flex: none;
+  width: min(358px, 100%);
+  min-height: 16rem;
+  scroll-snap-align: start;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 1.1rem 1.1rem 1.2rem;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-carved);
+  border-radius: 1rem;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+.wc-story-label {
+  margin: 0;
+  color: var(--accent-gold);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.wc-story-value {
+  margin: 0;
+  font-size: 3.4rem;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.wc-story-sentence {
+  margin: 0;
+  font-size: 1.05rem;
+  line-height: 1.4;
+}
+
+.wc-story-note,
+.wc-story-personal {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.wc-story-personal {
+  color: var(--text-marble);
+  font-size: 0.95rem;
+  white-space: pre-line;
+}
+
+.wc-story-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.wc-story-table th,
+.wc-story-table td {
+  padding: 0.35rem 0;
+  border-top: 1px solid var(--border-subtle);
+  text-align: left;
+  font-weight: 400;
+}
+
+.wc-story-table td {
+  text-align: right;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.wc-story-bar {
+  display: flex;
+  height: 0.7rem;
+  border-radius: 0.35rem;
+  overflow: hidden;
+  background: var(--bg-elevated);
+}
+
+.wc-story-bar-w {
+  background: var(--status-ok);
+}
+
+.wc-story-bar-d {
+  background: var(--text-muted);
+}
+
+.wc-story-bar-l {
+  background: var(--status-danger);
+}
+
+.wc-story-bar-key {
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.wc-story-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.wc-story-field .wc-input {
+  min-height: 44px;
+  font-size: 1rem;
+}
+
+.wc-story-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.wc-story-btn {
+  min-height: 44px;
+  min-width: 44px;
+  font-size: 0.95rem;
+}
+
+.wc-story-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  align-self: center;
+  width: min(358px, 100%);
+  padding: 0.7rem 0.9rem;
+  background: var(--bg-elevated);
+  border: 1px solid var(--accent-gold-dim);
+  border-radius: 0.7rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.wc-story-banner strong {
+  color: var(--text-marble);
+  font-size: 0.95rem;
+}

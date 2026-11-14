@@ -26,7 +26,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { chromium, devices, webkit } from '@playwright/test';
-import { browserLaunchOptions } from './lib/browser.mjs';
+import { browserLaunchOptions, skipStoryLanding } from './lib/browser.mjs';
 
 const args = process.argv.slice(2);
 const url = args.find((a) => /^https?:\/\//.test(a));
@@ -80,6 +80,7 @@ try {
       ? { ...devices['iPhone 13'], serviceWorkers: 'allow' }
       : { serviceWorkers: 'allow', viewport: { width: 1280, height: 800 } },
   );
+  await skipStoryLanding(context);
   const page = await context.newPage();
   const foreign = new Set();
   page.on('request', (r) => {
@@ -193,6 +194,7 @@ try {
       ? { ...devices['iPhone 13'], serviceWorkers: 'allow' }
       : { serviceWorkers: 'allow', viewport: { width: 1280, height: 800 } },
   );
+  await skipStoryLanding(linkContext);
   const link = await linkContext.newPage();
   link.on('request', (r) => {
     const u = r.url();

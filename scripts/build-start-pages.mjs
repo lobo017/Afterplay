@@ -2,7 +2,8 @@
 // there from public/start/), write the link's own index.html and manifest.webmanifest (scripts/lib/start-pages.mjs).
 //
 //   node scripts/build-start-pages.mjs            the committed links (public/start/)
-//   node scripts/build-start-pages.mjs --local    also the personal ones in gift.local/start/ (never committed)
+//   node scripts/build-start-pages.mjs --local    also the personal ones in gift.local/start/ (never committed), with
+//                                                 their history.json when the folder has one
 //
 // `--local` copies personal presets into dist/. They stay on this machine unless that dist/ is deployed, which
 // publishes them at their (unguessable) address: see README, "Presets and first-run links".
@@ -36,12 +37,19 @@ const indexHtml = fs.readFileSync(path.join(DIST, 'index.html'), 'utf8');
 const baseManifest = fs.readFileSync(path.join(DIST, 'manifest.webmanifest'), 'utf8');
 
 let local = 0;
+let withHistory = 0;
 if (withLocal) {
   for (const slug of slugsIn(LOCAL_START)) {
     if (!START_SLUG_PATTERN.test(slug)) fail(`gift.local/start/${slug}: not a valid link name.`);
     if (fs.existsSync(path.join(DIST_START, slug))) fail(`gift.local/start/${slug}: a committed link has this name.`);
     fs.mkdirSync(path.join(DIST_START, slug), { recursive: true });
     fs.copyFileSync(path.join(LOCAL_START, slug, 'preset.json'), path.join(DIST_START, slug, 'preset.json'));
+    // The link's game history (the restore file's format), when the folder has one: the app loads it once, beside the preset
+    const history = path.join(LOCAL_START, slug, 'history.json');
+    if (fs.existsSync(history)) {
+      fs.copyFileSync(history, path.join(DIST_START, slug, 'history.json'));
+      withHistory++;
+    }
     local++;
   }
 }
@@ -62,5 +70,5 @@ for (const slug of slugs) {
 }
 console.log(
   `build-start-pages: ${slugs.length} first-run link${slugs.length === 1 ? '' : 's'}` +
-    (withLocal ? ` (${local} from gift.local/start/)` : ''),
+    (withLocal ? ` (${local} from gift.local/start/, ${withHistory} with a history file)` : ''),
 );

@@ -20,3 +20,17 @@ export function browserLaunchOptions() {
 export function isHeadlessServer() {
   return process.platform === 'linux' && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY;
 }
+
+/**
+ * The app opens on the Chess Story's form in a browser that has never seen it (src/story/landing.ts). Measuring and
+ * checking scripts want Play, so they store the landing value "skipped" first (only when none is stored).
+ */
+export async function skipStoryLanding(context) {
+  await context.addInitScript(() => {
+    try {
+      if (window.localStorage.getItem('wc.story.v1') === null) window.localStorage.setItem('wc.story.v1', 'skipped');
+    } catch {
+      // storage blocked: nothing to set
+    }
+  });
+}
