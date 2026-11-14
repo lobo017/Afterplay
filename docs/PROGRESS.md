@@ -146,6 +146,11 @@ restore and a sync, in any order, keep every game once. It is the site's only ru
 
 **Chess Story, build sessions 2 and 3 (2026-11-13/14, not committed):** the history loader, Story tab, landing value (Session 2) and the shared sync runner, "Start import" / "Continue", add-another accounts, preset `story` text, AGENTS.md sentence and network test (Session 3). Unit 807 passed; `phase11-story.spec.ts` 21 of 21 on chromium and webkit-iphone. Plans, choices, deviations and checks: [phase-11](progress/phase-11.md#chess-story-build-sessions-2-and-3).
 
+**Juno gate for Chess Story Sessions 2 and 3, commit `2f41ddcdb77597517aa20582fd95f006514232f4`, passed:**
+- e2e chromium ×2 513476: 201 passed, 2 skipped, both runs. e2e webkit 513478: 175 passed, 2 skipped. e2e webkit-iphone 513481: 177 passed.
+- unit 513482: 806 passed, 2 skipped. perf 513483: all four scripts passed.
+- All eight result folders passed the trust checks. The three failures seen on the laptop passed on Juno.
+
 ## Open items from earlier phases
 
 - **Scenario-2 `perf:drag`** (analysis board, MultiPV 5, ghosts, navigation sweep) passed clean on Juno on the final code (p95 16.67 ms, 0 dropped).
