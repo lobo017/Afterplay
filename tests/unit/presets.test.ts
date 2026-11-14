@@ -17,7 +17,13 @@ import {
   loadFirstRunState,
   saveFirstRunState,
 } from '../../src/preset/first-run';
-import { PROFILE_STORAGE_KEY, ProfileStore, customBotFor, sanitizeProfile } from '../../src/preset/profile';
+import {
+  PROFILE_STORAGE_KEY,
+  ProfileStore,
+  customBotFor,
+  sanitizeProfile,
+  welcomeWithAppName,
+} from '../../src/preset/profile';
 import { AppSettingsStore, DEFAULT_APP_SETTINGS } from '../../src/ui/app-settings';
 import { PREFERENCES_SETTING_KEY, Preferences, parsePreferences } from '../../src/ui/settings-persistence';
 import { BoardFeelStore, type FeelStorage } from '../../src/render/board-feel';
@@ -72,6 +78,21 @@ describe('Phase 11 — preset files', () => {
     });
     expect(preset!.bots.map((b) => b.name)).toEqual(['Professor Rook', 'The Gambit Goblin', 'Lady Zugzwang']);
     expect(preset!.welcome!.message.split('\n\n')).toHaveLength(2);
+  });
+
+  it('puts the preset app name in the welcome sentence, and falls back to Afterplay without one', () => {
+    const { preset } = parsePreset(JSON.parse(sampleText));
+    const shown = welcomeWithAppName(preset!.welcome!, preset!.appName);
+    expect(shown.message.split('\n\n')[0]).toBe(
+      "This copy of Ada's Chess was set up for you: a green board, the classic pieces and three opponents with names of their own.",
+    );
+    expect(shown.message).not.toContain('{appName}');
+    expect(welcomeWithAppName(preset!.welcome!, '').message).toContain('This copy of Afterplay was set up');
+    expect(welcomeWithAppName({ title: 'Hi', message: 'Hello', from: '' }, 'X')).toEqual({
+      title: 'Hi',
+      message: 'Hello',
+      from: '',
+    });
   });
 
   it('names only the settings the file names, so applying it leaves the others alone', () => {

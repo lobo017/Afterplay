@@ -104,7 +104,7 @@ import { mountProfileSection } from './ui/settings-profile-section';
 import { WelcomeSheet } from './ui/welcome-sheet';
 import { mountNotice } from './ui/notice';
 import { startSlugFromPath, type Preset } from './preset/preset';
-import { DEFAULT_APP_NAME, ProfileStore, type Profile } from './preset/profile';
+import { DEFAULT_APP_NAME, ProfileStore, welcomeWithAppName, type Profile } from './preset/profile';
 import { loadFirstRunPreset, loadFirstRunState, saveFirstRunState } from './preset/first-run';
 import { applyAppIdentity } from './preset/app-identity';
 
@@ -605,7 +605,7 @@ export function mountAppShell(container: HTMLElement): {
       ...(preset.title ? { title: preset.title } : {}),
       ...(preset.appName ? { appName: preset.appName } : {}),
       ...(preset.bots.length > 0 ? { bots: preset.bots } : {}),
-      ...(preset.welcome ? { welcome: preset.welcome } : {}),
+      ...(preset.welcome ? { welcome: welcomeWithAppName(preset.welcome, preset.appName) } : {}),
     });
     firstRun = { slug, welcomeSeen: false };
     saveFirstRunState(firstRun);

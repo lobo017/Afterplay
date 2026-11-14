@@ -26,6 +26,13 @@ export const EMPTY_PROFILE: Readonly<Profile> = Object.freeze({
 /** The app's own name, used wherever the profile names none. */
 export const DEFAULT_APP_NAME = 'Afterplay';
 
+/** A welcome text names the app with {appName}: the preset's app name, or the app's own when the preset has none. */
+export function welcomeWithAppName(welcome: WelcomeMessage, appName: string): WelcomeMessage {
+  const name = appName || DEFAULT_APP_NAME;
+  const fill = (text: string): string => text.split('{appName}').join(name);
+  return { ...welcome, title: fill(welcome.title), message: fill(welcome.message) };
+}
+
 /** Where the profile lives on this device (read synchronously at start-up, so the first frame has the names). */
 export const PROFILE_STORAGE_KEY = 'wc.profile.v1';
 
