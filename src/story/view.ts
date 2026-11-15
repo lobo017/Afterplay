@@ -326,9 +326,16 @@ export class StoryView {
           : card.id === 'lichess'
             ? stats.lichess
             : null;
+    // Year rows are two parts that do not fit side by side on a phone: the label above, the detail under it. The block
+    // layout can drop the table's semantics for a screen reader, so the stacked table says what it is.
+    const stacked = card.id === 'mistakes';
     const rows = card.rows.length
-      ? `<table class="wc-story-table"><tbody>${card.rows
-          .map((r) => `<tr><th scope="row">${escapeHtml(r.label)}</th><td>${escapeHtml(r.detail)}</td></tr>`)
+      ? `<table class="wc-story-table${stacked ? ' wc-story-table-stack' : ''}"${stacked ? ' role="table"' : ''}><tbody${stacked ? ' role="rowgroup"' : ''}>${card.rows
+          .map((r) =>
+            stacked
+              ? `<tr role="row"><th scope="row" role="rowheader">${escapeHtml(r.label)}</th><td role="cell">${escapeHtml(r.detail)}</td></tr>`
+              : `<tr><th scope="row">${escapeHtml(r.label)}</th><td>${escapeHtml(r.detail)}</td></tr>`,
+          )
           .join('')}</tbody></table>`
       : '';
     const personal = card.personal ? `<p class="wc-story-personal">${escapeHtml(card.personal)}</p>` : '';

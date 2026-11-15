@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MIN_REVIEWED_GAMES, computeStoryStats } from '../../src/story/stats';
-import { notEnoughReviewed, reviewCards, storyCards } from '../../src/story/text';
+import { YEAR_ROWS_SHOWN, earlierYearsNote, notEnoughReviewed, reviewCards, storyCards } from '../../src/story/text';
 import { SHOWN_CARDS } from '../../src/story/view';
 import { FOES, ME, game, run, utc, type GameSpec } from './helpers/story-games';
 import { batch, reviewed } from './helpers/story-reviews';
@@ -298,5 +298,71 @@ describe('what the review cards never hold', () => {
     expect(storyCards(stats(D))).toEqual(storyCards(stats(D)));
     const withText = storyCards(stats(D), { intro: 'Hello 1', closing: 'Bye 2' });
     expect(withText.filter((c) => c.personal !== null).map((c) => c.id)).toEqual(['intro', 'closing']);
+  });
+});
+
+describe('the newest years on the Mistakes card', () => {
+  /** `count` years from 2020, 10 reviewed games each: year k has accuracy 60 + 5k and 5 - k blunders a game. */
+  const years = (count: number) =>
+    Array.from({ length: count }, (_, k) =>
+      batch(10, `y${k}-`, (i) => ({
+        game: { at: utc(2020 + k, 3, 1 + i) },
+        review: { accuracy: 60 + 5 * k, blunder: 5 - k },
+      })),
+    ).flat();
+  const labels = (count: number) => cardsOf(years(count)).mistakes!.rows.map((r) => r.label);
+
+  it('lists three years', () => {
+    expect(YEAR_ROWS_SHOWN).toBe(3);
+  });
+
+  it('lists exactly three years in full, with no note', () => {
+    const c = cardsOf(years(3)).mistakes!;
+    expect(c.rows.map((r) => r.label)).toEqual(['2020 · 10 games', '2021 · 10 games', '2022 · 10 games']);
+    expect(c.notes.join(' ')).not.toContain('not listed');
+    expect(c.notes[0]).toMatch(/^Mistakes: /);
+  });
+
+  it('says "The earliest year is not listed." for four years, and lists the newest three, oldest first', () => {
+    const c = cardsOf(years(4)).mistakes!;
+    expect(c.notes[0]).toBe('The earliest year is not listed.');
+    expect(c.rows.map((r) => r.label)).toEqual(['2021 · 10 games', '2022 · 10 games', '2023 · 10 games']);
+  });
+
+  it('says how many earlier years are not listed, from the second one on', () => {
+    expect(cardsOf(years(5)).mistakes!.notes[0]).toBe('The 2 earlier years are not listed.');
+    const six = cardsOf(years(6)).mistakes!;
+    expect(six.notes[0]).toBe('The 3 earlier years are not listed.');
+    expect(six.rows).toEqual([
+      { label: '2023 · 10 games', detail: '75.0% accuracy · 2.0 blunders a game' },
+      { label: '2024 · 10 games', detail: '80.0% accuracy · 1.0 blunders a game' },
+      { label: '2025 · 10 games', detail: '85.0% accuracy · 0.0 blunders a game' },
+    ]);
+    expect(labels(6)).toHaveLength(YEAR_ROWS_SHOWN);
+  });
+
+  it('writes the singular and plural forms of the note', () => {
+    expect(earlierYearsNote(1)).toBe('The earliest year is not listed.');
+    expect(earlierYearsNote(2)).toBe('The 2 earlier years are not listed.');
+    expect(earlierYearsNote(3)).toBe('The 3 earlier years are not listed.');
+    expect(earlierYearsNote(12)).toBe('The 12 earlier years are not listed.');
+  });
+
+  it('puts the note first, before the other notes', () => {
+    const notes = cardsOf(years(6)).mistakes!.notes;
+    expect(notes[0]).toBe('The 3 earlier years are not listed.');
+    expect(notes[1]).toMatch(/^Mistakes: /);
+  });
+
+  it('leaves the overall numbers and the halves note covering every year', () => {
+    const cards = cardsOf(years(6));
+    // All 60 games: blunders 5,4,3,2,1,0 over six equal years, accuracy 60 to 85
+    expect(cards.mistakes!.value).toBe('2.5');
+    expect(cards.mistakes!.sentence).toBe('You blundered 2.5 times a game over 60 reviewed games.');
+    expect(cards.accuracy!.value).toBe('72.5%');
+    // The first 30 games are the years 2020 to 2022 (the last of them on 10 March 2022), the other 30 the newest three
+    expect(cards.mistakes!.notes.at(-1)).toBe(
+      'In the first half of your reviewed games (to March 2022) your accuracy was 65.0% and you blundered 4.0 times a game; in the second half, 80.0% and 1.0.',
+    );
   });
 });

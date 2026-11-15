@@ -6415,6 +6415,30 @@ label.wc-setting-row {
   font-variant-numeric: tabular-nums;
 }
 
+/* Rows of two parts that do not fit side by side on a phone: the label above, the detail under it */
+.wc-story-table-stack,
+.wc-story-table-stack tbody {
+  display: block;
+}
+
+.wc-story-table-stack tr {
+  display: block;
+  padding: 0.35rem 0;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.wc-story-table-stack th,
+.wc-story-table-stack td {
+  display: block;
+  padding: 0;
+  border-top: 0;
+  text-align: left;
+}
+
+.wc-story-table-stack td {
+  margin-top: 0.1rem;
+}
+
 .wc-story-bar {
   display: flex;
   height: 0.7rem;

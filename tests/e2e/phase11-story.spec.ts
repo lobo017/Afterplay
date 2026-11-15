@@ -994,6 +994,22 @@ test.describe('Chess Story: the engine review cards', () => {
       await expect(mistakes).toContainText(want.mistakes.markNote);
       await expect(mistakes).toContainText(want.mistakes.halvesNote);
       await expect(mistakes).not.toContainText("Lichess's formula");
+      await expect(mistakes).not.toContainText('not listed');
+      // The year rows are stacked: the year and games on one line, the numbers on the next, each on one line
+      const rowShape = await mistakes.locator('tbody tr').evaluateAll((trs) =>
+        trs.map((tr) => {
+          const th = tr.querySelector('th')!;
+          const td = tr.querySelector('td')!;
+          const lineHeight =
+            parseFloat(getComputedStyle(td).lineHeight) || parseFloat(getComputedStyle(td).fontSize) * 1.4;
+          return {
+            stacked: td.getBoundingClientRect().top >= th.getBoundingClientRect().bottom - 1,
+            labelLines: Math.round(th.getBoundingClientRect().height / lineHeight),
+            detailLines: Math.round(td.getBoundingClientRect().height / lineHeight),
+          };
+        }),
+      );
+      expect(rowShape).toEqual([{ stacked: true, labelLines: 1, detailLines: 1 }]); // one year in the invented data
 
       const swing = page.getByTestId('story-card-swing');
       await expect(page.getByTestId('story-value-swing')).toHaveText(want.swing.value);

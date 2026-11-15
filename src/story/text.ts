@@ -264,6 +264,17 @@ function reviewClassRow(c: ReviewStats['byClass'][number]): StoryTableRow {
   };
 }
 
+/**
+ * The Mistakes card lists this many of the newest years. More rows make the card taller than the Story's scroller on a
+ * phone; the overall numbers and the first-half/second-half note still cover every year.
+ */
+export const YEAR_ROWS_SHOWN = 3;
+
+/** "The 3 earlier years are not listed." / "The earliest year is not listed." */
+export function earlierYearsNote(hidden: number): string {
+  return hidden === 1 ? 'The earliest year is not listed.' : `The ${n(hidden)} earlier years are not listed.`;
+}
+
 function reviewYearRow(y: ReviewStats['byYear'][number]): StoryTableRow {
   return {
     label: `${y.year} · ${plural(y.games, 'game')}`,
@@ -298,11 +309,13 @@ function accuracyCard(r: ReviewStats): StoryCard {
 
 function mistakesCard(r: ReviewStats): StoryCard {
   const per = r.perGame!;
+  const hiddenYears = r.byYear.length - YEAR_ROWS_SHOWN;
   return card('mistakes', 'Mistakes', {
     value: oneDecimal(per.blunder),
     sentence: blunderSentence(per.blunder, r.reviewed),
-    rows: r.byYear.map(reviewYearRow),
+    rows: r.byYear.slice(-YEAR_ROWS_SHOWN).map(reviewYearRow),
     notes: [
+      ...(hiddenYears > 0 ? [earlierYearsNote(hiddenYears)] : []),
       `Mistakes: ${oneDecimal(per.mistake)} a game. Inaccuracies: ${oneDecimal(per.inaccuracy)} a game. ` +
         `Your reviewed games average ${n(Math.round(per.moves))} of your moves.`,
       // Left out when the engine marked none of either
