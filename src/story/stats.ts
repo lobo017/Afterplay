@@ -8,6 +8,7 @@ import type { StoredGameRecord } from '../storage/db';
 import { readPgnHeaders } from '../capture/pgn-time';
 import { myColor, resultFor } from '../library/game-record';
 import { openingFamily } from '../library/insights';
+import { readReviewNumbers, type ReviewNumbers } from '../library/review-numbers';
 import type { Color } from '../core/rules';
 
 // ---------------------------------------------------------------------------- constants
@@ -40,7 +41,14 @@ export const MIN_TREND_GAMES = 10;
 /** ...in at least this many different months. */
 export const MIN_TREND_MONTHS = 2;
 
-export const STATS_VERSION = 1;
+/** The review cards need this many reviewed games (the same number halves a trend: dated games). */
+export const MIN_REVIEWED_GAMES = 20;
+/** A review row or note (a class, a colour, wins or losses, a year) needs this many reviewed games. */
+export const MIN_REVIEWED_ROW = 10;
+/** "Most accurate game" is chosen among games with at least this many of my moves. */
+export const MIN_MOVES_FOR_BEST_GAME = 25;
+
+export const STATS_VERSION = 2;
 
 export type StoryScope = 'all' | 'chesscom' | 'lichess';
 export type StorySite = 'chesscom' | 'lichess';
@@ -108,6 +116,72 @@ export interface TrendSeries {
   anyInWindow: boolean;
 }
 
+export interface AccuracyGroup {
+  games: number;
+  /** Mean of the game accuracies, 0–100. */
+  accuracy: number;
+}
+
+export interface ReviewClassRow extends AccuracyGroup {
+  timeClass: TimeClass;
+}
+
+export interface ReviewYearRow extends AccuracyGroup {
+  /** Calendar year (UTC). */
+  year: number;
+  blundersPerGame: number;
+}
+
+export interface ReviewHalf extends AccuracyGroup {
+  blundersPerGame: number;
+}
+
+/** What a picked game says about itself; it holds no id, name or link. */
+export interface ReviewedGameRef {
+  playedAt: number | null;
+  timeClass: TimeClass | null;
+  outcome: 'win' | 'loss' | 'draw';
+  opponentRating: number | null;
+  source: ReviewNumbers['source'];
+  depth: number | null;
+  preset: ReviewNumbers['preset'];
+}
+
+export interface ReviewStats {
+  /** Counted games in the scope (the denominator of "X of Y counted games have an engine review"). */
+  counted: number;
+  reviewed: number;
+  inAdvance: number;
+  onDevice: number;
+  /** MIN_REVIEWED_GAMES reviewed games: the review cards are made. */
+  enough: boolean;
+  /** Mean of the game accuracies; null with no reviewed game. */
+  accuracy: number | null;
+  /** Means per reviewed game; null with no reviewed game. */
+  perGame: { blunder: number; mistake: number; inaccuracy: number; moves: number } | null;
+  /** Totals over the reviewed games. */
+  brilliant: number;
+  great: number;
+  /** Classes with at least MIN_REVIEWED_ROW reviewed games, in the fixed class order. */
+  byClass: ReviewClassRow[];
+  /** A group is null below MIN_REVIEWED_ROW reviewed games. */
+  white: AccuracyGroup | null;
+  black: AccuracyGroup | null;
+  wins: AccuracyGroup | null;
+  losses: AccuracyGroup | null;
+  /** The dated reviewed games split at the median date; null below MIN_REVIEWED_GAMES dated games. */
+  halves: { first: ReviewHalf & { endMonth: string }; second: ReviewHalf } | null;
+  /** Years with at least MIN_REVIEWED_ROW reviewed games, oldest first. */
+  byYear: ReviewYearRow[];
+  /**
+   * The reviewed win in which my win% was lowest (ties: the earliest game). `reviewedWins` is the pool it was chosen
+   * from (reviewed wins that have a lowest win%); `alsoLow` is how many other wins share that lowest value.
+   */
+  swing: { game: ReviewedGameRef & { low: number }; reviewedWins: number; alsoLow: number } | null;
+  /** The most accurate reviewed game of at least MIN_MOVES_FOR_BEST_GAME of my moves (ties: the earliest). */
+  bestGame: { game: ReviewedGameRef & { accuracy: number; moves: number }; eligible: number } | null;
+}
+
 export interface ScopeStats extends Wld {
   scope: StoryScope;
   /** Games with a time control that fits no class (none, "-", unreadable). They count in the totals only. */
@@ -127,6 +201,8 @@ export interface ScopeStats extends Wld {
   /** First and last game, ms since the epoch (UTC), or null. */
   firstPlayedAt: number | null;
   lastPlayedAt: number | null;
+  /** The engine-review numbers of the games in the scope. */
+  review: ReviewStats;
 }
 
 export interface ExcludedCounts {
@@ -195,6 +271,8 @@ interface CountedGame {
   opening: string;
   /** Duplicate key between sites, or null when the game is too short or undated. */
   duplicateKey: string | null;
+  /** My engine-review numbers, or null when the game has none that can be used. */
+  review: ReviewNumbers | null;
 }
 
 function isStandard(headers: Readonly<Record<string, string>>): boolean {
@@ -283,6 +361,7 @@ function readGame(record: StoredGameRecord, accounts: readonly UserAccount[]): C
     myRating: typeof mine === 'number' && mine > 0 ? mine : null,
     opening: record.openingName ? openingFamily(record.openingName) : '',
     duplicateKey,
+    review: readReviewNumbers(record, color),
   };
 }
 
@@ -397,6 +476,135 @@ function trendOf(site: StorySite, games: readonly CountedGame[], now: number): T
   };
 }
 
+// ---------------------------------------------------------------------------- engine review numbers
+
+interface ReviewedGame {
+  game: CountedGame;
+  review: ReviewNumbers;
+}
+
+const meanOf = (values: readonly number[]): number => values.reduce((a, b) => a + b, 0) / values.length;
+const meanBy = (items: readonly ReviewedGame[], pick: (r: ReviewNumbers) => number): number =>
+  meanOf(items.map((i) => pick(i.review)));
+const earliestFirst = (a: ReviewedGame, b: ReviewedGame): number => byTimeThenId(a.game, b.game);
+
+function accuracyGroup(items: readonly ReviewedGame[]): AccuracyGroup | null {
+  return items.length >= MIN_REVIEWED_ROW ? { games: items.length, accuracy: meanBy(items, (r) => r.accuracy) } : null;
+}
+
+function reviewRef(item: ReviewedGame): ReviewedGameRef {
+  return {
+    playedAt: item.game.playedAt,
+    timeClass: item.game.timeClass,
+    outcome: item.game.outcome,
+    opponentRating: item.game.opponentRating,
+    source: item.review.source,
+    depth: item.review.depth,
+    preset: item.review.preset,
+  };
+}
+
+function reviewStatsOf(games: readonly CountedGame[]): ReviewStats {
+  const items: ReviewedGame[] = [];
+  for (const game of games) if (game.review) items.push({ game, review: game.review });
+  const dated = items.filter((i) => i.game.playedAt !== null).sort(earliestFirst);
+
+  const byClass: ReviewClassRow[] = [];
+  for (const timeClass of TIME_CLASSES) {
+    const group = accuracyGroup(items.filter((i) => i.game.timeClass === timeClass));
+    if (group) byClass.push({ timeClass, ...group });
+  }
+
+  let halves: ReviewStats['halves'] = null;
+  if (dated.length >= MIN_REVIEWED_GAMES) {
+    const first = dated.slice(0, Math.floor(dated.length / 2));
+    const second = dated.slice(first.length);
+    const half = (part: readonly ReviewedGame[]): ReviewHalf => ({
+      games: part.length,
+      accuracy: meanBy(part, (r) => r.accuracy),
+      blundersPerGame: meanBy(part, (r) => r.blunder),
+    });
+    halves = {
+      first: { ...half(first), endMonth: monthOf(first[first.length - 1]!.game.playedAt!) },
+      second: half(second),
+    };
+  }
+
+  const years = new Map<number, ReviewedGame[]>();
+  for (const item of dated) {
+    const year = new Date(item.game.playedAt!).getUTCFullYear();
+    years.set(year, [...(years.get(year) ?? []), item]);
+  }
+  const byYear: ReviewYearRow[] = [...years.entries()]
+    .filter(([, list]) => list.length >= MIN_REVIEWED_ROW)
+    .sort((a, b) => a[0] - b[0])
+    .map(([year, list]) => ({
+      year,
+      games: list.length,
+      accuracy: meanBy(list, (r) => r.accuracy),
+      blundersPerGame: meanBy(list, (r) => r.blunder),
+    }));
+
+  const wins = items.filter((i) => i.game.outcome === 'win' && i.review.low !== null);
+  let swing: ReviewStats['swing'] = null;
+  if (wins.length > 0) {
+    const pick = wins.reduce((best, i) =>
+      i.review.low! < best.review.low! || (i.review.low === best.review.low && earliestFirst(i, best) < 0) ? i : best,
+    );
+    swing = {
+      game: { ...reviewRef(pick), low: pick.review.low! },
+      reviewedWins: wins.length,
+      alsoLow: wins.filter((i) => i.review.low === pick.review.low).length - 1,
+    };
+  }
+
+  const long = items.filter((i) => i.review.moves >= MIN_MOVES_FOR_BEST_GAME);
+  let bestGame: ReviewStats['bestGame'] = null;
+  if (long.length > 0) {
+    const pick = long.reduce((best, i) =>
+      i.review.accuracy > best.review.accuracy ||
+      (i.review.accuracy === best.review.accuracy && earliestFirst(i, best) < 0)
+        ? i
+        : best,
+    );
+    bestGame = {
+      game: { ...reviewRef(pick), accuracy: pick.review.accuracy, moves: pick.review.moves },
+      eligible: long.length,
+    };
+  }
+
+  const ofColour = (colour: Color) => items.filter((i) => i.game.color === colour);
+  const ofOutcome = (outcome: CountedGame['outcome']) => items.filter((i) => i.game.outcome === outcome);
+  return {
+    counted: games.length,
+    reviewed: items.length,
+    inAdvance: items.filter((i) => i.review.source === 'advance').length,
+    onDevice: items.filter((i) => i.review.source === 'device').length,
+    enough: items.length >= MIN_REVIEWED_GAMES,
+    accuracy: items.length === 0 ? null : meanBy(items, (r) => r.accuracy),
+    perGame:
+      items.length === 0
+        ? null
+        : {
+            blunder: meanBy(items, (r) => r.blunder),
+            mistake: meanBy(items, (r) => r.mistake),
+            inaccuracy: meanBy(items, (r) => r.inaccuracy),
+            moves: meanBy(items, (r) => r.moves),
+          },
+    brilliant: items.reduce((sum, i) => sum + i.review.brilliant, 0),
+    great: items.reduce((sum, i) => sum + i.review.great, 0),
+    byClass,
+    white: accuracyGroup(ofColour('w')),
+    black: accuracyGroup(ofColour('b')),
+    wins: accuracyGroup(ofOutcome('win')),
+    losses: accuracyGroup(ofOutcome('loss')),
+    halves,
+    byYear,
+    swing,
+    bestGame,
+  };
+}
+
 function scopeStats(scope: StoryScope, games: readonly CountedGame[], now: number): ScopeStats {
   const total = emptyWld();
   const white = emptyWld();
@@ -442,6 +650,7 @@ function scopeStats(scope: StoryScope, games: readonly CountedGame[], now: numbe
     trends: sites.map((s) => trendOf(s, games, now)).filter((t): t is TrendSeries => t !== null),
     firstPlayedAt: first,
     lastPlayedAt: last,
+    review: reviewStatsOf(games),
   };
 }
 
