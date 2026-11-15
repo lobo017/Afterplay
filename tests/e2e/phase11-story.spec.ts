@@ -724,3 +724,410 @@ test.describe('Chess Story: add another account', () => {
     await shot(page, 'settings-added-account');
   });
 });
+
+// ---------------------------------------------------------------------------------------------------------------------
+// The engine review cards. The sample link's invented games get invented review summaries, added here by the test: the
+// numbers are made up and never derived from the moves (the Story only reads them). Nothing here comes from
+// gift.local/, and no real name, game or number appears.
+// ---------------------------------------------------------------------------------------------------------------------
+interface SampleGame {
+  id: string;
+  playerColor: 'w' | 'b';
+  result: string;
+  timeControl: string;
+  playedAt: number;
+  whiteElo: number;
+  blackElo: number;
+  [field: string]: unknown;
+}
+
+/** A folder OUTSIDE the repository for look-at screenshots and layout numbers; with it unset nothing is saved. */
+const LOOK_DIR = process.env.STORY_LOOK_DIR ?? '';
+
+function lookDir(): string | null {
+  if (LOOK_DIR === '') return null;
+  const dir = path.resolve(LOOK_DIR);
+  const rel = path.relative(process.cwd(), dir);
+  if (!rel.startsWith('..') && !path.isAbsolute(rel)) throw new Error('STORY_LOOK_DIR must be outside the repository');
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+async function lookAt(page: Page, name: string, cardId?: string): Promise<void> {
+  const dir = lookDir();
+  if (!dir) return;
+  const file = path.join(dir, `${test.info().project.name}-${name}.png`);
+  if (cardId) await page.getByTestId(`story-card-${cardId}`).screenshot({ path: file });
+  else await page.screenshot({ path: file });
+}
+
+function noteLayout(name: string, data: unknown): void {
+  const dir = lookDir();
+  if (dir) {
+    fs.appendFileSync(
+      path.join(dir, 'layout.jsonl'),
+      `${JSON.stringify({ project: test.info().project.name, name, ...(data as object) })}\n`,
+    );
+  }
+}
+
+/** The invented review numbers of the game at position `i` of the sample file. Accuracies and lowest win% are unique. */
+const inventedFor = (i: number) => ({
+  accuracy: 62 + ((i * 7) % 31),
+  moves: 25 + (i % 6),
+  blunder: i % 4,
+  mistake: 1 + (i % 3),
+  inaccuracy: 2 + (i % 5),
+  brilliant: i % 11 === 0 ? 1 : 0,
+  great: i % 7 === 0 ? 1 : 0,
+  low: 10 + i,
+});
+type Invented = ReturnType<typeof inventedFor>;
+
+/** The sample's games with a batch summary on the first `only` of them (all by default). */
+function reviewedHistory(only = 30): SampleGame[] {
+  const games = (historyFile() as { games: SampleGame[] }).games;
+  return games.map((g, i) => {
+    if (i >= only) return g;
+    const n = inventedFor(i);
+    const side = {
+      moves: n.moves,
+      acpl: 40,
+      inaccuracy: n.inaccuracy,
+      mistake: n.mistake,
+      blunder: n.blunder,
+      miss: 0,
+      brilliant: n.brilliant,
+      great: n.great,
+      low: n.low,
+      drop: 20,
+      dropPly: 11,
+    };
+    return {
+      ...g,
+      accuracy: n.accuracy,
+      analysis: {
+        preset: null,
+        savedAt: 1,
+        depth: 18,
+        summaryOnly: true,
+        plies: n.moves * 2,
+        whiteAccuracy: g.playerColor === 'w' ? n.accuracy : null,
+        blackAccuracy: g.playerColor === 'b' ? n.accuracy : null,
+        sides: { [g.playerColor]: side },
+      },
+    };
+  });
+}
+
+/** Opens the sample link with `games` as its history file, and waits for them to be stored. */
+async function openWithHistory(page: Page, games: SampleGame[]): Promise<void> {
+  await page.route('**/start/sample/history.json', (route) => fulfilJson(route, { ...historyFile(), games }));
+  await page.goto(SAMPLE);
+  await expect(page.getByTestId('app-shell')).toHaveAttribute('data-first-run', 'applied', { timeout: 15_000 });
+  await closeWelcomeIfShown(page);
+  await expect.poll(() => storedGames(page), { timeout: 15_000 }).toBe(games.length);
+  // The Story recounts a little after the games are stored (at most every 2 s): wait for its number, not just its card
+  await expect(page.getByTestId('story-value-totals')).toHaveText(String(games.length), { timeout: 20_000 });
+  await expect(page.getByTestId('story-load-status')).toHaveCount(0, { timeout: 20_000 });
+}
+
+const cardOrder = (page: Page) =>
+  page
+    .locator('[data-testid="story-scroll"] > section')
+    .evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.card));
+
+// What the test expects, computed here from the invented file with its own small arithmetic (not the app's code).
+const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
+const pct = (v: number) => `${v.toFixed(1)}%`;
+const CLASS_NAME = { bullet: 'Bullet', blitz: 'Blitz', rapid: 'Rapid', classical: 'Classical' } as const;
+const classOf = (tc: string) => {
+  const m = /^(\d+)(?:\+(\d+))?$/.exec(tc)!;
+  const s = Number(m[1]) + 40 * Number(m[2] ?? 0);
+  return s < 180 ? 'bullet' : s < 600 ? 'blitz' : s < 1500 ? 'rapid' : 'classical';
+};
+const outcomeOf = (g: SampleGame) =>
+  g.result === '1/2-1/2' ? 'draw' : (g.result === '1-0') === (g.playerColor === 'w') ? 'win' : 'loss';
+const monthName = (ms: number) =>
+  new Date(ms).toLocaleString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+
+function wantFor(games: SampleGame[]) {
+  const rows = games.map((g, i) => ({ g, n: inventedFor(i), out: outcomeOf(g), cls: classOf(g.timeControl) }));
+  type Row = (typeof rows)[number];
+  // The numbers below assume what the invented file gives; fail loudly if the file changes
+  expect(new Set(rows.map((r) => r.n.accuracy)).size).toBe(rows.length);
+  expect(new Set(rows.map((r) => new Date(r.g.playedAt).getUTCFullYear()))).toEqual(new Set([2026]));
+  const acc = (rs: Row[]) => mean(rs.map((r) => r.n.accuracy));
+  const per = (rs: Row[], pick: (n: Invented) => number) => mean(rs.map((r) => pick(r.n)));
+  const total = rows.length;
+  const white = rows.filter((r) => r.g.playerColor === 'w');
+  const black = rows.filter((r) => r.g.playerColor === 'b');
+  const wins = rows.filter((r) => r.out === 'win');
+  const losses = rows.filter((r) => r.out === 'loss');
+  const byTime = [...rows].sort((a, b) => a.g.playedAt - b.g.playedAt || (a.g.id < b.g.id ? -1 : 1));
+  const first = byTime.slice(0, Math.floor(total / 2));
+  const second = byTime.slice(first.length);
+  const swing = wins.reduce((b, r) => (r.n.low < b.n.low ? r : b));
+  const best = rows.filter((r) => r.n.moves >= 25).reduce((b, r) => (r.n.accuracy > b.n.accuracy ? r : b));
+  const classRows = (['bullet', 'blitz', 'rapid', 'classical'] as const).flatMap((c) => {
+    const rs = rows.filter((r) => r.cls === c);
+    return rs.length >= 10
+      ? [{ label: `${CLASS_NAME[c]} · ${rs.length} games`, detail: `${pct(acc(rs))} average accuracy` }]
+      : [];
+  });
+  const blunders = per(rows, (n) => n.blunder);
+  const elo = (r: Row) => (r.g.playerColor === 'w' ? r.g.blackElo : r.g.whiteElo).toLocaleString('en-US');
+  return {
+    accuracy: {
+      value: pct(acc(rows)),
+      sentence: `Your average accuracy is ${pct(acc(rows))} over ${total} reviewed games.`,
+      rows: classRows,
+      colourNote:
+        white.length >= 10 && black.length >= 10
+          ? `As White ${pct(acc(white))} over ${white.length} games; as Black ${pct(acc(black))} over ${black.length} games.`
+          : null,
+      winLossNote:
+        wins.length >= 10 && losses.length >= 10
+          ? `Your accuracy averaged ${pct(acc(wins))} in the ${wins.length} games you won and ${pct(acc(losses))} in the ${losses.length} games you lost.`
+          : null,
+      footnote: `${total} of ${total} counted games have an engine review: ${total} reviewed in advance.`,
+    },
+    mistakes: {
+      value: blunders.toFixed(1),
+      sentence: `You blundered ${blunders.toFixed(1)} times a game over ${total} reviewed games.`,
+      row: {
+        label: `2026 · ${total} games`,
+        detail: `${pct(acc(rows))} accuracy · ${blunders.toFixed(1)} blunders a game`,
+      },
+      classesNote: `Mistakes: ${per(rows, (n) => n.mistake).toFixed(1)} a game. Inaccuracies: ${per(rows, (n) => n.inaccuracy).toFixed(1)} a game. Your reviewed games average ${Math.round(per(rows, (n) => n.moves))} of your moves.`,
+      markNote: `The engine marked ${rows.reduce((s, r) => s + r.n.brilliant, 0)} of your moves Brilliant and ${rows.reduce((s, r) => s + r.n.great, 0)} Great.`,
+      halvesNote: `In the first half of your reviewed games (to ${monthName(first[first.length - 1]!.g.playedAt)}) your accuracy was ${pct(acc(first))} and you blundered ${per(first, (n) => n.blunder).toFixed(1)} times a game; in the second half, ${pct(acc(second))} and ${per(second, (n) => n.blunder).toFixed(1)}.`,
+    },
+    swing: {
+      value: `${swing.n.low}%`,
+      sentence: `You won a game the engine had at ${swing.n.low}% for you, a ${swing.cls} game in ${monthName(swing.g.playedAt)}.`,
+      pool: `Chosen from ${wins.length} reviewed wins.`,
+    },
+    best: {
+      value: pct(best.n.accuracy),
+      sentence: `Your most accurate game was ${pct(best.n.accuracy)}: a ${best.cls} ${best.out} against a player rated ${elo(best)}, in ${monthName(best.g.playedAt)}, over ${best.n.moves} of your moves.`,
+      pool: `Chosen from ${rows.filter((r) => r.n.moves >= 25).length} reviewed games of 25 moves or more.`,
+    },
+  };
+}
+
+/** Looks at one card: in view, nothing wider than the card, no note outside it. Returns the measured line counts. */
+async function measureCard(page: Page, id: string) {
+  const card = page.getByTestId(`story-card-${id}`);
+  await card.evaluate((el) => el.scrollIntoView({ block: 'start' }));
+  await expect(card).toBeVisible();
+  return card.evaluate((el) => {
+    const lines = (node: Element | null): number => {
+      if (!node) return 0;
+      const s = getComputedStyle(node);
+      const lineHeight = parseFloat(s.lineHeight) || parseFloat(s.fontSize) * 1.4;
+      return Math.round(node.getBoundingClientRect().height / lineHeight);
+    };
+    const box = el.getBoundingClientRect();
+    const notes = [...el.querySelectorAll('.wc-story-note')];
+    return {
+      overflowX: el.scrollWidth - el.clientWidth,
+      wideText: [...el.querySelectorAll('p, th, td')].filter((n) => n.scrollWidth > n.clientWidth + 1).length,
+      sentenceLines: lines(el.querySelector('.wc-story-sentence')),
+      noteLines: notes.map(lines),
+      notesOutside: notes.filter((n) => {
+        const b = n.getBoundingClientRect();
+        return b.bottom > box.bottom + 1 || b.right > box.right + 1;
+      }).length,
+      width: Math.round(box.width),
+      height: Math.round(box.height),
+    };
+  });
+}
+
+const analysedCount = (page: Page) =>
+  page.evaluate(async () => (await window.__wizardChessLibrary!.library.list()).filter((r) => r.analysis).length);
+
+test.describe('Chess Story: the engine review cards', () => {
+  for (const [label, width, height] of [
+    ['390', 390, 844],
+    ['1280', 1280, 800],
+  ] as const) {
+    test(`shows the four cards with the numbers computed from the invented summaries, at ${label} px`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height });
+      const games = reviewedHistory();
+      await openWithHistory(page, games);
+      const want = wantFor(games);
+      expect(await cardOrder(page)).toEqual([
+        'intro',
+        'totals',
+        'chesscom',
+        'accuracy',
+        'mistakes',
+        'swing',
+        'bestGame',
+        'closing',
+      ]);
+
+      const accuracy = page.getByTestId('story-card-accuracy');
+      await expect(page.getByTestId('story-value-accuracy')).toHaveText(want.accuracy.value);
+      await expect(accuracy).toContainText(want.accuracy.sentence);
+      for (const row of want.accuracy.rows) {
+        await expect(accuracy.locator('tr', { hasText: row.label })).toContainText(row.detail);
+      }
+      if (want.accuracy.colourNote) await expect(accuracy).toContainText(want.accuracy.colourNote);
+      if (want.accuracy.winLossNote) await expect(accuracy).toContainText(want.accuracy.winLossNote);
+      else await expect(accuracy).not.toContainText('games you won');
+      await expect(accuracy).toContainText("Chess.com's own accuracy can differ.");
+      await expect(accuracy).toContainText(want.accuracy.footnote);
+      await expect(accuracy).not.toContainText('on this device');
+
+      const mistakes = page.getByTestId('story-card-mistakes');
+      await expect(page.getByTestId('story-value-mistakes')).toHaveText(want.mistakes.value);
+      await expect(mistakes).toContainText(want.mistakes.sentence);
+      await expect(mistakes.locator('tr', { hasText: want.mistakes.row.label })).toContainText(
+        want.mistakes.row.detail,
+      );
+      await expect(mistakes).toContainText(want.mistakes.classesNote);
+      await expect(mistakes).toContainText(want.mistakes.markNote);
+      await expect(mistakes).toContainText(want.mistakes.halvesNote);
+      await expect(mistakes).not.toContainText("Lichess's formula");
+
+      const swing = page.getByTestId('story-card-swing');
+      await expect(page.getByTestId('story-value-swing')).toHaveText(want.swing.value);
+      await expect(swing).toContainText(want.swing.sentence);
+      await expect(swing).toContainText(want.swing.pool);
+      await expect(swing).toContainText('This game was reviewed in advance at depth 18.');
+      await expect(swing).not.toContainText('also fell that low');
+
+      const best = page.getByTestId('story-card-bestGame');
+      await expect(page.getByTestId('story-value-bestGame')).toHaveText(want.best.value);
+      await expect(best).toContainText(want.best.sentence);
+      await expect(best).toContainText(want.best.pool);
+      await expect(best).toContainText('This game was reviewed in advance at depth 18.');
+
+      // Layout: no sideways overflow, no note outside its card, sentences short enough to read at a glance
+      for (const id of ['accuracy', 'mistakes', 'swing', 'bestGame']) {
+        const m = await measureCard(page, id);
+        noteLayout(`${label}-${id}`, m);
+        expect(m.overflowX).toBeLessThanOrEqual(1);
+        expect(m.wideText).toBe(0);
+        expect(m.notesOutside).toBe(0);
+        expect(m.sentenceLines).toBeLessThanOrEqual(width <= 390 ? 4 : 3);
+        await lookAt(page, `${label}-card-${id}`);
+        await lookAt(page, `${label}-card-${id}-whole`, id);
+      }
+    });
+
+    test(`shows no review card for a history without analyses, at ${label} px`, async ({ page }) => {
+      await page.setViewportSize({ width, height });
+      await openSampleLink(page);
+      await closeWelcomeIfShown(page);
+      await expect(page.getByTestId('story-value-totals')).toHaveText('30');
+      expect(await cardOrder(page)).toEqual(['intro', 'totals', 'chesscom', 'closing']);
+      for (const id of ['accuracy', 'mistakes', 'swing', 'bestGame']) {
+        await expect(page.getByTestId(`story-card-${id}`)).toHaveCount(0);
+      }
+      await measureCard(page, 'chesscom');
+      await lookAt(page, `${label}-no-review`);
+    });
+
+    test(`shows one "not enough" card for 12 reviewed games, at ${label} px`, async ({ page }) => {
+      await page.setViewportSize({ width, height });
+      await openWithHistory(page, reviewedHistory(12));
+      expect(await cardOrder(page)).toEqual(['intro', 'totals', 'chesscom', 'accuracy', 'closing']);
+      const card = page.getByTestId('story-card-accuracy');
+      await expect(card).toContainText('Not enough reviewed games yet (12 of 20).');
+      await expect(card).toContainText('12 of 30 counted games have an engine review: 12 reviewed in advance.');
+      await expect(page.getByTestId('story-value-accuracy')).toHaveCount(0);
+      await expect(card.locator('table')).toHaveCount(0);
+      for (const id of ['mistakes', 'swing', 'bestGame']) {
+        await expect(page.getByTestId(`story-card-${id}`)).toHaveCount(0);
+      }
+      const m = await measureCard(page, 'accuracy');
+      noteLayout(`${label}-not-enough`, m);
+      expect(m.overflowX).toBeLessThanOrEqual(1);
+      expect(m.notesOutside).toBe(0);
+      await lookAt(page, `${label}-not-enough`);
+    });
+  }
+
+  test('a device that already holds the games without analysis opens the link again: no review cards, no error', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    const errors: string[] = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    // The first visit: the plain file, 30 games, no analysis
+    await openSampleLink(page);
+    await closeWelcomeIfShown(page);
+    await expect.poll(() => landingValue(page)).toBe('seen');
+    expect(await analysedCount(page)).toBe(0);
+
+    // The same link again, now with a file that carries summaries: a visit after the first fetches nothing
+    const requests: string[] = [];
+    page.on('request', (r) => {
+      if (r.url().endsWith('/history.json')) requests.push(r.url());
+    });
+    await page.route('**/start/sample/history.json', (route) =>
+      fulfilJson(route, { ...historyFile(), games: reviewedHistory() }),
+    );
+    await page.goto(SAMPLE);
+    await expect(page.getByTestId('app-shell')).toHaveAttribute('data-first-run', 'already', { timeout: 15_000 });
+    await page.getByTestId('mode-tab-games').click();
+    await page.getByTestId('games-tab-story').click();
+    await expect(page.getByTestId('story-value-totals')).toHaveText('30');
+    expect(requests).toEqual([]);
+    expect(await cardOrder(page)).toEqual(['intro', 'totals', 'chesscom', 'closing']);
+    await expect(page.getByTestId('story-load-status')).toHaveCount(0);
+    await expect(page.getByTestId('story-sync-status')).toHaveCount(0);
+    await expect(page.getByTestId('story-scroll')).not.toContainText(/paused|stopped|could not/i);
+    expect(await analysedCount(page)).toBe(0);
+    expect(errors).toEqual([]);
+  });
+
+  test('after a Quick review of one game on the device, the Accuracy card counts it in its footnote', async ({
+    page,
+  }) => {
+    test.setTimeout(120_000);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const games = reviewedHistory();
+    await openWithHistory(page, games);
+    const card = page.getByTestId('story-card-accuracy');
+    await expect(card).toContainText('30 reviewed in advance.');
+    await expect(card).not.toContainText('on this device');
+
+    // Review one game from the Library on Quick; it replaces that game's invented summary
+    const id = games[0]!.id;
+    await page.getByTestId('games-tab-library').click();
+    const row = page.locator(`[data-game-id="${id}"]`);
+    await expect(row.getByTestId('games-row-analysis')).toContainText('Reviewed in advance');
+    // The preset is in the selection bar, which shows once a row is ticked
+    await row.locator('input[data-select]').check();
+    await page.getByTestId('games-analyze-preset').selectOption('quick');
+    await page.getByTestId('btn-games-analyze').click();
+    await expect(row.getByTestId('games-row-analysis')).toContainText('Analyzed', { timeout: 90_000 });
+    expect(
+      await page.evaluate(
+        (gameId) =>
+          window
+            .__wizardChessLibrary!.library.get(gameId)
+            .then((r) => [r?.analysis?.summaryOnly ?? null, r?.analysis?.preset]),
+        id,
+      ),
+    ).toEqual([null, 'quick']);
+
+    await page.getByTestId('games-tab-story').click();
+    await expect(card).toContainText('29 reviewed in advance and 1 on this device with its timed review.');
+    await expect(card).toContainText('30 of 30 counted games have an engine review');
+    // The headline follows: the mean of the library's own accuracies (the shown value is rounded to 0.1)
+    const accuracies = await page.evaluate(async () =>
+      (await window.__wizardChessLibrary!.library.list()).map((r) => r.accuracy),
+    );
+    expect(accuracies.every((a) => typeof a === 'number')).toBe(true);
+    const shown = parseFloat((await page.getByTestId('story-value-accuracy').textContent())!);
+    expect(Math.abs(shown - mean(accuracies as number[]))).toBeLessThanOrEqual(0.051);
+  });
+});
