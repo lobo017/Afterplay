@@ -5946,6 +5946,51 @@ label.wc-setting-row {
   stroke-width: 2;
 }
 
+.wc-chart-line-2 {
+  stroke: var(--accent-arcane);
+  stroke-dasharray: 5 4;
+}
+
+/* The second series is drawn as hollow rings (the card's own colour inside), so it differs from the first by shape too */
+.wc-chart-point-2 .wc-chart-dot {
+  fill: var(--bg-panel);
+  stroke: var(--accent-arcane);
+  stroke-width: 2;
+}
+
+/* The point picked on a phone: a bigger dot with a ring */
+.wc-chart-point[data-selected='true'] .wc-chart-dot {
+  r: 7;
+  stroke: var(--text-marble);
+}
+
+.wc-insight-readout {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.8rem;
+  margin: 0 0 0.6rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--border-carved);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.wc-insight-readout[hidden] {
+  display: none;
+}
+
+.wc-insight-readout-text {
+  margin: 0;
+  flex: 1 1 12rem;
+  min-width: 0;
+  font-size: 0.9rem;
+}
+
+.wc-insight-readout .wc-btn {
+  min-height: 44px;
+}
+
 .wc-chart-hit {
   fill: transparent;
 }

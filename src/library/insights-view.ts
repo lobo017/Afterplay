@@ -1,5 +1,6 @@
 import type { Color } from '../core/rules';
 import { hasSavedReview } from '../storage/db';
+import { storyGames } from '../story/stats';
 import type { PuzzleRatingState } from '../trainers/puzzle-store';
 import type { GameFilter } from './game-rows';
 import { toRow, type GameRow } from './game-rows';
@@ -14,7 +15,25 @@ import {
   type InsightPosition,
   type ReviewedGameInput,
 } from './insights';
+import {
+  MIN_QUARTER_GAMES,
+  NO_QUARTER_TEXT,
+  accuracyEnds,
+  accuracyPointLabel,
+  errorsEnds,
+  errorsPointLabel,
+  insightsSummary,
+  needReviewsText,
+  needsReviewedText,
+  quarterFilter,
+  quarterKey,
+  quarterX,
+  reviewQuarters,
+  type QuarterPoint,
+  type ReviewQuarters,
+} from './insights-review';
 import type { GameLibrary } from './library';
+import { readReviewNumbers } from './review-numbers';
 
 export interface InsightsViewOptions {
   container: HTMLElement;
@@ -91,18 +110,34 @@ interface LinePoint {
   label: string;
 }
 
-/** A line chart with one clickable dot per point. x and y are in data units; the axes are drawn from the ranges given. */
+/**
+ * A line chart with one clickable dot per point. x and y are in data units; the axes are drawn from the ranges given.
+ * Without the three optional settings the markup is the one the first charts have always had.
+ */
 function lineChartSvg(
   points: LinePoint[],
-  opts: { yMin: number; yMax: number; yTicks: number[]; xLabels: [string, string]; testId: string; ariaLabel: string },
+  opts: {
+    yMin: number;
+    yMax: number;
+    yTicks: number[];
+    xLabels: [string, string];
+    testId: string;
+    ariaLabel: string;
+    /** Drawing width in units (640 when not given; the quarter charts use 360 on a phone so the axis text stays readable). */
+    width?: number;
+    /** A point's tap area is its whole column (a strip from the top of the plot to the axis), not a circle. */
+    strips?: boolean;
+    /** A second line over the same x values: dashed, with hollow dots; its dots can be clicked but are not in the tab order. */
+    second?: LinePoint[];
+  },
 ): string {
-  const W = 640;
+  const W = opts.width ?? 640;
   const H = 220;
   const L = 44;
   const R = 12;
   const T = 12;
   const B = 28;
-  const xs = points.map((p) => p.x);
+  const xs = [...points, ...(opts.second ?? [])].map((p) => p.x);
   const x0 = Math.min(...xs);
   const x1 = Math.max(...xs);
   const sx = (x: number) => L + (x1 === x0 ? (W - L - R) / 2 : ((x - x0) / (x1 - x0)) * (W - L - R));
@@ -113,15 +148,44 @@ function lineChartSvg(
         `<line x1="${L}" x2="${W - R}" y1="${sy(t)}" y2="${sy(t)}" class="wc-chart-grid"/><text x="${L - 6}" y="${sy(t) + 4}" text-anchor="end" class="wc-chart-axis">${t}</text>`,
     )
     .join('');
-  const path = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${sx(p.x).toFixed(1)} ${sy(p.y).toFixed(1)}`).join(' ');
+  const line = (ps: LinePoint[]) =>
+    ps.map((p, i) => `${i === 0 ? 'M' : 'L'}${sx(p.x).toFixed(1)} ${sy(p.y).toFixed(1)}`).join(' ');
+  const path = line(points);
+  const path2 = opts.second ? `<path d="${line(opts.second)}" class="wc-chart-line wc-chart-line-2"/>` : '';
+  const px = points.map((p) => sx(p.x));
+  // The tap area of a point: a circle, or with `strips` its whole column up to half the way to each neighbour. The first
+  // and the last strip reach out the same distance on their open side, into the margin, as far as the drawing's edge
+  const hit = (i: number, p: LinePoint): string => {
+    if (!opts.strips) {
+      return `<circle cx="${px[i]!.toFixed(1)}" cy="${sy(p.y).toFixed(1)}" r="14" class="wc-chart-hit"/>`;
+    }
+    const here = px[i]!;
+    const prev = px[i - 1];
+    const next = px[i + 1];
+    const left =
+      prev === undefined ? (next === undefined ? L : Math.max(0, here - (next - here) / 2)) : (prev + here) / 2;
+    const right =
+      next === undefined ? (prev === undefined ? W - R : Math.min(W, here + (here - prev) / 2)) : (here + next) / 2;
+    return `<rect x="${left.toFixed(1)}" y="${T}" width="${(right - left).toFixed(1)}" height="${H - T - B}" class="wc-chart-hit"/>`;
+  };
   const dots = points
     .map(
-      (p) =>
-        `<g class="wc-chart-point" role="button" tabindex="0" data-point="${escapeHtml(p.id)}" aria-label="${escapeHtml(p.label)}"><circle cx="${sx(p.x).toFixed(1)}" cy="${sy(p.y).toFixed(1)}" r="14" class="wc-chart-hit"/><circle cx="${sx(p.x).toFixed(1)}" cy="${sy(p.y).toFixed(1)}" r="4" class="wc-chart-dot"/><title>${escapeHtml(p.label)}</title></g>`,
+      (p, i) =>
+        `<g class="wc-chart-point" role="button" tabindex="0" data-point="${escapeHtml(p.id)}" aria-label="${escapeHtml(p.label)}">${hit(i, p)}<circle cx="${px[i]!.toFixed(1)}" cy="${sy(p.y).toFixed(1)}" r="4" class="wc-chart-dot"/><title>${escapeHtml(p.label)}</title></g>`,
     )
     .join('');
-  return `<svg class="wc-chart" viewBox="0 0 ${W} ${H}" role="group" aria-label="${escapeHtml(opts.ariaLabel)}" data-testid="${opts.testId}">${grid}<path d="${path}" class="wc-chart-line"/>${dots}<text x="${L}" y="${H - 6}" class="wc-chart-axis">${escapeHtml(opts.xLabels[0])}</text><text x="${W - R}" y="${H - 6}" text-anchor="end" class="wc-chart-axis">${escapeHtml(opts.xLabels[1])}</text></svg>`;
+  const dots2 = (opts.second ?? [])
+    .map(
+      (p) =>
+        `<g class="wc-chart-point wc-chart-point-2" data-point="${escapeHtml(p.id)}" aria-hidden="true"><circle cx="${sx(p.x).toFixed(1)}" cy="${sy(p.y).toFixed(1)}" r="4" class="wc-chart-dot"/><title>${escapeHtml(p.label)}</title></g>`,
+    )
+    .join('');
+  return `<svg class="wc-chart" viewBox="0 0 ${W} ${H}" role="group" aria-label="${escapeHtml(opts.ariaLabel)}" data-testid="${opts.testId}">${grid}<path d="${path}" class="wc-chart-line"/>${path2}${dots}${dots2}<text x="${L}" y="${H - 6}" class="wc-chart-axis">${escapeHtml(opts.xLabels[0])}</text><text x="${W - R}" y="${H - 6}" text-anchor="end" class="wc-chart-axis">${escapeHtml(opts.xLabels[1])}</text></svg>`;
 }
+
+type TimeChart = 'accuracy' | 'errors';
+
+const emptyText = (text: string): string => `<p class="wc-insight-empty" data-empty="true">${text}</p>`;
 
 const day = (ms: number): string => new Date(ms).toISOString().slice(0, 10);
 
@@ -136,6 +200,11 @@ export class InsightsView {
   private readonly positions = new Map<string, InsightPosition[]>();
   private refreshing = false;
   private again = false;
+  private quarters = new Map<string, QuarterPoint>();
+  private timeData: ReviewQuarters | null = null;
+  /** The quarter picked in each time chart on a narrow screen. It is kept across a redraw and a turn of the phone. */
+  private selected: Record<TimeChart, string | null> = { accuracy: null, errors: null };
+  private readonly narrowQuery = window.matchMedia('(max-width: 760px)');
 
   constructor(private readonly options: InsightsViewOptions) {
     this.root = document.createElement('section');
@@ -144,7 +213,17 @@ export class InsightsView {
     this.root.setAttribute('aria-label', 'Insights');
     options.container.appendChild(this.root);
     this.root.innerHTML = '<p class="wc-games-loading">Counting your games…</p>';
-    this.root.addEventListener('click', (e) => this.onActivate(e.target as HTMLElement));
+    this.root.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+      const open = target.closest<HTMLElement>('[data-open-quarter]');
+      if (open) {
+        const p = this.quarters.get(open.dataset.openQuarter ?? '');
+        if (p) this.options.onOpenGames(quarterFilter(p));
+        return;
+      }
+      this.onActivate(target);
+    });
+    this.narrowQuery.addEventListener('change', () => this.drawTimeCharts());
     this.root.addEventListener('keydown', (e) => {
       if (e.key !== 'Enter' && e.key !== ' ') return;
       const el = (e.target as HTMLElement).closest('[role="button"]');
@@ -174,8 +253,13 @@ export class InsightsView {
 
   private async render(): Promise<void> {
     const accounts = this.options.library.getUserAccounts();
-    const rows: GameRow[] = (await this.options.library.list()).map((r) => toRow(r, accounts));
+    const records = await this.options.library.list();
+    const rows: GameRow[] = records.map((r) => toRow(r, accounts));
     const mine = rows.filter((r) => r.color !== null);
+    // Games reviewed in advance (a batch summary only): their numbers feed the quarter charts, not the older cards
+    const inAdvance = mine.filter((r) => readReviewNumbers(r.record, r.color!)?.source === 'advance').length;
+    this.timeData = reviewQuarters(storyGames(records, accounts));
+    this.quarters = new Map(this.timeData.points.map((p) => [quarterKey(p), p]));
     const reviewed: ReviewedGameInput[] = [];
     for (const row of mine) {
       if (!hasSavedReview(row.record)) continue;
@@ -191,12 +275,8 @@ export class InsightsView {
     const openings = resultsByOpening(mine).slice(0, 8);
     const series = puzzleRatingSeries(rating.history);
 
-    const empty = (text: string) => `<p class="wc-insight-empty" data-empty="true">${text}</p>`;
-    const needReviews = `Review some of your games (Games › Analyze) to see this. ${
-      mine.length === 0 && rows.length > 0
-        ? 'None of your games are marked yours yet: set your usernames in Settings › Your games.'
-        : ''
-    }`.trim();
+    const empty = emptyText;
+    const needReviews = needReviewsText({ inAdvance, noneMarked: mine.length === 0 && rows.length > 0 });
 
     const phaseChart = phases.every((p) => p.moves === 0)
       ? empty(needReviews)
@@ -285,16 +365,117 @@ export class InsightsView {
     }
 
     this.root.innerHTML = `
-      <div class="wc-insights-head"><h2 class="wc-page-title">Insights</h2><span class="wc-games-summary" data-testid="insights-summary">${reviewed.length} reviewed game${reviewed.length === 1 ? '' : 's'} of yours · ${mine.length} of yours in all</span></div>
+      <div class="wc-insights-head"><h2 class="wc-page-title">Insights</h2><span class="wc-games-summary" data-testid="insights-summary">${insightsSummary({ reviewed: reviewed.length, inAdvance, mine: mine.length })}</span></div>
       <div class="wc-insights-grid">
         <section class="wc-insight-card" aria-labelledby="ins-phase"><h3 id="ins-phase">Accuracy by game phase</h3><p class="wc-insight-hint">Mean accuracy of your moves. Opening: the first 10 moves; endgame: 6 pieces or fewer left. Click a bar for its moves, worst first.</p>${phaseChart}</section>
         <section class="wc-insight-card" aria-labelledby="ins-blunders"><h3 id="ins-blunders">Blunders per 10 moves</h3><p class="wc-insight-hint">One point per reviewed game, oldest to newest. Click a point for its blunders.</p>${blunderChart}</section>
         <section class="wc-insight-card" aria-labelledby="ins-motifs"><h3 id="ins-motifs">Most common motifs</h3><p class="wc-insight-hint">What was going on in your mistakes, blunders and misses. Click a row for the positions.</p>${motifList}</section>
         <section class="wc-insight-card" aria-labelledby="ins-openings"><h3 id="ins-openings">Results by opening</h3><p class="wc-insight-hint">Your games by opening family. Click a segment for those games.</p>${openingList}</section>
         <section class="wc-insight-card wc-insight-wide" aria-labelledby="ins-rating"><h3 id="ins-rating">Puzzle rating over time</h3><p class="wc-insight-hint">Your Glicko-2 rating after each rated puzzle${rating.games > 0 ? ` (${Math.round(rating.rating)} now, ${rating.games} played)` : ''}. Click a point to open that puzzle.</p>${ratingChart}</section>
+        <section class="wc-insight-card" aria-labelledby="ins-acc-time"><h3 id="ins-acc-time">Accuracy over time</h3><p class="wc-insight-hint">Your average accuracy by quarter, from games reviewed in advance or on this device. A quarter needs ${MIN_QUARTER_GAMES} reviewed games. Click a point for that quarter's games.</p><div data-testid="insight-time-accuracy">${this.timeChartHtml('accuracy')}</div></section>
+        <section class="wc-insight-card" aria-labelledby="ins-err-time"><h3 id="ins-err-time">Blunders and mistakes over time</h3><p class="wc-insight-hint">Per 10 of your moves, by quarter: blunders as the solid line with filled dots, mistakes as the dashed line with hollow dots. Click a point for that quarter's games.</p><div data-testid="insight-time-errors">${this.timeChartHtml('errors')}</div></section>
       </div>
       <section class="wc-insight-detail" data-testid="insights-detail" aria-live="polite" hidden></section>`;
     this.detail = this.root.querySelector('[data-testid="insights-detail"]') as HTMLElement;
+    this.applySelection();
+  }
+
+  /** The chart of one time card with its readout and its "From … to …" line, or what the card needs. */
+  private timeChartHtml(kind: TimeChart): string {
+    const t = this.timeData!;
+    if (!t.enough) return emptyText(needsReviewedText(t.reviewed));
+    if (t.points.length === 0) return emptyText(NO_QUARTER_TEXT);
+    const ps = t.points;
+    const common = {
+      xLabels: [ps[0]!.label, ps[ps.length - 1]!.label] as [string, string],
+      width: this.narrowQuery.matches ? 360 : 640,
+      strips: true,
+    };
+    const id = (p: QuarterPoint) => `quarter:${quarterKey(p)}`;
+    let chart: string;
+    let ends: string | null;
+    if (kind === 'accuracy') {
+      const accs = ps.map((p) => p.accuracy);
+      const lo = Math.floor(Math.min(...accs) / 10) * 10;
+      const hi = Math.max(lo + 10, Math.ceil(Math.max(...accs) / 10) * 10);
+      chart = lineChartSvg(
+        ps.map((p) => ({ id: id(p), x: quarterX(p), y: p.accuracy, label: accuracyPointLabel(p) })),
+        {
+          ...common,
+          yMin: lo,
+          yMax: hi,
+          yTicks: [lo, (lo + hi) / 2, hi],
+          testId: 'chart-accuracy-time',
+          ariaLabel: 'Accuracy by quarter',
+        },
+      );
+      ends = accuracyEnds(ps);
+    } else {
+      const top = Math.max(
+        2,
+        Math.ceil(Math.max(...ps.map((p) => Math.max(p.blundersPer10, p.mistakesPer10))) / 2) * 2,
+      );
+      chart = lineChartSvg(
+        ps.map((p) => ({ id: id(p), x: quarterX(p), y: p.blundersPer10, label: errorsPointLabel(p) })),
+        {
+          ...common,
+          yMin: 0,
+          yMax: top,
+          yTicks: [0, top / 2, top],
+          testId: 'chart-errors-time',
+          ariaLabel: 'Blunders and mistakes per 10 moves by quarter',
+          second: ps.map((p) => ({ id: id(p), x: quarterX(p), y: p.mistakesPer10, label: errorsPointLabel(p) })),
+        },
+      );
+      ends = errorsEnds(ps);
+    }
+    const readout =
+      `<div class="wc-insight-readout" data-testid="insight-readout-${kind}" aria-live="polite" hidden>` +
+      `<p class="wc-insight-readout-text" data-testid="insight-readout-text-${kind}"></p>` +
+      `<button type="button" class="wc-btn wc-btn-secondary wc-btn-sm" data-testid="insight-readout-open-${kind}" data-open-quarter="">Show these games</button></div>`;
+    const endsLine = ends
+      ? `<p class="wc-insight-hint" data-testid="insight-ends-${kind}">${escapeHtml(ends)}</p>`
+      : '';
+    return chart + readout + endsLine;
+  }
+
+  /**
+   * Marks the picked quarter and fills the readout, on a narrow screen only. It works in place, so a point that has the
+   * focus keeps it. A pick whose quarter is no longer a point is dropped.
+   */
+  private applySelection(): void {
+    const narrow = this.narrowQuery.matches;
+    for (const kind of ['accuracy', 'errors'] as const) {
+      const box = this.root.querySelector<HTMLElement>(`[data-testid="insight-time-${kind}"]`);
+      if (!box) continue;
+      let key = this.selected[kind];
+      if (key !== null && !this.quarters.has(key)) key = this.selected[kind] = null;
+      const shown = narrow ? key : null;
+      for (const g of box.querySelectorAll<SVGElement>('[data-point]')) {
+        const on = shown !== null && g.getAttribute('data-point') === `quarter:${shown}`;
+        g.setAttribute('data-selected', String(on));
+        if (g.getAttribute('role') === 'button') g.setAttribute('aria-pressed', String(on));
+      }
+      const readout = box.querySelector<HTMLElement>('.wc-insight-readout');
+      if (!readout) continue;
+      const p = shown === null ? undefined : this.quarters.get(shown);
+      readout.hidden = !p;
+      if (p) {
+        readout.querySelector('.wc-insight-readout-text')!.textContent =
+          kind === 'accuracy' ? accuracyPointLabel(p) : errorsPointLabel(p);
+        readout.querySelector('[data-open-quarter]')!.setAttribute('data-open-quarter', shown!);
+      }
+    }
+  }
+
+  /** A turn of the phone across 760 px: only the two time charts are drawn again (their data is kept), and the picks stay. */
+  private drawTimeCharts(): void {
+    if (!this.timeData) return;
+    for (const kind of ['accuracy', 'errors'] as const) {
+      const box = this.root.querySelector<HTMLElement>(`[data-testid="insight-time-${kind}"]`);
+      if (box) box.innerHTML = this.timeChartHtml(kind);
+    }
+    this.applySelection();
   }
 
   private openings: ReturnType<typeof resultsByOpening> = [];
@@ -311,6 +492,21 @@ export class InsightsView {
       const [, index, kind] = id.split(':');
       const o = this.openings[Number(index)];
       if (o) this.options.onOpenGames({ opening: o.name, color: 'all', result: kind as GameFilter['result'] });
+      return;
+    }
+    if (id.startsWith('quarter:')) {
+      const key = id.slice('quarter:'.length);
+      const p = this.quarters.get(key);
+      if (!p) return;
+      if (!this.narrowQuery.matches) {
+        // Wide: straight to that quarter's games
+        this.options.onOpenGames(quarterFilter(p));
+        return;
+      }
+      // Narrow: pick the quarter, show its label and a button for its games
+      const kind: TimeChart = el.closest('[data-testid="chart-errors-time"]') ? 'errors' : 'accuracy';
+      this.selected[kind] = key;
+      this.applySelection();
       return;
     }
     this.showPositions(id, el);
