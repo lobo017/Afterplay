@@ -656,16 +656,18 @@ function scopeStats(scope: StoryScope, games: readonly CountedGame[], now: numbe
 
 // ---------------------------------------------------------------------------- everything
 
-/**
- * The Story's numbers for all, Chess.com and Lichess. A game on both sites (same main-line moves, result, my
- * colour and UTC date, at least MIN_PLIES_FOR_DUPLICATE plies) is counted once in `all` and stays in both site
- * scopes, so all = Chess.com + Lichess − onBothSites. `now` (ms since the epoch) fixes the trend's 12 months.
- */
-export function computeStoryStats(
-  records: readonly StoredGameRecord[],
-  accounts: readonly UserAccount[],
-  now: number,
-): StoryStats {
+/** What the counting step finds in the stored records. */
+interface CountedSet {
+  counted: CountedGame[];
+  chesscom: CountedGame[];
+  lichess: CountedGame[];
+  excluded: ExcludedCounts;
+  /** Ids of the Lichess copies of games that are also on Chess.com (counted once in `all`). */
+  dropped: Set<string>;
+}
+
+/** Reads every record, leaves out what the Story does not count, and pairs the games found on both sites. */
+function countGames(records: readonly StoredGameRecord[], accounts: readonly UserAccount[]): CountedSet {
   const counted: CountedGame[] = [];
   const excluded: ExcludedCounts = { total: 0, pastedOrBot: 0, notMine: 0, nonStandard: 0, unfinished: 0 };
   for (const record of records) {
@@ -689,6 +691,20 @@ export function computeStoryStats(
       dropped.add(g.id);
     }
   }
+  return { counted, chesscom, lichess, excluded, dropped };
+}
+
+/**
+ * The Story's numbers for all, Chess.com and Lichess. A game on both sites (same main-line moves, result, my
+ * colour and UTC date, at least MIN_PLIES_FOR_DUPLICATE plies) is counted once in `all` and stays in both site
+ * scopes, so all = Chess.com + Lichess − onBothSites. `now` (ms since the epoch) fixes the trend's 12 months.
+ */
+export function computeStoryStats(
+  records: readonly StoredGameRecord[],
+  accounts: readonly UserAccount[],
+  now: number,
+): StoryStats {
+  const { counted, chesscom, lichess, excluded, dropped } = countGames(records, accounts);
   return {
     version: STATS_VERSION,
     storedGames: records.length,
@@ -702,4 +718,21 @@ export function computeStoryStats(
     chesscom: scopeStats('chesscom', chesscom, now),
     lichess: scopeStats('lichess', lichess, now),
   };
+}
+
+/** A game the Story counts in "all", reduced to what other views need: no id, name or link. */
+export interface StoryGame {
+  playedAt: number | null;
+  outcome: 'win' | 'loss' | 'draw';
+  timeClass: TimeClass | null;
+  color: Color;
+  review: ReviewNumbers | null;
+}
+
+/** The games the Story counts in "all" (mine, finished, standard; a game found on both sites once). */
+export function storyGames(records: readonly StoredGameRecord[], accounts: readonly UserAccount[]): StoryGame[] {
+  const { counted, dropped } = countGames(records, accounts);
+  return counted
+    .filter((g) => !dropped.has(g.id))
+    .map(({ playedAt, outcome, timeClass, color, review }) => ({ playedAt, outcome, timeClass, color, review }));
 }
