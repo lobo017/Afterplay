@@ -8,7 +8,7 @@ import { skipStoryLanding } from './helpers/landing';
 // user agent), and the desktop projects check that nothing changed for them.
 const SCREENSHOT_DIR = path.join('test-results', 'phase11-screens');
 const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
-const PAUSE_NOTE = 'Live analysis is paused while the review runs (this phone uses one engine).';
+const PAUSE_NOTE = 'Analysis is paused while the review runs.';
 
 const isPhoneProject = () => test.info().project.name === 'webkit-iphone';
 

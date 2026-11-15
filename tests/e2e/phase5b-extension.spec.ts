@@ -168,7 +168,7 @@ test.describe('Phase 5b — capture extension', () => {
     await expect(row.getByTestId('games-row-color')).toHaveAttribute('data-color', 'b');
     await expect(row.getByTestId('games-row-result')).toHaveText('W');
     await expect(row.getByTestId('games-row-tc')).toHaveText('2+1');
-    await expect(row.getByTestId('games-row-analysis')).toContainText('Not analyzed');
+    await expect(row.getByTestId('games-row-analysis')).toContainText('Not reviewed');
     await expect.poll(() => badgeText(session.worker)).toBe('');
 
     // Analyze it from the list (the preset defaults to Standard; Quick keeps the test short)
@@ -177,7 +177,12 @@ test.describe('Phase 5b — capture extension', () => {
     await site.getByTestId('games-analyze-preset').selectOption('quick');
     await site.getByTestId('btn-games-analyze').click();
     await expect(row.getByTestId('games-row-analysis')).toContainText(/Queued|Analyzing/);
-    await expect(row.getByTestId('games-row-analysis')).toContainText('Analyzed', { timeout: 120_000 });
+    await expect(row.getByTestId('games-row-analysis').locator('[data-analysis="analyzed"]')).toContainText(
+      'Reviewed',
+      {
+        timeout: 120_000,
+      },
+    );
     await site.screenshot({ path: path.join(SCREENSHOT_DIR, 'games-list-analyzed.png') });
 
     // Opening it shows the saved review without running the engine again

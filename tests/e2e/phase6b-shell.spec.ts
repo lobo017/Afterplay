@@ -118,6 +118,8 @@ test.describe('Phase 6b — app frame and navigation', () => {
     // About & diagnostics holds what used to be in the header and footer
     const about = page.getByTestId('settings-about');
     await page.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished.catch(() => undefined))));
+    // The technical lines sit under a collapsed "Technical details"; open it to see them
+    await about.getByTestId('about-technical').locator('summary').click();
     await expect(about.getByTestId('isolation-badge')).toBeVisible();
     await expect(about.getByTestId('isolation-badge')).toContainText('COOP/COEP Isolated');
     await expect(about.getByTestId('core-badge')).toContainText('IDB v4');

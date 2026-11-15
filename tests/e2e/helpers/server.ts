@@ -59,11 +59,14 @@ export async function startServer(distDir?: string): Promise<Server> {
 
 /** Waits until the service worker has cached the whole build (Settings › About says so). */
 export async function waitForOfflineReady(page: Page): Promise<string> {
+  const stat = page.getByTestId('stat-offline');
   await expect
-    .poll(() => page.getByTestId('stat-offline').textContent(), {
+    .poll(() => stat.textContent(), {
       timeout: 60_000,
       message: 'the service worker should cache the build',
     })
-    .toMatch(/^Ready: all \d+ files are cached$/);
-  return (await page.getByTestId('stat-offline').textContent())!;
+    .toBe('Ready to use offline');
+  // The number of cached files is no longer in the words: it is the attribute's value
+  await expect(stat).toHaveAttribute('data-files', /^\d+$/);
+  return `${(await stat.textContent())!} (${await stat.getAttribute('data-files')} files are cached)`;
 }

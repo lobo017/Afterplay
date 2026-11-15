@@ -126,7 +126,7 @@ test.describe('Phase 5b — Games list (no extension)', () => {
     // 05:33:38 UTC (the PGN's UTCDate / UTCTime), shown in the page's time zone (UTC here)
     await expect(lichessRow.getByTestId('games-row-date')).toHaveText('2026-10-04 05:33');
     await expect(lichessRow.getByTestId('games-row-opening')).toContainText('Mieses');
-    await expect(lichessRow.getByTestId('games-row-analysis')).toHaveText('Not analyzed');
+    await expect(lichessRow.getByTestId('games-row-analysis')).toHaveText('Not reviewed');
     await expect(page.locator('[data-game-id="chesscom:live-185518487990"]').getByTestId('games-row-tc')).toHaveText(
       '3+0',
     );
@@ -215,7 +215,12 @@ test.describe('Phase 5b — Games list (no extension)', () => {
     await row.locator('input[data-select]').check();
     await page.getByTestId('btn-games-analyze').click();
     await expect(row.getByTestId('games-row-analysis')).toContainText(/Queued · Standard|Analyzing/);
-    await expect(row.getByTestId('games-row-analysis')).toContainText('Analyzed', { timeout: 60_000 });
+    await expect(row.getByTestId('games-row-analysis').locator('[data-analysis="analyzed"]')).toContainText(
+      'Reviewed',
+      {
+        timeout: 60_000,
+      },
+    );
     const stored = await page.evaluate(async () => {
       const lib = window.__wizardChessLibrary!.library;
       return {
@@ -265,8 +270,13 @@ test.describe('Phase 5b — Games list (no extension)', () => {
     await page.getByTestId('games-auto-analyze').check();
     await pastePgn(page, SHORT_PLAIN);
     const autoRow = page.getByTestId('games-row').filter({ hasText: 'Carol' });
-    await expect(autoRow.getByTestId('games-row-analysis')).toContainText(/Queued · Quick|Analyzing|Analyzed/);
-    await expect(autoRow.getByTestId('games-row-analysis')).toContainText('Analyzed', { timeout: 60_000 });
+    await expect(autoRow.getByTestId('games-row-analysis')).toContainText(/Queued · Quick|Analyzing|Reviewed/);
+    await expect(autoRow.getByTestId('games-row-analysis').locator('[data-analysis="analyzed"]')).toContainText(
+      'Reviewed',
+      {
+        timeout: 60_000,
+      },
+    );
     const autoPreset = await page.evaluate(async () => {
       const lib = window.__wizardChessLibrary!.library;
       const rec = (await lib.list()).find((r) => r.white === 'Carol');
@@ -293,7 +303,9 @@ test.describe('Phase 5b — Games list (no extension)', () => {
     await page.getByTestId('btn-review-start').click();
     await expect(page.getByTestId('review-panel')).toHaveAttribute('data-state', 'done', { timeout: 60_000 });
     await page.getByTestId('mode-tab-games').click();
-    await expect(page.getByTestId('games-row').first().getByTestId('games-row-analysis')).toContainText('Analyzed');
+    await expect(
+      page.getByTestId('games-row').first().getByTestId('games-row-analysis').locator('[data-analysis="analyzed"]'),
+    ).toContainText('Reviewed');
   });
 
   test('phone width: the list fits, with no horizontal scroll and no layout shift while filtering', async ({

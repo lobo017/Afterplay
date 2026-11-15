@@ -168,7 +168,7 @@ test.describe('Chess Story: the sample link’s history', () => {
       .evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.card));
     expect(order).toEqual(['intro', 'totals', 'chesscom', 'closing']);
     await expect(page.getByTestId('story-card-totals')).toContainText('450 games in all: 225 W · 135 L · 90 D');
-    await expect(page.getByTestId('story-card-totals')).toContainText(
+    await expect(page.getByTestId('story-card-totals')).not.toContainText(
       'Time classes follow one rule for both sites, so a few games may be labelled differently on Chess.com or Lichess.',
     );
     await expect(page.getByTestId('story-card-chesscom')).toContainText('450 games on Chess.com');
@@ -890,7 +890,7 @@ function wantFor(games: SampleGame[]) {
         wins.length >= 10 && losses.length >= 10
           ? `Your accuracy averaged ${pct(acc(wins))} in the ${wins.length} games you won and ${pct(acc(losses))} in the ${losses.length} games you lost.`
           : null,
-      footnote: `${total} of ${total} counted games have an engine review: ${total} reviewed in advance.`,
+      footnote: `Based on ${total} of your ${total} games.`,
     },
     mistakes: {
       value: blunders.toFixed(1),
@@ -900,18 +900,18 @@ function wantFor(games: SampleGame[]) {
         detail: `${pct(acc(rows))} accuracy · ${blunders.toFixed(1)} blunders a game`,
       },
       classesNote: `Mistakes: ${per(rows, (n) => n.mistake).toFixed(1)} a game. Inaccuracies: ${per(rows, (n) => n.inaccuracy).toFixed(1)} a game. Your reviewed games average ${Math.round(per(rows, (n) => n.moves))} of your moves.`,
-      markNote: `The engine marked ${rows.reduce((s, r) => s + r.n.brilliant, 0)} of your moves Brilliant and ${rows.reduce((s, r) => s + r.n.great, 0)} Great.`,
-      halvesNote: `In the first half of your reviewed games (to ${monthName(first[first.length - 1]!.g.playedAt)}) your accuracy was ${pct(acc(first))} and you blundered ${per(first, (n) => n.blunder).toFixed(1)} times a game; in the second half, ${pct(acc(second))} and ${per(second, (n) => n.blunder).toFixed(1)}.`,
+      markNote: `${rows.reduce((s, r) => s + r.n.brilliant, 0)} Brilliant moves and ${rows.reduce((s, r) => s + r.n.great, 0)} Great moves.`,
+      halvesNote: `Early on: ${pct(acc(first))} accuracy and ${per(first, (n) => n.blunder).toFixed(1)} blunders a game. Lately: ${pct(acc(second))} and ${per(second, (n) => n.blunder).toFixed(1)}.`,
     },
     swing: {
       value: `${swing.n.low}%`,
-      sentence: `You won a game the engine had at ${swing.n.low}% for you, a ${swing.cls} game in ${monthName(swing.g.playedAt)}.`,
-      pool: `Chosen from ${wins.length} reviewed wins.`,
+      sentence: `You won a game where you had only a ${swing.n.low}% chance, a ${swing.cls} game in ${monthName(swing.g.playedAt)}.`,
+      pool: `Out of ${wins.length} wins.`,
     },
     best: {
       value: pct(best.n.accuracy),
       sentence: `Your most accurate game was ${pct(best.n.accuracy)}: a ${best.cls} ${best.out} against a player rated ${elo(best)}, in ${monthName(best.g.playedAt)}, over ${best.n.moves} of your moves.`,
-      pool: `Chosen from ${rows.filter((r) => r.n.moves >= 25).length} reviewed games of 25 moves or more.`,
+      pool: `Out of ${rows.filter((r) => r.n.moves >= 25).length} games of 25 moves or more.`,
     },
   };
 }
@@ -980,7 +980,7 @@ test.describe('Chess Story: the engine review cards', () => {
       if (want.accuracy.colourNote) await expect(accuracy).toContainText(want.accuracy.colourNote);
       if (want.accuracy.winLossNote) await expect(accuracy).toContainText(want.accuracy.winLossNote);
       else await expect(accuracy).not.toContainText('games you won');
-      await expect(accuracy).toContainText("Chess.com's own accuracy can differ.");
+      await expect(accuracy).toContainText("it can differ a little from Chess.com's number.");
       await expect(accuracy).toContainText(want.accuracy.footnote);
       await expect(accuracy).not.toContainText('on this device');
       // With no game reviewed on the device, the footnote has no sentence about replacing numbers
@@ -1017,14 +1017,14 @@ test.describe('Chess Story: the engine review cards', () => {
       await expect(page.getByTestId('story-value-swing')).toHaveText(want.swing.value);
       await expect(swing).toContainText(want.swing.sentence);
       await expect(swing).toContainText(want.swing.pool);
-      await expect(swing).toContainText('This game was reviewed in advance at depth 18.');
+      await expect(swing).not.toContainText('reviewed in advance');
       await expect(swing).not.toContainText('also fell that low');
 
       const best = page.getByTestId('story-card-bestGame');
       await expect(page.getByTestId('story-value-bestGame')).toHaveText(want.best.value);
       await expect(best).toContainText(want.best.sentence);
       await expect(best).toContainText(want.best.pool);
-      await expect(best).toContainText('This game was reviewed in advance at depth 18.');
+      await expect(best).not.toContainText('reviewed in advance');
 
       // Layout: no sideways overflow, no note outside its card, sentences short enough to read at a glance
       for (const id of ['accuracy', 'mistakes', 'swing', 'bestGame']) {
@@ -1058,7 +1058,7 @@ test.describe('Chess Story: the engine review cards', () => {
       expect(await cardOrder(page)).toEqual(['intro', 'totals', 'chesscom', 'accuracy', 'closing']);
       const card = page.getByTestId('story-card-accuracy');
       await expect(card).toContainText('Not enough reviewed games yet (12 of 20).');
-      await expect(card).toContainText('12 of 30 counted games have an engine review: 12 reviewed in advance.');
+      await expect(card).toContainText('Based on 12 of your 30 games.');
       await expect(card).not.toContainText('replaces its earlier numbers');
       await expect(page.getByTestId('story-value-accuracy')).toHaveCount(0);
       await expect(card.locator('table')).toHaveCount(0);
@@ -1115,19 +1115,24 @@ test.describe('Chess Story: the engine review cards', () => {
     const games = reviewedHistory();
     await openWithHistory(page, games);
     const card = page.getByTestId('story-card-accuracy');
-    await expect(card).toContainText('30 reviewed in advance.');
+    await expect(card).toContainText('Based on 30 of your 30 games.');
     await expect(card).not.toContainText('on this device');
 
     // Review one game from the Library on Quick; it replaces that game's invented summary
     const id = games[0]!.id;
     await page.getByTestId('games-tab-library').click();
     const row = page.locator(`[data-game-id="${id}"]`);
-    await expect(row.getByTestId('games-row-analysis')).toContainText('Reviewed in advance');
+    await expect(row.getByTestId('games-row-analysis').locator('[data-analysis="advance"]')).toContainText('Reviewed');
     // The preset is in the selection bar, which shows once a row is ticked
     await row.locator('input[data-select]').check();
     await page.getByTestId('games-analyze-preset').selectOption('quick');
     await page.getByTestId('btn-games-analyze').click();
-    await expect(row.getByTestId('games-row-analysis')).toContainText('Analyzed', { timeout: 90_000 });
+    await expect(row.getByTestId('games-row-analysis').locator('[data-analysis="analyzed"]')).toContainText(
+      'Reviewed',
+      {
+        timeout: 90_000,
+      },
+    );
     expect(
       await page.evaluate(
         (gameId) =>
@@ -1139,12 +1144,12 @@ test.describe('Chess Story: the engine review cards', () => {
     ).toEqual([null, 'quick']);
 
     await page.getByTestId('games-tab-story').click();
-    await expect(card).toContainText('29 reviewed in advance and 1 on this device with its timed review.');
+    await expect(card).toContainText('Based on 30 of your 30 games.');
     // Now that a game was reviewed here, the footnote says what that does
     await expect(card).toContainText(
       'A game you review here replaces its earlier numbers, and a timed review can give a slightly different number for the same game.',
     );
-    await expect(card).toContainText('30 of 30 counted games have an engine review');
+    await expect(card).toContainText('Based on 30 of your 30 games');
     // The headline follows: the mean of the library's own accuracies (the shown value is rounded to 0.1)
     const accuracies = await page.evaluate(async () =>
       (await window.__wizardChessLibrary!.library.list()).map((r) => r.accuracy),

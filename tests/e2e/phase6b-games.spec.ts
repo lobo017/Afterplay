@@ -34,8 +34,8 @@ async function openGames(page: Page, width = 1440, height = 900): Promise<void> 
 async function paste(page: Page, pgn: string): Promise<void> {
   await page.getByTestId('btn-games-import').click();
   await expect(page.getByTestId('btn-games-import-list').getByRole('menuitem')).toHaveText([
-    'Paste PGN…',
-    'Open PGN file…',
+    'Paste a game…',
+    'Open a game file…',
   ]);
   await page.getByTestId('btn-games-paste').click();
   await page.getByTestId('games-paste-text').fill(pgn);
@@ -52,9 +52,9 @@ test.describe('Phase 6b — Games', () => {
     await paste(page, TWO_GAMES);
     await expect(page.getByTestId('games-row')).toHaveCount(2);
     await expect(page.getByTestId('games-paste-panel')).toBeHidden();
-    await expect(page.getByTestId('games-summary')).toHaveText('2 games · 0 analyzed');
+    await expect(page.getByTestId('games-summary')).toHaveText('2 games · 0 reviewed');
 
-    // Open PGN file… opens the file picker (the hidden input)
+    // Open a game file… opens the file picker (the hidden input)
     const chooser = page.waitForEvent('filechooser');
     await page.getByTestId('btn-games-import').click();
     await page.getByTestId('btn-games-file').click();

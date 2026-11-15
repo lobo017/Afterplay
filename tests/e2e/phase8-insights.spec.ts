@@ -77,7 +77,7 @@ test.describe('Phase 8 — insights', () => {
     test.setTimeout(240_000);
     await prepare(page);
     await page.getByTestId('games-tab-insights').click();
-    await expect(page.getByTestId('insights-summary')).toContainText('2 reviewed games of yours');
+    await expect(page.getByTestId('insights-summary')).toContainText('2 games · 2 reviewed');
     await expect(page.getByTestId('chart-phase')).toBeVisible();
     await page.screenshot({ path: path.join(SCREENSHOT_DIR, 'insights-desktop.png'), fullPage: true });
 
@@ -138,7 +138,7 @@ test.describe('Phase 8 — insights', () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto('/#games');
     await page.getByTestId('games-tab-insights').click();
-    await expect(page.getByTestId('insights-summary')).toContainText('0 reviewed games');
+    await expect(page.getByTestId('insights-summary')).toContainText('No games yet');
     await expect(page.locator('[data-empty="true"]').first()).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
     await page.screenshot({ path: path.join(SCREENSHOT_DIR, 'insights-phone-empty.png'), fullPage: true });
@@ -277,7 +277,7 @@ function expectedQuarter(quarters: QuarterId[], k: number, reviewed: number) {
     moves += n.moves;
   }
   const [year, quarter] = quarters[k]!;
-  const label = `${year} Q${quarter}`;
+  const label = `${['Jan-Mar', 'Apr-Jun', 'Jul-Sep', 'Oct-Dec'][quarter - 1]} ${year}`;
   const first = `${year}-${two((quarter - 1) * 3 + 1)}-01`;
   const lastMonth = quarter * 3;
   const last = `${year}-${two(lastMonth)}-${lastMonth === 6 || lastMonth === 9 ? '30' : '31'}`;
@@ -374,19 +374,16 @@ test.describe('Insights: quarters from games reviewed in advance', () => {
 
   test('wide: the header, the old cards, the numbers the test computes, and a click opens that quarter’s games', async ({
     page,
-  }) => {
+  }, testInfo) => {
     test.setTimeout(120_000);
     await openInsights(page, quarterHistory(SIX), 1280, 800);
     // 72 games reviewed in advance, none reviewed here
-    await expect(page.getByTestId('insights-summary')).toHaveText(
-      '0 reviewed games of yours · 72 reviewed in advance · 72 of yours in all',
-    );
+    await expect(page.getByTestId('insights-summary')).toHaveText('72 games · 72 reviewed');
     // The cards that need a review made here say so, and that the numbers of the games reviewed in advance are below
     const needs = page.locator('[data-empty="true"]', {
-      hasText:
-        'These need a game reviewed on this device (Games › Analyze). 72 games were reviewed in advance; their numbers are below.',
+      hasText: 'Review a game to see this.',
     });
-    await expect(needs).toHaveCount(3); // accuracy by phase, blunders per 10 moves, the motifs
+    await expect(needs).toHaveCount(1); // accuracy by phase (the two game-by-game cards are hidden with no game reviewed here)
     await expect(page.getByTestId('chart-phase')).toHaveCount(0);
 
     for (const chart of ['chart-accuracy-time', 'chart-errors-time'] as const) {
@@ -408,7 +405,7 @@ test.describe('Insights: quarters from games reviewed in advance', () => {
     await expect(page.getByTestId('chart-accuracy-time')).toHaveAttribute('viewBox', '0 0 640 220');
     // The errors chart has a second, dashed line with hollow dots, which are not in the tab order; the card says so
     await expect(page.locator('section[aria-labelledby="ins-err-time"] .wc-insight-hint').first()).toHaveText(
-      "Per 10 of your moves, by quarter: blunders as the solid line with filled dots, mistakes as the dashed line with hollow dots. Click a point for that quarter's games.",
+      `Solid line with filled dots: blunders. Dashed line with hollow dots: mistakes. Per 10 moves. ${testInfo.project.name === 'webkit-iphone' ? 'Tap' : 'Click'} a point to see those games.`,
     );
     await expect(page.getByTestId('chart-errors-time').locator('path.wc-chart-line-2')).toHaveCount(1);
     await expect(page.getByTestId('chart-errors-time').locator('.wc-chart-point-2')).toHaveCount(6);
@@ -638,7 +635,7 @@ test.describe('Insights: quarters from games reviewed in advance', () => {
     // The summary line in the Games page header; the line under the list has the filtered count
     await page.getByTestId('games-tab-library').click();
     const summary = page.getByTestId('games-summary');
-    await expect(summary).toHaveText('72 games · 0 analyzed · 72 reviewed in advance');
+    await expect(summary).toHaveText('72 games · 72 reviewed');
     await expect(page.getByTestId('games-count')).toHaveText('72 games');
 
     // Back to Insights, click the 12-game quarter: the list is filtered, the summary is not
@@ -647,7 +644,7 @@ test.describe('Insights: quarters from games reviewed in advance', () => {
     await points(page, 'chart-accuracy-time').nth(1).click();
     await expectQuarterList(page, q2.from, q2.to, 12);
     await expect(page.getByTestId('games-count')).toHaveText('12 of 72 games');
-    await expect(summary).toHaveText('72 games · 0 analyzed · 72 reviewed in advance');
+    await expect(summary).toHaveText('72 games · 72 reviewed');
 
     // A review made here (Quick) replaces that game's summary: analyzed 1, in advance 71, still 72 games
     await page.getByTestId('btn-games-clear-filters').click();
@@ -656,19 +653,17 @@ test.describe('Insights: quarters from games reviewed in advance', () => {
     await page.getByTestId('games-analyze-preset').selectOption('quick');
     await page.getByTestId('btn-games-analyze').click();
     await expect(page.locator('[data-analysis="analyzed"]')).toHaveCount(1, { timeout: 90_000 });
-    await expect(summary).toHaveText('72 games · 1 analyzed · 71 reviewed in advance');
+    await expect(summary).toHaveText('72 games · 72 reviewed');
   });
 
   test('under 20 reviewed games both cards say what they need', async ({ page }) => {
     test.setTimeout(120_000);
     // 72 games, 12 of them reviewed in advance
     await openInsights(page, quarterHistory(quartersFrom([2025, 1], 2), 36, 6), 390);
-    await expect(page.getByTestId('insights-summary')).toHaveText(
-      '0 reviewed games of yours · 12 reviewed in advance · 72 of yours in all',
-    );
+    await expect(page.getByTestId('insights-summary')).toHaveText('72 games · 12 reviewed');
     for (const kind of ['accuracy', 'errors']) {
       const box = page.getByTestId(`insight-time-${kind}`);
-      await expect(box).toContainText('Needs 20 reviewed games (12 so far).');
+      await expect(box).toContainText('Needs 20 reviewed games. You have 12.');
       await expect(box.locator('svg')).toHaveCount(0);
     }
     await lookAtQuarterCards(page, '390-not-enough');
@@ -680,7 +675,7 @@ test.describe('Insights: quarters from games reviewed in advance', () => {
     await openInsights(page, quarterHistory(quartersFrom([2025, 1], 5), 4), 390);
     for (const kind of ['accuracy', 'errors']) {
       const box = page.getByTestId(`insight-time-${kind}`);
-      await expect(box).toContainText('No quarter has 10 reviewed games yet.');
+      await expect(box).toContainText('Not enough games in any 3 months yet.');
       await expect(box.locator('svg')).toHaveCount(0);
     }
     await lookAtQuarterCards(page, '390-no-quarter');
