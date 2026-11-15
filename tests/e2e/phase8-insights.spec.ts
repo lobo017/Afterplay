@@ -630,6 +630,35 @@ test.describe('Insights: quarters from games reviewed in advance', () => {
     expect(dots.mistakes.r).toBe(dots.accuracy.r);
   });
 
+  test('the Games summary counts the games reviewed in advance for the whole library, and counts a game reviewed here once', async ({
+    page,
+  }) => {
+    test.setTimeout(150_000);
+    await openInsights(page, quarterHistory(SIX), 1280, 800);
+    // The summary line in the Games page header; the line under the list has the filtered count
+    await page.getByTestId('games-tab-library').click();
+    const summary = page.getByTestId('games-summary');
+    await expect(summary).toHaveText('72 games · 0 analyzed · 72 reviewed in advance');
+    await expect(page.getByTestId('games-count')).toHaveText('72 games');
+
+    // Back to Insights, click the 12-game quarter: the list is filtered, the summary is not
+    await page.getByTestId('games-tab-insights').click();
+    const q2 = expectedQuarter(SIX, 1, 12);
+    await points(page, 'chart-accuracy-time').nth(1).click();
+    await expectQuarterList(page, q2.from, q2.to, 12);
+    await expect(page.getByTestId('games-count')).toHaveText('12 of 72 games');
+    await expect(summary).toHaveText('72 games · 0 analyzed · 72 reviewed in advance');
+
+    // A review made here (Quick) replaces that game's summary: analyzed 1, in advance 71, still 72 games
+    await page.getByTestId('btn-games-clear-filters').click();
+    await expect(page.getByTestId('games-row')).toHaveCount(72);
+    await page.getByTestId('games-row').first().locator('input[data-select]').check();
+    await page.getByTestId('games-analyze-preset').selectOption('quick');
+    await page.getByTestId('btn-games-analyze').click();
+    await expect(page.locator('[data-analysis="analyzed"]')).toHaveCount(1, { timeout: 90_000 });
+    await expect(summary).toHaveText('72 games · 1 analyzed · 71 reviewed in advance');
+  });
+
   test('under 20 reviewed games both cards say what they need', async ({ page }) => {
     test.setTimeout(120_000);
     // 72 games, 12 of them reviewed in advance
