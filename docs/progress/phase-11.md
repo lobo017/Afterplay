@@ -616,3 +616,80 @@ link-worker tests and the new Games test). Juno's 2 unit skips against the lapto
 - **AGENTS.md** has the approved sentence (single quotes as given). `network-exception.test.ts` now pins: one `runChessComSync(` call, inside `runSharedSync`; `runSharedSync(` has two callers (Settings `runSync`, `runStoryImport`); `runStoryImport` is called only from the Story view's `onStartImport`; the view calls that once, from the `start-import` and `import-continue` click cases; the Settings handler still calls `options.runSync(` once.
 - **Deviations / choices:** (1) One earlier assertion had to change: `phase11-story.spec.ts` asserted the placeholder button `toBeDisabled()`; it now says `toBeEnabled()` (the brief enables the button). (2) The record is its own setting `story.import.chesscom`, not a branch of `story.import` (the history loader rewrites `story.import` whole, which would erase it). (3) The Story has no Stop button; Settings still has one. (4) The 500-character limit and the one-paragraph rule for the story text are mine; the spec says only "cleaned and cut like the welcome".
 - **Checks (laptop, AC, 2026-11-14):** format:check, typecheck, lint clean; unit 807 passed, 1 skipped (65 files; 13 new in `story-import`, the network test updated); build; `phase11-story.spec.ts` 21 tests passed on chromium and on webkit-iphone (7 new: Start import with a mocked sync, wrong username, dropped connection with Continue and a reload, rate limit, one run at a time, two add-another tests). Screenshots read: `test-results/phase11-story-screens/` (`*-import-*`, `*-form-added-account`, `*-settings-added-*`). Not run: the full e2e, perf, desktop webkit, the Juno gate. Known laptop failures from the Session 2 commit, not from this session and not touched: `phase3-premoves.spec.ts:337` on webkit-iphone (fails on the baseline too) and `phase6b-play.spec.ts:68` (a timeout that passes alone).
+
+## Blocks moved out of PROGRESS.md (verbatim, 2026-11-14)
+
+The stage 2, 3, rename, 4 and 6 blocks of docs/PROGRESS.md as they stood on commit 3c588c3, copied here before PROGRESS.md was
+shortened again. PROGRESS.md keeps a summary of each and a link to the block below.
+
+### Stage 2 (moved 2026-11-14)
+
+**Stage 2 (2026-11-10, done, preview only): iPhone support.** WebKit e2e projects (`webkit`, `webkit-iphone`), the phone engine profile
+(one engine, ≤ 2 threads, 16 MB hash; a board review pauses live analysis), persistent storage, the Add to Home Screen guide; a dozen
+WebKit-only bugs fixed in the app. Commit `96da4fd`; Juno gate passed: unit 605/605 (505993), e2e chromium ×2 165/165 (505994), webkit ×2
+139/139 (505995), webkit-iphone ×2 140/140 (505996), perf 505997 (drag p95 16.67 ms, 0 dropped, start-up 243 ms; review 17.0–17.1 s; tasks
+0 of 50 ms or more; memory +0.26 MB). Preview build `f32cb599143d`, `check:hosted` 15/15 (Chrome) and 16/16 (iPhone WebKit).
+- **Open:** a real iPhone has not been tried (memory limit, Home Screen mode, the guide's steps on iOS 26).
+
+### Stage 3 (moved 2026-11-14)
+
+**Stage 3 (2026-11-10, done, preview only): presets and the first-run link.** A preset file (`preset.json`) and a first-run link
+`/start/<slug>/` that applies it once per device; the build writes each link's own page and manifest (`start_url` = the link) because an
+iPhone's Home Screen app has its own empty storage; the Tournament Green board, the Classic (Cburnett, GPL-2.0-or-later) pieces,
+Settings › Profile, a sample link `/start/sample/`. Commit `3022fd6`; Juno gate passed: unit 631 + 1 skipped (506634), e2e chromium ×2
+172/172 (506631), webkit ×2 146/146 (506632), webkit-iphone ×2 147/147 (506633), perf all four (506635). Preview build `ac2ddadcf5ce`,
+`check:hosted` 23/23 (Chrome) and 24/24 (iPhone WebKit).
+- **Personal presets** live only in `gift.local/start/<random name>/preset.json` (`npm run build:local`); nothing personal has been uploaded.
+  Putting one on the host at its secret address (`deploy:preview -- --with-local-presets`) is the user's decision, not taken yet.
+- **Open, for the real iPhone:** the Home Screen app starting at the link and setting itself up in its own storage; the welcome showing in
+  Safari and once more in the installed app; the installed app's first launch needing the network. Two `phase6b-play` tests time out in the
+  laptop's WebKit iPhone project (screen off or locked); they pass on Juno.
+
+### Rename stage (moved 2026-11-14)
+
+**Rename stage (2026-11-10, done, preview only): the app is now "Afterplay".** The visible name changed everywhere; every storage name,
+key, cache name, backup format and test hook kept (`tests/unit/storage-names.test.ts`). New Pages project `afterplay`
+(`https://afterplay-c0x.pages.dev`, old `wizards-chess-4tu` untouched); the GitHub repository is `Afterplay` (the laptop's origin uses that
+exact spelling since 2026-11-11; Juno's remote still has the lowercase address, which GitHub redirects). Juno gate on `5f60eb8` passed:
+unit 506960, e2e 506957–506959; perf 506961 failed on `perf-drag`'s premove check and the rerun 506989 passed (a known random-input flake).
+Preview `https://dd556568.afterplay-c0x.pages.dev`, `check:hosted` Chrome 24/24, iPhone 25/25.
+- **Open:** `perf-drag` should log the bot's moves or seed its bot so a premove-check failure shows its cause; a real iPhone is not tried;
+  production still serves the old build under the old name until the final deploy.
+
+### Stage 4 (moved 2026-11-14)
+
+**Stage 4 (2026-11-11, done on Juno; delivery to the laptop waits for the user): a player's Chess.com history (download, report, restore
+file).** No app code changes, so no full gate. Commit `fdf6323`; `wc-history` download 508107, review 508123, restore 508129 (every job's
+`meta.json` commit checked, `repo-changes.txt` empty): the API answered 200 from the login node and from a compute node, every listed month
+was saved, and the app's `importBackupJson` took the whole restore file in the unit-test harness. The numbers, the report and the opponent
+shortlist are personal: they are in the scratch folder and go to `gift.local/history/`, not here.
+- **Open:** the restore file holds games only; the app cannot load it from a first-run link yet (Settings › Your data › Restore takes it);
+  the raw files stay in `~/scratch/wizard-chess-hpc/history/` until deleted by hand; the opponent for head-to-head is the user's pick.
+  Plan, files, deviations, risks: [phase-11](progress/phase-11.md).
+
+### Stage 6 (moved 2026-11-14)
+
+**Stage 6 (2026-11-11, done; Juno gate passed 2026-11-12, preview only): "Sync my Chess.com games" in the app.** A button in
+Settings › Your data reads the player's public monthly archives from `api.chess.com` and adds the games with the restore file's ids, so a
+restore and a sync, in any order, keep every game once. It is the site's only runtime network request, made only on that button
+(`network-exception.test.ts`). Gate on `16f9236`: unit 510706, e2e 510701–510703, perf 510707; preview build `c05c931e365e`.
+- **Deviation from the spec ("Respect ETags"):** a page cannot use them; a month is final once stored 24 h after it ended (UTC).
+- **Open:** a sync on a real iPhone; the first sync after a restore reads every month once; the final-month rule trusts the device clock;
+  a deleted game returns if its month is still open; the Games screen on a phone still shows the capture-extension card.
+
+### Engine review step 2 plan (moved 2026-11-14)
+
+The step-2 block of PROGRESS.md as committed in `ff5faaa`/`863d5b1`, before the Engine review section replaced it.
+
+**Engine review data in the history file (plan of 2026-11-14, step 2: summary type and guard; no Juno access, not committed).**
+Read-only Juno checks done (node 64 CPUs / 375 GB, `normal` 2-day limit, `restore.json` 12,811,136 bytes, purge policy not posted).
+- Plan: `GameAnalysisSummary` gains optional `depth`, `summaryOnly`, `plies`, `sides` (`src/storage/db.ts`); `src/review/summary.ts`
+  (`summarizeReview`, used by `library.saveReview`); `hasSavedReview(record)` replaces the bare `analysis` test in `app.ts` (4),
+  `insights-view.ts`, `puzzle-store.ts` (2), `game-rows.ts`, `games-list.ts`; new unit tests with invented games.
+- Risks: a summary-only game must not look reviewed to the puzzle sync, Insights or the Analyze button; old records stay valid.
+- Done, unit suite green: the Today count (`countUnreviewed`) leaves out games reviewed in advance; the Games list shows "Reviewed in advance".
+- **One existing assertion changed (approved 2026-11-14):** in `tests/unit/library.test.ts`, "saves a finished review apart from the game…",
+  `expect(record?.analysis).toEqual({…})` became `toMatchObject` with the same four fields, because `saveReview` now also writes `plies` and
+  `sides`. A new test beside it checks those extra fields.
+
+*Later, 2026-11-14: the owner stated that Juno scratch is purged after 45 days untouched and is never backed up (PROGRESS.md, "Where the files are"); the "purge policy not posted" above was true when written.*

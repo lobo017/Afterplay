@@ -83,50 +83,21 @@ report. Personal data (the gift preset, its messages, downloaded games, the oppo
 Production `https://wizards-chess-4tu.pages.dev` = build `aeedca6f9bb6` (commit `8c453ad`). Juno gate on `36b5bed` passed (unit 599/599,
 e2e 4 × 160/160, perf all four). Plan, results and job IDs: [phase-11](progress/phase-11.md).
 
-**Stage 2 (2026-11-10, done, preview only): iPhone support.** WebKit e2e projects (`webkit`, `webkit-iphone`), the phone engine profile
-(one engine, ≤ 2 threads, 16 MB hash; a board review pauses live analysis), persistent storage, the Add to Home Screen guide; a dozen
-WebKit-only bugs fixed in the app. Commit `96da4fd`; Juno gate passed: unit 605/605 (505993), e2e chromium ×2 165/165 (505994), webkit ×2
-139/139 (505995), webkit-iphone ×2 140/140 (505996), perf 505997 (drag p95 16.67 ms, 0 dropped, start-up 243 ms; review 17.0–17.1 s; tasks
-0 of 50 ms or more; memory +0.26 MB). Preview build `f32cb599143d`, `check:hosted` 15/15 (Chrome) and 16/16 (iPhone WebKit).
-- **Open:** a real iPhone has not been tried (memory limit, Home Screen mode, the guide's steps on iOS 26).
+**Stage 2 (2026-11-10, done, preview only): iPhone support.** Commit `96da4fd`; Juno gate passed (unit 605/605); preview build
+`f32cb599143d`. **Open:** a real iPhone has not been tried. Full block: [phase-11](progress/phase-11.md#stage-2-moved-2026-11-14).
 
-**Stage 3 (2026-11-10, done, preview only): presets and the first-run link.** A preset file (`preset.json`) and a first-run link
-`/start/<slug>/` that applies it once per device; the build writes each link's own page and manifest (`start_url` = the link) because an
-iPhone's Home Screen app has its own empty storage; the Tournament Green board, the Classic (Cburnett, GPL-2.0-or-later) pieces,
-Settings › Profile, a sample link `/start/sample/`. Commit `3022fd6`; Juno gate passed: unit 631 + 1 skipped (506634), e2e chromium ×2
-172/172 (506631), webkit ×2 146/146 (506632), webkit-iphone ×2 147/147 (506633), perf all four (506635). Preview build `ac2ddadcf5ce`,
-`check:hosted` 23/23 (Chrome) and 24/24 (iPhone WebKit).
-- **Personal presets** live only in `gift.local/start/<random name>/preset.json` (`npm run build:local`); nothing personal has been uploaded.
-  Putting one on the host at its secret address (`deploy:preview -- --with-local-presets`) is the user's decision, not taken yet.
-- **Open, for the real iPhone:** the Home Screen app starting at the link and setting itself up in its own storage; the welcome showing in
-  Safari and once more in the installed app; the installed app's first launch needing the network. Two `phase6b-play` tests time out in the
-  laptop's WebKit iPhone project (screen off or locked); they pass on Juno.
+**Stage 3 (2026-11-10, done, preview only): presets and the first-run link.** Commit `3022fd6`; Juno gate passed (unit 631 + 1 skipped);
+preview build `ac2ddadcf5ce`. Personal presets live only in `gift.local/start/`; putting one on the host is the user's decision, not taken yet.
+**Open:** the real-iPhone checks. Full block: [phase-11](progress/phase-11.md#stage-3-moved-2026-11-14).
 
-**Rename stage (2026-11-10, done, preview only): the app is now "Afterplay".** The visible name changed everywhere; every storage name,
-key, cache name, backup format and test hook kept (`tests/unit/storage-names.test.ts`). New Pages project `afterplay`
-(`https://afterplay-c0x.pages.dev`, old `wizards-chess-4tu` untouched); the GitHub repository is `Afterplay` (the laptop's origin uses that
-exact spelling since 2026-11-11; Juno's remote still has the lowercase address, which GitHub redirects). Juno gate on `5f60eb8` passed:
-unit 506960, e2e 506957–506959; perf 506961 failed on `perf-drag`'s premove check and the rerun 506989 passed (a known random-input flake).
-Preview `https://dd556568.afterplay-c0x.pages.dev`, `check:hosted` Chrome 24/24, iPhone 25/25.
-- **Open:** `perf-drag` should log the bot's moves or seed its bot so a premove-check failure shows its cause; a real iPhone is not tried;
-  production still serves the old build under the old name until the final deploy.
+**Rename stage (2026-11-10, done, preview only): the app is now "Afterplay".** Juno gate on `5f60eb8` passed; production still serves the old
+build under the old name until the final deploy. Full block: [phase-11](progress/phase-11.md#rename-stage-moved-2026-11-14).
 
-**Stage 4 (2026-11-11, done on Juno; delivery to the laptop waits for the user): a player's Chess.com history (download, report, restore
-file).** No app code changes, so no full gate. Commit `fdf6323`; `wc-history` download 508107, review 508123, restore 508129 (every job's
-`meta.json` commit checked, `repo-changes.txt` empty): the API answered 200 from the login node and from a compute node, every listed month
-was saved, and the app's `importBackupJson` took the whole restore file in the unit-test harness. The numbers, the report and the opponent
-shortlist are personal: they are in the scratch folder and go to `gift.local/history/`, not here.
-- **Open:** the restore file holds games only; the app cannot load it from a first-run link yet (Settings › Your data › Restore takes it);
-  the raw files stay in `~/scratch/wizard-chess-hpc/history/` until deleted by hand; the opponent for head-to-head is the user's pick.
-  Plan, files, deviations, risks: [phase-11](progress/phase-11.md).
+**Stage 4 (2026-11-11, done on Juno): a player's Chess.com history (download, report, restore file).** Commit `fdf6323`; jobs 508107, 508123,
+508129. The numbers, report and shortlist are personal and live in `gift.local/history/`. Full block: [phase-11](progress/phase-11.md#stage-4-moved-2026-11-14).
 
-**Stage 6 (2026-11-11, done; Juno gate passed 2026-11-12, preview only): "Sync my Chess.com games" in the app.** A button in
-Settings › Your data reads the player's public monthly archives from `api.chess.com` and adds the games with the restore file's ids, so a
-restore and a sync, in any order, keep every game once. It is the site's only runtime network request, made only on that button
-(`network-exception.test.ts`). Gate on `16f9236`: unit 510706, e2e 510701–510703, perf 510707; preview build `c05c931e365e`.
-- **Deviation from the spec ("Respect ETags"):** a page cannot use them; a month is final once stored 24 h after it ended (UTC).
-- **Open:** a sync on a real iPhone; the first sync after a restore reads every month once; the final-month rule trusts the device clock;
-  a deleted game returns if its month is still open; the Games screen on a phone still shows the capture-extension card.
+**Stage 6 (2026-11-11, done; Juno gate passed 2026-11-12, preview only): "Sync my Chess.com games" in the app.** Gate on `16f9236`; preview
+build `c05c931e365e`. The site's only runtime network request, made only on that button. Full block: [phase-11](progress/phase-11.md#stage-6-moved-2026-11-14).
 
 **Link fix and no built-in account (2026-11-13, done; Juno gate passed on `5f3274e`; preview with it: next).** Full log: [phase-11](progress/phase-11.md).
 - **Link fix (`1af20a8`):** a real iPhone showed a Home Screen app, added on a second visit, starting as the plain app: the service worker
@@ -151,16 +122,32 @@ restore and a sync, in any order, keep every game once. It is the site's only ru
 - unit 513482: 806 passed, 2 skipped. perf 513483: all four scripts passed.
 - All eight result folders passed the trust checks. The three failures seen on the laptop passed on Juno.
 
-**Engine review data in the history file (plan of 2026-11-14, step 2: summary type and guard; no Juno access, not committed).**
-Read-only Juno checks done (node 64 CPUs / 375 GB, `normal` 2-day limit, `restore.json` 12,811,136 bytes, purge policy not posted).
-- Plan: `GameAnalysisSummary` gains optional `depth`, `summaryOnly`, `plies`, `sides` (`src/storage/db.ts`); `src/review/summary.ts`
-  (`summarizeReview`, used by `library.saveReview`); `hasSavedReview(record)` replaces the bare `analysis` test in `app.ts` (4),
-  `insights-view.ts`, `puzzle-store.ts` (2), `game-rows.ts`, `games-list.ts`; new unit tests with invented games.
-- Risks: a summary-only game must not look reviewed to the puzzle sync, Insights or the Analyze button; old records stay valid.
-- Done, unit suite green: the Today count (`countUnreviewed`) leaves out games reviewed in advance; the Games list shows "Reviewed in advance".
-- **One existing assertion changed (approved 2026-11-14):** in `tests/unit/library.test.ts`, "saves a finished review apart from the game…",
-  `expect(record?.analysis).toEqual({…})` became `toMatchObject` with the same four fields, because `saveReview` now also writes `plies` and
-  `sides`. A new test beside it checks those extra fields.
+**Engine review on Juno (revision 2026-11-14).** A compact engine summary per game of the personal history file (depth 18, the
+player's side only), so the Story can show accuracy and mistakes. The plan is "Spec: engine review data in a history file".
+- **Commits:** `ff5faaa` summary type, `summarizeReview`, `hasSavedReview` guard (a summary-only game is not a saved review; the Today count
+  leaves it out; the Games list shows "Reviewed in advance"; **one existing assertion changed, approved 2026-11-14:** `library.test.ts` "saves a
+  finished review apart from the game…" `toEqual` became `toMatchObject` with the same four fields, because `saveReview` also writes `plies` and
+  `sides`; the step-2 plan and risks: [phase-11](progress/phase-11.md#engine-review-step-2-plan-moved-2026-11-14)); `863d5b1` batch files
+  (`hpc/history/lib/reviews.mjs` with types and `history-reviews.test.ts`, `review-games.mjs`, `merge-reviews.mjs`, `lib/settings.mjs`,
+  `history-engine.sbatch` and `.sh`, `engine-merge` in `history.sbatch`/`.sh`); `3c588c3` pilot-folder, games-per-chunk and stop-minutes
+  arguments for the job.
+- **Design as built:** 64 chunks (`HISTORY_CHUNKS`; game i of the sorted ids is in chunk i mod 64), array `0-7%4`, 8 workers per task (8 CPUs, 16 GB,
+  2 h limit, workers stop themselves at 105 min); depth 18, MultiPV 2, 1 thread, 32 MB hash, Stockfish 17.1 lite single. One part file per chunk
+  (first line: input hash, settings, engine, commit); exit 0 done, 3 time limit, 1 error, 2 refusal. Ids and numbers stay in the scratch history
+  folder; `results/` gets counts. **Deviation:** the spec said 8 chunks; one engine per task would have taken about 14 h, so it is 64 (decided
+  2026-11-14). **The review code is frozen at `3c588c3`: any change to it (batch scripts, settings, or the app modules they load) needs a full rerun.**
+- **Pilots:** 513657 and 513678 (5 games per chunk, 8 of 8 exit 0): 64 of 64 part files byte-identical; 513700 and 513713 (1-minute stop): every task
+  exit 3 (Slurm `FAILED 3:0`), then the same line resumed all workers with no refusal. MaxRSS about 3.1 GB per task, about 0.39 s per position.
+- **Full run, job 513726:** 8 of 8 tasks exit 0 (28–34 min each, about an hour in two waves); 4,687 part-file lines (64 headers + 4,623); 4,580
+  reviewed, 43 skipped (all "under 10 plies"); 265,488 positions, 0.37–0.49 s per position (median 0.40); leak scan clean; `restore.json` unchanged.
+- **Merge, job 513905** (no `--allow-partial`): 4,580 games from 64 parts, none missing; `restore-reviewed.json` 14,028,739 bytes (13.38 MiB of 24),
+  sha256 starts `45988d8e`, the laptop copy identical; every analysis `summaryOnly`, depth 18, the player's side only; every game otherwise equal to
+  `restore.json`; the app's backup import test passes (4,623 games).
+- **Where the files are:** Juno scratch is purged after 45 days untouched and is never backed up, so the part files and `restore-reviewed.json` there
+  are not a permanent copy; the merged file is also on the owner's laptop under the git-ignored `gift.local/`.
+- **Not done yet:** Story and Insights cards that read the summaries; loader behaviour for devices that already hold the old history (stored games
+  are never overwritten); swapping the hosted `history.json` for the reviewed file; preview; real iPhone check; cleanup of the three pilot folders on
+  Juno (through `wc_rm_tree`, never `rm -rf`). Production stays one deploy at the end.
 
 ## Open items from earlier phases
 
