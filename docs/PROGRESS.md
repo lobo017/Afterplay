@@ -145,9 +145,25 @@ player's side only), so the Story can show accuracy and mistakes. The plan is "S
   `restore.json`; the app's backup import test passes (4,623 games).
 - **Where the files are:** Juno scratch is purged after 45 days untouched and is never backed up, so the part files and `restore-reviewed.json` there
   are not a permanent copy; the merged file is also on the owner's laptop under the git-ignored `gift.local/`.
-- **Not done yet:** Story and Insights cards that read the summaries; loader behaviour for devices that already hold the old history (stored games
+- **Not done yet:** loader behaviour for devices that already hold the old history (stored games
   are never overwritten); swapping the hosted `history.json` for the reviewed file; preview; real iPhone check; cleanup of the three pilot folders on
   Juno (through `wc_rm_tree`, never `rm -rf`). Production stays one deploy at the end.
+
+**Story review cards, Insights quarters and the Games summary (2026-11-14 to 2026-11-15, commits `c8b0efd` to `43d0730`).**
+- **Story:** four cards after the site cards (accuracy, mistakes, biggest swing, most accurate game) from the engine-review summaries and from reviews made on
+  the device (`STATS_VERSION` 2). Fewer than 20 reviewed games gives one "not enough" card, none gives no card; the Mistakes card lists the newest three years.
+- **Insights:** accuracy and mistakes per quarter in two charts. Up to 760 px a tap selects a quarter and shows a readout with a 44 px "Show these games"
+  button (wide screens open the Games list on click); the mistakes line is dashed with hollow dots, so the two lines differ by shape, not colour alone.
+- **Games:** the summary reads "N games · M analyzed · K reviewed in advance", always library-wide (the count under the list follows the filter).
+- **Juno gate on `43d07304e95c05e156e6e8e4ab0e874cb4102915`, passed (jobs 514152, 514154, 514155, 514156, 514157, all COMPLETED 0:0; every `meta.json` commit
+  matched, every `repo-changes.txt` empty):** e2e chromium ×2 218 passed (+2 skipped), webkit ×2 192 (+2), webkit-iphone ×2 194, 0 failed, 0 flaky, 0 retries
+  in all six runs; unit 972 passed, 2 skipped (typecheck, lint, format:check, build, vitest all exit 0; the skips are the restore-file test and the
+  personal-preset test, which needs `gift.local/`, so a laptop run skips one); perf all four passed (drag p95 16.67 ms, 0 dropped frames, start-up 264 ms;
+  review 17.0–17.2 s; tasks 18 of 18, none over 50 ms; memory heap slope 7.1 KB per game, +0.3 MB).
+- **Note:** the Games footer counts 4,580 reviewed games, the Story 4,535: it skips 45 Chess960 or set-up starts.
+- **Open:** `phase8-a11y.spec.ts:125` failed once on webkit-iphone earlier and did not recur on Juno (still to confirm on a real iPhone).
+- **Open:** the Story's recount costs about 36–63 ms for one site and 150–290 ms for two on large histories.
+- **Open:** the real iPhone check and the first Library open time with the reviewed history file are still to do.
 
 ## Open items from earlier phases
 
