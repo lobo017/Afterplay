@@ -225,7 +225,7 @@ export class PuzzleTrainer {
             <div class="wc-puzzle-card">
               <div class="wc-status-header">
                 <div class="wc-status-banner" data-testid="puzzle-status" role="status" aria-live="polite" data-state="idle">Loading…</div>
-                <div class="wc-eval-pill wc-puzzle-rating" data-testid="puzzle-rating" title="Puzzle rating (Glicko-2)">1500</div>
+                <div class="wc-eval-pill wc-puzzle-rating" data-testid="puzzle-rating" title="Puzzle rating">1500</div>
               </div>
               <p class="wc-puzzle-prompt" data-testid="puzzle-prompt"></p>
               <p class="wc-puzzle-source" data-testid="puzzle-source"></p>
@@ -698,7 +698,7 @@ export class PuzzleTrainer {
       actions.push(['Rated puzzles', 'btn-puzzle-empty-rated', () => void this.start('rated')]);
     } else if (this.mode === 'mistakes') {
       text =
-        'No puzzles from my games are due. Mistakes, Blunders and Misses in my analyzed games become puzzles (my side only, recognized by my usernames).';
+        'No puzzles from my games are due. Mistakes, Blunders and Misses in my reviewed games become puzzles (my side only, recognized by my usernames).';
       actions.push(['Open the Games list', 'btn-puzzle-empty-games', () => this.options.onOpenGames()]);
       actions.push(['Rated puzzles', 'btn-puzzle-empty-rated', () => void this.start('rated')]);
     } else {

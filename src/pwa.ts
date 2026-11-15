@@ -33,7 +33,7 @@ export function describeOffline(state: OfflineState): string {
     case 'caching':
       return 'Caching the app for offline use…';
     case 'ready':
-      return `Ready: all ${state.files} files are cached`;
+      return 'Ready to use offline';
     case 'failed':
       return `Not available: ${state.message}`;
   }
@@ -43,7 +43,7 @@ type StatusReply = { type: 'STATUS'; files: number; cached: number };
 
 const listeners = new Set<(state: OfflineState) => void>();
 const updateListeners = new Set<(waiting: boolean) => void>();
-let current: OfflineState = { kind: 'unavailable', reason: 'Only in the built app (npm run build, npm run serve)' };
+let current: OfflineState = { kind: 'unavailable', reason: 'Not available here' };
 let registration: ServiceWorkerRegistration | null = null;
 
 function set(state: OfflineState): void {
@@ -126,7 +126,7 @@ const ISOLATION_RELOAD_KEY = 'wc-isolation-reload';
 
 export function registerServiceWorker(): void {
   if (!('serviceWorker' in navigator)) {
-    set({ kind: 'unavailable', reason: 'This browser has no service workers' });
+    set({ kind: 'unavailable', reason: 'This browser cannot work offline' });
     return;
   }
   if (!import.meta.env.PROD) return;

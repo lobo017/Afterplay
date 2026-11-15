@@ -34,6 +34,7 @@ import { icon } from './components/icons';
 import { Menu } from './components/menu';
 import { Tabs, tabListHtml, tabPanelAttrs } from './components/tabs';
 import { bindChoiceGroups, chipsHtml, segmentedHtml, setChoice, switchRowHtml } from './components/controls';
+import { tapWordLower } from './pointer-words';
 
 export interface HintUsageRecord {
   ply: number;
@@ -490,7 +491,7 @@ export class PlayController {
                     'toggle-infinite-analysis',
                     'Live evaluation',
                     s.playLiveEval,
-                    'Stockfish evaluates your position while it is your move; the score shows at the top.',
+                    'The app scores your position while it is your move; the score shows at the top.',
                   )}
                   <p class="wc-panel-note">For a full analysis with engine lines, use ⋯ › Analyze this position.</p>
                 </div>
@@ -1114,7 +1115,7 @@ export class PlayController {
     const ac = new AbortController();
     this.botAbortController = ac;
     this.isBotThinking = true;
-    this.gameStatusText = 'Stockfish is thinking...';
+    this.gameStatusText = 'Thinking…';
     this.updateStatusBanner();
     this.updateControlsDisabledState();
 
@@ -1549,7 +1550,7 @@ export class PlayController {
     }
     if (this.panelView === 'setup') this.renderNewGameCard();
     if (this.plyHistory.length === 0) {
-      this.moveListEl.innerHTML = `<div class="wc-move-empty">No moves played yet. Drag or click a piece to begin.</div>`;
+      this.moveListEl.innerHTML = `<div class="wc-move-empty">No moves yet. Drag or ${tapWordLower()} a piece.</div>`;
       this.renderedMoveSans = [];
       this.moveSpans = [];
       return;

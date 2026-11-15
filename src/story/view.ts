@@ -6,6 +6,7 @@
  * wrong, in plain words.
  */
 import type { GameLibrary } from '../library/library';
+import { tapWordLower } from '../ui/pointer-words';
 import { computeStoryStats, type ScopeStats, type StoryStats } from './stats';
 import { storyCards, type PersonalText, type StoryCard, type StoryCardId } from './text';
 import type { StoryLanding } from './landing';
@@ -266,7 +267,7 @@ export class StoryView {
       <p class="wc-story-sentence">Add your usernames so the Story can tell which games, and which side, are yours.</p>
       ${field('chesscom', 'Chess.com username')}
       ${field('lichess', 'Lichess username')}
-      <p class="wc-story-note">Start import asks Chess.com for your games, for every Chess.com account above, newest month first. Nothing is asked until you press it.</p>
+      <p class="wc-story-note">Start import gets your games from Chess.com, for every account above, newest month first. Nothing is requested until you ${tapWordLower()} it.</p>
       <p class="wc-story-note">Lichess import is not available yet. The name is saved and marks your side in Lichess games you open here.</p>
       <div class="wc-story-actions">
         <button type="button" class="wc-btn wc-btn-secondary wc-story-btn" data-story-action="save" data-testid="story-save">Save usernames</button>

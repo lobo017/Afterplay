@@ -285,8 +285,7 @@ const AUDIO_PREWARM_DELAY_MS = 400;
 const PERSIST_REQUEST_DELAY_MS = 1000;
 const INSTALL_GUIDE_DELAY_MS = 600;
 /** The lines panel's note while a review has a phone's only engine. */
-export const REVIEW_PAUSES_ANALYSIS_NOTE =
-  'Live analysis is paused while the review runs (this phone uses one engine).';
+export const REVIEW_PAUSES_ANALYSIS_NOTE = 'Analysis is paused while the review runs.';
 
 export interface WizardChessLibraryApi {
   library: GameLibrary;
@@ -451,7 +450,9 @@ export function mountAppShell(container: HTMLElement): {
   });
   const settingsBtn = container.querySelector('[data-testid="btn-settings"]') as HTMLButtonElement;
   settingsBtn.addEventListener('click', () => settings.open());
-  watchOffline((state) => settings.setOfflineStatus(describeOffline(state)));
+  watchOffline((state) =>
+    settings.setOfflineStatus(describeOffline(state), state.kind === 'ready' ? state.files : null),
+  );
   mountUpdateBanner(shellEl);
   registerActivity('settings', () => settings.isOpen());
   registerActivity('install-guide', () => installGuide.isOpen());

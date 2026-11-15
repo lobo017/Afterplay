@@ -59,7 +59,7 @@ const month = (y: number, m: number, count: number, o: (i: number) => Partial<Re
 const point = (o: Partial<QuarterPoint> = {}): QuarterPoint => ({
   year: 2023,
   quarter: 2,
-  label: '2023 Q2',
+  label: 'Apr-Jun 2023',
   from: '2023-04-01',
   to: '2023-06-30',
   games: 212,
@@ -111,10 +111,10 @@ describe('reviewQuarters: which quarter a game is in', () => {
     const games = [2, 5, 8, 11].flatMap((m) => month(2023, m, MIN_QUARTER_GAMES));
     const { points } = reviewQuarters(games);
     expect(points.map((p) => [p.label, p.from, p.to])).toEqual([
-      ['2023 Q1', '2023-01-01', '2023-03-31'],
-      ['2023 Q2', '2023-04-01', '2023-06-30'],
-      ['2023 Q3', '2023-07-01', '2023-09-30'],
-      ['2023 Q4', '2023-10-01', '2023-12-31'],
+      ['Jan-Mar 2023', '2023-01-01', '2023-03-31'],
+      ['Apr-Jun 2023', '2023-04-01', '2023-06-30'],
+      ['Jul-Sep 2023', '2023-07-01', '2023-09-30'],
+      ['Oct-Dec 2023', '2023-10-01', '2023-12-31'],
     ]);
   });
 
@@ -128,8 +128,8 @@ describe('reviewQuarters: which quarter a game is in', () => {
     ];
     const { points } = reviewQuarters(games);
     expect(points.map((p) => [p.label, p.games])).toEqual([
-      ['2023 Q1', 20],
-      ['2023 Q2', 22],
+      ['Jan-Mar 2023', 20],
+      ['Apr-Jun 2023', 22],
     ]);
   });
 
@@ -138,13 +138,13 @@ describe('reviewQuarters: which quarter a game is in', () => {
       ...Array.from({ length: 10 }, () => sg(noon(2024, 2, 29))),
       ...Array.from({ length: 10 }, () => sg(noon(2024, 12, 31))),
     ];
-    expect(reviewQuarters(games).points.map((p) => p.label)).toEqual(['2024 Q1', '2024 Q4']);
+    expect(reviewQuarters(games).points.map((p) => p.label)).toEqual(['Jan-Mar 2024', 'Oct-Dec 2024']);
   });
 
   it('lists the quarters oldest first, and keeps the gaps between them on the time axis', () => {
     const games = [...month(2024, 2, 10), ...month(2022, 11, 10), ...month(2023, 5, 10)];
     const { points } = reviewQuarters(games);
-    expect(points.map((p) => p.label)).toEqual(['2022 Q4', '2023 Q2', '2024 Q1']);
+    expect(points.map((p) => p.label)).toEqual(['Oct-Dec 2022', 'Apr-Jun 2023', 'Jan-Mar 2024']);
     const x = points.map(quarterX);
     expect([x[1]! - x[0]!, x[2]! - x[1]!]).toEqual([2, 3]);
   });
@@ -154,7 +154,7 @@ describe('reviewQuarters: which quarter a game is in', () => {
     const r = reviewQuarters(games);
     expect(r.reviewed).toBe(20);
     expect(r.enough).toBe(true);
-    expect(r.points.map((p) => [p.label, p.games])).toEqual([['2023 Q2', 10]]);
+    expect(r.points.map((p) => [p.label, p.games])).toEqual([['Apr-Jun 2023', 10]]);
   });
 });
 
@@ -162,7 +162,7 @@ describe('reviewQuarters: which quarters are points, and their numbers', () => {
   it('needs MIN_QUARTER_GAMES reviewed games: 9 is no point, 10 is one', () => {
     expect(MIN_QUARTER_GAMES).toBe(10);
     const games = [...month(2023, 2, 9), ...month(2023, 5, 10)];
-    expect(reviewQuarters(games).points.map((p) => [p.label, p.games])).toEqual([['2023 Q2', 10]]);
+    expect(reviewQuarters(games).points.map((p) => [p.label, p.games])).toEqual([['Apr-Jun 2023', 10]]);
     expect(reviewQuarters(month(2023, 2, 9)).points).toEqual([]);
   });
 
@@ -259,18 +259,18 @@ describe('quarterFilter', () => {
 
 describe('the texts', () => {
   it('says what the charts need', () => {
-    expect(needsReviewedText(4)).toBe('Needs 20 reviewed games (4 so far).');
-    expect(needsReviewedText(0)).toBe('Needs 20 reviewed games (0 so far).');
-    expect(needsReviewedText(19)).toBe('Needs 20 reviewed games (19 so far).');
-    expect(NO_QUARTER_TEXT).toBe('No quarter has 10 reviewed games yet.');
+    expect(needsReviewedText(4)).toBe('Needs 20 reviewed games. You have 4.');
+    expect(needsReviewedText(0)).toBe('Needs 20 reviewed games. You have 0.');
+    expect(needsReviewedText(19)).toBe('Needs 20 reviewed games. You have 19.');
+    expect(NO_QUARTER_TEXT).toBe('Not enough games in any 3 months yet.');
   });
 
   it('writes the point labels', () => {
-    expect(accuracyPointLabel(point())).toBe('2023 Q2: 79.4% over 212 games');
-    expect(accuracyPointLabel(point({ games: 1248, accuracy: 80 }))).toBe('2023 Q2: 80.0% over 1,248 games');
-    expect(errorsPointLabel(point())).toBe('2023 Q2: 0.8 blunders and 1.7 mistakes per 10 moves over 212 games');
+    expect(accuracyPointLabel(point())).toBe('Apr-Jun 2023: 79.4% over 212 games');
+    expect(accuracyPointLabel(point({ games: 1248, accuracy: 80 }))).toBe('Apr-Jun 2023: 80.0% over 1,248 games');
+    expect(errorsPointLabel(point())).toBe('Apr-Jun 2023: 0.8 blunders and 1.7 mistakes per 10 moves over 212 games');
     expect(errorsPointLabel(point({ games: 10, blundersPer10: 0, mistakesPer10: 12.34 }))).toBe(
-      '2023 Q2: 0.0 blunders and 12.3 mistakes per 10 moves over 10 games',
+      'Apr-Jun 2023: 0.0 blunders and 12.3 mistakes per 10 moves over 10 games',
     );
   });
 
@@ -278,7 +278,7 @@ describe('the texts', () => {
     const first = point({
       year: 2021,
       quarter: 4,
-      label: '2021 Q4',
+      label: 'Oct-Dec 2021',
       accuracy: 74.3,
       blundersPer10: 2.6,
       mistakesPer10: 3.1,
@@ -286,14 +286,14 @@ describe('the texts', () => {
     const last = point({
       year: 2026,
       quarter: 2,
-      label: '2026 Q2',
+      label: 'Apr-Jun 2026',
       accuracy: 80.1,
       blundersPer10: 1.3,
       mistakesPer10: 2,
     });
-    expect(accuracyEnds([first, point(), last])).toBe('From 2021 Q4 (74.3%) to 2026 Q2 (80.1%).');
+    expect(accuracyEnds([first, point(), last])).toBe('From Oct-Dec 2021 (74.3%) to Apr-Jun 2026 (80.1%).');
     expect(errorsEnds([first, point(), last])).toBe(
-      'From 2021 Q4 (2.6 blunders, 3.1 mistakes) to 2026 Q2 (1.3 blunders, 2.0 mistakes), per 10 moves.',
+      'From Oct-Dec 2021 (2.6 blunders, 3.1 mistakes) to Apr-Jun 2026 (1.3 blunders, 2.0 mistakes), per 10 moves.',
     );
     for (const ends of [accuracyEnds, errorsEnds]) {
       expect(ends([])).toBeNull();
@@ -302,36 +302,24 @@ describe('the texts', () => {
   });
 
   it('writes the header, with the in-advance count only when there is one, in the singular and the plural', () => {
-    expect(insightsSummary({ reviewed: 2, inAdvance: 0, mine: 2 })).toBe(
-      '2 reviewed games of yours · 2 of yours in all',
+    expect(insightsSummary({ reviewed: 2, inAdvance: 0, mine: 2, all: 2 })).toBe('2 games · 2 reviewed');
+    expect(insightsSummary({ reviewed: 1, inAdvance: 0, mine: 5, all: 5 })).toBe('5 games · 1 reviewed');
+    expect(insightsSummary({ reviewed: 0, inAdvance: 0, mine: 0, all: 0 })).toBe('No games yet');
+    // Games in the library, none marked mine
+    expect(insightsSummary({ reviewed: 0, inAdvance: 0, mine: 0, all: 7 })).toBe('No games of yours yet');
+    expect(insightsSummary({ reviewed: 0, inAdvance: 4535, mine: 4623, all: 4623 })).toBe(
+      '4,623 games · 4,535 reviewed',
     );
-    expect(insightsSummary({ reviewed: 1, inAdvance: 0, mine: 5 })).toBe(
-      '1 reviewed game of yours · 5 of yours in all',
-    );
-    expect(insightsSummary({ reviewed: 0, inAdvance: 0, mine: 0 })).toBe(
-      '0 reviewed games of yours · 0 of yours in all',
-    );
-    expect(insightsSummary({ reviewed: 0, inAdvance: 4535, mine: 4623 })).toBe(
-      '0 reviewed games of yours · 4,535 reviewed in advance · 4,623 of yours in all',
-    );
-    expect(insightsSummary({ reviewed: 3, inAdvance: 1, mine: 4 })).toBe(
-      '3 reviewed games of yours · 1 reviewed in advance · 4 of yours in all',
-    );
+    expect(insightsSummary({ reviewed: 3, inAdvance: 1, mine: 4, all: 4 })).toBe('4 games · 4 reviewed');
   });
 
   it('writes the empty text of the old cards, in the singular and the plural', () => {
-    expect(needReviewsText({ inAdvance: 4535, noneMarked: false })).toBe(
-      'These need a game reviewed on this device (Games › Analyze). 4,535 games were reviewed in advance; their numbers are below.',
-    );
-    expect(needReviewsText({ inAdvance: 1, noneMarked: false })).toBe(
-      'These need a game reviewed on this device (Games › Analyze). 1 game was reviewed in advance; its numbers are below.',
-    );
+    expect(needReviewsText({ inAdvance: 4535, noneMarked: false })).toBe('Review a game to see this.');
+    expect(needReviewsText({ inAdvance: 1, noneMarked: false })).toBe('Review a game to see this.');
     // With nothing reviewed in advance the text is the one the cards always had
-    expect(needReviewsText({ inAdvance: 0, noneMarked: false })).toBe(
-      'Review some of your games (Games › Analyze) to see this.',
-    );
+    expect(needReviewsText({ inAdvance: 0, noneMarked: false })).toBe('Review a game to see this.');
     expect(needReviewsText({ inAdvance: 0, noneMarked: true })).toBe(
-      'Review some of your games (Games › Analyze) to see this. None of your games are marked yours yet: set your usernames in Settings › Your games.',
+      'Review a game to see this. None of your games are marked yours yet: set your usernames in Settings › Your games.',
     );
     // Games reviewed in advance are games of mine, so "not marked yours" cannot be true with them
     expect(needReviewsText({ inAdvance: 2, noneMarked: true })).not.toContain('None of your games');

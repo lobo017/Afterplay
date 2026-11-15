@@ -36,6 +36,10 @@ export interface GamesListOptions {
   onExtensionStatus: (listener: (status: ExtensionStatus) => void) => void;
 }
 
+/** True on localhost and 127.0.0.1, where the capture extension's local server can exist. */
+const runsOnThisMachine = (): boolean =>
+  typeof location !== 'undefined' && (location.hostname === 'localhost' || location.hostname === '127.0.0.1');
+
 /** Games analyzed from the list use this preset unless another is picked. */
 export const DEFAULT_LIST_PRESET: ReviewPreset = 'standard';
 /** "Auto-analyze new games" reviews on this preset. */
@@ -169,8 +173,8 @@ export class GamesList {
           <span class="wc-games-ext" data-testid="games-extension-status" data-state="not-detected"></span>
           <span class="wc-games-capture-detail" data-testid="games-capture-detail"></span>
         </div>
-        <label class="wc-games-auto" title="Reviews each new captured or imported game on the Quick preset">
-          <span>Auto-analyze new games<span class="wc-setting-hint">Quick review of each new game</span></span>
+        <label class="wc-games-auto" title="Reviews each new game by itself">
+          <span>Review new games automatically<span class="wc-setting-hint">Quick review of each new game</span></span>
           <input type="checkbox" role="switch" class="wc-switch-input" data-testid="games-auto-analyze" />
         </label>
       </section>
@@ -193,8 +197,8 @@ export class GamesList {
           <label>Result <select class="wc-select wc-select-sm" data-testid="games-filter-result">
             <option value="all">All</option><option value="win">Wins</option><option value="loss">Losses</option><option value="draw">Draws</option>
           </select></label>
-          <label>Analysis <select class="wc-select wc-select-sm" data-testid="games-filter-analyzed">
-            <option value="all">All</option><option value="analyzed">Analyzed</option><option value="not-analyzed">Not analyzed</option>
+          <label>Review <select class="wc-select wc-select-sm" data-testid="games-filter-analyzed">
+            <option value="all">All</option><option value="analyzed">Reviewed</option><option value="not-analyzed">Not reviewed</option>
           </select></label>
           <label>Opening <input type="search" class="wc-select wc-select-sm wc-games-opening-input" list="wc-games-openings" placeholder="Any" data-testid="games-filter-opening" /><datalist id="wc-games-openings" data-testid="games-openings-list"></datalist></label>
           <label>From <input type="date" class="wc-select wc-select-sm" data-testid="games-filter-from" /></label>
@@ -216,16 +220,16 @@ export class GamesList {
           <span role="columnheader" class="wc-games-c-result">Result</span>
           <span role="columnheader" class="wc-games-c-tc">Time</span>
           <span role="columnheader" class="wc-games-c-opening">Opening</span>
-          <span role="columnheader" class="wc-games-c-analysis">Analysis</span>
+          <span role="columnheader" class="wc-games-c-analysis">Review</span>
         </div>
         <div class="wc-games-body" role="rowgroup" data-testid="games-rows"></div>
-        <p class="wc-games-empty" data-testid="games-empty">No games yet. Paste a PGN, drop .pgn files here, or capture games with the browser extension.</p>
+        <p class="wc-games-empty" data-testid="games-empty">No games yet. Sync your Chess.com games in Settings, or paste a game.</p>
         <button type="button" class="wc-btn wc-btn-ghost wc-btn-sm wc-games-more" data-testid="btn-games-more" hidden>Show more</button>
       </div>
       <div class="wc-games-count" data-testid="games-count"></div>
       <div class="wc-games-selbar" data-testid="games-selbar" role="region" aria-label="Selected games" hidden>
         <span class="wc-games-selection" data-testid="games-selection">0 selected</span>
-        <select class="wc-select" data-testid="games-analyze-preset" aria-label="Review depth for Analyze">${presetOptions}</select>
+        <select class="wc-select" data-testid="games-analyze-preset" aria-label="How thorough, for Analyze">${presetOptions}</select>
         <button type="button" class="wc-btn wc-btn-primary wc-btn-lg" data-testid="btn-games-analyze" disabled>Analyze</button>
         <button type="button" class="wc-btn wc-btn-secondary wc-btn-lg" data-testid="btn-games-delete">Delete</button>
         <span class="wc-games-delete-confirm" data-testid="games-delete-confirm" hidden>
@@ -246,10 +250,10 @@ export class GamesList {
     this.importMenu = new Menu(
       this.root.querySelector('[data-testid="games-import"]') as HTMLElement,
       [
-        { id: 'paste', label: 'Paste PGN…', testId: 'btn-games-paste', icon: 'copy', onSelect: pasteToggle },
+        { id: 'paste', label: 'Paste a game…', testId: 'btn-games-paste', icon: 'copy', onSelect: pasteToggle },
         {
           id: 'file',
-          label: 'Open PGN file…',
+          label: 'Open a game file…',
           testId: 'btn-games-file',
           icon: 'upload',
           onSelect: () => this.els.fileInput.click(),
@@ -541,7 +545,7 @@ export class GamesList {
 
   private async importText(text: string): Promise<boolean> {
     if (text.trim() === '') {
-      this.setMessage('Paste a PGN first.', 'bad');
+      this.setMessage('Paste a game first.', 'bad');
       return false;
     }
     const outcome = await this.options.library.importPgnText(text, (p) => {
@@ -589,13 +593,13 @@ export class GamesList {
     const a = row.record.analysis;
     if (a?.summaryOnly) {
       const acc = row.accuracy === null ? '' : ` · ${row.accuracy.toFixed(1)}%`;
-      return `<span class="wc-games-badge wc-games-badge-done" data-analysis="advance" title="Reviewed in advance${a.depth ? ` at depth ${a.depth}` : ''}">Reviewed in advance${acc}</span>`;
+      return `<span class="wc-games-badge wc-games-badge-done" data-analysis="advance" title="Reviewed">Reviewed${acc}</span>`;
     }
     if (a) {
       const acc = row.accuracy === null ? '' : ` · ${row.accuracy.toFixed(1)}%`;
-      return `<span class="wc-games-badge wc-games-badge-done" data-analysis="analyzed" title="Reviewed on ${a.preset ? PRESET_LABEL[a.preset] : 'custom'}">Analyzed${acc}</span>`;
+      return `<span class="wc-games-badge wc-games-badge-done" data-analysis="analyzed" title="Reviewed on ${a.preset ? PRESET_LABEL[a.preset] : 'custom'}">Reviewed${acc}</span>`;
     }
-    return `<span class="wc-games-badge" data-analysis="none">Not analyzed</span>`;
+    return `<span class="wc-games-badge" data-analysis="none">Not reviewed</span>`;
   }
 
   private rowHtml(row: Row): string {
@@ -645,8 +649,7 @@ export class GamesList {
       this.els.empty.hidden = false;
       this.els.empty.textContent = 'No games match these filters.';
     } else {
-      this.els.empty.textContent =
-        'No games yet. Paste a PGN, drop .pgn files here, or capture games with the browser extension.';
+      this.els.empty.textContent = 'No games yet. Sync your Chess.com games in Settings, or paste a game.';
     }
     this.els.more.hidden = rows.length <= page.length;
     const active = activeFilters(this.filter);
@@ -713,6 +716,12 @@ export class GamesList {
     const el = this.els.extStatus;
     el.setAttribute('data-state', status.state);
     this.root.setAttribute('data-capture', status.state);
+    // The extension only talks to a local server, so the hosted site can never detect it: say nothing there (the
+    // Review-new-games switch stays). The status shows when the extension is detected or the app runs on this machine.
+    const showStatus = status.state === 'connected' || runsOnThisMachine();
+    for (const part of this.root.querySelectorAll<HTMLElement>('.wc-games-capture-dot, .wc-games-capture-text')) {
+      part.hidden = !showStatus;
+    }
     const accounts = this.options.library.getUserAccounts();
     const mine = accounts.length
       ? `Your accounts: ${accounts.map((a) => `${a.site === 'lichess' ? 'Lichess' : 'Chess.com'} ${a.username}`).join(' · ')}.`

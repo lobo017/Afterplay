@@ -30,7 +30,7 @@ export function mountGamesSettings(panel: SettingsPanel, library: GameLibrary, l
       <input type="text" class="wc-select wc-setting-text" autocomplete="off" spellcheck="false" maxlength="40" value="" data-testid="input-chesscom-username" />
     </label>
     <div class="wc-setting-more-accounts" data-testid="settings-more-accounts"></div>
-    ${switchRowHtml('toggle-auto-analyze', 'Auto-analyze new games', false, 'A Quick review of each new captured or imported game')}`;
+    ${switchRowHtml('toggle-auto-analyze', 'Review new games automatically', false, 'A Quick review of each new captured or imported game')}`;
   const q = <T extends HTMLElement>(id: string) => body.querySelector(`[data-testid="${id}"]`) as T;
   const lichess = q<HTMLInputElement>('input-lichess-username');
   const chesscom = q<HTMLInputElement>('input-chesscom-username');

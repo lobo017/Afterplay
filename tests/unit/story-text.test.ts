@@ -41,7 +41,7 @@ describe('story text', () => {
     const cards = Object.fromEntries(storyCards(s).map((c) => [c.id, c]));
     expect(cards.totals!.value).toBe(String(s.all.games));
     expect(cards.totals!.sentence).toContain(`${s.all.games} games`);
-    expect(cards.totals!.notes.join(' ')).toContain('1 stored game was not counted');
+    expect(cards.totals!.notes.join(' ')).toContain('1 pasted or bot game is left out');
     expect(cards.totals!.notes.join(' ')).toContain('one rule for both sites');
     expect(cards.chesscom!.value).toBe('30');
     expect(cards.bestWin!.value).toBe(s.all.bestWin!.opponentRating.toLocaleString('en-US'));
@@ -145,5 +145,31 @@ describe('the personal text', () => {
   it('treats empty text as none', () => {
     const cards = storyCards(stats(many), { intro: '   ', closing: null });
     expect(cards.every((c) => c.personal === null)).toBe(true);
+  });
+});
+
+describe('the notes about how the two sites differ', () => {
+  const cardsOf = (records: Parameters<typeof computeStoryStats>[0]) =>
+    Object.fromEntries(storyCards(stats(records)).map((c) => [c.id, c]));
+
+  it('are left out with one site', () => {
+    const one = cardsOf(run(25, 'a'));
+    expect(one.totals!.notes.join(' ')).not.toContain('one rule for both sites');
+    expect(one.trend!.notes.join(' ')).not.toContain('Ratings are never combined');
+  });
+
+  it('are shown with games from both sites (invented, different games on each)', () => {
+    const both = cardsOf([
+      ...run(20, 'c', (i) => ({ foe: FOES[i % FOES.length]!, variantSalt: `c${i}`, tc: '600+0' })),
+      ...run(20, 'x', (i) => ({ source: 'lichess', foe: FOES[i % FOES.length]!, variantSalt: `x${i}`, tc: '600+0' })),
+    ]);
+    expect(both.chesscom!.value).toBe('20');
+    expect(both.lichess!.value).toBe('20');
+    expect(both.totals!.notes.join(' ')).toContain(
+      'Time classes follow one rule for both sites, so a few games may be labelled differently on Chess.com or Lichess.',
+    );
+    expect(both.trend!.notes.join(' ')).toContain(
+      'Ratings are never combined across sites, and unrated games cannot be told apart on Chess.com.',
+    );
   });
 });

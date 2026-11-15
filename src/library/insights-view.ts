@@ -1,6 +1,7 @@
 import type { Color } from '../core/rules';
 import { hasSavedReview } from '../storage/db';
 import { storyGames } from '../story/stats';
+import { tapWord } from '../ui/pointer-words';
 import type { PuzzleRatingState } from '../trainers/puzzle-store';
 import type { GameFilter } from './game-rows';
 import { reviewedInAdvance, toRow, type GameRow } from './game-rows';
@@ -16,7 +17,6 @@ import {
   type ReviewedGameInput,
 } from './insights';
 import {
-  MIN_QUARTER_GAMES,
   NO_QUARTER_TEXT,
   accuracyEnds,
   accuracyPointLabel,
@@ -316,7 +316,7 @@ export class InsightsView {
 
     const motifList =
       motifs.length === 0
-        ? empty(reviewed.length === 0 ? needReviews : 'No named motifs behind your mistakes yet.')
+        ? empty(reviewed.length === 0 ? needReviews : 'Nothing to show yet.')
         : `<div class="wc-insight-rows" data-testid="chart-motifs">${motifs
             .slice(0, 8)
             .map((m) => {
@@ -363,16 +363,21 @@ export class InsightsView {
       );
     }
 
+    const tap = tapWord();
     this.root.innerHTML = `
-      <div class="wc-insights-head"><h2 class="wc-page-title">Insights</h2><span class="wc-games-summary" data-testid="insights-summary">${insightsSummary({ reviewed: reviewed.length, inAdvance, mine: mine.length })}</span></div>
+      <div class="wc-insights-head"><h2 class="wc-page-title">Insights</h2><span class="wc-games-summary" data-testid="insights-summary">${insightsSummary({ reviewed: reviewed.length, inAdvance, mine: mine.length, all: rows.length })}</span></div>
       <div class="wc-insights-grid">
-        <section class="wc-insight-card" aria-labelledby="ins-phase"><h3 id="ins-phase">Accuracy by game phase</h3><p class="wc-insight-hint">Mean accuracy of your moves. Opening: the first 10 moves; endgame: 6 pieces or fewer left. Click a bar for its moves, worst first.</p>${phaseChart}</section>
-        <section class="wc-insight-card" aria-labelledby="ins-blunders"><h3 id="ins-blunders">Blunders per 10 moves</h3><p class="wc-insight-hint">One point per reviewed game, oldest to newest. Click a point for its blunders.</p>${blunderChart}</section>
-        <section class="wc-insight-card" aria-labelledby="ins-motifs"><h3 id="ins-motifs">Most common motifs</h3><p class="wc-insight-hint">What was going on in your mistakes, blunders and misses. Click a row for the positions.</p>${motifList}</section>
-        <section class="wc-insight-card" aria-labelledby="ins-openings"><h3 id="ins-openings">Results by opening</h3><p class="wc-insight-hint">Your games by opening family. Click a segment for those games.</p>${openingList}</section>
-        <section class="wc-insight-card wc-insight-wide" aria-labelledby="ins-rating"><h3 id="ins-rating">Puzzle rating over time</h3><p class="wc-insight-hint">Your Glicko-2 rating after each rated puzzle${rating.games > 0 ? ` (${Math.round(rating.rating)} now, ${rating.games} played)` : ''}. Click a point to open that puzzle.</p>${ratingChart}</section>
-        <section class="wc-insight-card" aria-labelledby="ins-acc-time"><h3 id="ins-acc-time">Accuracy over time</h3><p class="wc-insight-hint">Your average accuracy by quarter, from games reviewed in advance or on this device. A quarter needs ${MIN_QUARTER_GAMES} reviewed games. Click a point for that quarter's games.</p><div data-testid="insight-time-accuracy">${this.timeChartHtml('accuracy')}</div></section>
-        <section class="wc-insight-card" aria-labelledby="ins-err-time"><h3 id="ins-err-time">Blunders and mistakes over time</h3><p class="wc-insight-hint">Per 10 of your moves, by quarter: blunders as the solid line with filled dots, mistakes as the dashed line with hollow dots. Click a point for that quarter's games.</p><div data-testid="insight-time-errors">${this.timeChartHtml('errors')}</div></section>
+        <section class="wc-insight-card" aria-labelledby="ins-phase"><h3 id="ins-phase">Accuracy by game phase</h3><p class="wc-insight-hint">How well you play each part of the game. ${tap} a bar to see the moves.</p>${phaseChart}</section>
+        ${
+          reviewed.length === 0
+            ? ''
+            : `<section class="wc-insight-card" aria-labelledby="ins-blunders"><h3 id="ins-blunders">Blunders per 10 moves</h3><p class="wc-insight-hint">One point per reviewed game, oldest to newest. ${tap} a point for its blunders.</p>${blunderChart}</section>
+        <section class="wc-insight-card" aria-labelledby="ins-motifs"><h3 id="ins-motifs">What goes wrong most</h3><p class="wc-insight-hint">${tap} a row to see the positions.</p>${motifList}</section>`
+        }
+        <section class="wc-insight-card" aria-labelledby="ins-openings"><h3 id="ins-openings">Results by opening</h3><p class="wc-insight-hint">${tap} a bar to see those games.</p>${openingList}</section>
+        <section class="wc-insight-card wc-insight-wide" aria-labelledby="ins-rating"><h3 id="ins-rating">Puzzle rating over time</h3><p class="wc-insight-hint">Your puzzle rating${rating.games > 0 ? ` (${Math.round(rating.rating)} now, ${rating.games} played)` : ''}. ${tap} a point to open the puzzle.</p>${ratingChart}</section>
+        <section class="wc-insight-card" aria-labelledby="ins-acc-time"><h3 id="ins-acc-time">Accuracy over time</h3><p class="wc-insight-hint">Your accuracy, three months at a time. ${tap} a point to see those games.</p><div data-testid="insight-time-accuracy">${this.timeChartHtml('accuracy')}</div></section>
+        <section class="wc-insight-card" aria-labelledby="ins-err-time"><h3 id="ins-err-time">Blunders and mistakes over time</h3><p class="wc-insight-hint">Solid line with filled dots: blunders. Dashed line with hollow dots: mistakes. Per 10 moves. ${tap} a point to see those games.</p><div data-testid="insight-time-errors">${this.timeChartHtml('errors')}</div></section>
       </div>
       <section class="wc-insight-detail" data-testid="insights-detail" aria-live="polite" hidden></section>`;
     this.detail = this.root.querySelector('[data-testid="insights-detail"]') as HTMLElement;

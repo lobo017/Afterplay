@@ -40,6 +40,7 @@ import {
 /** Icon and label for each class: the tree, the card and the counts all use these. */
 import { icon } from '../ui/components/icons';
 import { Menu } from '../ui/components/menu';
+import { tapWord, tapWordLower } from '../ui/pointer-words';
 
 export const CLASS_BADGE: Record<MoveClassification, { glyph: string; slug: string }> = {
   Brilliant: { glyph: '!!', slug: 'brilliant' },
@@ -342,10 +343,10 @@ export class ReviewPanel {
       <div class="wc-review-head">
         <div class="wc-review-intro" data-testid="review-intro">
           <h3 class="wc-review-intro-title">Review this game</h3>
-          <p class="wc-review-intro-text">Stockfish checks every move: your accuracy, the key moments, and what to play instead, explained one at a time.</p>
+          <p class="wc-review-intro-text">Every move is checked: your accuracy, the turning points, and what to play instead.</p>
         </div>
         <div class="wc-review-actions">
-          <select class="wc-select wc-select-sm" data-testid="select-review-preset" aria-label="Review depth">${presetOptions}</select>
+          <select class="wc-select wc-select-sm" data-testid="select-review-preset" aria-label="How thorough">${presetOptions}</select>
           <button type="button" class="wc-btn wc-btn-primary wc-review-start-btn" data-testid="btn-review-start">${icon('review')}<span data-testid="review-start-label">Start review</span></button>
           <button type="button" class="wc-btn wc-btn-danger" data-testid="btn-review-cancel" disabled>Cancel</button>
           <button type="button" class="wc-btn wc-btn-ghost" data-testid="btn-review-sample" title="Morphy vs. Duke Karl / Count Isouard, Paris 1858">Sample game</button>
@@ -393,7 +394,7 @@ export class ReviewPanel {
           <button type="button" class="wc-btn wc-btn-ghost wc-btn-sm" data-testid="btn-review-next-mistake" aria-label="Next mistake">${icon('next')}</button>
         </div>
         <div class="wc-review-chart-wrap">
-          <svg class="wc-review-chart" data-testid="review-chart" viewBox="0 0 ${CHART_W} ${CHART_H}" preserveAspectRatio="none" role="img" aria-label="White's win percentage through the game; click to jump to a move">
+          <svg class="wc-review-chart" data-testid="review-chart" viewBox="0 0 ${CHART_W} ${CHART_H}" preserveAspectRatio="none" role="img" aria-label="White's win percentage through the game; ${tapWordLower()} to jump to a move">
             <rect class="wc-review-chart-bg" x="0" y="0" width="${CHART_W}" height="${CHART_H}"></rect>
             <path class="wc-review-chart-area" data-testid="review-chart-area" d=""></path>
             <path class="wc-review-chart-line" d=""></path>
@@ -879,10 +880,10 @@ export class ReviewPanel {
     let details = '';
     switch (this.state) {
       case 'idle':
-        text = 'Not reviewed yet. Choose a depth and press Start review.';
+        text = `Not reviewed yet. ${tapWord()} Start review.`;
         break;
       case 'running':
-        text = `Reviewing (${PRESET_LABEL[this.preset]})… ${done} / ${total || '…'} positions`;
+        text = `Reviewing… move ${done} of ${total || '…'}`;
         break;
       case 'done': {
         // Short line; the details go in the tooltip
@@ -990,7 +991,7 @@ export class ReviewPanel {
     this.els.chartLabel.textContent = `${p === 'b' ? 'Black' : 'White'} ↑`;
     this.els.chart.setAttribute(
       'aria-label',
-      `${p === 'b' ? 'Black' : 'White'}'s win percentage through the game; click to jump to a move`,
+      `${p === 'b' ? 'Black' : 'White'}'s win percentage through the game; ${tapWordLower()} to jump to a move`,
     );
     this.els.chart.setAttribute('data-perspective', p);
     const review = this.review;

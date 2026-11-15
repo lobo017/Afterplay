@@ -165,6 +165,11 @@ player's side only), so the Story can show accuracy and mistakes. The plan is "S
 - **Open:** the Story's recount costs about 36–63 ms for one site and 150–290 ms for two on large histories.
 - **Open:** the real iPhone check and the first Library open time with the reviewed history file are still to do.
 
+**Wording pass, step 1 of the gift round (2026-11-15, not committed; no Juno, no push).** Plan: friendlier, less technical text on Games, Insights, Story, Review, Play, Analysis, Train and Settings.
+- **Files:** new `src/ui/pointer-words.ts` (`tapWord()`: "Tap" if `(pointer: coarse)` matches, else "Click"); `game-rows.ts`, `games-list.ts`, `insights-review.ts`, `insights-view.ts`, `story/text.ts`, `story/view.ts`, `review-panel.ts`, `play-controller.ts`, `analysis-controller.ts`, `engine-lines-panel.ts`, `visualization-trainer.ts`, `puzzle-trainer.ts`, `settings-panel.ts` (+ CSS), `settings-data-section.ts`, `pwa.ts`, `app.ts`; tests and `scripts/check-hosted.mjs` in step.
+- **Decisions:** the Games line and the row cell use one word, "reviewed" (device or in advance; they never overlap). The capture status (dot, text) shows only when the extension is connected or on localhost/127.0.0.1; the Auto-analyze switch stays. The "Technical details" fold is a plain `<details>`. The offline status reads "Ready to use offline"; the file count moved to `data-files` on `stat-offline` (the offline test and `check-hosted` read it there). The Insights game-by-game blunders card and the "What goes wrong most" card are hidden until a game is reviewed on the device. Quarter labels read "Apr-Jun 2023".
+- **Deviation:** `phase6b-games.spec.ts:55` (same test as the banner lines) changed with the summary wording; the banner assertions are untouched.
+
 ## Open items from earlier phases
 
 - **Scenario-2 `perf:drag`** (analysis board, MultiPV 5, ghosts, navigation sweep) passed clean on Juno on the final code (p95 16.67 ms, 0 dropped).

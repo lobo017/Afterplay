@@ -40,6 +40,7 @@ import {
   trainerLayoutHtml,
   type SaveOutcome,
 } from './trainer-kit';
+import { isTouchScreen, tapWord } from '../ui/pointer-words';
 
 /** A game of mine to guess through. */
 export interface GuessGame {
@@ -202,7 +203,7 @@ export class VisualizationTrainer {
           <p class="wc-trainer-text wc-trainer-muted" data-testid="viz-coord-best"></p>
         </section>
         <section class="wc-tab-panel" ${tabPanelAttrs('viz', 'blindfold', 'coordinates')}>
-          <p class="wc-trainer-text">The moves are read out one at a time with the board empty. Then say where pieces stand by clicking their squares.</p>
+          <p class="wc-trainer-text">The moves are read out one at a time with the board empty. Then say where pieces stand by ${isTouchScreen() ? 'tapping' : 'clicking'} their squares.</p>
           <div class="wc-puzzle-card wc-trainer-card">
             <div class="wc-status-header">
               <div class="wc-status-banner" data-testid="viz-blind-status" role="status" aria-live="polite" data-state="idle">Ready</div>
@@ -696,7 +697,7 @@ export class VisualizationTrainer {
       void this.finishBlindfold();
       return;
     }
-    this.setBlindStatus('Click the square', 'asking');
+    this.setBlindStatus(`${tapWord()} the square`, 'asking');
     this.els.blindStage.textContent = q.text;
     this.els.blindProgress.textContent = `Q${this.blindQuestion + 1}/${drill.questions.length}`;
     this.els.blindFeedback.textContent = '';

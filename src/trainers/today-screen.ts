@@ -138,9 +138,9 @@ export class TodayScreen {
         </article>
         ${drillCards}
         <article class="wc-today-card" data-testid="today-games">
-          <div class="wc-today-card-label">Games not analyzed yet</div>
+          <div class="wc-today-card-label">Games not reviewed yet</div>
           <div class="wc-today-count" data-testid="today-games-count">–</div>
-          <p class="wc-today-detail" data-testid="today-games-detail">Analyzed games turn your mistakes into puzzles.</p>
+          <p class="wc-today-detail" data-testid="today-games-detail">Reviewed games turn your mistakes into puzzles.</p>
           <button type="button" class="wc-btn wc-btn-secondary" data-testid="btn-today-games">Open the Games list</button>
         </article>
       </div>
@@ -259,7 +259,7 @@ export class TodayScreen {
     this.els.mistakesDetail.textContent =
       s.totalPersonal > 0
         ? `${plural(s.totalPersonal, 'puzzle')} from my reviewed games in all.`
-        : 'None yet: Mistakes, Blunders and Misses in my analyzed games become puzzles.';
+        : 'None yet: Mistakes, Blunders and Misses in my reviewed games become puzzles.';
     this.els.startMistakes.disabled = s.newPersonal === 0;
 
     this.els.rated.textContent = String(s.ratedToday);

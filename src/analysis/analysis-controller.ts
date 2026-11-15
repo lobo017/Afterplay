@@ -36,6 +36,7 @@ import { icon } from '../ui/components/icons';
 import { Sheet } from '../ui/components/sheet';
 import { Tabs, tabListHtml, tabPanelAttrs } from '../ui/components/tabs';
 import { detectOpponentThreat, type ThreatDetectionResult } from './threat-detector';
+import { tapWordLower } from '../ui/pointer-words';
 
 export type NavAnimationMode = 'off' | 'fast' | 'normal';
 
@@ -1398,7 +1399,7 @@ export class AnalysisController {
   private renderMoveTree(): void {
     const root = this.gameTree.root;
     if (root.children.length === 0 && !root.comment) {
-      this.treeContainerEl.innerHTML = `<div class="wc-move-empty">Play moves on the board, click an engine line, or load a PGN to build variations.</div>`;
+      this.treeContainerEl.innerHTML = `<div class="wc-move-empty">Play moves on the board, or ${tapWordLower()} a suggested line.</div>`;
       this.treeNodeEls.clear();
       this.treeNodeOffsets = null;
       this.activeTreeNodeId = null;

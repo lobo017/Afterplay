@@ -71,11 +71,12 @@ export function reviewedInAdvance(row: Pick<GameRow, 'record' | 'color'>): boole
 
 const count = (v: number): string => v.toLocaleString('en-US');
 
-/** "4,623 games · 12 analyzed · 4,580 reviewed in advance"; the last part only when there are some. */
+/**
+ * "4,623 games · 4,580 reviewed". Reviewed means on this device (`analyzed`) or in advance (`inAdvance`); the two never
+ * overlap, because a review made here replaces the one made in advance.
+ */
 export function gamesSummary(c: { games: number; analyzed: number; inAdvance: number }): string {
-  return `${count(c.games)} game${c.games === 1 ? '' : 's'} · ${count(c.analyzed)} analyzed${
-    c.inAdvance > 0 ? ` · ${count(c.inAdvance)} reviewed in advance` : ''
-  }`;
+  return `${count(c.games)} game${c.games === 1 ? '' : 's'} · ${count(c.analyzed + c.inAdvance)} reviewed`;
 }
 
 /** When each stored game was played, from its PGN's UTC headers (parsed once per record). */

@@ -31,9 +31,13 @@ export class SettingsPanel {
   }
 
   /** What the service worker says about offline use (shown in About & diagnostics). */
-  public setOfflineStatus(text: string): void {
+  public setOfflineStatus(text: string, cachedFiles: number | null = null): void {
     const el = this.sheet.body.querySelector('[data-testid="stat-offline"]');
-    if (el) el.textContent = text;
+    if (!el) return;
+    el.textContent = text;
+    // The number of cached files is no longer in the words; tests (and anyone inspecting) read it here
+    if (cachedFiles === null) el.removeAttribute('data-files');
+    else el.setAttribute('data-files', String(cachedFiles));
   }
 
   /** Whether saved data is protected from being cleared (shown in About & diagnostics). */
@@ -89,6 +93,8 @@ export class SettingsPanel {
       : 'Single-threaded Fallback';
     const body = this.addSection('about', 'About &amp; diagnostics', 1000);
     body.innerHTML = `
+      <details class="wc-about-technical" data-testid="about-technical">
+      <summary class="wc-about-technical-summary">Technical details</summary>
       <div class="wc-about-badges">
         <span class="wc-badge" data-testid="isolation-badge">
           <span class="wc-dot ${isolated ? '' : 'wc-dot-warn'}"></span>
@@ -118,6 +124,7 @@ export class SettingsPanel {
           )
           .join('')}
       </dl>
+      </details>
       <div class="wc-setting-row">
         <span class="wc-setting-label">Add to Home Screen
           <span class="wc-setting-hint">How to install the app on an iPhone or iPad, so Safari keeps your data</span></span>

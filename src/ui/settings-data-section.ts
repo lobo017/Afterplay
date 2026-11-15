@@ -105,7 +105,7 @@ export function backupFileName(now: Date): string {
 export function mountDataSection(options: DataSectionOptions): DataSection {
   const body = options.panel.addSection('data', 'Your data', options.order);
   body.innerHTML = `
-    <p class="wc-setting-hint wc-setting-hint-block">Everything stays on this device. A backup is one JSON file with your games, reviews, puzzles and their schedule, and all of these settings.</p>
+    <p class="wc-setting-hint wc-setting-hint-block">Everything stays on this device. A backup is one file with your games, reviews, puzzles and settings.</p>
     <p class="wc-setting-hint wc-setting-hint-block" data-testid="sync-hint">Sync adds your new Chess.com games, for the username under Your games. It is the only time Afterplay uses the network, and only when you press the button. Chess.com can take up to 12 hours to list a finished game. A sync never deletes anything.</p>
     <div class="wc-action-bar wc-action-bar-wrap">
       <button type="button" class="wc-btn wc-btn-secondary wc-btn-inline" data-testid="btn-backup-download">${icon('download')}Download a backup</button>

@@ -14,8 +14,7 @@ const stats = (records: Parameters<typeof computeStoryStats>[0]) => computeStory
 const cardsOf = (records: Parameters<typeof computeStoryStats>[0]) =>
   Object.fromEntries(storyCards(stats(records)).map((c) => [c.id, c]));
 
-const FOOT_START =
-  "Accuracy is the engine's measure (Lichess's formula, Stockfish 17.1 at depth 18); Chess.com's own accuracy can differ. ";
+const FOOT_START = "Accuracy here is measured by the app, so it can differ a little from Chess.com's number. ";
 const FOOT_END =
   ' A game you review here replaces its earlier numbers, and a timed review can give a slightly different number for the same game.';
 /** The footnote: the last sentence (a game reviewed here replaces its numbers) only when a game was reviewed on the device. */
@@ -100,7 +99,7 @@ describe('the Accuracy card', () => {
     expect(c.notes).toEqual([
       'As White 70.0% over 12 games; as Black 80.0% over 12 games.',
       'Your accuracy averaged 70.0% in the 12 games you won and 80.0% in the 12 games you lost.',
-      footnote('24 of 24 counted games have an engine review: 24 reviewed in advance'),
+      footnote('Based on 24 of your 24 games'),
     ]);
   });
 
@@ -111,7 +110,7 @@ describe('the Accuracy card', () => {
     ];
     const notes = cardsOf(lopsided).accuracy!.notes;
     expect(notes).toHaveLength(1);
-    expect(notes[0]).toContain('have an engine review');
+    expect(notes[0]).toContain('Based on');
   });
 
   it('counts a game reviewed here in the footnote, and drops the device clause when there is none', () => {
@@ -120,16 +119,9 @@ describe('the Accuracy card', () => {
       ...batch(3, 'dev', () => ({ review: { advance: false, preset: 'quick' as const } })),
       ...run(6, 'plain'),
     ];
-    expect(cardsOf(mixed).accuracy!.notes.at(-1)).toBe(
-      footnote(
-        '24 of 30 counted games have an engine review: 21 reviewed in advance and 3 on this device with its timed review',
-        true,
-      ),
-    );
+    expect(cardsOf(mixed).accuracy!.notes.at(-1)).toBe(footnote('Based on 24 of your 30 games', true));
     const onlyDevice = batch(25, 'o', () => ({ review: { advance: false, preset: 'quick' as const } }));
-    expect(cardsOf(onlyDevice).accuracy!.notes.at(-1)).toBe(
-      footnote('25 of 25 counted games have an engine review: 25 on this device with its timed review', true),
-    );
+    expect(cardsOf(onlyDevice).accuracy!.notes.at(-1)).toBe(footnote('Based on 25 of your 25 games', true));
   });
 
   it('says that a game reviewed here replaces its numbers only when one was reviewed on the device', () => {
@@ -147,12 +139,7 @@ describe('the Accuracy card', () => {
     ];
     const few = cardsOf(fewDevice).accuracy!;
     expect(few.sentence).toBe('Not enough reviewed games yet (12 of 20).');
-    expect(few.notes).toEqual([
-      footnote(
-        '12 of 12 counted games have an engine review: 10 reviewed in advance and 2 on this device with its timed review',
-        true,
-      ),
-    ]);
+    expect(few.notes).toEqual([footnote('Based on 12 of your 12 games', true)]);
     expect(cardsOf(batch(12, 'r')).accuracy!.notes.join(' ')).not.toContain(REPLACES);
   });
 
@@ -162,13 +149,13 @@ describe('the Accuracy card', () => {
     expect(c12.value).toBe('');
     expect(c12.sentence).toBe('Not enough reviewed games yet (12 of 20).');
     expect(c12.rows).toEqual([]);
-    expect(c12.notes).toEqual([footnote('12 of 15 counted games have an engine review: 12 reviewed in advance')]);
+    expect(c12.notes).toEqual([footnote('Based on 12 of your 15 games')]);
   });
 
   it('uses the singular for one game', () => {
     const c1 = cardsOf(batch(1, 'r')).accuracy!;
     expect(c1.sentence).toBe('Not enough reviewed games yet (1 of 20).');
-    expect(c1.notes[0]).toBe(footnote('1 of 1 counted game has an engine review: 1 reviewed in advance'));
+    expect(c1.notes[0]).toBe(footnote('Based on 1 of your 1 game'));
   });
 
   it('does not repeat the footnote on the Mistakes card', () => {
@@ -185,8 +172,8 @@ describe('the Mistakes card', () => {
     expect(c.rows).toEqual([{ label: '2026 · 24 games', detail: '75.0% accuracy · 1.5 blunders a game' }]);
     expect(c.notes).toEqual([
       'Mistakes: 3.0 a game. Inaccuracies: 4.0 a game. Your reviewed games average 28 of your moves.',
-      'The engine marked 2 of your moves Brilliant and 5 Great.',
-      'In the first half of your reviewed games (to January 2026) your accuracy was 70.0% and you blundered 2.0 times a game; in the second half, 80.0% and 1.0.',
+      '2 Brilliant moves and 5 Great moves.',
+      'Early on: 70.0% accuracy and 2.0 blunders a game. Lately: 80.0% and 1.0.',
     ]);
   });
 
@@ -194,7 +181,7 @@ describe('the Mistakes card', () => {
     const undated = cardsOf(batch(24, 'u', () => ({ game: { at: null }, review: { brilliant: 1 } }))).mistakes!;
     expect(undated.rows).toEqual([]);
     expect(undated.notes).toHaveLength(2);
-    expect(undated.notes.join(' ')).not.toContain('first half');
+    expect(undated.notes.join(' ')).not.toContain('Early on');
   });
 
   it('leaves out the Brilliant and Great note when both counts are zero, and keeps it when either is above zero', () => {
@@ -202,9 +189,9 @@ describe('the Mistakes card', () => {
     expect(none.notes.join(' ')).not.toContain('Brilliant');
     expect(none.notes).toHaveLength(2); // the classes note and the halves note
     const onlyBrilliant = cardsOf(batch(24, 'z', () => ({ review: { brilliant: 1 } }))).mistakes!;
-    expect(onlyBrilliant.notes).toContain('The engine marked 24 of your moves Brilliant and 0 Great.');
+    expect(onlyBrilliant.notes).toContain('24 Brilliant moves and 0 Great moves.');
     const onlyGreat = cardsOf(batch(24, 'z', (i) => ({ review: { great: i === 0 ? 1 : 0 } }))).mistakes!;
-    expect(onlyGreat.notes).toContain('The engine marked 0 of your moves Brilliant and 1 Great.');
+    expect(onlyGreat.notes).toContain('0 Brilliant moves and 1 Great move.');
   });
 });
 
@@ -215,8 +202,8 @@ describe('the Biggest swing card', () => {
   it('names the lowest win%, the class and month, then notes the pool and how the game was reviewed', () => {
     const c = cardsOf([...pad(20), win('w1', 3)]).swing!;
     expect(c.value).toBe('3%');
-    expect(c.sentence).toBe('You won a game the engine had at 3% for you, a blitz game in March 2024.');
-    expect(c.notes).toEqual(['Chosen from 1 reviewed win.', 'This game was reviewed in advance at depth 18.']);
+    expect(c.sentence).toBe('You won a game where you had only a 3% chance, a blitz game in March 2024.');
+    expect(c.notes).toEqual(['Out of 1 win.']);
   });
 
   it('rounds the percentage and says "under 1%" below 1', () => {
@@ -230,35 +217,31 @@ describe('the Biggest swing card', () => {
       expect(cardsOf([...pad(20), win('w1', low)]).swing!.value).toBe(text);
     }
     expect(cardsOf([...pad(20), win('w1', 0.4)]).swing!.sentence).toBe(
-      'You won a game the engine had at under 1% for you, a blitz game in March 2024.',
+      'You won a game where you had less than a 1% chance, a blitz game in March 2024.',
     );
   });
 
   it('puts the pool first, then how many other wins fell that low, in the singular and the plural', () => {
     const two = cardsOf([...pad(20), win('a', 3), win('b', 3)]).swing!;
-    expect(two.notes).toEqual([
-      'Chosen from 2 reviewed wins.',
-      '1 other win also fell that low.',
-      'This game was reviewed in advance at depth 18.',
-    ]);
+    expect(two.notes).toEqual(['Out of 2 wins.', '1 other win also fell that low.']);
     const three = cardsOf([...pad(20), win('a', 3), win('b', 3), win('c', 3)]).swing!;
-    expect(three.notes.slice(0, 2)).toEqual(['Chosen from 3 reviewed wins.', '2 other wins also fell that low.']);
+    expect(three.notes.slice(0, 2)).toEqual(['Out of 3 wins.', '2 other wins also fell that low.']);
   });
 
   it('names a review made on this device by its preset', () => {
     const dev = reviewed(game({ id: 'd', at: utc(2024, 3, 10) }), { low: 3, advance: false, preset: 'quick' });
     expect(cardsOf([...pad(20), dev]).swing!.notes).toEqual([
-      'Chosen from 1 reviewed win.',
+      'Out of 1 win.',
       'This game was reviewed on this device (Quick).',
     ]);
   });
 
   it('builds the clause from what the game has: class and date, date only, class only, neither', () => {
     const sentence = (extra: Partial<GameSpec>) => cardsOf([...pad(20), win('w1', 3, extra)]).swing!.sentence;
-    expect(sentence({})).toBe('You won a game the engine had at 3% for you, a blitz game in March 2024.');
-    expect(sentence({ tc: '-' })).toBe('You won a game the engine had at 3% for you, a game in March 2024.');
-    expect(sentence({ at: null })).toBe('You won a game the engine had at 3% for you, a blitz game.');
-    expect(sentence({ at: null, tc: '-' })).toBe('You won a game the engine had at 3% for you.');
+    expect(sentence({})).toBe('You won a game where you had only a 3% chance, a blitz game in March 2024.');
+    expect(sentence({ tc: '-' })).toBe('You won a game where you had only a 3% chance, a game in March 2024.');
+    expect(sentence({ at: null })).toBe('You won a game where you had only a 3% chance, a blitz game.');
+    expect(sentence({ at: null, tc: '-' })).toBe('You won a game where you had only a 3% chance.');
   });
 
   it('says "No reviewed win yet." with no value and no notes when no reviewed game was won', () => {
@@ -282,10 +265,7 @@ describe('the Most accurate game card', () => {
     expect(c.sentence).toBe(
       'Your most accurate game was 97.8%: a rapid win against a player rated 1,640, in June 2022, over 34 of your moves.',
     );
-    expect(c.notes).toEqual([
-      'Chosen from 21 reviewed games of 25 moves or more.',
-      'This game was reviewed in advance at depth 18.',
-    ]);
+    expect(c.notes).toEqual(['Out of 21 games of 25 moves or more.']);
   });
 
   it('says draw or loss, and leaves out what the game does not have', () => {
@@ -296,9 +276,7 @@ describe('the Most accurate game card', () => {
   });
 
   it('uses the singular for a pool of one', () => {
-    expect(cardsOf([...pad(20, 20), best()]).bestGame!.notes[0]).toBe(
-      'Chosen from 1 reviewed game of 25 moves or more.',
-    );
+    expect(cardsOf([...pad(20, 20), best()]).bestGame!.notes[0]).toBe('Out of 1 game of 25 moves or more.');
   });
 
   it('is left out when no reviewed game has 25 moves', () => {
@@ -388,7 +366,7 @@ describe('the newest years on the Mistakes card', () => {
     expect(cards.accuracy!.value).toBe('72.5%');
     // The first 30 games are the years 2020 to 2022 (the last of them on 10 March 2022), the other 30 the newest three
     expect(cards.mistakes!.notes.at(-1)).toBe(
-      'In the first half of your reviewed games (to March 2022) your accuracy was 65.0% and you blundered 4.0 times a game; in the second half, 80.0% and 1.0.',
+      'Early on: 65.0% accuracy and 4.0 blunders a game. Lately: 80.0% and 1.0.',
     );
   });
 });

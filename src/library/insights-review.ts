@@ -13,7 +13,7 @@ export const MIN_QUARTER_GAMES = 10;
 export interface QuarterPoint {
   year: number;
   quarter: 1 | 2 | 3 | 4;
-  /** "2023 Q2" */
+  /** "Apr-Jun 2023" */
   label: string;
   /** The quarter's first and last day, "2023-04-01" and "2023-06-30" (the Games list's date filter). */
   from: string;
@@ -49,6 +49,11 @@ export function quarterOfDay(day: string): { year: number; quarter: Quarter } | 
   if (month < 1 || month > 12) return null;
   return { year: Number(m[1]), quarter: (Math.floor((month - 1) / 3) + 1) as Quarter };
 }
+
+const QUARTER_MONTHS = ['Jan-Mar', 'Apr-Jun', 'Jul-Sep', 'Oct-Dec'] as const;
+/** "Apr-Jun 2023" */
+export const quarterLabel = (p: Pick<QuarterPoint, 'year' | 'quarter'>): string =>
+  `${QUARTER_MONTHS[p.quarter - 1]} ${p.year}`;
 
 export const quarterKey = (p: Pick<QuarterPoint, 'year' | 'quarter'>): string => `${p.year}-Q${p.quarter}`;
 /** A position on a time axis that keeps empty quarters as gaps. */
@@ -88,7 +93,7 @@ export function reviewQuarters(games: readonly StoryGame[]): ReviewQuarters {
     .map((e) => ({
       year: e.year,
       quarter: e.quarter,
-      label: `${e.year} Q${e.quarter}`,
+      label: quarterLabel(e),
       from: `${e.year}-${FIRST_DAY[e.quarter - 1]}`,
       to: `${e.year}-${LAST_DAY[e.quarter - 1]}`,
       games: e.games,
@@ -108,15 +113,15 @@ export function quarterFilter(p: Pick<QuarterPoint, 'from' | 'to'>): Partial<Gam
 
 const one = (v: number): string => v.toFixed(1);
 
-/** "Needs 20 reviewed games (4 so far)." */
+/** "Needs 20 reviewed games. You have 4." */
 export const needsReviewedText = (reviewed: number): string =>
-  `Needs ${MIN_REVIEWED_GAMES} reviewed games (${n(reviewed)} so far).`;
-export const NO_QUARTER_TEXT = `No quarter has ${MIN_QUARTER_GAMES} reviewed games yet.`;
+  `Needs ${MIN_REVIEWED_GAMES} reviewed games. You have ${n(reviewed)}.`;
+export const NO_QUARTER_TEXT = 'Not enough games in any 3 months yet.';
 
-/** "2023 Q2: 79.4% over 212 games" */
+/** "Apr-Jun 2023: 79.4% over 212 games" */
 export const accuracyPointLabel = (p: QuarterPoint): string =>
   `${p.label}: ${one(p.accuracy)}% over ${n(p.games)} games`;
-/** "2023 Q2: 0.8 blunders and 1.7 mistakes per 10 moves over 212 games" */
+/** "Apr-Jun 2023: 0.8 blunders and 1.7 mistakes per 10 moves over 212 games" */
 export const errorsPointLabel = (p: QuarterPoint): string =>
   `${p.label}: ${one(p.blundersPer10)} blunders and ${one(p.mistakesPer10)} mistakes per 10 moves over ${n(p.games)} games`;
 
@@ -135,23 +140,21 @@ export function errorsEnds(points: readonly QuarterPoint[]): string | null {
   return `From ${a.label} (${one(a.blundersPer10)} blunders, ${one(a.mistakesPer10)} mistakes) to ${b.label} (${one(b.blundersPer10)} blunders, ${one(b.mistakesPer10)} mistakes), per 10 moves.`;
 }
 
-/** The header line: full reviews, then (only when there are some) games reviewed in advance, then all of mine. */
-export function insightsSummary(c: { reviewed: number; inAdvance: number; mine: number }): string {
-  return `${n(c.reviewed)} reviewed game${c.reviewed === 1 ? '' : 's'} of yours${
-    c.inAdvance > 0 ? ` · ${n(c.inAdvance)} reviewed in advance` : ''
-  } · ${n(c.mine)} of yours in all`;
+/**
+ * The header line: "4,623 games · 4,535 reviewed". Reviewed means on this device or in advance (the two never overlap);
+ * with an empty library "No games yet", with games but none marked mine "No games of yours yet".
+ */
+export function insightsSummary(c: { reviewed: number; inAdvance: number; mine: number; all: number }): string {
+  if (c.all === 0) return 'No games yet';
+  if (c.mine === 0) return 'No games of yours yet';
+  return `${n(c.mine)} game${c.mine === 1 ? '' : 's'} · ${n(c.reviewed + c.inAdvance)} reviewed`;
 }
 
-/** The empty text of the old cards (they need a full review made here). */
-export function needReviewsText(c: { inAdvance: number; noneMarked: boolean }): string {
-  if (c.inAdvance > 0) {
-    const advance =
-      c.inAdvance === 1
-        ? '1 game was reviewed in advance; its numbers are below.'
-        : `${n(c.inAdvance)} games were reviewed in advance; their numbers are below.`;
-    return `These need a game reviewed on this device (Games › Analyze). ${advance}`;
-  }
-  return `Review some of your games (Games › Analyze) to see this.${
-    c.noneMarked ? ' None of your games are marked yours yet: set your usernames in Settings › Your games.' : ''
+/** The empty text of the cards that need a game reviewed on this device. */
+export function needReviewsText(c: { noneMarked: boolean; inAdvance?: number }): string {
+  return `Review a game to see this.${
+    c.noneMarked && !(c.inAdvance && c.inAdvance > 0)
+      ? ' None of your games are marked yours yet: set your usernames in Settings › Your games.'
+      : ''
   }`;
 }

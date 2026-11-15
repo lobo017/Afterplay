@@ -25,22 +25,18 @@ const advance = (id: string, at: number, o: Parameters<typeof reviewed>[1] = {},
 
 describe('gamesSummary', () => {
   it('keeps today’s text when nothing was reviewed in advance', () => {
-    expect(gamesSummary({ games: 2, analyzed: 0, inAdvance: 0 })).toBe('2 games · 0 analyzed');
-    expect(gamesSummary({ games: 1, analyzed: 1, inAdvance: 0 })).toBe('1 game · 1 analyzed');
-    expect(gamesSummary({ games: 0, analyzed: 0, inAdvance: 0 })).toBe('0 games · 0 analyzed');
+    expect(gamesSummary({ games: 2, analyzed: 0, inAdvance: 0 })).toBe('2 games · 0 reviewed');
+    expect(gamesSummary({ games: 1, analyzed: 1, inAdvance: 0 })).toBe('1 game · 1 reviewed');
+    expect(gamesSummary({ games: 0, analyzed: 0, inAdvance: 0 })).toBe('0 games · 0 reviewed');
   });
 
   it('adds the games reviewed in advance only when there are some, and uses the singular for one game', () => {
-    expect(gamesSummary({ games: 1, analyzed: 0, inAdvance: 1 })).toBe('1 game · 0 analyzed · 1 reviewed in advance');
-    expect(gamesSummary({ games: 12, analyzed: 3, inAdvance: 9 })).toBe(
-      '12 games · 3 analyzed · 9 reviewed in advance',
-    );
+    expect(gamesSummary({ games: 1, analyzed: 0, inAdvance: 1 })).toBe('1 game · 1 reviewed');
+    expect(gamesSummary({ games: 12, analyzed: 3, inAdvance: 9 })).toBe('12 games · 12 reviewed');
   });
 
   it('writes thousands separators', () => {
-    expect(gamesSummary({ games: 4623, analyzed: 1, inAdvance: 4579 })).toBe(
-      '4,623 games · 1 analyzed · 4,579 reviewed in advance',
-    );
+    expect(gamesSummary({ games: 4623, analyzed: 1, inAdvance: 4579 })).toBe('4,623 games · 4,580 reviewed');
   });
 });
 
@@ -71,14 +67,14 @@ describe('which games count as reviewed in advance', () => {
       advance('l1', utc(2026, 1), {}, { source: 'lichess' }),
       advance('l2', utc(2026, 2), {}, { source: 'lichess' }),
     ];
-    expect(summaryOf(rs)).toBe('3 games · 0 analyzed · 3 reviewed in advance');
+    expect(summaryOf(rs)).toBe('3 games · 3 reviewed');
   });
 });
 
 describe('a game reviewed on this device replaces its summary', () => {
   it('moves from "reviewed in advance" to "analyzed", and counts once', () => {
     const batch = Array.from({ length: 12 }, (_, i) => advance(`g${i}`, utc(2026, 1 + (i % 6), 5)));
-    expect(summaryOf(batch)).toBe('12 games · 0 analyzed · 12 reviewed in advance');
+    expect(summaryOf(batch)).toBe('12 games · 12 reviewed');
     // The same game, now with a full review saved here (what saveReview writes: no summaryOnly)
     const device = reviewed(game({ id: 'g3', at: utc(2026, 4, 5), variantSalt: 'g3' }), {
       advance: false,
@@ -86,7 +82,7 @@ describe('a game reviewed on this device replaces its summary', () => {
     });
     const after = batch.map((r) => (r.id === device.id ? device : r));
     expect(after).toHaveLength(12);
-    expect(summaryOf(after)).toBe('12 games · 1 analyzed · 11 reviewed in advance');
+    expect(summaryOf(after)).toBe('12 games · 12 reviewed');
   });
 });
 
@@ -97,7 +93,7 @@ describe('the summary covers the whole library, not the filtered list', () => {
       advance(`m${i}`, utc(2026, 1 + Math.floor(i / 4), 10 + (i % 4)), { accuracy: 60 + i }),
     );
     const before = summaryOf(records);
-    expect(before).toBe('24 games · 0 analyzed · 24 reviewed in advance');
+    expect(before).toBe('24 games · 24 reviewed');
     const rows = records.map((r) => toRow(r, mine));
 
     // Two months: February and March (8 games)
@@ -123,7 +119,7 @@ describe('against the Story and Insights', () => {
     const rs = Array.from({ length: 25 }, (_, i) => advance(`s${i}`, utc(2026, 1 + (i % 5), 3 + i)));
     const story = computeStoryStats(rs, mine, NOW).all.review.inAdvance;
     expect(story).toBe(25);
-    expect(summaryOf(rs)).toBe(`25 games · 0 analyzed · ${story} reviewed in advance`);
+    expect(summaryOf(rs)).toBe(`25 games · ${story} reviewed`);
   });
 
   it('is higher by exactly the reviewed games the Story leaves out (unfinished, Chess960)', () => {
@@ -139,7 +135,7 @@ describe('against the Story and Insights', () => {
     const rs = [...counted, ...left];
     const story = computeStoryStats(rs, mine, NOW).all.review.inAdvance;
     expect(story).toBe(20);
-    expect(summaryOf(rs)).toBe(`25 games · 0 analyzed · ${story + left.length} reviewed in advance`);
+    expect(summaryOf(rs)).toBe(`25 games · ${story + left.length} reviewed`);
   });
 
   it('is the number the Insights header uses: games of mine passing the same test', () => {
@@ -150,6 +146,6 @@ describe('against the Story and Insights', () => {
     const rows = rs.map((r) => toRow(r, mine));
     const insightsCount = rows.filter((r) => r.color !== null).filter(reviewedInAdvance).length;
     expect(insightsCount).toBe(6);
-    expect(summaryOf(rs)).toBe('7 games · 0 analyzed · 6 reviewed in advance');
+    expect(summaryOf(rs)).toBe('7 games · 6 reviewed');
   });
 });

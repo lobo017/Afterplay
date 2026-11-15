@@ -123,8 +123,10 @@ try {
 
   // 2. The service worker caches the build
   const offlineText = await waitFor(async () => {
-    const t = await page.getByTestId('stat-offline').textContent();
-    return /^Ready: all \d+ files are cached$/.test(t ?? '') ? t : undefined;
+    const stat = page.getByTestId('stat-offline');
+    const t = await stat.textContent();
+    const files = await stat.getAttribute('data-files');
+    return t === 'Ready to use offline' && /^\d+$/.test(files ?? '') ? `${t} (${files} files are cached)` : undefined;
   }, 180_000);
   check('service worker cached the build', Boolean(offlineText), offlineText ?? 'not ready within 3 min');
   check('service worker controls the page', await page.evaluate(() => navigator.serviceWorker.controller !== null));
@@ -299,9 +301,11 @@ try {
   // The second visit: by now the service worker controls this browser and answers for the link itself. What it
   // serves is read as it arrives, before the app's own scripts touch the title or the manifest link.
   const linkWorker = await waitFor(async () => {
-    const t = await link.getByTestId('stat-offline').textContent();
+    const stat = link.getByTestId('stat-offline');
+    const t = await stat.textContent();
     return (
-      /^Ready: all \d+ files are cached$/.test(t ?? '') &&
+      t === 'Ready to use offline' &&
+      /^\d+$/.test((await stat.getAttribute('data-files')) ?? '') &&
       (await link.evaluate(() => navigator.serviceWorker.controller !== null))
     );
   }, 180_000);

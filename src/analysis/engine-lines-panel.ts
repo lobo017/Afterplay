@@ -1,6 +1,7 @@
 import { RulesAdapter, type Color, type ExecutedMove } from '../core/rules';
 import type { EngineLine } from '../engine/cache';
 import { formatEvalBarScore } from './eval-bar';
+import { isTouchScreen } from '../ui/pointer-words';
 
 export interface FormattedPvMove {
   plyIndex: number;
@@ -191,7 +192,7 @@ export class EngineLinesPanel {
           data-empty="true"
           role="button"
           tabindex="0"
-          title="Hover to preview ghost pieces · Click to play line as variation"
+          ${isTouchScreen() ? '' : 'title="Hover to preview ghost pieces · Click to play line as variation"'}
         >
           <span class="wc-engine-line-eval" data-testid="engine-line-eval-${k}"></span>
           <div class="wc-engine-line-pv" data-testid="engine-line-pv-${k}"></div>
@@ -234,7 +235,7 @@ export class EngineLinesPanel {
         </div>
         <div class="wc-engine-lines-status" data-testid="engine-lines-paused" role="status" hidden></div>
         <div class="wc-engine-lines-status" data-testid="engine-lines-disabled" hidden>
-          Engine paused — press <kbd>Space</kbd> or click <strong>Engine: OFF</strong> to resume analysis.
+          ${isTouchScreen() ? 'Engine paused — tap <strong>Engine: OFF</strong> to resume analysis.' : 'Engine paused — press <kbd>Space</kbd> or click <strong>Engine: OFF</strong> to resume analysis.'}
         </div>
       </div>
     `;
@@ -478,7 +479,7 @@ export class EngineLinesPanel {
           slot.pvEl.innerHTML = moves
             .map(
               (m) =>
-                `<span class="wc-engine-pv-move" data-pv-move-index="${m.plyIndex}" data-testid="engine-pv-move-${line.multipv}-${m.plyIndex}" title="Hover to preview · Click to insert variation up to ${m.san}">${m.displayToken}</span>`,
+                `<span class="wc-engine-pv-move" data-pv-move-index="${m.plyIndex}" data-testid="engine-pv-move-${line.multipv}-${m.plyIndex}" ${isTouchScreen() ? '' : `title="Hover to preview · Click to insert variation up to ${m.san}"`}>${m.displayToken}</span>`,
             )
             .join(' ');
           slot.pvKey = pvKey;

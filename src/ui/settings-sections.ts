@@ -57,7 +57,7 @@ export function mountAppSettingsSections(panel: SettingsPanel, store: AppSetting
     )}
     ${selectRowHtml(
       'select-review-default',
-      'Review depth',
+      'How thorough',
       [
         { value: 'quick', label: 'Quick · 0.2 s a position' },
         { value: 'standard', label: 'Standard · 0.6 s' },

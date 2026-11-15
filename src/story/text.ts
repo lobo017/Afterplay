@@ -192,29 +192,22 @@ export function notEnoughReviewed(reviewed: number): string {
  * earlier numbers) are left out when no counted game was reviewed on this device: the sentence has nothing to say then.
  */
 export function reviewFootnote(r: ReviewStats): string {
-  const sources = [
-    r.inAdvance > 0 ? `${n(r.inAdvance)} reviewed in advance` : '',
-    r.onDevice > 0 ? `${n(r.onDevice)} on this device with its timed review` : '',
-  ].filter((part) => part !== '');
-  const have = r.counted === 1 ? 'counted game has' : 'counted games have';
   const counts =
-    `Accuracy is the engine's measure (Lichess's formula, Stockfish 17.1 at depth 18); Chess.com's own accuracy can differ. ` +
-    `${n(r.reviewed)} of ${n(r.counted)} ${have} an engine review: ${sources.join(' and ')}.`;
+    `Accuracy here is measured by the app, so it can differ a little from Chess.com's number. ` +
+    `Based on ${n(r.reviewed)} of your ${plural(r.counted, 'game')}.`;
   return r.onDevice > 0
     ? `${counts} A game you review here replaces its earlier numbers, and a timed review can give a slightly different number for the same game.`
     : counts;
 }
 
-/** The note under the swing and best-game cards: how that one game was reviewed. */
-export function gameReviewNote(game: ReviewedGameRef): string {
-  if (game.source === 'advance') {
-    return game.depth === null
-      ? 'This game was reviewed in advance.'
-      : `This game was reviewed in advance at depth ${game.depth}.`;
-  }
-  return game.preset === null
-    ? 'This game was reviewed on this device.'
-    : `This game was reviewed on this device (${PRESET_NAME[game.preset]}).`;
+/** The note under the swing and best-game cards, only for a game reviewed on this device; none for one reviewed in advance. */
+export function gameReviewNote(game: ReviewedGameRef): string[] {
+  if (game.source === 'advance') return [];
+  return [
+    game.preset === null
+      ? 'This game was reviewed on this device.'
+      : `This game was reviewed on this device (${PRESET_NAME[game.preset]}).`,
+  ];
 }
 
 export function accuracySentence(accuracy: number, reviewed: number): string {
@@ -227,9 +220,8 @@ export function blunderSentence(perGame: number, reviewed: number): string {
 
 export function halvesSentence(h: NonNullable<ReviewStats['halves']>): string {
   return (
-    `In the first half of your reviewed games (to ${monthLabel(h.first.endMonth)}) your accuracy was ${percent(h.first.accuracy)} ` +
-    `and you blundered ${oneDecimal(h.first.blundersPerGame)} times a game; in the second half, ` +
-    `${percent(h.second.accuracy)} and ${oneDecimal(h.second.blundersPerGame)}.`
+    `Early on: ${percent(h.first.accuracy)} accuracy and ${oneDecimal(h.first.blundersPerGame)} blunders a game. ` +
+    `Lately: ${percent(h.second.accuracy)} and ${oneDecimal(h.second.blundersPerGame)}.`
   );
 }
 
@@ -238,16 +230,23 @@ export function chanceText(low: number): string {
   return low < 1 ? 'under 1%' : `${Math.round(low)}%`;
 }
 
+/** "only a 3% chance", "only an 8% chance", "less than a 1% chance". */
+function chanceClause(low: number): string {
+  if (low < 1) return 'less than a 1% chance';
+  const pct = Math.round(low);
+  return `only ${/^(8|11|18)/.test(String(pct)) ? 'an' : 'a'} ${pct}% chance`;
+}
+
 /** The clause follows what the game has: class and date, date only, class only, or neither (no clause). */
 export function swingSentence(s: NonNullable<ReviewStats['swing']>): string {
   const g = s.game;
   const clause =
     g.timeClass === null && g.playedAt === null ? '' : `, a${classWord(g.timeClass)} game${inMonth(g.playedAt)}`;
-  return `You won a game the engine had at ${chanceText(g.low)} for you${clause}.`;
+  return `You won a game where you had ${chanceClause(g.low)}${clause}.`;
 }
 
 export function swingPoolNote(s: NonNullable<ReviewStats['swing']>): string {
-  return `Chosen from ${plural(s.reviewedWins, 'reviewed win')}.`;
+  return `Out of ${plural(s.reviewedWins, 'win')}.`;
 }
 
 export function bestGameSentence(b: NonNullable<ReviewStats['bestGame']>): string {
@@ -258,7 +257,7 @@ export function bestGameSentence(b: NonNullable<ReviewStats['bestGame']>): strin
 }
 
 export function bestGamePoolNote(b: NonNullable<ReviewStats['bestGame']>): string {
-  return `Chosen from ${plural(b.eligible, 'reviewed game')} of ${MIN_MOVES_FOR_BEST_GAME} moves or more.`;
+  return `Out of ${plural(b.eligible, 'game')} of ${MIN_MOVES_FOR_BEST_GAME} moves or more.`;
 }
 
 function reviewClassRow(c: ReviewStats['byClass'][number]): StoryTableRow {
@@ -324,7 +323,9 @@ function mistakesCard(r: ReviewStats): StoryCard {
         `Your reviewed games average ${n(Math.round(per.moves))} of your moves.`,
       // Left out when the engine marked none of either
       ...(r.brilliant > 0 || r.great > 0
-        ? [`The engine marked ${n(r.brilliant)} of your moves Brilliant and ${n(r.great)} Great.`]
+        ? [
+            `${n(r.brilliant)} Brilliant ${r.brilliant === 1 ? 'move' : 'moves'} and ${n(r.great)} Great ${r.great === 1 ? 'move' : 'moves'}.`,
+          ]
         : []),
       ...(r.halves ? [halvesSentence(r.halves)] : []),
     ],
@@ -340,7 +341,7 @@ function swingCard(r: ReviewStats): StoryCard {
     notes: [
       swingPoolNote(s),
       ...(s.alsoLow > 0 ? [`${plural(s.alsoLow, 'other win')} also fell that low.`] : []),
-      gameReviewNote(s.game),
+      ...gameReviewNote(s.game),
     ],
   });
 }
@@ -352,7 +353,7 @@ function bestGameCard(r: ReviewStats): StoryCard | null {
   return card('bestGame', 'Most accurate game', {
     value: percent(b.game.accuracy),
     sentence: bestGameSentence(b),
-    notes: [bestGamePoolNote(b), gameReviewNote(b.game)],
+    notes: [bestGamePoolNote(b), ...gameReviewNote(b.game)],
   });
 }
 
@@ -406,19 +407,22 @@ export function storyCards(stats: StoryStats, personal: PersonalText = {}): Stor
   if (stats.excluded.total > 0) {
     const e = stats.excluded;
     const parts = [
-      e.pastedOrBot > 0 ? `${n(e.pastedOrBot)} pasted or played against the bot` : '',
+      e.pastedOrBot > 0 ? `${plural(e.pastedOrBot, 'pasted or bot game')}` : '',
       e.notMine > 0 ? `${n(e.notMine)} not yours` : '',
-      e.nonStandard > 0 ? `${n(e.nonStandard)} Chess960 or set-up` : '',
-      e.unfinished > 0 ? `${n(e.unfinished)} unfinished` : '',
+      e.nonStandard > 0 ? `${plural(e.nonStandard, 'Chess960 or odds game')}` : '',
+      e.unfinished > 0 ? `${plural(e.unfinished, 'unfinished game')}` : '',
     ].filter((p) => p !== '');
-    totalNotes.push(`${plural(e.total, 'stored game was', 'stored games were')} not counted (${parts.join(', ')}).`);
+    const list = parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}` : parts[0]!;
+    totalNotes.push(`${list} ${e.total === 1 ? 'is' : 'are'} left out.`);
   }
-  totalNotes.push(TIME_CLASS_NOTE);
+  // The two notes about how the sites differ say nothing with one site
+  const bothSites = stats.chesscom.games > 0 && stats.lichess.games > 0;
+  const timeClassNotes = bothSites ? [TIME_CLASS_NOTE] : [];
   cards.push(
     all.games === 0
       ? card('totals', 'Total', {
           sentence: 'No games yet. Add your username and import.',
-          notes: totalNotes.slice(-1),
+          notes: timeClassNotes,
         })
       : card('totals', 'Total', {
           value: n(all.games),
@@ -427,6 +431,7 @@ export function storyCards(stats: StoryStats, personal: PersonalText = {}): Stor
           notes: [
             ...(thin ? [notEnoughGames(all.games)] : [favouriteSentence(all), colourSentence(all)]),
             ...totalNotes,
+            ...timeClassNotes,
           ],
         }),
   );
@@ -445,7 +450,7 @@ export function storyCards(stats: StoryStats, personal: PersonalText = {}): Stor
           notes: [
             openingSentence('Black', all.openings.black),
             ...(all.openings.withoutOpening > 0
-              ? [`${plural(all.openings.withoutOpening, 'game')} had no opening in the book and are not listed.`]
+              ? [`${plural(all.openings.withoutOpening, 'game')} had no named opening.`]
               : []),
             streakSentence(all),
           ],
@@ -468,7 +473,9 @@ export function storyCards(stats: StoryStats, personal: PersonalText = {}): Stor
             sentence: trendSentence(all.trends[0]!),
             notes: [
               ...all.trends.slice(1).map(trendSentence),
-              'Ratings are never combined across sites, and unrated games cannot be told apart on Chess.com.',
+              ...(bothSites
+                ? ['Ratings are never combined across sites, and unrated games cannot be told apart on Chess.com.']
+                : []),
             ],
           }),
   );
