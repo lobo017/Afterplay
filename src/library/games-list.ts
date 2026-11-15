@@ -7,10 +7,12 @@ import { formatTimeControl, type MyResult } from './game-record';
 import {
   NO_FILTER,
   activeFilters,
+  gamesSummary,
   matchesFilter,
   openingChoices,
   openingLabel,
   playedOf,
+  reviewedInAdvance,
   sortRows,
   toRow,
   type AnalyzedFilter,
@@ -660,11 +662,16 @@ export class GamesList {
         : rows.length === this.records.length
           ? `${rows.length} game${rows.length === 1 ? '' : 's'}`
           : `${rows.length} of ${this.records.length} games`;
-    const analyzedCount = this.records.filter((r) => hasSavedReview(r)).length;
+    // The summary covers the whole library, whatever the filters show (the line under the list has the filtered count)
+    const everyRow = this.records.map((r) => this.toRow(r));
     this.els.summary.textContent =
       this.records.length === 0
         ? ''
-        : `${this.records.length} game${this.records.length === 1 ? '' : 's'} · ${analyzedCount} analyzed`;
+        : gamesSummary({
+            games: this.records.length,
+            analyzed: this.records.filter((r) => hasSavedReview(r)).length,
+            inAdvance: everyRow.filter(reviewedInAdvance).length,
+          });
     this.renderSelection(rows);
   }
 

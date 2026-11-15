@@ -3,7 +3,7 @@ import { hasSavedReview } from '../storage/db';
 import { storyGames } from '../story/stats';
 import type { PuzzleRatingState } from '../trainers/puzzle-store';
 import type { GameFilter } from './game-rows';
-import { toRow, type GameRow } from './game-rows';
+import { reviewedInAdvance, toRow, type GameRow } from './game-rows';
 import {
   MOTIF_LABEL,
   PHASE_LABEL,
@@ -33,7 +33,6 @@ import {
   type ReviewQuarters,
 } from './insights-review';
 import type { GameLibrary } from './library';
-import { readReviewNumbers } from './review-numbers';
 
 export interface InsightsViewOptions {
   container: HTMLElement;
@@ -257,7 +256,7 @@ export class InsightsView {
     const rows: GameRow[] = records.map((r) => toRow(r, accounts));
     const mine = rows.filter((r) => r.color !== null);
     // Games reviewed in advance (a batch summary only): their numbers feed the quarter charts, not the older cards
-    const inAdvance = mine.filter((r) => readReviewNumbers(r.record, r.color!)?.source === 'advance').length;
+    const inAdvance = mine.filter(reviewedInAdvance).length;
     this.timeData = reviewQuarters(storyGames(records, accounts));
     this.quarters = new Map(this.timeData.points.map((p) => [quarterKey(p), p]));
     const reviewed: ReviewedGameInput[] = [];

@@ -4,6 +4,7 @@ import type { Color } from '../core/rules';
 import type { UserAccount } from '../review/perspective';
 import { hasSavedReview, type StoredGameRecord } from '../storage/db';
 import { myColor, resultFor, type MyResult } from './game-record';
+import { readReviewNumbers } from './review-numbers';
 
 /** One library game as the list and the insights see it. */
 export interface GameRow {
@@ -56,6 +57,25 @@ export function gameAccuracy(row: GameRow): number | null {
  */
 export function countUnreviewed(records: readonly StoredGameRecord[]): number {
   return records.filter((r) => !r.analysis).length;
+}
+
+/**
+ * True for a game of mine whose engine numbers come from a batch review (a summary only). It is the reader the Story and
+ * Insights use, so a game counts only with a usable review of my side (at least MIN_REVIEWED_PLIES plies). A game
+ * reviewed on this device has no `summaryOnly`: it is in "analyzed", never here, so never counted twice. Reads the
+ * record only, no PGN.
+ */
+export function reviewedInAdvance(row: Pick<GameRow, 'record' | 'color'>): boolean {
+  return row.color !== null && readReviewNumbers(row.record, row.color)?.source === 'advance';
+}
+
+const count = (v: number): string => v.toLocaleString('en-US');
+
+/** "4,623 games · 12 analyzed · 4,580 reviewed in advance"; the last part only when there are some. */
+export function gamesSummary(c: { games: number; analyzed: number; inAdvance: number }): string {
+  return `${count(c.games)} game${c.games === 1 ? '' : 's'} · ${count(c.analyzed)} analyzed${
+    c.inAdvance > 0 ? ` · ${count(c.inAdvance)} reviewed in advance` : ''
+  }`;
 }
 
 /** When each stored game was played, from its PGN's UTC headers (parsed once per record). */
