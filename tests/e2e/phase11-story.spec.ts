@@ -983,6 +983,8 @@ test.describe('Chess Story: the engine review cards', () => {
       await expect(accuracy).toContainText("Chess.com's own accuracy can differ.");
       await expect(accuracy).toContainText(want.accuracy.footnote);
       await expect(accuracy).not.toContainText('on this device');
+      // With no game reviewed on the device, the footnote has no sentence about replacing numbers
+      await expect(accuracy).not.toContainText('replaces its earlier numbers');
 
       const mistakes = page.getByTestId('story-card-mistakes');
       await expect(page.getByTestId('story-value-mistakes')).toHaveText(want.mistakes.value);
@@ -1057,6 +1059,7 @@ test.describe('Chess Story: the engine review cards', () => {
       const card = page.getByTestId('story-card-accuracy');
       await expect(card).toContainText('Not enough reviewed games yet (12 of 20).');
       await expect(card).toContainText('12 of 30 counted games have an engine review: 12 reviewed in advance.');
+      await expect(card).not.toContainText('replaces its earlier numbers');
       await expect(page.getByTestId('story-value-accuracy')).toHaveCount(0);
       await expect(card.locator('table')).toHaveCount(0);
       for (const id of ['mistakes', 'swing', 'bestGame']) {
@@ -1137,6 +1140,10 @@ test.describe('Chess Story: the engine review cards', () => {
 
     await page.getByTestId('games-tab-story').click();
     await expect(card).toContainText('29 reviewed in advance and 1 on this device with its timed review.');
+    // Now that a game was reviewed here, the footnote says what that does
+    await expect(card).toContainText(
+      'A game you review here replaces its earlier numbers, and a timed review can give a slightly different number for the same game.',
+    );
     await expect(card).toContainText('30 of 30 counted games have an engine review');
     // The headline follows: the mean of the library's own accuracies (the shown value is rounded to 0.1)
     const accuracies = await page.evaluate(async () =>

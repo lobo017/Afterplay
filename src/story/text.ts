@@ -187,18 +187,22 @@ export function notEnoughReviewed(reviewed: number): string {
   return `Not enough reviewed games yet (${n(reviewed)} of ${n(MIN_REVIEWED_GAMES)}).`;
 }
 
-/** The fixed footnote of the Accuracy card; the device clause is left out when no game was reviewed here. */
+/**
+ * The fixed footnote of the Accuracy card. The device clause and the last sentence (a game reviewed here replaces its
+ * earlier numbers) are left out when no counted game was reviewed on this device: the sentence has nothing to say then.
+ */
 export function reviewFootnote(r: ReviewStats): string {
   const sources = [
     r.inAdvance > 0 ? `${n(r.inAdvance)} reviewed in advance` : '',
     r.onDevice > 0 ? `${n(r.onDevice)} on this device with its timed review` : '',
   ].filter((part) => part !== '');
   const have = r.counted === 1 ? 'counted game has' : 'counted games have';
-  return (
+  const counts =
     `Accuracy is the engine's measure (Lichess's formula, Stockfish 17.1 at depth 18); Chess.com's own accuracy can differ. ` +
-    `${n(r.reviewed)} of ${n(r.counted)} ${have} an engine review: ${sources.join(' and ')}. ` +
-    `A game you review here replaces its earlier numbers, and a timed review can give a slightly different number for the same game.`
-  );
+    `${n(r.reviewed)} of ${n(r.counted)} ${have} an engine review: ${sources.join(' and ')}.`;
+  return r.onDevice > 0
+    ? `${counts} A game you review here replaces its earlier numbers, and a timed review can give a slightly different number for the same game.`
+    : counts;
 }
 
 /** The note under the swing and best-game cards: how that one game was reviewed. */

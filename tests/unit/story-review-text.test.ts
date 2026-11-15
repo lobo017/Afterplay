@@ -18,7 +18,8 @@ const FOOT_START =
   "Accuracy is the engine's measure (Lichess's formula, Stockfish 17.1 at depth 18); Chess.com's own accuracy can differ. ";
 const FOOT_END =
   ' A game you review here replaces its earlier numbers, and a timed review can give a slightly different number for the same game.';
-const footnote = (middle: string) => `${FOOT_START}${middle}.${FOOT_END}`;
+/** The footnote: the last sentence (a game reviewed here replaces its numbers) only when a game was reviewed on the device. */
+const footnote = (middle: string, onDevice = false) => `${FOOT_START}${middle}.${onDevice ? FOOT_END : ''}`;
 
 /** 24 reviewed games: 12 older White wins at 70% with 2 blunders, 12 newer Black losses at 80% with 1. */
 const D = batch(24, 'd', (i) => ({
@@ -122,12 +123,37 @@ describe('the Accuracy card', () => {
     expect(cardsOf(mixed).accuracy!.notes.at(-1)).toBe(
       footnote(
         '24 of 30 counted games have an engine review: 21 reviewed in advance and 3 on this device with its timed review',
+        true,
       ),
     );
     const onlyDevice = batch(25, 'o', () => ({ review: { advance: false, preset: 'quick' as const } }));
     expect(cardsOf(onlyDevice).accuracy!.notes.at(-1)).toBe(
-      footnote('25 of 25 counted games have an engine review: 25 on this device with its timed review'),
+      footnote('25 of 25 counted games have an engine review: 25 on this device with its timed review', true),
     );
+  });
+
+  it('says that a game reviewed here replaces its numbers only when one was reviewed on the device', () => {
+    const REPLACES = 'A game you review here replaces its earlier numbers';
+    expect(cardsOf(D).accuracy!.notes.join(' ')).not.toContain(REPLACES);
+    const mixed = [
+      ...batch(21, 'a'),
+      ...batch(3, 'dev', () => ({ review: { advance: false, preset: 'quick' as const } })),
+    ];
+    expect(cardsOf(mixed).accuracy!.notes.at(-1)).toContain(REPLACES);
+    // The "not enough" card follows the same rule
+    const fewDevice = [
+      ...batch(10, 'a'),
+      ...batch(2, 'dev', () => ({ review: { advance: false, preset: 'quick' as const } })),
+    ];
+    const few = cardsOf(fewDevice).accuracy!;
+    expect(few.sentence).toBe('Not enough reviewed games yet (12 of 20).');
+    expect(few.notes).toEqual([
+      footnote(
+        '12 of 12 counted games have an engine review: 10 reviewed in advance and 2 on this device with its timed review',
+        true,
+      ),
+    ]);
+    expect(cardsOf(batch(12, 'r')).accuracy!.notes.join(' ')).not.toContain(REPLACES);
   });
 
   it('says "Not enough reviewed games yet (12 of 20)." with the footnote, and no number', () => {
