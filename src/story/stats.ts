@@ -269,8 +269,12 @@ interface CountedGame {
   opponentRating: number | null;
   myRating: number | null;
   opening: string;
-  /** Duplicate key between sites, or null when the game is too short or undated. */
-  duplicateKey: string | null;
+  /**
+   * Duplicate key between sites, or null when the game is too short or undated. Built on the first call, not when the
+   * game is read: it tokenises the whole game, which is the costly part, and nothing needs it unless games from both
+   * sites are counted (`countGames`).
+   */
+  duplicateKey: () => string | null;
   /** My engine-review numbers, or null when the game has none that can be used. */
   review: ReviewNumbers | null;
 }
@@ -344,12 +348,18 @@ function readGame(record: StoredGameRecord, accounts: readonly UserAccount[]): C
   const playedAt = gameTime(record);
   const mine = color === 'w' ? record.whiteElo : record.blackElo;
   const theirs = color === 'w' ? record.blackElo : record.whiteElo;
-  let duplicateKey: string | null = null;
   const day = utcDay(typeof record.playedAt === 'number' ? record.playedAt : null, record.date);
-  if (day !== '') {
-    const moves = mainLineMoves(record.pgn);
-    if (moves.length >= MIN_PLIES_FOR_DUPLICATE) duplicateKey = `${moves.join(' ')}|${record.result}|${color}|${day}`;
-  }
+  let key: string | null | undefined;
+  const duplicateKey = (): string | null => {
+    if (key === undefined) {
+      key = null;
+      if (day !== '') {
+        const moves = mainLineMoves(record.pgn);
+        if (moves.length >= MIN_PLIES_FOR_DUPLICATE) key = `${moves.join(' ')}|${record.result}|${color}|${day}`;
+      }
+    }
+    return key;
+  };
   return {
     id: record.id,
     site: source,
@@ -680,15 +690,22 @@ function countGames(records: readonly StoredGameRecord[], accounts: readonly Use
   const chesscom = counted.filter((g) => g.site === 'chesscom');
   const lichess = counted.filter((g) => g.site === 'lichess');
 
-  // Pair each Lichess game with an unpaired Chess.com game of the same key; the Lichess side drops out of the total
-  const open = new Map<string, number>();
-  for (const g of chesscom) if (g.duplicateKey) open.set(g.duplicateKey, (open.get(g.duplicateKey) ?? 0) + 1);
+  // Pair each Lichess game with an unpaired Chess.com game of the same key; the Lichess side drops out of the total.
+  // With games from one site only nothing can pair, so no key is built (a history from one site is the usual case).
   const dropped = new Set<string>();
-  for (const g of [...lichess].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
-    const n = g.duplicateKey ? (open.get(g.duplicateKey) ?? 0) : 0;
-    if (n > 0) {
-      open.set(g.duplicateKey!, n - 1);
-      dropped.add(g.id);
+  if (chesscom.length > 0 && lichess.length > 0) {
+    const open = new Map<string, number>();
+    for (const g of chesscom) {
+      const key = g.duplicateKey();
+      if (key) open.set(key, (open.get(key) ?? 0) + 1);
+    }
+    for (const g of [...lichess].sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))) {
+      const key = g.duplicateKey();
+      const n = key ? (open.get(key) ?? 0) : 0;
+      if (n > 0) {
+        open.set(key!, n - 1);
+        dropped.add(g.id);
+      }
     }
   }
   return { counted, chesscom, lichess, excluded, dropped };
