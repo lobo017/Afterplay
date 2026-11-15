@@ -1,7 +1,7 @@
 /**
  * Games › Story: the account form, then the cards. One column in a vertical scroll with CSS scroll-snap (no gesture
  * code). The numbers come from `computeStoryStats` and the sentences from `storyCards`; nothing here reads a preset.
- * This version shows the gift's cards (intro, totals, Chess.com, Lichess, closing). "Start import" and "Continue" ask
+ * This version shows the gift's cards (intro, totals, Chess.com, Lichess, the four review cards, closing). "Start import" and "Continue" ask
  * the app's shared sync runner (app.ts) for the Chess.com games; the view only shows how far it is and what went
  * wrong, in plain words.
  */
@@ -17,8 +17,18 @@ import {
   type AccountSite,
 } from '../library/more-accounts';
 
-/** The cards this version shows, in order (the others are built after the gift). */
-export const SHOWN_CARDS: readonly StoryCardId[] = ['intro', 'totals', 'chesscom', 'lichess', 'closing'];
+/** The cards this version shows (the order is `storyCards`'; the others are built after the gift). */
+export const SHOWN_CARDS: readonly StoryCardId[] = [
+  'intro',
+  'totals',
+  'chesscom',
+  'lichess',
+  'accuracy',
+  'mistakes',
+  'swing',
+  'bestGame',
+  'closing',
+];
 /** The numbers are recounted at most this often while games arrive. */
 export const RECOUNT_INTERVAL_MS = 2000;
 

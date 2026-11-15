@@ -6,9 +6,13 @@
 import {
   MIN_GAMES_FOR_STORY,
   MIN_GAMES_FOR_STREAKS,
+  MIN_MOVES_FOR_BEST_GAME,
+  MIN_REVIEWED_GAMES,
   type BestWin,
   type ClassStats,
   type OpeningStats,
+  type ReviewedGameRef,
+  type ReviewStats,
   type ScopeStats,
   type StoryScope,
   type StoryStats,
@@ -16,7 +20,19 @@ import {
   type TrendSeries,
 } from './stats';
 
-export type StoryCardId = 'intro' | 'totals' | 'chesscom' | 'lichess' | 'openings' | 'bestWin' | 'trend' | 'closing';
+export type StoryCardId =
+  | 'intro'
+  | 'totals'
+  | 'chesscom'
+  | 'lichess'
+  | 'accuracy'
+  | 'mistakes'
+  | 'swing'
+  | 'bestGame'
+  | 'openings'
+  | 'bestWin'
+  | 'trend'
+  | 'closing';
 
 export interface StoryTableRow {
   label: string;
@@ -149,6 +165,187 @@ export function trendSentence(t: TrendSeries): string {
   return `Your ${site} ${cls} rating went from ${n(first.rating)} in ${monthLabel(first.month)} to ${n(last.rating)} in ${monthLabel(last.month)}: ${how}.`;
 }
 
+// ---------------------------------------------------------------------------- engine review sentences
+
+const PRESET_NAME: Record<NonNullable<ReviewedGameRef['preset']>, string> = {
+  quick: 'Quick',
+  standard: 'Standard',
+  deep: 'Deep',
+};
+
+const oneDecimal = (value: number): string => value.toFixed(1);
+const percent = (value: number): string => `${oneDecimal(value)}%`;
+/** " in March 2024", or '' for a game with no date. */
+const inMonth = (playedAt: number | null): string =>
+  playedAt === null ? '' : ` in ${monthLabel(new Date(playedAt).toISOString().slice(0, 7))}`;
+/** " blitz", or '' for a game with no time class. */
+const classWord = (timeClass: TimeClass | null): string =>
+  timeClass === null ? '' : ` ${CLASS_LABEL[timeClass].toLowerCase()}`;
+
+/** "Not enough reviewed games yet (12 of 20)." */
+export function notEnoughReviewed(reviewed: number): string {
+  return `Not enough reviewed games yet (${n(reviewed)} of ${n(MIN_REVIEWED_GAMES)}).`;
+}
+
+/** The fixed footnote of the Accuracy card; the device clause is left out when no game was reviewed here. */
+export function reviewFootnote(r: ReviewStats): string {
+  const sources = [
+    r.inAdvance > 0 ? `${n(r.inAdvance)} reviewed in advance` : '',
+    r.onDevice > 0 ? `${n(r.onDevice)} on this device with its timed review` : '',
+  ].filter((part) => part !== '');
+  const have = r.counted === 1 ? 'counted game has' : 'counted games have';
+  return (
+    `Accuracy is the engine's measure (Lichess's formula, Stockfish 17.1 at depth 18); Chess.com's own accuracy can differ. ` +
+    `${n(r.reviewed)} of ${n(r.counted)} ${have} an engine review: ${sources.join(' and ')}. ` +
+    `A game you review here replaces its earlier numbers, and a timed review can give a slightly different number for the same game.`
+  );
+}
+
+/** The note under the swing and best-game cards: how that one game was reviewed. */
+export function gameReviewNote(game: ReviewedGameRef): string {
+  if (game.source === 'advance') {
+    return game.depth === null
+      ? 'This game was reviewed in advance.'
+      : `This game was reviewed in advance at depth ${game.depth}.`;
+  }
+  return game.preset === null
+    ? 'This game was reviewed on this device.'
+    : `This game was reviewed on this device (${PRESET_NAME[game.preset]}).`;
+}
+
+export function accuracySentence(accuracy: number, reviewed: number): string {
+  return `Your average accuracy is ${percent(accuracy)} over ${plural(reviewed, 'reviewed game')}.`;
+}
+
+export function blunderSentence(perGame: number, reviewed: number): string {
+  return `You blundered ${oneDecimal(perGame)} times a game over ${plural(reviewed, 'reviewed game')}.`;
+}
+
+export function halvesSentence(h: NonNullable<ReviewStats['halves']>): string {
+  return (
+    `In the first half of your reviewed games (to ${monthLabel(h.first.endMonth)}) your accuracy was ${percent(h.first.accuracy)} ` +
+    `and you blundered ${oneDecimal(h.first.blundersPerGame)} times a game; in the second half, ` +
+    `${percent(h.second.accuracy)} and ${oneDecimal(h.second.blundersPerGame)}.`
+  );
+}
+
+/** "3%", or "under 1%" below 1. */
+export function chanceText(low: number): string {
+  return low < 1 ? 'under 1%' : `${Math.round(low)}%`;
+}
+
+/** The clause follows what the game has: class and date, date only, class only, or neither (no clause). */
+export function swingSentence(s: NonNullable<ReviewStats['swing']>): string {
+  const g = s.game;
+  const clause =
+    g.timeClass === null && g.playedAt === null ? '' : `, a${classWord(g.timeClass)} game${inMonth(g.playedAt)}`;
+  return `You won a game the engine had at ${chanceText(g.low)} for you${clause}.`;
+}
+
+export function swingPoolNote(s: NonNullable<ReviewStats['swing']>): string {
+  return `Chosen from ${plural(s.reviewedWins, 'reviewed win')}.`;
+}
+
+export function bestGameSentence(b: NonNullable<ReviewStats['bestGame']>): string {
+  const g = b.game;
+  const against = g.opponentRating === null ? '' : ` against a player rated ${n(g.opponentRating)}`;
+  const when = g.playedAt === null ? '' : `, in ${monthLabel(new Date(g.playedAt).toISOString().slice(0, 7))}`;
+  return `Your most accurate game was ${percent(g.accuracy)}: a${classWord(g.timeClass)} ${g.outcome}${against}${when}, over ${n(g.moves)} of your moves.`;
+}
+
+export function bestGamePoolNote(b: NonNullable<ReviewStats['bestGame']>): string {
+  return `Chosen from ${plural(b.eligible, 'reviewed game')} of ${MIN_MOVES_FOR_BEST_GAME} moves or more.`;
+}
+
+function reviewClassRow(c: ReviewStats['byClass'][number]): StoryTableRow {
+  return {
+    label: `${CLASS_LABEL[c.timeClass]} · ${plural(c.games, 'game')}`,
+    detail: `${percent(c.accuracy)} average accuracy`,
+  };
+}
+
+function reviewYearRow(y: ReviewStats['byYear'][number]): StoryTableRow {
+  return {
+    label: `${y.year} · ${plural(y.games, 'game')}`,
+    detail: `${percent(y.accuracy)} accuracy · ${oneDecimal(y.blundersPerGame)} blunders a game`,
+  };
+}
+
+function accuracyCard(r: ReviewStats): StoryCard {
+  const footnote = reviewFootnote(r);
+  if (!r.enough) return card('accuracy', 'Accuracy', { sentence: notEnoughReviewed(r.reviewed), notes: [footnote] });
+  const notes: string[] = [];
+  if (r.white && r.black) {
+    notes.push(
+      `As White ${percent(r.white.accuracy)} over ${plural(r.white.games, 'game')}; ` +
+        `as Black ${percent(r.black.accuracy)} over ${plural(r.black.games, 'game')}.`,
+    );
+  }
+  if (r.wins && r.losses) {
+    notes.push(
+      `Your accuracy averaged ${percent(r.wins.accuracy)} in the ${n(r.wins.games)} games you won ` +
+        `and ${percent(r.losses.accuracy)} in the ${n(r.losses.games)} games you lost.`,
+    );
+  }
+  notes.push(footnote);
+  return card('accuracy', 'Accuracy', {
+    value: percent(r.accuracy!),
+    sentence: accuracySentence(r.accuracy!, r.reviewed),
+    rows: r.byClass.map(reviewClassRow),
+    notes,
+  });
+}
+
+function mistakesCard(r: ReviewStats): StoryCard {
+  const per = r.perGame!;
+  return card('mistakes', 'Mistakes', {
+    value: oneDecimal(per.blunder),
+    sentence: blunderSentence(per.blunder, r.reviewed),
+    rows: r.byYear.map(reviewYearRow),
+    notes: [
+      `Mistakes: ${oneDecimal(per.mistake)} a game. Inaccuracies: ${oneDecimal(per.inaccuracy)} a game. ` +
+        `Your reviewed games average ${n(Math.round(per.moves))} of your moves.`,
+      // Left out when the engine marked none of either
+      ...(r.brilliant > 0 || r.great > 0
+        ? [`The engine marked ${n(r.brilliant)} of your moves Brilliant and ${n(r.great)} Great.`]
+        : []),
+      ...(r.halves ? [halvesSentence(r.halves)] : []),
+    ],
+  });
+}
+
+function swingCard(r: ReviewStats): StoryCard {
+  const s = r.swing;
+  if (s === null) return card('swing', 'Biggest swing', { sentence: 'No reviewed win yet.' });
+  return card('swing', 'Biggest swing', {
+    value: chanceText(s.game.low),
+    sentence: swingSentence(s),
+    notes: [
+      swingPoolNote(s),
+      ...(s.alsoLow > 0 ? [`${plural(s.alsoLow, 'other win')} also fell that low.`] : []),
+      gameReviewNote(s.game),
+    ],
+  });
+}
+
+/** Left out (null) when no reviewed game has MIN_MOVES_FOR_BEST_GAME moves. */
+function bestGameCard(r: ReviewStats): StoryCard | null {
+  const b = r.bestGame;
+  if (b === null) return null;
+  return card('bestGame', 'Most accurate game', {
+    value: percent(b.game.accuracy),
+    sentence: bestGameSentence(b),
+    notes: [bestGamePoolNote(b), gameReviewNote(b.game)],
+  });
+}
+
+/** The review cards: none with no reviewed game, one "not enough" card below MIN_REVIEWED_GAMES, else all four. */
+export function reviewCards(r: ReviewStats): StoryCard[] {
+  if (r.reviewed === 0) return [];
+  if (!r.enough) return [accuracyCard(r)];
+  return [accuracyCard(r), mistakesCard(r), swingCard(r), bestGameCard(r)].filter((c): c is StoryCard => c !== null);
+}
+
 // ---------------------------------------------------------------------------- cards
 
 function scopeCard(id: 'chesscom' | 'lichess', s: ScopeStats): StoryCard {
@@ -164,7 +361,10 @@ function scopeCard(id: 'chesscom' | 'lichess', s: ScopeStats): StoryCard {
   });
 }
 
-/** The cards in their fixed order: intro, totals, Chess.com, Lichess, openings, best win, trend, closing. */
+/**
+ * The cards in their fixed order: intro, totals, Chess.com, Lichess, the review cards (none without reviewed games),
+ * openings, best win, trend, closing.
+ */
 export function storyCards(stats: StoryStats, personal: PersonalText = {}): StoryCard[] {
   const all = stats.all;
   const thin = !all.enough;
@@ -217,6 +417,8 @@ export function storyCards(stats: StoryStats, personal: PersonalText = {}): Stor
   cards.push(scopeCard('chesscom', stats.chesscom));
   // The Lichess section appears only when Lichess games are stored
   if (stats.lichess.games > 0) cards.push(scopeCard('lichess', stats.lichess));
+
+  cards.push(...reviewCards(all.review));
 
   cards.push(
     thin
