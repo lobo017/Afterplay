@@ -25,6 +25,13 @@ const QUEEN_BLUNDER_PGN = `[Event "Review sign check"]
 
 1. e4 e5 2. Qh5 Nc6 3. Qxe5+ Nxe5 0-1`;
 
+const PLAIN_SUMMARY =
+  'These numbers come from the engine checking every move of this reviewed game. ' +
+  "Accuracy runs from 0 to 100: the closer a player's moves were to the best ones, the higher it is. " +
+  'ACPL is how much each move gave away on average, in hundredths of a pawn, so lower is better. ' +
+  "Bot level is a rough guess at playing strength: it matches the app's bot that gives away about as much per move as that player did in this game. " +
+  'It is not a rating.';
+
 interface Box {
   x: number;
   y: number;
@@ -62,8 +69,17 @@ function geometry(page: Page, popupId: string, closeId: string) {
         if (close.contains(node) || !(node.textContent ?? '').trim()) continue;
         const range = document.createRange();
         range.selectNodeContents(node);
+        // Only what can be seen: text scrolled out of a box inside the popup does not count
+        let clip: DOMRect | null = null;
+        for (let e = node.parentElement; e && e !== popup; e = e.parentElement) {
+          if (getComputedStyle(e).overflowY !== 'visible') {
+            clip = e.getBoundingClientRect();
+            break;
+          }
+        }
         for (const r of range.getClientRects()) {
           if (r.width === 0 || r.height === 0) continue;
+          if (clip && (r.bottom <= clip.top || r.top >= clip.bottom)) continue;
           const ix = Math.min(r.right, c.right) - Math.max(r.left, c.left);
           const iy = Math.min(r.bottom, c.bottom) - Math.max(r.top, c.top);
           if (ix > 0.5 && iy > 0.5) overlaps++;
@@ -243,6 +259,16 @@ test.describe('Popups: an X, the visible area, scrolling inside', () => {
       await expect(formulas).toBeVisible();
       await expect(info).toHaveAttribute('aria-expanded', 'true');
       await expect(page.getByTestId('review-formulas-title')).toHaveText('How these numbers are computed');
+      // The plain summary comes first, then "The exact formulas"
+      await expect(page.getByTestId('review-formulas-plain')).toHaveText(PLAIN_SUMMARY);
+      await expect(page.getByTestId('review-formulas-subhead')).toHaveText('The exact formulas');
+      expect(
+        await page.evaluate(() => {
+          const plain = document.querySelector('[data-testid="review-formulas-plain"]')!;
+          const sub = document.querySelector('[data-testid="review-formulas-subhead"]')!;
+          return plain.compareDocumentPosition(sub) & Node.DOCUMENT_POSITION_FOLLOWING;
+        }),
+      ).toBeTruthy();
       await expectFitsBand(page, 'review-formulas-tooltip');
       await expectCloseButton(page, 'review-formulas-tooltip', 'review-formulas-close', 'Close');
       const title = (await page.getByTestId('review-formulas-title').boundingBox())!;
@@ -335,6 +361,104 @@ test.describe('Popups: an X, the visible area, scrolling inside', () => {
       await page.keyboard.press('Escape');
       await expect(page.getByTestId('promotion-picker')).toBeHidden();
       await expect(page.getByTestId('piece-h7')).toBeVisible();
+    });
+  }
+});
+
+test.describe('The info popup opens where it has room', () => {
+  for (const size of SIZES) {
+    test(`with its "i" at the top, the middle and the bottom of the screen at ${size.width}x${size.height}`, async ({
+      page,
+    }) => {
+      test.setTimeout(120_000);
+      await page.setViewportSize(size);
+      await page.goto('/');
+      await press(page, 'mode-tab-review');
+      await page.evaluate((pgn) => window.__wizardChessAnalysis!.controller.importPgn(pgn), QUEEN_BLUNDER_PGN);
+      await press(page, 'btn-review-start');
+      await expect(page.getByTestId('review-panel')).toHaveAttribute('data-state', 'done', { timeout: 60_000 });
+      const info = page.getByTestId('btn-review-formulas');
+      const popup = page.getByTestId('review-formulas-tooltip');
+      const places: string[] = [];
+      // First with the "i" near the end of the page (it cannot be scrolled up: the popup opens above it), then with
+      // "All moves by class" open, so the page goes on below the "i" and it can be put at the top or the middle
+      for (const [pass, where] of [
+        ['page end', 'top'],
+        ['page end', 'middle'],
+        ['page end', 'bottom'],
+        ['long page', 'top'],
+        ['long page', 'middle'],
+        ['long page', 'bottom'],
+      ] as const) {
+        if (pass === 'long page' && !(await page.getByTestId('review-counts').isVisible())) {
+          await page.getByTestId('review-classes').locator('summary').click();
+          await expect(page.getByTestId('review-counts')).toBeVisible();
+        }
+        await info.scrollIntoViewIfNeeded();
+        const b = await band(page);
+        // Put the "i" there (as far as the page can scroll)
+        await info.evaluate(
+          (el, [where, top, bottom]) => {
+            const r = el.getBoundingClientRect();
+            const target = where === 'top' ? top + 8 : where === 'middle' ? (top + bottom) / 2 : bottom - r.height - 6;
+            window.scrollBy(0, r.top - target);
+          },
+          [where, b.top, b.bottom] as const,
+        );
+        await press(page, 'btn-review-formulas');
+        await expect(popup).toBeVisible();
+        const g = await page.evaluate(() => {
+          const p = document.querySelector<HTMLElement>('[data-testid="review-formulas-tooltip"]')!;
+          const body = p.querySelector<HTMLElement>('.wc-popup-body')!;
+          const i = document.querySelector('[data-testid="btn-review-formulas"]')!.getBoundingClientRect();
+          const r = p.getBoundingClientRect();
+          return {
+            place: p.getAttribute('data-place') ?? 'below',
+            top: r.top,
+            bottom: r.bottom,
+            height: r.height,
+            // Its whole height when nothing is cut: the head plus the body's full content
+            natural: r.height - body.clientHeight + body.scrollHeight,
+            iTop: i.top,
+            iBottom: i.bottom,
+            // The most room on either side of the "i": the screen between the top bar and the bottom tab bar, cut by
+            // any box that clips the popup
+            room: (() => {
+              let top = document.querySelector('.wc-topbar')!.getBoundingClientRect().bottom;
+              const nav = document.querySelector<HTMLElement>('.wc-nav')!;
+              let bottom = getComputedStyle(nav).position === 'fixed' ? nav.getBoundingClientRect().top : innerHeight;
+              for (let e = p.parentElement; e && e !== document.body; e = e.parentElement) {
+                const st = getComputedStyle(e);
+                if (st.overflowX !== 'visible' || st.overflowY !== 'visible') {
+                  const c = e.getBoundingClientRect();
+                  top = Math.max(top, c.top);
+                  bottom = Math.min(bottom, c.bottom);
+                }
+              }
+              return Math.max(bottom - i.bottom, i.top - top) - 16;
+            })(),
+          };
+        });
+        places.push(`${pass} ${where}: ${g.place} ${Math.round(g.height)}px`);
+        const nb = await band(page);
+        expect(g.top, `${where}: below the top bar`).toBeGreaterThanOrEqual(nb.top - 0.5);
+        expect(g.bottom, `${where}: above the bottom tab bar`).toBeLessThanOrEqual(nb.bottom + 0.5);
+        // Not squeezed: all of it, or at least 200 px of it, or the most the screen has beside the "i"
+        expect(g.height, `${where}: not squeezed`).toBeGreaterThanOrEqual(Math.min(g.natural, 200, g.room) - 1);
+        // Beside the "i", never over it
+        if (g.place === 'above') expect(g.bottom, `${where}: above the "i"`).toBeLessThanOrEqual(g.iTop + 0.5);
+        else expect(g.top, `${where}: below the "i"`).toBeGreaterThanOrEqual(g.iBottom - 0.5);
+        await expectCloseButton(page, 'review-formulas-tooltip', 'review-formulas-close', 'Close');
+        await expectScrollsInside(
+          page,
+          '[data-testid="review-formulas-tooltip"] .wc-popup-body',
+          'review-formulas-close',
+        );
+        await press(page, 'review-formulas-close');
+        await expect(popup).toBeHidden();
+        if (!touch()) await page.mouse.move(2, 2);
+      }
+      console.log(`info popup at ${size.width}x${size.height} (${test.info().project.name}): ${places.join('; ')}`);
     });
   }
 });
