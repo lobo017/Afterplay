@@ -6912,3 +6912,12 @@ label.wc-setting-row {
   gap: 0.5rem;
   padding: 0.25rem 0 0.5rem;
 }
+
+/* A phase bar with no moves to open (no game was reviewed on this device) is plain text, not a button */
+.wc-insight-bar-static {
+  cursor: default;
+}
+
+.wc-insight-bar-static:hover {
+  border-color: transparent;
+}

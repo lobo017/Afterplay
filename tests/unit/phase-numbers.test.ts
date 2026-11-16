@@ -266,13 +266,14 @@ describe('a history file with phases', () => {
     const b = await storage.getGame('chesscom:plain-b');
     expect(a?.analysis?.sides?.w?.phases).toEqual(PHASES);
     expect(b?.analysis?.sides?.w?.phases).toBeUndefined();
-    // The reader the Story and Insights use is unchanged by the extra field
-    expect(readReviewNumbers(a!, 'w')).toEqual(
-      readReviewNumbers(
-        { analysis: { ...a!.analysis!, sides: { w: { ...a!.analysis!.sides!.w!, phases: undefined } } } },
-        'w',
-      ),
+    // The reader the Story and Insights use: the same numbers as before, now with the phases (the old assertion was
+    // "equal to the same record without phases"; the new one says what is added)
+    const without = readReviewNumbers(
+      { analysis: { ...a!.analysis!, sides: { w: { ...a!.analysis!.sides!.w!, phases: undefined } } } },
+      'w',
     );
+    expect(without?.phases).toBeUndefined();
+    expect(readReviewNumbers(a!, 'w')).toEqual({ ...without, phases: PHASES });
     expect(readReviewNumbers(a!, 'w')?.source).toBe('advance');
   });
 

@@ -1,4 +1,5 @@
 import type { GameAnalysisSummary, SideAnalysisSummary, StoredGameRecord } from '../../../src/storage/db';
+import type { PhaseNumbers } from '../../../src/review/phase-numbers';
 import { ME, run, type GameSpec } from './story-games';
 
 /** Review numbers for an invented game. Defaults: a batch summary, 30 moves, 60 plies, accuracy 80. */
@@ -17,6 +18,8 @@ export interface ReviewSpec {
   /** A device review holds both sides; the opponent's side gets other numbers. */
   bothSides?: boolean;
   preset?: 'quick' | null;
+  /** My numbers by game phase (opening, middlegame, endgame); none by default, as in an older record. */
+  phases?: PhaseNumbers;
 }
 
 export function side(n: ReviewSpec): SideAnalysisSummary {
@@ -32,6 +35,7 @@ export function side(n: ReviewSpec): SideAnalysisSummary {
     low: n.low === undefined ? 40 : n.low,
     drop: 20,
     dropPly: 11,
+    ...(n.phases ? { phases: n.phases } : {}),
   };
 }
 

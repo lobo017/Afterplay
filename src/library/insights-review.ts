@@ -4,7 +4,10 @@
  * calendar days the Games list filters by, so a click on a quarter lists the games the point counted.
  */
 import { localDateTime } from '../capture/pgn-time';
+import { totalPhases } from '../review/phase-numbers';
 import { MIN_REVIEWED_GAMES, type StoryGame } from '../story/stats';
+import type { GamePhase } from './insights';
+import { PHASES } from './insights';
 import type { GameFilter } from './game-rows';
 
 /** A quarter becomes a point from this many reviewed games. */
@@ -157,4 +160,51 @@ export function needReviewsText(c: { noneMarked: boolean; inAdvance?: number }):
       ? ' None of your games are marked yours yet: set your usernames in Settings › Your games.'
       : ''
   }`;
+}
+
+// ------------------------------------------------------------------------------------------------ by game phase
+
+export interface PhaseBar {
+  phase: GamePhase;
+  moves: number;
+  /** Mean accuracy of my moves in the phase (each game weighted by its moves), null with no moves. */
+  accuracy: number | null;
+  /** Blunders per 10 of my moves in the phase, null with no moves. */
+  blundersPer10: number | null;
+  games: number;
+}
+
+export interface ReviewPhases {
+  /** The games the Story counts that have phase numbers. */
+  games: number;
+  bars: PhaseBar[];
+}
+
+/** Accuracy and blunders per 10 moves by phase, over the games the Story counts that have phase numbers; null with none. */
+export function reviewPhases(games: readonly StoryGame[]): ReviewPhases | null {
+  const withPhases = games.flatMap((g) => (g.review?.phases ? [g.review.phases] : []));
+  if (withPhases.length === 0) return null;
+  const bars = totalPhases(withPhases).map((t, i) => ({
+    phase: PHASES[i]!,
+    moves: t.moves,
+    accuracy: t.accuracy,
+    blundersPer10: t.moves === 0 ? null : (t.blunders / t.moves) * 10,
+    games: t.games,
+  }));
+  return { games: withPhases.length, bars };
+}
+
+/** "93.3% accuracy · 0.11 blunders per 10 moves", or "no moves". */
+export const phaseBarText = (b: PhaseBar): string =>
+  b.accuracy === null || b.blundersPer10 === null
+    ? 'no moves'
+    : `${one(b.accuracy)}% accuracy · ${b.blundersPer10.toFixed(2)} blunders per 10 moves`;
+
+/** What the phase card's caption says: it promises a click only when there are moves to show (a game reviewed here). */
+export function phaseHint(c: { reviewedGames: number | null; clickable: boolean; tap: string }): string {
+  const base = 'How well you play each part of the game';
+  if (c.clickable) return `${base}. ${c.tap} a bar to see your moves from games you reviewed here, worst first.`;
+  return c.reviewedGames === null
+    ? `${base}.`
+    : `${base}, over ${n(c.reviewedGames)} reviewed ${c.reviewedGames === 1 ? 'game' : 'games'}.`;
 }

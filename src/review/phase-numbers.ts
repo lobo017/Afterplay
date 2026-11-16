@@ -1,6 +1,8 @@
 import type { Color } from '../core/rules';
 import { PHASES, phaseOf, type GamePhase } from '../library/insights';
 import { moveAccuracy } from './formulas';
+import type { ReviewSummary } from './summary';
+import type { GameReview } from './types';
 
 /**
  * Accuracy and error counts by game phase for one player in one game, computed from what a batch review stores (White's
@@ -105,4 +107,49 @@ export function totalPhases(games: ReadonlyArray<PhaseNumbers | null | undefined
       games: count,
     };
   });
+}
+
+/**
+ * The phase numbers as stored, checked: three tuples of five finite, non-negative numbers whose move count is a whole
+ * number and whose accuracy is at most 100. Anything else is `null` (a record without usable phases), never an error.
+ */
+export function readPhases(value: unknown): PhaseNumbers | null {
+  if (!Array.isArray(value) || value.length !== 3) return null;
+  for (const t of value) {
+    if (!Array.isArray(t) || t.length !== 5) return null;
+    if (!t.every((v) => typeof v === 'number' && Number.isFinite(v) && v >= 0)) return null;
+    if (!Number.isInteger(t[0]) || t[1] > 100 || !t.slice(2).every(Number.isInteger)) return null;
+  }
+  return value as PhaseNumbers;
+}
+
+const CLASS_LETTER: Partial<Record<string, string>> = { Blunder: BLUNDER, Mistake: MISTAKE, Miss: MISS };
+
+/**
+ * The phase numbers of one side of a review made on this device: the same inputs the batch stores (White's win% after
+ * every move, rounded to 2 decimals, and the classes), so a game gets the same numbers either way. Null for a review
+ * that is not complete.
+ */
+export function phaseNumbersOfReview(review: GameReview, color: Color): PhaseNumbers | null {
+  const start = review.whiteWinSeries[0];
+  if (review.moves.length < 1 || typeof start !== 'number') return null;
+  return phaseNumbers({
+    win: [start, ...review.moves.map((m) => m.whiteWinAfter)].map(round2),
+    classes: review.moves.map((m) => CLASS_LETTER[m.classification] ?? 'B').join(''),
+    fensBefore: review.moves.map((m) => m.fenBefore),
+    color,
+    firstMover: review.startFen.split(' ')[1] === 'b' ? 'b' : 'w',
+  });
+}
+
+/** A review summary with `phases` added to each of its sides (a side whose numbers cannot be made keeps none). */
+export function withPhases(summary: ReviewSummary, review: GameReview): ReviewSummary {
+  const sides: ReviewSummary['sides'] = {};
+  for (const color of ['w', 'b'] as const) {
+    const side = summary.sides[color];
+    if (!side) continue;
+    const phases = phaseNumbersOfReview(review, color);
+    sides[color] = phases ? { ...side, phases } : side;
+  }
+  return { ...summary, sides };
 }

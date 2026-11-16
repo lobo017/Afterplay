@@ -16,6 +16,7 @@ import {
   type JourneySeries,
   type LongGame,
   type OpeningStats,
+  type PhaseStat,
   type ReviewedGameRef,
   type ReviewStats,
   type ScopeStats,
@@ -34,6 +35,7 @@ export type StoryCardId =
   | 'openings'
   | 'accuracy'
   | 'mistakes'
+  | 'phases'
   | 'marks'
   | 'bestGame'
   | 'comebacks'
@@ -384,6 +386,7 @@ const PRESET_NAME: Record<NonNullable<ReviewedGameRef['preset']>, string> = {
 
 const oneDecimal = (value: number): string => value.toFixed(1);
 const percent = (value: number): string => `${oneDecimal(value)}%`;
+const twoDecimals = (value: number): string => value.toFixed(2);
 /** " in March 2024", or '' for a game with no date. */
 const inMonth = (playedAt: number | null): string =>
   playedAt === null ? '' : ` in ${monthLabel(new Date(playedAt).toISOString().slice(0, 7))}`;
@@ -538,6 +541,64 @@ function mistakesCard(r: ReviewStats): StoryCard {
   });
 }
 
+const PHASE_WORD: Record<PhaseStat['phase'], string> = {
+  opening: 'opening',
+  middlegame: 'middlegame',
+  endgame: 'endgame',
+};
+
+function phaseRow(p: PhaseStat): StoryTableRow {
+  return {
+    label: PHASE_WORD[p.phase][0]!.toUpperCase() + PHASE_WORD[p.phase].slice(1),
+    detail:
+      p.accuracy === null || p.blundersPer10 === null
+        ? 'no moves'
+        : `${percent(p.accuracy)} accuracy · ${twoDecimals(p.blundersPer10)} blunders per 10 moves`,
+  };
+}
+
+/** Where you play best and worst, by accuracy; '' when fewer than two phases differ. */
+export function phaseStrengthSentence(items: readonly PhaseStat[]): string {
+  const played = items.filter((p) => p.accuracy !== null);
+  if (played.length < 2) return '';
+  const best = played.reduce((a, b) => (b.accuracy! > a.accuracy! ? b : a));
+  const worst = played.reduce((a, b) => (b.accuracy! < a.accuracy! ? b : a));
+  if (best.accuracy === worst.accuracy) return '';
+  return `You play best in the ${PHASE_WORD[best.phase]} (${percent(best.accuracy!)}) and worst in the ${PHASE_WORD[worst.phase]} (${percent(worst.accuracy!)}).`;
+}
+
+/** Where you blunder most, per 10 moves, against where you blunder least; '' when fewer than two phases differ. */
+export function phaseSlipSentence(items: readonly PhaseStat[]): string {
+  const played = items.filter((p) => p.blundersPer10 !== null);
+  if (played.length < 2) return '';
+  const most = played.reduce((a, b) => (b.blundersPer10! > a.blundersPer10! ? b : a));
+  const least = played.reduce((a, b) => (b.blundersPer10! < a.blundersPer10! ? b : a));
+  if (most.blundersPer10 === least.blundersPer10) return '';
+  return `You blunder most in the ${PHASE_WORD[most.phase]}: ${twoDecimals(most.blundersPer10!)} per 10 moves, against ${twoDecimals(least.blundersPer10!)} in the ${PHASE_WORD[least.phase]}.`;
+}
+
+/** "2,084 of 4,535 games reached an endgame." */
+export function endgameReachedSentence(endgameGames: number, games: number): string {
+  return `${n(endgameGames)} of ${plural(games, 'game')} reached an endgame.`;
+}
+
+/** The three phases of a game; left out (null) when no counted game has phase numbers. */
+function phasesCard(r: ReviewStats): StoryCard | null {
+  const ph = r.phases;
+  if (ph === null) return null;
+  const endgame = ph.items.find((p) => p.phase === 'endgame')!;
+  const strength = phaseStrengthSentence(ph.items);
+  return card('phases', 'Game phases', {
+    sentence: strength === '' ? 'How you play the opening, the middlegame and the endgame.' : strength,
+    rows: ph.items.map(phaseRow),
+    notes: [
+      ...(phaseSlipSentence(ph.items) === '' ? [] : [phaseSlipSentence(ph.items)]),
+      endgameReachedSentence(endgame.games, ph.games),
+      ...(ph.games < r.reviewed ? [`Based on ${n(ph.games)} of your ${plural(r.reviewed, 'reviewed game')}.`] : []),
+    ],
+  });
+}
+
 /** Brilliant and Great moves; left out (null) when there are none of either. */
 function marksCard(r: ReviewStats): StoryCard | null {
   if (r.brilliant === 0 && r.great === 0) return null;
@@ -579,12 +640,12 @@ function bestGameCard(r: ReviewStats): StoryCard | null {
 
 /**
  * The review cards: none with no reviewed game, one "not enough" card below MIN_REVIEWED_GAMES, else accuracy, mistakes,
- * Brilliant and Great (when there are any), the most accurate game and the comebacks (when there are any).
+ * the game phases (when any game has them), Brilliant and Great (when there are any), the most accurate game and the comebacks (when there are any).
  */
 export function reviewCards(r: ReviewStats): StoryCard[] {
   if (r.reviewed === 0) return [];
   if (!r.enough) return [accuracyCard(r)];
-  return [accuracyCard(r), mistakesCard(r), marksCard(r), bestGameCard(r), comebacksCard(r)].filter(
+  return [accuracyCard(r), mistakesCard(r), phasesCard(r), marksCard(r), bestGameCard(r), comebacksCard(r)].filter(
     (c): c is StoryCard => c !== null,
   );
 }

@@ -28,6 +28,9 @@ import {
   quarterFilter,
   quarterKey,
   quarterX,
+  phaseBarText,
+  phaseHint,
+  reviewPhases,
   reviewQuarters,
   type QuarterPoint,
   type ReviewQuarters,
@@ -257,7 +260,9 @@ export class InsightsView {
     const mine = rows.filter((r) => r.color !== null);
     // Games reviewed in advance (a batch summary only): their numbers feed the quarter charts, not the older cards
     const inAdvance = mine.filter(reviewedInAdvance).length;
-    this.timeData = reviewQuarters(storyGames(records, accounts));
+    const counted = storyGames(records, accounts);
+    const phaseSummary = reviewPhases(counted);
+    this.timeData = reviewQuarters(counted);
     this.quarters = new Map(this.timeData.points.map((p) => [quarterKey(p), p]));
     const reviewed: ReviewedGameInput[] = [];
     for (const row of mine) {
@@ -277,19 +282,47 @@ export class InsightsView {
     const empty = emptyText;
     const needReviews = needReviewsText({ inAdvance, noneMarked: mine.length === 0 && rows.length > 0 });
 
-    const phaseChart = phases.every((p) => p.moves === 0)
-      ? empty(needReviews)
-      : `<div class="wc-insight-bars" data-testid="chart-phase">${phases
-          .map((p) => {
-            this.positions.set(`phase:${p.phase}`, p.positions);
-            const pct = p.accuracy === null ? 0 : p.accuracy;
-            return `<button type="button" class="wc-insight-bar" role="button" data-point="phase:${p.phase}" data-testid="phase-${p.phase}" aria-label="${PHASE_LABEL[p.phase]}: ${p.accuracy === null ? 'no moves' : `${pct.toFixed(1)}% accuracy over ${p.moves} moves`}" ${p.moves === 0 ? 'disabled' : ''}>
+    // Numbers from the summaries (a batch review or one made here); a click needs the moves of a review made here
+    const clickable = reviewed.length > 0;
+    let phaseChart: string;
+    if (phaseSummary) {
+      const device = new Map(phases.map((p) => [p.phase, p.positions]));
+      phaseChart = `<div class="wc-insight-bars" data-testid="chart-phase">${phaseSummary.bars
+        .map((p) => {
+          const positions = device.get(p.phase) ?? [];
+          const pct = p.accuracy === null ? 0 : p.accuracy;
+          const open = clickable && positions.length > 0;
+          if (open) this.positions.set(`phase:${p.phase}`, positions);
+          const label = `${PHASE_LABEL[p.phase]}: ${p.accuracy === null ? 'no moves' : `${phaseBarText(p)} over ${p.moves} moves`}`;
+          const inner = `<span class="wc-insight-bar-value">${p.accuracy === null ? '–' : `${pct.toFixed(1)}%`}</span>
+              <span class="wc-insight-bar-track"><span class="wc-insight-bar-fill" style="height:${pct}%"></span></span>
+              <span class="wc-insight-bar-label">${PHASE_LABEL[p.phase]}</span>
+              <span class="wc-insight-bar-sub" data-testid="phase-text-${p.phase}">${p.blundersPer10 === null ? 'no moves' : `${p.blundersPer10.toFixed(2)} blunders per 10 moves`}</span>`;
+          return open
+            ? `<button type="button" class="wc-insight-bar" role="button" data-point="phase:${p.phase}" data-testid="phase-${p.phase}" aria-label="${label}">${inner}</button>`
+            : `<div class="wc-insight-bar wc-insight-bar-static" data-testid="phase-${p.phase}" role="group" aria-label="${label}">${inner}</div>`;
+        })
+        .join('')}</div>`;
+    } else if (phases.every((p) => p.moves === 0)) phaseChart = empty(needReviews);
+    else {
+      // Reviews made here before phase numbers were stored: the older chart, from their moves
+      phaseChart = `<div class="wc-insight-bars" data-testid="chart-phase">${phases
+        .map((p) => {
+          this.positions.set(`phase:${p.phase}`, p.positions);
+          const pct = p.accuracy === null ? 0 : p.accuracy;
+          return `<button type="button" class="wc-insight-bar" role="button" data-point="phase:${p.phase}" data-testid="phase-${p.phase}" aria-label="${PHASE_LABEL[p.phase]}: ${p.accuracy === null ? 'no moves' : `${pct.toFixed(1)}% accuracy over ${p.moves} moves`}" ${p.moves === 0 ? 'disabled' : ''}>
               <span class="wc-insight-bar-value">${p.accuracy === null ? '–' : `${pct.toFixed(1)}%`}</span>
               <span class="wc-insight-bar-track"><span class="wc-insight-bar-fill" style="height:${pct}%"></span></span>
               <span class="wc-insight-bar-label">${PHASE_LABEL[p.phase]}</span>
               <span class="wc-insight-bar-sub">${p.moves} moves</span></button>`;
-          })
-          .join('')}</div>`;
+        })
+        .join('')}</div>`;
+    }
+    const phaseHintText = phaseSummary
+      ? phaseHint({ reviewedGames: phaseSummary.games, clickable, tap: tapWord() })
+      : phases.every((p) => p.moves === 0)
+        ? phaseHint({ reviewedGames: null, clickable: false, tap: tapWord() })
+        : phaseHint({ reviewedGames: null, clickable: true, tap: tapWord() });
 
     let blunderChart: string;
     if (blunders.length === 0) blunderChart = empty(needReviews);
@@ -367,7 +400,7 @@ export class InsightsView {
     this.root.innerHTML = `
       <div class="wc-insights-head"><h2 class="wc-page-title">Insights</h2><span class="wc-games-summary" data-testid="insights-summary">${insightsSummary({ reviewed: reviewed.length, inAdvance, mine: mine.length, all: rows.length })}</span></div>
       <div class="wc-insights-grid">
-        <section class="wc-insight-card" aria-labelledby="ins-phase"><h3 id="ins-phase">Accuracy by game phase</h3><p class="wc-insight-hint">How well you play each part of the game. ${tap} a bar to see the moves.</p>${phaseChart}</section>
+        <section class="wc-insight-card" aria-labelledby="ins-phase"><h3 id="ins-phase">Accuracy by game phase</h3><p class="wc-insight-hint">${phaseHintText}</p>${phaseChart}</section>
         ${
           reviewed.length === 0
             ? ''

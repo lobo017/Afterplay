@@ -19,7 +19,7 @@ import {
 } from '../library/more-accounts';
 
 /** Cards whose rows are two parts that do not fit side by side on a phone: the label above, the detail under it. */
-const STACKED_CARDS: readonly StoryCardId[] = ['mistakes', 'openings', 'journey'];
+const STACKED_CARDS: readonly StoryCardId[] = ['mistakes', 'phases', 'openings', 'journey'];
 /**
  * The sections of the wide layout. The DOM stays flat (a heading, then its cards, all children of the scroll box), so the
  * phone's single column and the order of its cards are exactly the same; the phone hides the headings.
@@ -28,12 +28,21 @@ const SECTIONS: readonly { key: string; title: string; ids: readonly StoryCardId
   { key: 'hero', title: 'Your story', ids: ['intro'] },
   { key: 'years', title: 'Your years', ids: ['totals', 'chesscom', 'lichess', 'hours', 'journey'] },
   { key: 'play', title: 'How you play', ids: ['time', 'ends', 'openings'] },
-  { key: 'skill', title: 'How well you play', ids: ['accuracy', 'mistakes', 'marks'] },
+  { key: 'skill', title: 'How well you play', ids: ['accuracy', 'mistakes', 'phases', 'marks'] },
   { key: 'best', title: 'Your best', ids: ['bestGame', 'bestWin', 'comebacks', 'records'] },
   { key: 'closing', title: '', ids: ['closing'] },
 ];
 /** Cards with long table rows or bars want more room on a wide screen; the others weigh 4 of 12 columns. */
-const WIDE_CARDS: readonly StoryCardId[] = ['journey', 'time', 'ends', 'openings', 'accuracy', 'mistakes'];
+const WIDE_CARDS: readonly StoryCardId[] = [
+  'journey',
+  'time',
+  'ends',
+  'openings',
+  'accuracy',
+  'mistakes',
+  'phases',
+  'marks',
+];
 const sectionOf = (id: StoryCardId) => SECTIONS.find((s) => s.ids.includes(id)) ?? SECTIONS[SECTIONS.length - 1]!;
 
 /**

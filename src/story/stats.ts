@@ -7,9 +7,10 @@ import type { UserAccount } from '../review/perspective';
 import type { StoredGameRecord } from '../storage/db';
 import { readPgnHeaders } from '../capture/pgn-time';
 import { myColor, resultFor } from '../library/game-record';
-import { openingFamily } from '../library/insights';
+import { PHASES, openingFamily, type GamePhase } from '../library/insights';
 import { readReviewNumbers, type ReviewNumbers } from '../library/review-numbers';
 import type { Color } from '../core/rules';
+import { totalPhases } from '../review/phase-numbers';
 
 // ---------------------------------------------------------------------------- constants
 
@@ -50,7 +51,7 @@ export const MIN_REVIEWED_ROW = 10;
 /** "Most accurate game" is chosen among games with at least this many of my moves. */
 export const MIN_MOVES_FOR_BEST_GAME = 25;
 
-export const STATS_VERSION = 3;
+export const STATS_VERSION = 4;
 
 export type StoryScope = 'all' | 'chesscom' | 'lichess';
 export type StorySite = 'chesscom' | 'lichess';
@@ -222,6 +223,21 @@ export interface ReviewedGameRef {
   preset: ReviewNumbers['preset'];
 }
 
+/** My moves in one phase of the game, over the counted reviewed games that have phase numbers. */
+export interface PhaseStat {
+  phase: GamePhase;
+  moves: number;
+  /** Mean accuracy of the moves (each game weighted by its moves); null with no moves. */
+  accuracy: number | null;
+  blunders: number;
+  mistakes: number;
+  misses: number;
+  /** Blunders per 10 moves; null with no moves. */
+  blundersPer10: number | null;
+  /** Games with at least one move in the phase (for the endgame: the games that reached one). */
+  games: number;
+}
+
 export interface ReviewStats {
   /** Counted games in the scope (the denominator of "X of Y counted games have an engine review"). */
   counted: number;
@@ -257,6 +273,11 @@ export interface ReviewStats {
    * lowest win%); `alsoLow` is how many other wins share that lowest value.
    */
   comebacks: { count: number; game: ReviewedGameRef & { low: number }; reviewedWins: number; alsoLow: number } | null;
+  /**
+   * By phase (opening, middlegame, endgame), over the reviewed games that have phase numbers; `games` is how many
+   * those are. Null when no counted game has them.
+   */
+  phases: { games: number; items: PhaseStat[] } | null;
   /** The most accurate reviewed game of at least MIN_MOVES_FOR_BEST_GAME of my moves (ties: the earliest). */
   bestGame: { game: ReviewedGameRef & { accuracy: number; moves: number }; eligible: number } | null;
 }
@@ -888,6 +909,23 @@ function reviewStatsOf(games: readonly CountedGame[]): ReviewStats {
     };
   }
 
+  const phased = items.filter((i) => i.review.phases);
+  const phases: ReviewStats['phases'] =
+    phased.length === 0
+      ? null
+      : {
+          games: phased.length,
+          items: totalPhases(phased.map((i) => i.review.phases!)).map((t, p) => ({
+            phase: PHASES[p]!,
+            moves: t.moves,
+            accuracy: t.accuracy,
+            blunders: t.blunders,
+            mistakes: t.mistakes,
+            misses: t.misses,
+            blundersPer10: t.moves === 0 ? null : (t.blunders / t.moves) * 10,
+            games: t.games,
+          })),
+        };
   const ofColour = (colour: Color) => items.filter((i) => i.game.color === colour);
   const ofOutcome = (outcome: CountedGame['outcome']) => items.filter((i) => i.game.outcome === outcome);
   return {
@@ -919,6 +957,7 @@ function reviewStatsOf(games: readonly CountedGame[]): ReviewStats {
     byYear,
     comebacks,
     bestGame,
+    phases,
   };
 }
 

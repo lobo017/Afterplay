@@ -4,6 +4,7 @@
  * Pure: no storage, no clock.
  */
 import type { Color } from '../core/rules';
+import { readPhases, type PhaseNumbers } from '../review/phase-numbers';
 import type { StoredGameRecord } from '../storage/db';
 import type { SavedReview } from './saved-review';
 
@@ -32,6 +33,8 @@ export interface ReviewNumbers {
   depth: number | null;
   /** The timed preset of a review made here, else null. */
   preset: SavedReview['preset'];
+  /** My moves, accuracy and errors by game phase; absent for a game whose record has none (or malformed ones). */
+  phases?: PhaseNumbers;
 }
 
 const isNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
@@ -53,6 +56,7 @@ export function readReviewNumbers(record: Pick<StoredGameRecord, 'analysis'>, co
   if (!isNumber(a.plies) || a.plies < MIN_REVIEWED_PLIES) return null;
   const counts = [side.inaccuracy, side.mistake, side.blunder, side.miss, side.brilliant, side.great];
   if (!isCount(side.moves) || side.moves < 1 || !counts.every(isCount) || !isNumber(side.drop)) return null;
+  const phases = readPhases(side.phases);
   return {
     accuracy,
     plies: a.plies,
@@ -68,5 +72,6 @@ export function readReviewNumbers(record: Pick<StoredGameRecord, 'analysis'>, co
     source: a.summaryOnly === true ? 'advance' : 'device',
     depth: isNumber(a.depth) ? a.depth : null,
     preset: a.preset ?? null,
+    ...(phases ? { phases } : {}),
   };
 }
