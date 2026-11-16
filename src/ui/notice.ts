@@ -1,3 +1,5 @@
+import { closeButton } from './components/popup';
+
 /**
  * A short message the user has to see once (a set-up link that could not be loaded): a bar that stays until OK.
  * Returns the function that shows a message.
@@ -18,7 +20,8 @@ export function mountNotice(parent: HTMLElement): (text: string) => void {
   ok.addEventListener('click', () => {
     el.hidden = true;
   });
-  el.append(text, ok);
+  // The X does what OK does
+  el.append(text, ok, closeButton({ testId: 'app-notice-close', onClose: () => (el.hidden = true) }));
   parent.appendChild(el);
   return (message: string) => {
     text.textContent = message;

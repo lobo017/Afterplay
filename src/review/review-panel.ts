@@ -54,6 +54,7 @@ import {
 /** Icon and label for each class: the tree, the card and the counts all use these. */
 import { icon } from '../ui/components/icons';
 import { Menu } from '../ui/components/menu';
+import { closeButtonHtml, fitPopup, watchFit } from '../ui/components/popup';
 import { tapWord, tapWordLower } from '../ui/pointer-words';
 
 export const CLASS_BADGE: Record<MoveClassification, { glyph: string; slug: string }> = {
@@ -249,6 +250,8 @@ export class ReviewPanel {
   private perspective: ReviewPerspective = 'both';
   /** The tooltip opened by a tap, click or Enter (hover and keyboard focus show them too). */
   private openTip: 'formulas' | 'status' | null = null;
+  /** Stops re-fitting the open tooltip when the screen turns. */
+  private stopTipFit: (() => void) | null = null;
   /** The status line's details, shown in its tooltip ('' while there are none). */
   private statusDetails = '';
   private lastError: string | null = null;
@@ -404,7 +407,8 @@ export class ReviewPanel {
           <span class="wc-review-progress-text" data-testid="review-progress-text">Not reviewed</span>
           <span class="wc-review-status-more" aria-hidden="true">i</span>
         </div>
-        <div class="wc-review-tooltip wc-review-status-tip" id="wc-review-status-tip" role="tooltip" data-testid="review-status-tooltip"></div>
+        <!-- No space between the tags: the tooltip's text is exactly the details -->
+        <div class="wc-review-tooltip wc-review-status-tip wc-popup wc-popup-bare" data-testid="review-status-tooltip"><div class="wc-popup-body" id="wc-review-status-tip" role="tooltip" data-testid="review-status-tooltip-text"></div>${closeButtonHtml('review-status-close')}</div>
       </div>
       <div class="wc-review-body" data-testid="review-body" hidden>
         <div class="wc-review-repertoire" data-testid="review-repertoire" data-kind="" role="status" hidden>
@@ -455,13 +459,19 @@ export class ReviewPanel {
           ${side('b')}
           <div class="wc-review-formulas" data-tip="formulas">
             <button type="button" class="wc-review-info-btn" data-testid="btn-review-formulas" aria-describedby="wc-review-formulas-tip" aria-expanded="false" aria-label="How these numbers are computed">i</button>
-            <div class="wc-review-tooltip" id="wc-review-formulas-tip" role="tooltip" data-testid="review-formulas-tooltip">
+            <div class="wc-review-tooltip wc-popup" data-testid="review-formulas-tooltip">
+              <div class="wc-popup-head">
+                <p class="wc-popup-title" data-testid="review-formulas-title">How these numbers are computed</p>
+                ${closeButtonHtml('review-formulas-close')}
+              </div>
+              <div class="wc-popup-body" id="wc-review-formulas-tip" role="tooltip">
               <p class="wc-review-tooltip-levels"><b>Bot level (approx.)</b>: <span data-testid="review-bot-name-w">White</span> <b data-testid="review-bot-level-w">—</b> · <span data-testid="review-bot-name-b">Black</span> <b data-testid="review-bot-level-b">—</b></p>
               <p><b>Win%</b> = 50 + 50·(2 / (1 + e<sup>−0.00368208·cp</sup>) − 1), from the engine score in centipawns, clamped to ±1000. A forced mate counts as ±1000 (97.5% / 2.5%), as on Lichess.</p>
               <p><b>Move accuracy</b> = 103.1668·e<sup>−0.04354·drop</sup> − 3.1669 + 1, clamped to 0–100, where drop is how much the move lowered your Win% (the +1 is Lichess's allowance for imprecise evaluations).</p>
               <p><b>Game accuracy</b> (Lichess method): the average of (a) your move accuracies weighted by how volatile the game was around each move (standard deviation of Win% over a sliding window) and (b) their harmonic mean, which pulls the result down for a few very bad moves.</p>
               <p><b>ACPL</b> (as on Lichess): the average over all your moves of how many centipawns each lost, with evaluations clamped to ±1000 and a mate counted as ±1000.</p>
               <p><b>Bot level (approx.)</b>: the in-app bot whose calibrated average loss matches yours in this game. It is not a rating estimate: the bots are calibrated against Stockfish, not people, and one game's average is dominated by its few biggest mistakes, so it usually reads far below a human player's rating.</p>
+              </div>
             </div>
           </div>
         </div>
@@ -527,7 +537,7 @@ export class ReviewPanel {
       cancel: q('btn-review-cancel'),
       sample: q('btn-review-sample'),
       progress: q('review-progress'),
-      statusTip: q('review-status-tooltip'),
+      statusTip: q('review-status-tooltip-text'),
       info: q('btn-review-formulas'),
       progressFill: q('review-progress-fill'),
       progressText: q('review-progress-text'),
@@ -628,6 +638,23 @@ export class ReviewPanel {
       },
       true,
     );
+    // The X in each tooltip, and the fit to the visible area on hover and keyboard focus (a tap fits it in setTip)
+    for (const tip of ['formulas', 'status'] as const) {
+      const wrap = this.root.querySelector<HTMLElement>(`[data-tip="${tip}"]`)!;
+      const popup = wrap.querySelector<HTMLElement>('.wc-review-tooltip')!;
+      wrap.querySelector(`[data-testid="review-${tip}-close"]`)!.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.closeTipByX(wrap);
+      });
+      wrap.addEventListener('pointerenter', (e) => {
+        if (e.pointerType === 'mouse') fitPopup(popup);
+      });
+      wrap.addEventListener('pointerleave', () => wrap.removeAttribute('data-tip-dismissed'));
+      wrap.addEventListener('focusin', () => {
+        wrap.removeAttribute('data-tip-dismissed');
+        fitPopup(popup);
+      });
+    }
     document.addEventListener('keydown', (e) => {
       if (e.key !== 'Escape' || !this.openTip) return;
       const focused = document.activeElement;
@@ -648,9 +675,29 @@ export class ReviewPanel {
 
   private setTip(tip: 'formulas' | 'status' | null): void {
     this.openTip = tip;
+    this.stopTipFit?.();
+    this.stopTipFit = null;
     if (tip) this.root.setAttribute('data-tip-open', tip);
     else this.root.removeAttribute('data-tip-open');
     this.els.info.setAttribute('aria-expanded', String(tip === 'formulas'));
+    if (!tip) return;
+    const wrap = this.root.querySelector<HTMLElement>(`[data-tip="${tip}"]`)!;
+    wrap.removeAttribute('data-tip-dismissed');
+    // Opened by a tap, click or key: it fits the visible area (the page scrolls a little if it has to)
+    const popup = wrap.querySelector<HTMLElement>('.wc-review-tooltip')!;
+    fitPopup(popup, { scroll: true });
+    this.stopTipFit = watchFit(popup);
+  }
+
+  /**
+   * The X: closes the tooltip, and keeps it closed while the mouse is still over it or the X still has focus (hover
+   * and keyboard focus show it too).
+   */
+  private closeTipByX(wrap: HTMLElement): void {
+    this.setTip(null);
+    wrap.setAttribute('data-tip-dismissed', 'true');
+    const focused = document.activeElement;
+    if (focused instanceof HTMLElement && wrap.contains(focused)) focused.blur();
   }
 
   // ------------------------------------------------------------------ public API

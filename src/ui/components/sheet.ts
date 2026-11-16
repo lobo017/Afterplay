@@ -1,4 +1,4 @@
-import { icon } from './icons';
+import { closeButtonHtml } from './popup';
 
 export interface SheetOptions {
   /** Shown as the sheet's heading and accessible name. */
@@ -65,7 +65,7 @@ export class Sheet {
       <div class="wc-sheet" role="dialog" aria-modal="true" aria-labelledby="${options.testId}-title" data-testid="${options.testId}">
         <header class="wc-sheet-head">
           <h2 class="wc-sheet-title" id="${options.testId}-title">${options.title}</h2>
-          <button type="button" class="wc-icon-btn" data-testid="${options.testId}-close" aria-label="Close ${options.title}">${icon('close')}</button>
+          ${closeButtonHtml(`${options.testId}-close`, `Close ${options.title}`)}
         </header>
         <div class="wc-sheet-body" data-testid="${options.testId}-body"></div>
       </div>`;

@@ -1,3 +1,5 @@
+import { closeButton, fitPopup } from './components/popup';
+
 export interface DevOverlayMetrics {
   fps: number;
   p95FrameMs: number;
@@ -40,7 +42,7 @@ export class DevOverlayController {
     this.element.hidden = true;
 
     this.element.innerHTML = `
-      <div class="wc-dev-overlay-title">
+      <div class="wc-dev-overlay-title wc-popup-head">
         <span>DEV OVERLAY</span>
         <span class="wc-kbd">\`</span>
       </div>
@@ -65,6 +67,11 @@ export class DevOverlayController {
         <span data-metric="cache">0.0%</span>
       </div>
     `;
+
+    // The X: hides it as the switch in Settings and the backtick key do
+    this.element
+      .querySelector('.wc-dev-overlay-title')
+      ?.append(closeButton({ testId: 'dev-overlay-close', onClose: () => this.setVisible(false) }));
 
     parent.appendChild(this.element);
 
@@ -126,6 +133,7 @@ export class DevOverlayController {
     this.element.hidden = !next;
 
     if (this.visible) {
+      fitPopup(this.element);
       this.lastFrameTime = performance.now();
       this.renderMetrics();
       this.scheduleTick();

@@ -19,6 +19,7 @@ import {
   type OverlayLegalTarget,
 } from './overlay';
 import { announce } from '../ui/announcer';
+import { closeButtonHtml } from '../ui/components/popup';
 import { CaptureParticleSystem } from './particles';
 import { boardFeel, resolveDropSquare, type BoardFeel } from './board-feel';
 import { attachBoardResizeHandle } from './board-size';
@@ -1761,6 +1762,7 @@ export class BoardRenderer {
       >
         ${buttonsHtml}
       </div>
+      ${closeButtonHtml('promotion-close', 'Close', `wc-promotion-close${isTopEdge && coords.col === 7 ? ' wc-promotion-close-beside' : ''}`)}
     `;
     this.promotionBackdropEl.hidden = false;
     this.syncOverlay();

@@ -1,4 +1,5 @@
 import { applyUpdate, watchUpdate } from '../pwa';
+import { closeButton } from './components/popup';
 
 /**
  * "New version available": shown when a newer build is waiting while something is in progress
@@ -15,6 +16,8 @@ export function mountUpdateBanner(parent: HTMLElement): void {
     <span>New version available.</span>
     <button type="button" class="wc-btn wc-btn-primary wc-btn-sm" data-testid="btn-update-reload">Reload</button>
     <button type="button" class="wc-btn wc-btn-ghost wc-btn-sm" data-testid="btn-update-later">Later</button>`;
+  // The X does what Later does
+  el.append(closeButton({ testId: 'update-banner-close', onClose: () => (el.hidden = true) }));
   parent.appendChild(el);
   el.querySelector('[data-testid="btn-update-reload"]')!.addEventListener('click', () => applyUpdate());
   el.querySelector('[data-testid="btn-update-later"]')!.addEventListener('click', () => {

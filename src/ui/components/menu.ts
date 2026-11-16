@@ -1,4 +1,5 @@
 import { icon, type IconName } from './icons';
+import { closeButton, fitPopup, watchFit } from './popup';
 
 export interface MenuItem {
   id: string;
@@ -19,6 +20,7 @@ export class Menu {
   public readonly button: HTMLButtonElement;
   private readonly popover: HTMLElement;
   private readonly itemEls = new Map<string, HTMLButtonElement>();
+  private stopFit: (() => void) | null = null;
 
   constructor(
     host: HTMLElement,
@@ -40,18 +42,33 @@ export class Menu {
     this.button.title = opts.label;
     this.button.innerHTML = icon('more');
 
+    // The popup: a head with the menu's name and the X, then the list itself (`role=menu`, only menu items in it)
     this.popover = document.createElement('div');
     this.popover.className = `wc-menu wc-menu-${opts.align ?? 'right'}`;
-    this.popover.setAttribute('role', 'menu');
-    this.popover.setAttribute('aria-label', opts.label);
-    this.popover.setAttribute('data-testid', `${opts.testId}-list`);
+    this.popover.setAttribute('data-testid', `${opts.testId}-popup`);
     this.popover.hidden = true;
+    const head = document.createElement('div');
+    head.className = 'wc-popup-head wc-menu-head';
+    const title = document.createElement('p');
+    title.className = 'wc-popup-title';
+    title.setAttribute('aria-hidden', 'true');
+    title.textContent = opts.label;
+    head.append(
+      title,
+      closeButton({ testId: `${opts.testId}-close`, onClose: () => this.close(true), className: 'wc-menu-close' }),
+    );
+    const list = document.createElement('div');
+    list.className = 'wc-menu-list';
+    list.setAttribute('role', 'menu');
+    list.setAttribute('aria-label', opts.label);
+    list.setAttribute('data-testid', `${opts.testId}-list`);
+    this.popover.append(head, list);
     for (const item of items) {
       if (item.separatorBefore) {
         const sep = document.createElement('div');
         sep.className = 'wc-menu-sep';
         sep.setAttribute('role', 'separator');
-        this.popover.appendChild(sep);
+        list.appendChild(sep);
       }
       const el = document.createElement('button');
       el.type = 'button';
@@ -66,7 +83,7 @@ export class Menu {
         item.onSelect();
       });
       this.itemEls.set(item.id, el);
-      this.popover.appendChild(el);
+      list.appendChild(el);
     }
     wrap.append(this.button, this.popover);
     host.appendChild(wrap);
@@ -92,7 +109,10 @@ export class Menu {
   public open(): void {
     this.popover.hidden = false;
     this.button.setAttribute('aria-expanded', 'true');
-    this.enabledItems()[0]?.focus();
+    fitPopup(this.popover, { scroll: true });
+    this.stopFit?.();
+    this.stopFit = watchFit(this.popover);
+    this.enabledItems()[0]?.focus({ preventScroll: true });
     // Close on the next outside press
     setTimeout(() => document.addEventListener('pointerdown', this.handleOutside, true), 0);
   }
@@ -102,6 +122,8 @@ export class Menu {
     this.popover.hidden = true;
     this.button.setAttribute('aria-expanded', 'false');
     document.removeEventListener('pointerdown', this.handleOutside, true);
+    this.stopFit?.();
+    this.stopFit = null;
     if (returnFocus) this.button.focus();
   }
 
@@ -134,6 +156,7 @@ export class Menu {
 
   public destroy(): void {
     document.removeEventListener('pointerdown', this.handleOutside, true);
+    this.stopFit?.();
   }
 
   public getItems(): readonly MenuItem[] {
