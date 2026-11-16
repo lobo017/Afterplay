@@ -10,6 +10,20 @@ import { CLASS_THRESHOLDS, classFromWinDrop, isErrorClass } from './classificati
 import { formatBotLevel, winPercentFromScore } from './formulas';
 import { buildAnnotatedPgn, evalAnnotation, mainLinePlies, type ReviewPly } from './review-game';
 import { restoreSavedReview, type SavedReview } from '../library/saved-review';
+import type { ReviewNumbers } from '../library/review-numbers';
+import {
+  CANCELED_STATUS,
+  FAILED_STATUS,
+  REVIEW_BUTTON_TEXT,
+  STORED_ACCURACY_LABEL,
+  STORED_PHASES_TITLE,
+  STORED_TITLE,
+  reviewFailedText,
+  reviewHelpText,
+  reviewRunningText,
+  storedIdleStatus,
+  storedSummaryView,
+} from '../library/stored-summary';
 import {
   DEFAULT_USER_ACCOUNTS,
   coversMove,
@@ -120,6 +134,16 @@ export interface ReviewPanelOptions {
 }
 
 type PanelState = 'idle' | 'running' | 'done' | 'cancelled' | 'error';
+
+/**
+ * A Games list game opened with no review on this device: its numbers from a review made in advance (or none), shown
+ * until a review run here finishes. A run that is canceled or fails comes back to it, with nothing half-shown.
+ */
+interface LibraryGameState {
+  numbers: ReviewNumbers | null;
+  /** How the last run here ended without finishing ('none' before any run). */
+  outcome: 'none' | 'cancelled' | 'failed';
+}
 
 interface RetryState {
   move: ReviewedMove;
@@ -238,6 +262,8 @@ export class ReviewPanel {
   private noteNodeId: string | null = null;
   /** Classifies and explains moves in a worker, shared by every review. */
   private readonly analysisClient = new ReviewAnalysisClient();
+  /** Set while a Games list game with no review on this device is shown (see LibraryGameState). */
+  private libraryGame: LibraryGameState | null = null;
 
   private els!: {
     preset: HTMLSelectElement;
@@ -288,6 +314,13 @@ export class ReviewPanel {
     coachNext: HTMLButtonElement;
     coachNextLabel: HTMLElement;
     startLabel: HTMLElement;
+    stored: HTMLElement;
+    storedAccuracy: HTMLElement;
+    storedTiles: HTMLElement;
+    storedPhases: HTMLElement;
+    storedPhaseRows: HTMLElement;
+    storedHelp: HTMLElement;
+    storedError: HTMLElement;
     repertoire: HTMLElement;
     repertoireText: HTMLElement;
     repertoireJump: HTMLButtonElement;
@@ -345,11 +378,24 @@ export class ReviewPanel {
           <h3 class="wc-review-intro-title">Review this game</h3>
           <p class="wc-review-intro-text">Every move is checked: your accuracy, the turning points, and what to play instead.</p>
         </div>
+        <section class="wc-review-stored" data-testid="review-stored" aria-labelledby="wc-review-stored-title" hidden>
+          <h3 class="wc-review-stored-title" id="wc-review-stored-title">${STORED_TITLE}</h3>
+          <div class="wc-review-stored-top">
+            <p class="wc-review-stored-accuracy"><b data-testid="review-stored-accuracy"></b><span>${STORED_ACCURACY_LABEL}</span></p>
+            <dl class="wc-review-stored-tiles" data-testid="review-stored-tiles"></dl>
+          </div>
+          <div class="wc-review-stored-phases" data-testid="review-stored-phases">
+            <h4 class="wc-review-stored-sub">${STORED_PHASES_TITLE}</h4>
+            <dl class="wc-review-stored-phase-rows" data-testid="review-stored-phase-rows"></dl>
+          </div>
+        </section>
         <div class="wc-review-actions">
           <select class="wc-select wc-select-sm" data-testid="select-review-preset" aria-label="How thorough">${presetOptions}</select>
           <button type="button" class="wc-btn wc-btn-primary wc-review-start-btn" data-testid="btn-review-start">${icon('review')}<span data-testid="review-start-label">Start review</span></button>
           <button type="button" class="wc-btn wc-btn-danger" data-testid="btn-review-cancel" disabled>Cancel</button>
           <button type="button" class="wc-btn wc-btn-ghost" data-testid="btn-review-sample" title="Morphy vs. Duke Karl / Count Isouard, Paris 1858">Sample game</button>
+          <p class="wc-review-stored-help" data-testid="review-stored-help" hidden></p>
+          <p class="wc-review-stored-error" data-testid="review-stored-error" role="alert" hidden></p>
         </div>
       </div>
       <div class="wc-review-status" data-tip="status" data-has-details="false">
@@ -513,6 +559,13 @@ export class ReviewPanel {
       coachNext: q('btn-coach-next'),
       coachNextLabel: q('coach-next-label'),
       startLabel: q('review-start-label'),
+      stored: q('review-stored'),
+      storedAccuracy: q('review-stored-accuracy'),
+      storedTiles: q('review-stored-tiles'),
+      storedPhases: q('review-stored-phases'),
+      storedPhaseRows: q('review-stored-phase-rows'),
+      storedHelp: q('review-stored-help'),
+      storedError: q('review-stored-error'),
       repertoire: q('review-repertoire'),
       repertoireText: q('review-repertoire-text'),
       repertoireJump: q('btn-review-repertoire-jump'),
@@ -524,6 +577,8 @@ export class ReviewPanel {
     this.els.preset.addEventListener('change', () => {
       this.preset = this.els.preset.value as ReviewPreset;
       this.options.onPresetChange?.(this.preset);
+      // The time under "Review this game" follows the setting
+      this.renderState();
     });
     this.els.start.addEventListener('click', () => {
       void this.start();
@@ -628,6 +683,7 @@ export class ReviewPanel {
   public setPreset(preset: ReviewPreset): void {
     this.preset = preset;
     this.els.preset.value = preset;
+    if (this.libraryGame) this.renderState();
   }
 
   public getPerspective(): ReviewPerspective {
@@ -676,6 +732,7 @@ export class ReviewPanel {
     this.appliedNodes.clear();
     this.exitRetry();
     this.lastError = null;
+    if (this.libraryGame) this.libraryGame.outcome = 'none';
     this.state = 'running';
     this.options.onRunningChange?.(true);
     this.els.body.hidden = false;
@@ -699,16 +756,27 @@ export class ReviewPanel {
         },
       });
       if (generation !== this.runGeneration) return result;
+      // A list game's numbers stay until a run finishes: a canceled one shows no partial review
+      if (result.cancelled && this.libraryGame) {
+        this.backToLibraryGame('cancelled', null);
+        return result;
+      }
       this.result = result;
       this.positions = result.positions;
       if (!result.cancelled) this.options.onReviewFinished?.(result, tree); // stored first, shown after
+      if (!result.cancelled) this.libraryGame = null;
       this.state = result.cancelled ? 'cancelled' : 'done';
       this.acceptReview(result.review, true);
       return result;
     } catch (err) {
       if (generation !== this.runGeneration) return null;
+      const message = err instanceof Error ? err.message : String(err);
+      if (this.libraryGame) {
+        this.backToLibraryGame('failed', message);
+        return null;
+      }
       this.state = 'error';
-      this.lastError = err instanceof Error ? err.message : String(err);
+      this.lastError = message;
       this.renderState();
       return null;
     } finally {
@@ -750,6 +818,7 @@ export class ReviewPanel {
     this.appliedNodes.clear();
     this.exitRetry();
     this.lastError = null;
+    this.libraryGame = null;
     this.savedAt = saved.savedAt;
     if (saved.preset) this.setPreset(saved.preset);
     this.state = 'done';
@@ -763,6 +832,96 @@ export class ReviewPanel {
   /** When the review shown was saved (null for a review run in this session). */
   public getSavedAt(): number | null {
     return this.savedAt;
+  }
+
+  /**
+   * The board's game came from the Games list and has no review on this device: shows my numbers from a review made in
+   * advance (none: just the button) at once, with no engine, and "Review this game", which runs the usual review.
+   */
+  public showLibraryGame(numbers: ReviewNumbers | null): void {
+    this.cancel();
+    this.libraryGame = { numbers, outcome: 'none' };
+    this.state = 'idle';
+    this.lastError = null;
+    this.renderStored();
+    this.renderState();
+  }
+
+  /** Whether the stored numbers of a list game are showing (with the button), for tests and diagnostics. */
+  public getLibraryGame(): { hasNumbers: boolean; outcome: LibraryGameState['outcome'] } | null {
+    return this.libraryGame
+      ? { hasNumbers: this.libraryGame.numbers !== null, outcome: this.libraryGame.outcome }
+      : null;
+  }
+
+  /**
+   * A run on a list game ended without finishing (canceled or failed): its partial review goes (the panel's body, the
+   * classes and evals it wrote on the moves) and the stored numbers and the button come back. Nothing was saved.
+   */
+  private backToLibraryGame(outcome: 'cancelled' | 'failed', message: string | null): void {
+    const game = this.libraryGame;
+    if (!game) return;
+    game.outcome = outcome;
+    this.exitRetry();
+    this.menu.close();
+    this.host.stripEngineAnnotations();
+    this.strippedAnnotations = 0;
+    this.review = null;
+    this.result = null;
+    this.positions = [];
+    this.byNode.clear();
+    this.appliedNodes.clear();
+    this.noteSeq++;
+    this.noteNodeId = null;
+    this.els.repertoire.hidden = true;
+    this.els.body.hidden = true;
+    this.state = outcome === 'failed' ? 'error' : 'idle';
+    this.lastError = message;
+    this.renderState();
+    this.renderErrorNav();
+    this.renderMoveCard(this.host.getCurrentNode());
+  }
+
+  /**
+   * The action row in the order it is drawn, so Tab follows the screen. A list game with no review here: "Review this
+   * game", its line and its message come first, then the setting, Cancel and Sample game. Otherwise the usual row:
+   * setting, Start review, Cancel, Sample game. Nodes move only when the order changes.
+   */
+  private placeActions(library: boolean): void {
+    const els = this.els;
+    const row = els.start.parentElement;
+    if (!row) return;
+    const order = library
+      ? [els.start, els.storedHelp, els.storedError, els.preset, els.cancel, els.sample]
+      : [els.preset, els.start, els.cancel, els.sample, els.storedHelp, els.storedError];
+    if (order.every((el, i) => row.children[i] === el)) return;
+    row.append(...order);
+  }
+
+  /** The stored numbers block: filled once per game (the numbers never change while it shows). */
+  private renderStored(): void {
+    const numbers = this.libraryGame?.numbers ?? null;
+    if (!numbers) {
+      this.els.storedAccuracy.textContent = '';
+      this.els.storedTiles.innerHTML = '';
+      this.els.storedPhaseRows.innerHTML = '';
+      return;
+    }
+    const view = storedSummaryView(numbers);
+    this.els.storedAccuracy.textContent = view.accuracy;
+    this.els.storedTiles.innerHTML = view.tiles
+      .map(
+        (t) =>
+          `<div class="wc-review-stored-tile" data-testid="review-stored-${t.key}" data-zero="${t.value === 0}"><dt>${escapeHtml(t.label)}</dt><dd>${t.value}</dd></div>`,
+      )
+      .join('');
+    this.els.storedPhases.hidden = view.phases.length === 0;
+    this.els.storedPhaseRows.innerHTML = view.phases
+      .map(
+        (p) =>
+          `<div class="wc-review-stored-phase" data-testid="review-stored-phase-${p.phase}"><dt>${escapeHtml(p.label)}</dt><dd><span class="wc-review-stored-track" aria-hidden="true"><i style="width:${(p.share * 100).toFixed(1)}%"></i></span><b>${escapeHtml(p.accuracy)}</b></dd></div>`,
+      )
+      .join('');
   }
 
   // ------------------------------------------------------------------ review updates
@@ -780,6 +939,7 @@ export class ReviewPanel {
     this.byNode.clear();
     this.appliedNodes.clear();
     this.savedAt = null;
+    this.libraryGame = null;
     this.state = 'idle';
     this.perspective = 'both';
     this.noteSeq++;
@@ -867,11 +1027,26 @@ export class ReviewPanel {
     this.els.cancel.disabled = !running;
     this.root.setAttribute('data-state', this.state);
     this.root.setAttribute('data-reviewed', String(this.review !== null));
-    this.els.startLabel.textContent = this.review !== null && !running ? 'Review again' : 'Start review';
+    const library = this.libraryGame;
+    this.root.setAttribute('data-library', String(library !== null));
+    this.placeActions(library !== null);
 
     const review = this.review;
     const total = review?.totalPositions ?? 0;
     const done = review?.analyzedPositions ?? 0;
+    this.els.startLabel.textContent = library
+      ? running
+        ? reviewRunningText(done, total)
+        : REVIEW_BUTTON_TEXT
+      : this.review !== null && !running
+        ? 'Review again'
+        : 'Start review';
+    this.els.stored.hidden = !library?.numbers;
+    this.els.storedHelp.hidden = !library;
+    this.els.storedHelp.textContent = library ? reviewHelpText(this.preset) : '';
+    const failed = library?.outcome === 'failed' && this.state === 'error';
+    this.els.storedError.hidden = !failed;
+    this.els.storedError.textContent = failed ? reviewFailedText(library.numbers !== null) : '';
     const fraction = total > 0 ? done / total : 0;
     this.els.progressFill.style.transform = `scaleX(${fraction})`;
     this.els.progressFill.parentElement?.setAttribute('aria-valuenow', String(Math.round(fraction * 100)));
@@ -880,7 +1055,11 @@ export class ReviewPanel {
     let details = '';
     switch (this.state) {
       case 'idle':
-        text = `Not reviewed yet. ${tapWord()} Start review.`;
+        text = library
+          ? library.outcome === 'cancelled'
+            ? CANCELED_STATUS
+            : storedIdleStatus(library.numbers !== null, tapWord())
+          : `Not reviewed yet. ${tapWord()} Start review.`;
         break;
       case 'running':
         text = `Reviewing… move ${done} of ${total || '…'}`;
@@ -911,7 +1090,13 @@ export class ReviewPanel {
         text = `Canceled at ${done} / ${total} positions (partial review)`;
         break;
       case 'error':
-        text = `Review failed: ${this.lastError ?? 'unknown error'}`;
+        // A list game's failure is said in plain words under the button; the engine's message goes in the tooltip
+        if (library) {
+          text = FAILED_STATUS;
+          details = this.lastError ?? '';
+        } else {
+          text = `Review failed: ${this.lastError ?? 'unknown error'}`;
+        }
         break;
     }
     this.els.progressText.textContent = text;

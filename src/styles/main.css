@@ -4534,6 +4534,188 @@ label.wc-setting-row {
   color: #15110a;
 }
 
+/* A Games list game with no review on this device: its stored numbers, then "Review this game" (the Start button) */
+.wc-review-panel[data-library='true'] .wc-review-intro {
+  display: none;
+}
+
+/* The button gets a row of its own, its line under it; the setting, Cancel and Sample game follow (the panel puts the
+   nodes in that order, so Tab follows the screen) */
+.wc-review-panel[data-library='true'] .wc-review-actions .wc-review-start-btn {
+  flex: 1 1 100%;
+  justify-content: center;
+  min-height: 3rem;
+  font-size: 1rem;
+  background: linear-gradient(180deg, #e2bf4a, #b8902a);
+  border-color: #e7c55a;
+  color: #15110a;
+  font-variant-numeric: tabular-nums;
+}
+
+.wc-review-stored {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 0.9rem 1rem;
+  border-radius: 0.8rem;
+  border: 1px solid rgba(212, 175, 55, 0.35);
+  background: linear-gradient(180deg, rgba(212, 175, 55, 0.09), rgba(22, 26, 38, 0.6));
+  min-width: 0;
+}
+
+.wc-review-stored[hidden],
+.wc-review-stored-phases[hidden],
+.wc-review-stored-help[hidden],
+.wc-review-stored-error[hidden] {
+  display: none;
+}
+
+.wc-review-stored-title {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.wc-review-stored-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem 1rem;
+}
+
+.wc-review-stored-accuracy {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+}
+
+.wc-review-stored-accuracy b {
+  font-size: 1.9rem;
+  font-variant-numeric: tabular-nums;
+  color: #fde68a;
+}
+
+.wc-review-stored-accuracy span {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.wc-review-stored-tiles {
+  flex: 1 1 14rem;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.4rem;
+}
+
+.wc-review-stored-tile {
+  display: flex;
+  flex-direction: column-reverse;
+  justify-content: flex-end;
+  padding: 0.4rem 0.55rem;
+  border-radius: 0.5rem;
+  background: rgba(9, 11, 16, 0.55);
+  border: 1px solid var(--border-subtle);
+  min-width: 0;
+}
+
+.wc-review-stored-tile dd {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.wc-review-stored-tile dt {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
+.wc-review-stored-tile[data-zero='true'] dd {
+  color: var(--text-muted);
+}
+
+@container wc-review (min-width: 30rem) {
+  .wc-review-stored-tiles {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+.wc-review-stored-sub {
+  margin: 0 0 0.35rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.wc-review-stored-phase-rows {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.wc-review-stored-phase {
+  display: grid;
+  grid-template-columns: 6.2rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.88rem;
+}
+
+.wc-review-stored-phase dt {
+  min-width: 0;
+}
+
+.wc-review-stored-phase dd {
+  margin: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 3.4rem;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.wc-review-stored-phase b {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.wc-review-stored-track {
+  display: block;
+  height: 0.45rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+.wc-review-stored-track i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgba(212, 175, 55, 0.55), #e2bf4a);
+}
+
+.wc-review-stored-help {
+  flex: 1 1 100%;
+  margin: 0 0 0.25rem;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.wc-review-stored-error {
+  flex: 1 1 100%;
+  margin: 0 0 0.25rem;
+  padding: 0.5rem 0.7rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(239, 68, 68, 0.45);
+  background: rgba(239, 68, 68, 0.1);
+  color: #fecaca;
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
 /* Coach card: one key moment at a time */
 .wc-coach {
   display: flex;

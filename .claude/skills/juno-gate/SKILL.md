@@ -96,5 +96,8 @@ npm run check:hosted -- <preview url>
 npm run check:hosted -- <preview url> --browser webkit-iphone
 ```
 
+On PowerShell use `npm.cmd` for any command with flags after `--` (`npm.cmd run deploy:preview -- --with-local-presets`,
+`npm.cmd run deploy:production -- --checked <id>`): `npm.ps1` drops the `--`.
+
 Report the preview URL, the build id and both check results, then stop for the user's check. **Never run
 `deploy:production` without the user's explicit approval of that build.**

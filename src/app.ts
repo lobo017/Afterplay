@@ -103,6 +103,7 @@ import { Tabs, tabListHtml, tabPanelAttrs } from './ui/components/tabs';
 import { ReviewQueue } from './library/review-queue';
 import { ExtensionBridgeClient } from './library/bridge-client';
 import { toSavedReview } from './library/saved-review';
+import { storedNumbersFor } from './library/stored-summary';
 import type { StoredGameRecord } from './storage/db';
 import type { MessageWindow } from './capture/protocol';
 import { PuzzleStore } from './trainers/puzzle-store';
@@ -500,6 +501,8 @@ export function mountAppShell(container: HTMLElement): {
     typeof window !== 'undefined' &&
     (window.location.hash === '#story' || (requestedAtStart === null && landingScreen(landing) !== 'play'));
   let storyView: StoryView | null = null;
+  /** A library change (a review saved, a game added or removed) since the Story last counted. */
+  let storyStale = false;
   let historyRunning = false;
   // A request cut off because the page is going away is not a failure: the load goes on at the next start
   let pageLeaving = false;
@@ -972,6 +975,11 @@ export function mountAppShell(container: HTMLElement): {
       if (mode === 'games') {
         void gamesList?.refresh();
         if (gamesTabs?.getSelected() === 'insights') void insightsView?.refresh();
+        // A review saved elsewhere (on the board, in the background) since the Story last counted
+        if (gamesTabs?.getSelected() === 'story' && storyStale) {
+          storyStale = false;
+          storyView?.shown();
+        }
       }
       if (mode === 'train' && trainView === 'hub') {
         void todayScreen?.refresh();
@@ -1190,7 +1198,10 @@ export function mountAppShell(container: HTMLElement): {
   trainRootEl.querySelector('[data-testid="btn-train-start"]')?.addEventListener('click', () => void startTraining());
   trainRootEl.querySelector('[data-testid="btn-train-hub"]')?.addEventListener('click', () => showTrainView('hub'));
 
-  /** Opens a Games list game on the analysis board, with its saved review if it has one. */
+  /**
+   * Opens a Games list game on the analysis board: with its saved review if it was reviewed on this device; otherwise
+   * with its numbers from a review made in advance, if any, and "Review this game".
+   */
   const openLibraryGame = async (record: StoredGameRecord): Promise<boolean> => {
     if (!library) return false;
     const saved = hasSavedReview(record) ? await library.getReview(record.id) : undefined;
@@ -1202,6 +1213,7 @@ export function mountAppShell(container: HTMLElement): {
     openGameId = record.id;
     analysisController.goToNode(analysisController.getGameTree().root.id);
     if (saved) reviewPanel.showSavedReview(saved);
+    else if (!hasSavedReview(record)) reviewPanel.showLibraryGame(storedNumbersFor(record, library.getUserAccounts()));
     analysisController.showTab('review');
     return true;
   };
@@ -1337,7 +1349,10 @@ export function mountAppShell(container: HTMLElement): {
     const storyPane = gamesRootEl.querySelector('[data-tab-panel="story"]') as HTMLElement;
     gamesTabs = new Tabs(gamesRootEl, (id) => {
       if (id === 'insights') void insightsView?.refresh();
-      if (id === 'story') storyView?.shown();
+      if (id === 'story') {
+        storyStale = false;
+        storyView?.shown();
+      }
     });
     // "Seen": the first time the Story is on screen with a finished import (it then opens Play on later launches)
     const markSeenIfDue = (finished: boolean): void => {
@@ -1426,6 +1441,8 @@ export function mountAppShell(container: HTMLElement): {
     });
     lib.onChange(() => {
       if (currentMode === 'games' && gamesTabs?.getSelected() === 'insights') void insightsView?.refresh();
+      // The Story counts again when it is next shown (the count is one long step, so not on every change)
+      storyStale = true;
     });
     mountGamesSettings(settings, lib, list);
     if (currentMode === 'games') await list.refresh();

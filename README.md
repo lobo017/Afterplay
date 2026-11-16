@@ -63,6 +63,10 @@ npm run deploy:preview                               # needs a clean git tree: b
 npm run deploy:production -- --checked <build id>    # the same dist/, no rebuild
 ```
 
+**On PowerShell, type `npm.cmd`, not `npm`:** PowerShell runs `npm` through `npm.ps1`, which drops the `--`, so the
+flags after it never reach the script. Use `npm.cmd run deploy:preview -- --with-local-presets` and
+`npm.cmd run deploy:production -- --checked <build id>`.
+
 `npm run check:hosted -- <url>` checks a deployed copy as a first visitor meets it (headers, isolation, the
 engine and the bot, offline reload, install, the sample first-run link); `--browser webkit` or `--browser webkit-iphone` runs it in
 Playwright's WebKit, the second as an iPhone (the install guide and the phone engine profile too).
@@ -159,6 +163,8 @@ node -e "console.log(require('crypto').randomBytes(12).toString('hex'))"   # a l
 npm run build:local        # the build, with gift.local/start/ copied into dist/ (try it with npm run serve)
 npm run deploy:preview -- --with-local-presets    # PUBLISHES them at their links, on the preview
 ```
+
+(On PowerShell: `npm.cmd run deploy:preview -- --with-local-presets`; see Hosting above.)
 
 A plain `npm run build` or `npm run deploy:preview` never includes them. `deploy:production` uploads exactly
 the `dist/` the last preview had, so a personal link reaches production only through a preview made with
