@@ -12,9 +12,12 @@ test.describe('Wording: Tap or Click, and the capture banner', () => {
     const coarse = await page.evaluate(() => window.matchMedia('(pointer: coarse)').matches);
     expect(coarse).toBe(touchProject());
     const hint = page.locator('section[aria-labelledby="ins-phase"] .wc-insight-hint');
-    await expect(hint).toHaveText(
-      `How well you play each part of the game. ${touchProject() ? 'Tap' : 'Click'} a bar to see the moves.`,
-    );
+    // Old: `How well you play each part of the game. ${Tap|Click} a bar to see the moves.` (it promised a click with no
+    // game reviewed). New: no promise when there is nothing to open. The Tap/Click wording is still checked on another
+    // Insights caption below, and for this card with a review made here in phase11-phases.spec.ts.
+    await expect(hint).toHaveText('How well you play each part of the game.');
+    const other = page.locator('section[aria-labelledby="ins-openings"] .wc-insight-hint');
+    await expect(other).toHaveText(`${touchProject() ? 'Tap' : 'Click'} a bar to see those games.`);
   });
 
   test('the capture status shows on localhost and not on a hosted address; the Review-new-games switch stays', async ({
