@@ -6613,6 +6613,227 @@ label.wc-setting-row {
   font-size: 0.95rem;
 }
 
+/* Text polish, both layouts: balanced short lines where the browser can (progressive enhancement), and a table row's
+   label kept on one line (the detail beside it wraps instead: "Rapid · 3,180 games" no longer breaks) */
+.wc-story-label,
+.wc-story-sentence,
+.wc-story-note,
+.wc-story-meter-title {
+  text-wrap: balance;
+}
+
+.wc-story-table:not(.wc-story-table-stack) th {
+  white-space: nowrap;
+  padding-right: 0.6rem;
+}
+
+/* The section headings and the headline tiles belong to the wide layout; the phone keeps its one column of cards */
+.wc-story-heading,
+.wc-story-tiles {
+  display: none;
+}
+
+/* From 760 px: the page scrolls (no inner box, no snap), two columns */
+@media (min-width: 760px) {
+  .wc-story-scroll {
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+    overscroll-behavior: auto;
+    scroll-snap-type: none;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: stretch;
+    gap: 20px;
+    width: 100%;
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 16px 16px 32px;
+  }
+
+  .wc-story-card {
+    width: auto;
+    min-height: 0;
+    scroll-snap-align: none;
+    grid-column: span 1;
+  }
+
+  .wc-story-lone,
+  .wc-story-span-12,
+  .wc-story-hero-card {
+    grid-column: 1 / -1;
+  }
+
+  .wc-story-form {
+    grid-column: 1 / -1;
+    justify-self: center;
+    width: min(30rem, 100%);
+  }
+
+  .wc-story-banner {
+    width: min(30rem, 100%);
+  }
+
+  .wc-story-heading {
+    display: block;
+    grid-column: 1 / -1;
+    margin: 0.8rem 0 -0.2rem;
+    padding-left: 0.7rem;
+    border-left: 3px solid var(--accent-gold);
+    font-size: 1.3rem;
+    line-height: 1.2;
+    text-wrap: balance;
+  }
+
+  /* The intro's own label already says it: the hero's heading is for screen readers */
+  .wc-story-heading-hero {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    margin: 0;
+    padding: 0;
+    border: 0;
+    white-space: nowrap;
+  }
+
+  .wc-story-tiles {
+    display: grid;
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+    gap: 20px;
+  }
+
+  .wc-story-tile {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.3rem;
+    padding: 1rem 1.1rem;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-carved);
+    border-radius: 1rem;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  }
+
+  .wc-story-tile-value {
+    font-size: 2.4rem;
+    font-weight: 800;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .wc-story-tile-label {
+    color: var(--accent-gold);
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  /* Tables go back to normal rows: the label on the left, the detail on the right */
+  .wc-story-table-stack {
+    display: table;
+  }
+
+  .wc-story-table-stack tbody {
+    display: table-row-group;
+  }
+
+  .wc-story-table-stack tr {
+    display: table-row;
+    padding: 0;
+    border-top: 0;
+  }
+
+  .wc-story-table-stack th,
+  .wc-story-table-stack td {
+    display: table-cell;
+    padding: 0.35rem 0;
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  .wc-story-table-stack th {
+    padding-right: 0.6rem;
+  }
+
+  .wc-story-table-stack td {
+    margin-top: 0;
+    text-align: right;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* From 900 px: a 12-column grid, up to 1,120 px wide */
+@media (min-width: 900px) {
+  .wc-story-scroll {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+  }
+
+  .wc-story-card {
+    grid-column: span 4;
+  }
+
+  .wc-story-span-3 {
+    grid-column: span 3;
+  }
+
+  .wc-story-span-4 {
+    grid-column: span 4;
+  }
+
+  .wc-story-span-5 {
+    grid-column: span 5;
+  }
+
+  .wc-story-span-6 {
+    grid-column: span 6;
+  }
+
+  .wc-story-span-7 {
+    grid-column: span 7;
+  }
+
+  .wc-story-span-8 {
+    grid-column: span 8;
+  }
+
+  .wc-story-span-9 {
+    grid-column: span 9;
+  }
+
+  .wc-story-span-12,
+  .wc-story-form {
+    grid-column: 1 / -1;
+  }
+
+  /* The hero row: the intro on the left, the four tiles beside it in two rows */
+  .wc-story-hero-card {
+    grid-column: span 5;
+  }
+
+  .wc-story-tiles {
+    grid-column: span 7;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  /* An odd tile at the end takes the whole row */
+  .wc-story-tile:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+
+  .wc-story-card[data-card='closing'] .wc-story-sentence,
+  .wc-story-card[data-card='closing'] .wc-story-personal {
+    max-width: 46rem;
+  }
+
+  .wc-story-card[data-card='closing'] .wc-story-btn {
+    align-self: flex-start;
+  }
+}
+
 /* Chess Story: a wrong username, and the added-accounts list (Story form and Settings › Your games) */
 .wc-story-error {
   margin: 0;

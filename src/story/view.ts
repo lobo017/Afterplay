@@ -20,6 +20,75 @@ import {
 
 /** Cards whose rows are two parts that do not fit side by side on a phone: the label above, the detail under it. */
 const STACKED_CARDS: readonly StoryCardId[] = ['mistakes', 'openings', 'journey'];
+/**
+ * The sections of the wide layout. The DOM stays flat (a heading, then its cards, all children of the scroll box), so the
+ * phone's single column and the order of its cards are exactly the same; the phone hides the headings.
+ */
+const SECTIONS: readonly { key: string; title: string; ids: readonly StoryCardId[] }[] = [
+  { key: 'hero', title: 'Your story', ids: ['intro'] },
+  { key: 'years', title: 'Your years', ids: ['totals', 'chesscom', 'lichess', 'hours', 'journey'] },
+  { key: 'play', title: 'How you play', ids: ['time', 'ends', 'openings'] },
+  { key: 'skill', title: 'How well you play', ids: ['accuracy', 'mistakes', 'marks'] },
+  { key: 'best', title: 'Your best', ids: ['bestGame', 'bestWin', 'comebacks', 'records'] },
+  { key: 'closing', title: '', ids: ['closing'] },
+];
+/** Cards with long table rows or bars want more room on a wide screen; the others weigh 4 of 12 columns. */
+const WIDE_CARDS: readonly StoryCardId[] = ['journey', 'time', 'ends', 'openings', 'accuracy', 'mistakes'];
+const sectionOf = (id: StoryCardId) => SECTIONS.find((s) => s.ids.includes(id)) ?? SECTIONS[SECTIONS.length - 1]!;
+
+/**
+ * How many of the 12 columns each card of one section takes. Cards are packed into the fewest rows their weights need,
+ * every row is filled, and a row's columns are shared by weight.
+ */
+export function packSpans(weights: readonly number[]): number[] {
+  const total = weights.reduce((a, b) => a + b, 0);
+  const rowCount = Math.max(1, Math.ceil(total / 12));
+  const target = total / rowCount;
+  const rows: number[][] = [];
+  let row: number[] = [];
+  let sum = 0;
+  weights.forEach((w, i) => {
+    if (row.length > 0 && (sum + w > 12 || sum + w / 2 > target)) {
+      rows.push(row);
+      row = [];
+      sum = 0;
+    }
+    row.push(i);
+    sum += w;
+  });
+  if (row.length > 0) rows.push(row);
+  const spans = weights.map(() => 12);
+  for (const r of rows) {
+    const rowTotal = r.reduce((a, i) => a + weights[i]!, 0);
+    let left = 12;
+    r.forEach((i, k) => {
+      const share = k === r.length - 1 ? left : Math.max(3, Math.round((weights[i]! / rowTotal) * 12));
+      spans[i] = share;
+      left -= share;
+    });
+  }
+  return spans;
+}
+
+const MONTH_THEN_NUMBER =
+  /\b(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Oct|Nov|Dec) (?=\d)/g;
+/**
+ * A number stays with the word after it ("119 D.", "51% won", "1,790 against"), and a month with its year or day
+ * ("Nov 2026"), so a line never ends on a number and starts on its unit. The stored text is not changed; only what is shown.
+ */
+export function glue(text: string): string {
+  return text.replace(/(\d(?:[\d,.]*\d)?%?) (?=[A-Za-z])/g, '$1 ').replace(MONTH_THEN_NUMBER, '$1 ');
+}
+const gl = (text: string): string => escapeHtml(glue(text));
+
+/** The four headline tiles of the wide layout: numbers the cards below already show. */
+const TILES: readonly { id: StoryCardId; key: string; label: string }[] = [
+  { id: 'totals', key: 'games', label: 'Games counted' },
+  { id: 'journey', key: 'peak', label: 'Peak rating' },
+  { id: 'accuracy', key: 'accuracy', label: 'Accuracy' },
+  { id: 'records', key: 'streak', label: 'Longest winning streak' },
+];
+
 /** The numbers are recounted at most this often while games arrive. */
 export const RECOUNT_INTERVAL_MS = 2000;
 
@@ -210,9 +279,13 @@ export class StoryView {
         void this.runImport();
         break;
 
-      case 'top':
-        this.root.querySelector('.wc-story-scroll')?.scrollTo({ top: 0, behavior: 'smooth' });
+      case 'top': {
+        // The phone scrolls inside the box; the wide layout scrolls the page
+        const box = this.root.querySelector<HTMLElement>('.wc-story-scroll');
+        if (box && getComputedStyle(box).overflowY === 'auto') box.scrollTo({ top: 0, behavior: 'smooth' });
+        else window.scrollTo({ top: 0, behavior: 'smooth' });
         break;
+      }
     }
   }
 
@@ -321,7 +394,7 @@ export class StoryView {
     return '';
   }
 
-  private cardHtml(card: StoryCard, stats: StoryStats): string {
+  private cardHtml(card: StoryCard, stats: StoryStats, extraClass = ''): string {
     const scope: ScopeStats | null =
       card.id === 'totals'
         ? stats.all
@@ -337,26 +410,67 @@ export class StoryView {
       ? `<table class="wc-story-table${stacked ? ' wc-story-table-stack' : ''}"${stacked ? ' role="table"' : ''}><tbody${stacked ? ' role="rowgroup"' : ''}>${card.rows
           .map((r) =>
             stacked
-              ? `<tr role="row"><th scope="row" role="rowheader">${escapeHtml(r.label)}</th><td role="cell">${escapeHtml(r.detail)}</td></tr>`
-              : `<tr><th scope="row">${escapeHtml(r.label)}</th><td>${escapeHtml(r.detail)}</td></tr>`,
+              ? `<tr role="row"><th scope="row" role="rowheader">${gl(r.label)}</th><td role="cell">${gl(r.detail)}</td></tr>`
+              : `<tr><th scope="row">${gl(r.label)}</th><td>${gl(r.detail)}</td></tr>`,
           )
           .join('')}</tbody></table>`
       : '';
-    const personal = card.personal ? `<p class="wc-story-personal">${escapeHtml(card.personal)}</p>` : '';
+    const personal = card.personal ? `<p class="wc-story-personal">${gl(card.personal)}</p>` : '';
     const top =
       card.id === 'closing'
         ? '<button type="button" class="wc-btn wc-btn-secondary wc-story-btn" data-story-action="top" data-testid="story-top">Start from the top</button>'
         : '';
-    return `<section class="wc-story-card" data-testid="story-card-${card.id}" data-card="${card.id}" aria-label="${escapeHtml(card.label)}">
+    return `<section class="wc-story-card${extraClass}" data-testid="story-card-${card.id}" data-card="${card.id}" aria-label="${escapeHtml(card.label)}">
       <p class="wc-story-label">${escapeHtml(card.label)}</p>
       ${card.value ? `<p class="wc-story-value" data-testid="story-value-${card.id}">${escapeHtml(card.value)}</p>` : ''}
-      ${card.sentence ? `<p class="wc-story-sentence">${escapeHtml(card.sentence)}</p>` : ''}
+      ${card.sentence ? `<p class="wc-story-sentence">${gl(card.sentence)}</p>` : ''}
       ${scope && scope.games > 0 ? wldBar(scope) : ''}
       ${card.meters.map(meterHtml).join('')}
       ${rows}
-      ${card.notes.map((t) => `<p class="wc-story-note">${escapeHtml(t)}</p>`).join('')}
+      ${card.notes.map((t) => `<p class="wc-story-note">${gl(t)}</p>`).join('')}
       ${personal}${top}
     </section>`;
+  }
+
+  /**
+   * The cards in their order, each section's heading in front of its first card (the phone hides the headings) and the
+   * four headline tiles after the intro (the phone hides them too). Every card also carries how many of the wide layout's
+   * 12 columns it takes. A section with no cards gets no heading.
+   */
+  private sectionsHtml(cards: readonly StoryCard[], stats: StoryStats): string {
+    const byId = new Map(cards.map((c) => [c.id, c]));
+    const tiles = TILES.flatMap((t) => {
+      const value = byId.get(t.id)?.value ?? '';
+      return value === ''
+        ? []
+        : [
+            `<div class="wc-story-tile" data-testid="story-tile-${t.key}"><span class="wc-story-tile-value">${escapeHtml(value)}</span><span class="wc-story-tile-label">${t.label}</span></div>`,
+          ];
+    });
+    const out: string[] = [];
+    let at = 0;
+    while (at < cards.length) {
+      const section = sectionOf(cards[at]!.id);
+      let end = at;
+      while (end < cards.length && sectionOf(cards[end]!.id) === section) end++;
+      const group = cards.slice(at, end);
+      at = end;
+      if (section.key === 'hero') {
+        out.push(`<h2 class="wc-story-heading wc-story-heading-hero">${section.title}</h2>`);
+        for (const c of group)
+          out.push(this.cardHtml(c, stats, tiles.length > 0 ? ' wc-story-hero-card' : ' wc-story-span-12'));
+        if (tiles.length > 0) out.push(`<div class="wc-story-tiles" data-testid="story-tiles">${tiles.join('')}</div>`);
+        continue;
+      }
+      if (section.title !== '') out.push(`<h2 class="wc-story-heading">${section.title}</h2>`);
+      const spans = section.key === 'closing' ? [12] : packSpans(group.map((c) => (WIDE_CARDS.includes(c.id) ? 6 : 4)));
+      group.forEach((c, i) => {
+        // On two columns an odd card at the end of a section takes the whole row
+        const lone = i === group.length - 1 && group.length % 2 === 1 ? ' wc-story-lone' : '';
+        out.push(this.cardHtml(c, stats, ` wc-story-span-${spans[i]}${lone}`));
+      });
+    }
+    return out.join('');
   }
 
   private render(): void {
@@ -372,16 +486,19 @@ export class StoryView {
     // A new user sees the form first; with no counted games it stays above the empty cards
     const formOnly = landing === 'new' && this.load.kind === 'idle';
     const keepTop = this.root.querySelector('.wc-story-scroll')?.scrollTop ?? 0;
+    const keepPage = window.scrollY;
     const cards = storyCards(stats, this.options.getPersonal?.() ?? {});
     const body = formOnly
       ? this.formHtml()
-      : `${empty || this.sync.kind === 'field-error' ? this.formHtml() : ''}${cards.map((c) => this.cardHtml(c, stats)).join('')}`;
+      : `${empty || this.sync.kind === 'field-error' ? this.formHtml() : ''}${this.sectionsHtml(cards, stats)}`;
     const html = `${this.bannerHtml()}<div class="wc-story-scroll" data-testid="story-scroll" tabindex="0" role="region" aria-label="Your Chess Story">${body}</div>`;
     if (html !== this.lastHtml || !this.root.querySelector('.wc-story-scroll')) {
       this.lastHtml = html;
       this.root.innerHTML = html;
       const next = this.root.querySelector('.wc-story-scroll');
       if (next && keepTop > 0) next.scrollTop = keepTop;
+      // The wide layout scrolls the page: a rebuilt list must not send the reader back up
+      if (keepPage > 0 && window.scrollY !== keepPage) window.scrollTo({ top: keepPage });
     }
     this.options.onRendered?.(
       !formOnly && this.load.kind === 'idle' && (this.sync.kind === 'idle' || this.sync.kind === 'notice'),
