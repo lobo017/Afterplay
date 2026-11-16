@@ -160,6 +160,24 @@ body {
   justify-content: flex-end;
 }
 
+/* Between the phone layout and a wide window the two side columns (12 rem minimum each, to center the destinations)
+   plus the four destinations are wider than the screen, and the settings button ended up off it: here the brand
+   takes the free space, the destinations and the button follow, and a long brand name is cut short */
+@media (min-width: 761px) and (max-width: 900px) {
+  .wc-topbar {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 0.75rem;
+    padding: 0 1rem;
+  }
+
+  .wc-brand-title {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
 .wc-icon {
   flex: none;
   display: block;

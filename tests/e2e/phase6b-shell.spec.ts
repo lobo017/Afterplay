@@ -205,3 +205,25 @@ test.describe('Phase 6b — app frame and navigation', () => {
     await page.screenshot({ path: path.join(SCREENSHOT_DIR, 'phone-settings-about.png') });
   });
 });
+
+test.describe('Phase 6b — the top bar between the phone and the wide layout', () => {
+  for (const [width, height] of [
+    [768, 1024],
+    [834, 1194],
+  ] as const) {
+    test(`at ${width}x${height} the page does not scroll sideways and the settings button is fully on screen`, async ({
+      page,
+    }) => {
+      await page.setViewportSize({ width, height });
+      await page.goto('/');
+      await expect(page.getByTestId('main-nav').locator('button')).toHaveText(['Play', 'Train', 'Review', 'Games']);
+      for (const mode of ['play', 'games'] as const) {
+        await page.getByTestId(`mode-tab-${mode}`).click();
+        expect(await sideScroll(page), `${mode}: no sideways scroll`).toBeLessThanOrEqual(0);
+        const box = (await page.getByTestId('btn-settings').boundingBox())!;
+        expect(box.x, `${mode}: settings button starts on screen`).toBeGreaterThanOrEqual(0);
+        expect(box.x + box.width, `${mode}: settings button ends on screen`).toBeLessThanOrEqual(width);
+      }
+    });
+  }
+});
