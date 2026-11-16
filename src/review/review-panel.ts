@@ -908,7 +908,7 @@ export class ReviewPanel {
         break;
       }
       case 'cancelled':
-        text = `Cancelled at ${done} / ${total} positions (partial review)`;
+        text = `Canceled at ${done} / ${total} positions (partial review)`;
         break;
       case 'error':
         text = `Review failed: ${this.lastError ?? 'unknown error'}`;

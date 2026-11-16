@@ -6,7 +6,6 @@ import { ME, game, utc } from './helpers/story-games';
 
 // The both-sites duplicate key tokenises the whole game, so it is built only when games from both sites are counted.
 // What the Story counts must not depend on that: these tests compare it with the rule written out here.
-const NOW = utc(2026, 6, 20);
 const mine: UserAccount[] = [
   { site: 'chesscom', username: ME },
   { site: 'lichess', username: ME },
@@ -73,7 +72,7 @@ describe('the both-sites duplicate key', () => {
         game({ id: `l${i}`, source: 'lichess', at: utc(2026, 3, 1 + i), variantSalt: `l${i}` }),
       ),
     ];
-    const s = computeStoryStats(records, mine, NOW);
+    const s = computeStoryStats(records, mine);
     expect(referenceDuplicates(records)).toBe(7);
     expect(s.onBothSites).toBe(7);
     expect(s.chesscom.games).toBe(27);
@@ -89,14 +88,14 @@ describe('the both-sites duplicate key', () => {
       game({ id: 'twin-a', variantSalt: 'twin' }),
       game({ id: 'twin-b', variantSalt: 'twin' }),
     ];
-    const s = computeStoryStats(records, mine, NOW);
+    const s = computeStoryStats(records, mine);
     expect(referenceDuplicates(records)).toBe(0);
     expect(s.onBothSites).toBe(0);
     expect(s.all.games).toBe(32);
     expect({ ...s.all, scope: 'chesscom' }).toEqual(s.chesscom);
     expect(storyGames(records, mine)).toHaveLength(32);
     const lichessOnly = records.map((r) => ({ ...r, source: 'lichess' as const }));
-    const l = computeStoryStats(lichessOnly, mine, NOW);
+    const l = computeStoryStats(lichessOnly, mine);
     expect(l.onBothSites).toBe(0);
     expect(l.all.games).toBe(32);
   });
@@ -113,7 +112,7 @@ describe('the both-sites duplicate key', () => {
       game({ id: 'near-b', source: 'chesscom', at: utc(2026, 5, 3), variantSalt: 'near2', outcome: 'win' }),
       game({ id: 'near-b', source: 'lichess', at: utc(2026, 5, 3), variantSalt: 'near2', outcome: 'loss' }),
     ];
-    const s = computeStoryStats(records, mine, NOW);
+    const s = computeStoryStats(records, mine);
     expect(referenceDuplicates(records)).toBe(0);
     expect(s.onBothSites).toBe(0);
     expect(s.all.games).toBe(s.chesscom.games + s.lichess.games);
@@ -122,7 +121,7 @@ describe('the both-sites duplicate key', () => {
 
   it('builds no key without games from both sites, and builds them when both are counted', () => {
     const one = countingReads(chesscom(25, 'c'));
-    computeStoryStats(one.records, mine, NOW);
+    computeStoryStats(one.records, mine);
     expect(one.reads()).toBe(25); // each game is read once, for its headers
 
     const lichessOnly = countingReads(chesscom(25, 'l').map((r) => ({ ...r, source: 'lichess' as const })));
@@ -133,14 +132,14 @@ describe('the both-sites duplicate key', () => {
       ...chesscom(25, 'c'),
       ...chesscom(5, 'x').map((r) => ({ ...r, id: `lichess:${r.id}`, source: 'lichess' as const })),
     ]);
-    computeStoryStats(both.records, mine, NOW);
+    computeStoryStats(both.records, mine);
     expect(both.reads()).toBe(2 * 30); // read for its headers and again for its key
   });
 
   it('does not count a game of the second site that is not mine as a reason to build keys', () => {
     const records = [...chesscom(20, 'c'), game({ id: 'stranger', source: 'lichess', me: 'someoneelse' })];
     const counting = countingReads(records);
-    const s = computeStoryStats(counting.records, mine, NOW);
+    const s = computeStoryStats(counting.records, mine);
     expect(s.excluded.notMine).toBe(1);
     expect(s.all.games).toBe(20);
     expect(counting.reads()).toBe(20); // one read each for the games that are mine, no key; the stranger's is not read

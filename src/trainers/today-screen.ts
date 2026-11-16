@@ -43,7 +43,7 @@ const DRILL_CARDS: ReadonlyArray<{ kind: DrillKind; label: string; idle: string;
     kind: 'endgame',
     label: 'Endgame drills due',
     idle: 'Drill the six endgames in Train.',
-    button: 'Practise endgames',
+    button: 'Practice endgames',
   },
   {
     kind: 'visualization',
@@ -229,7 +229,7 @@ export class TodayScreen {
       s.endgame.total === 0
         ? 'Drill the six endgames in Train; each one comes back on a schedule.'
         : s.endgame.due > 0
-          ? `${plural(s.endgame.due, 'position')} to practise.`
+          ? `${plural(s.endgame.due, 'position')} to practice.`
           : next('All caught up.');
     end.start.disabled = s.endgame.due === 0;
 

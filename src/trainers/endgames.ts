@@ -40,7 +40,7 @@ export const GOAL_LABEL: Record<EndgameGoal, string> = {
 export function goalText(entry: EndgamePositionEntry): string {
   switch (endgameGoal(entry)) {
     case 'mate':
-      return `Checkmate. Best possible: ${entry.optimalMoves} moves against the best defence.`;
+      return `Checkmate. Best possible: ${entry.optimalMoves} moves against the best defense.`;
     case 'convert':
       return 'Promote the pawn, or win the last piece, and keep the win.';
     case 'hold':

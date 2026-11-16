@@ -4,7 +4,6 @@ import { computeStoryStats, storyGames } from '../../src/story/stats';
 import { FOES, ME, game, run, utc } from './helpers/story-games';
 import { batch, reviewed } from './helpers/story-reviews';
 
-const NOW = utc(2026, 6, 20);
 const mine: UserAccount[] = [
   { site: 'chesscom', username: ME },
   { site: 'lichess', username: ME },
@@ -30,7 +29,7 @@ describe('storyGames', () => {
   it('leaves out pasted games, games played here, other people’s games, unfinished games and Chess960 or set-up games', () => {
     const games = storyGames([...counted, ...left], mine);
     expect(games).toHaveLength(counted.length);
-    expect(computeStoryStats([...counted, ...left], mine, NOW).excluded.total).toBe(left.length);
+    expect(computeStoryStats([...counted, ...left], mine).excluded.total).toBe(left.length);
   });
 
   it('reads the outcome, my colour, the time class, the date and the review of each counted game', () => {
@@ -76,7 +75,7 @@ describe('storyGames', () => {
       game({ id: 'dup', source: 'chesscom', variantSalt: 'dup' }),
       game({ id: 'dup', source: 'lichess', variantSalt: 'dup' }),
     ];
-    const all = computeStoryStats(records, mine, NOW).all;
+    const all = computeStoryStats(records, mine).all;
     const games = storyGames(records, mine);
     expect(games).toHaveLength(all.games);
     expect(games.filter((g) => g.outcome === 'win')).toHaveLength(all.wins);

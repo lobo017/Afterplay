@@ -401,7 +401,7 @@ export class EndgameTrainer {
           exact
             ? 'Careful: the win is gone with best play.'
             : s.goal === 'hold'
-              ? 'Careful: the engine is pressing. Find the defence.'
+              ? 'Careful: the engine is pressing. Find the defense.'
               : 'Careful: the engine sees only equality now.',
           'warn',
         );

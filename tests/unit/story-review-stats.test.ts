@@ -11,12 +11,11 @@ import {
 } from '../../src/story/stats';
 import { FOES, ME, game, run, utc } from './helpers/story-games';
 
-const NOW = utc(2026, 6, 20);
 const mine: UserAccount[] = [
   { site: 'chesscom', username: ME },
   { site: 'lichess', username: ME },
 ];
-const stats = (records: StoredGameRecord[]) => computeStoryStats(records, mine, NOW);
+const stats = (records: StoredGameRecord[]) => computeStoryStats(records, mine);
 
 interface Numbers {
   accuracy?: number;
@@ -157,6 +156,8 @@ describe('the review block of the stats', () => {
       perGame: null,
       brilliant: 0,
       great: 0,
+      brilliantGames: 0,
+      greatGames: 0,
       byClass: [],
       white: null,
       black: null,
@@ -164,11 +165,11 @@ describe('the review block of the stats', () => {
       losses: null,
       halves: null,
       byYear: [],
-      swing: null,
+      comebacks: null,
       bestGame: null,
     });
-    expect(STATS_VERSION).toBe(2);
-    expect(stats([]).version).toBe(2);
+    expect(STATS_VERSION).toBe(3);
+    expect(stats([]).version).toBe(3);
   });
 
   it('averages accuracy and counts per game, and splits the sources', () => {
@@ -297,8 +298,8 @@ describe('the review block of the stats', () => {
     ]);
   });
 
-  describe('the biggest swing', () => {
-    it('is the reviewed win with the lowest win%, the earliest on a tie, and says how many others tie', () => {
+  describe('the comebacks', () => {
+    it('is the reviewed win with the lowest win%, then the highest opponent rating, then the latest game; counts the wins from under 5% and the others that tie', () => {
       const win = (id: string, month: number, low: number | null, tc = '180+2') =>
         reviewed(game({ id, at: utc(2025, month), tc }), { low });
       const s = stats([
@@ -307,15 +308,40 @@ describe('the review block of the stats', () => {
         win('b', 2, 5),
         win('n', 4, null),
         reviewed(game({ id: 'lost', at: utc(2025, 5), outcome: 'loss' }), { low: 1 }),
-      ]).all.review.swing!;
+      ]).all.review.comebacks!;
       expect(s.reviewedWins).toBe(3);
+      expect(s.count).toBe(0); // 5 is not under 5
       expect(s.alsoLow).toBe(1);
-      expect(s.game).toMatchObject({ low: 5, timeClass: 'blitz', outcome: 'win', source: 'advance', depth: 18 });
-      expect(new Date(s.game.playedAt!).getUTCMonth()).toBe(1);
+      // 'b' (February, blitz) and 'c' (March, rapid) tie at 5 with the same opponent rating: the later game, 'c'
+      expect(s.game).toMatchObject({ low: 5, timeClass: 'rapid', outcome: 'win', source: 'advance', depth: 18 });
+      expect(new Date(s.game.playedAt!).getUTCMonth()).toBe(2);
+    });
+
+    it('breaks a tie at the lowest win% by the higher opponent rating, then the later game, whatever the input order', () => {
+      const w = (id: string, month: number, foeElo: number | null) =>
+        reviewed(game({ id, at: utc(2025, month), foeElo, variantSalt: id }), { low: 2.5 });
+      const records = [
+        w('early-high', 1, 1900),
+        w('late-low', 6, 1500),
+        w('late-high', 3, 1900),
+        w('unrated', 8, null),
+      ];
+      for (const order of [records, [...records].reverse()]) {
+        const c = stats(order).all.review.comebacks!;
+        expect(c.game.opponentRating).toBe(1900);
+        expect(new Date(c.game.playedAt!).getUTCMonth()).toBe(2); // March: the later of the two at 1900
+        expect(c.alsoLow).toBe(3);
+        expect(c.count).toBe(4);
+      }
+    });
+
+    it('counts the wins from under 5%', () => {
+      const w = (id: string, low: number) => reviewed(game({ id, at: utc(2025, 2), variantSalt: id }), { low });
+      expect(stats([w('a', 4.99), w('b', 0), w('c', 5), w('d', 60)]).all.review.comebacks!.count).toBe(2);
     });
 
     it('is null with no reviewed win', () => {
-      expect(stats([reviewed(game({ id: 'l', outcome: 'loss' }))]).all.review.swing).toBeNull();
+      expect(stats([reviewed(game({ id: 'l', outcome: 'loss' }))]).all.review.comebacks).toBeNull();
     });
   });
 

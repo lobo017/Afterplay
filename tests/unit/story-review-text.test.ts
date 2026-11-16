@@ -1,16 +1,22 @@
 import { describe, expect, it } from 'vitest';
+import type { StoredGameRecord } from '../../src/storage/db';
 import { MIN_REVIEWED_GAMES, computeStoryStats } from '../../src/story/stats';
-import { YEAR_ROWS_SHOWN, earlierYearsNote, notEnoughReviewed, reviewCards, storyCards } from '../../src/story/text';
-import { SHOWN_CARDS } from '../../src/story/view';
+import {
+  CLASS_ROWS_SHOWN,
+  YEAR_ROWS_SHOWN,
+  earlierYearsNote,
+  notEnoughReviewed,
+  reviewCards,
+  storyCards,
+} from '../../src/story/text';
 import { FOES, ME, game, run, utc, type GameSpec } from './helpers/story-games';
 import { batch, reviewed } from './helpers/story-reviews';
 
-const NOW = utc(2026, 6, 20);
 const accounts = [
   { site: 'chesscom' as const, username: ME },
   { site: 'lichess' as const, username: ME },
 ];
-const stats = (records: Parameters<typeof computeStoryStats>[0]) => computeStoryStats(records, accounts, NOW);
+const stats = (records: Parameters<typeof computeStoryStats>[0]) => computeStoryStats(records, accounts);
 const cardsOf = (records: Parameters<typeof computeStoryStats>[0]) =>
   Object.fromEntries(storyCards(stats(records)).map((c) => [c.id, c]));
 
@@ -47,27 +53,31 @@ describe('which review cards are made', () => {
     expect(storyCards(stats(records)).map((c) => c.id)).toEqual([
       'intro',
       'totals',
-      'chesscom',
-      'openings',
+      'hours',
+      'journey',
+      'time',
+      'ends',
       'bestWin',
-      'trend',
+      'records',
       'closing',
     ]);
     expect(reviewCards(stats(records).all.review)).toEqual([]);
   });
 
-  it('puts the four cards after the site cards and before the openings card', () => {
+  it('puts the review cards after how the games end and before the best win; the comebacks follow the best win', () => {
     expect(storyCards(stats(D)).map((c) => c.id)).toEqual([
       'intro',
       'totals',
-      'chesscom',
+      'hours',
+      'journey',
+      'time',
+      'ends',
       'accuracy',
       'mistakes',
-      'swing',
+      'marks',
       'bestGame',
-      'openings',
       'bestWin',
-      'trend',
+      'records',
       'closing',
     ]);
     const withLichess = [...D, ...run(2, 'l', (i) => ({ source: 'lichess' as const, variantSalt: `l${i}` }))];
@@ -75,17 +85,17 @@ describe('which review cards are made', () => {
       storyCards(stats(withLichess))
         .map((c) => c.id)
         .slice(0, 5),
-    ).toEqual(['intro', 'totals', 'chesscom', 'lichess', 'accuracy']);
+    ).toEqual(['intro', 'totals', 'chesscom', 'lichess', 'hours']);
   });
 
-  it('shows the four cards in the view', () => {
-    for (const id of ['accuracy', 'mistakes', 'swing', 'bestGame'] as const) expect(SHOWN_CARDS).toContain(id);
-  });
-
-  it('makes one "not enough" card from 1 to 19 reviewed games and all four from 20', () => {
-    const idsFor = (count: number) => reviewCards(stats(pad(count)).all.review).map((c) => c.id);
+  it('makes one "not enough" card from 1 to 19 reviewed games and the full set from 20', () => {
+    const idsFor = (count: number, extra: StoredGameRecord[] = []) =>
+      reviewCards(stats([...pad(count), ...extra]).all.review).map((c) => c.id);
     expect(idsFor(MIN_REVIEWED_GAMES - 1)).toEqual(['accuracy']);
-    expect(idsFor(MIN_REVIEWED_GAMES)).toEqual(['accuracy', 'mistakes', 'swing', 'bestGame']);
+    // Padding games have no Brilliant or Great move and no win: the marks and comebacks cards are left out
+    expect(idsFor(MIN_REVIEWED_GAMES)).toEqual(['accuracy', 'mistakes', 'bestGame']);
+    const win = reviewed(game({ id: 'w', at: utc(2024, 3, 10) }), { low: 3, brilliant: 1 });
+    expect(idsFor(MIN_REVIEWED_GAMES, [win])).toEqual(['accuracy', 'mistakes', 'marks', 'bestGame', 'comebacks']);
   });
 });
 
@@ -166,13 +176,12 @@ describe('the Accuracy card', () => {
 describe('the Mistakes card', () => {
   const c = cardsOf(D).mistakes!;
 
-  it('gives blunders a game, the other classes, Brilliant and Great, the halves, and a row per year', () => {
+  it('gives blunders a game, the other classes, the halves, and a row per year', () => {
     expect(c.value).toBe('1.5');
     expect(c.sentence).toBe('You blundered 1.5 times a game over 24 reviewed games.');
     expect(c.rows).toEqual([{ label: '2026 · 24 games', detail: '75.0% accuracy · 1.5 blunders a game' }]);
     expect(c.notes).toEqual([
-      'Mistakes: 3.0 a game. Inaccuracies: 4.0 a game. Your reviewed games average 28 of your moves.',
-      '2 Brilliant moves and 5 Great moves.',
+      'Mistakes: 3.0 a game. Inaccuracies: 4.0 a game.',
       'Early on: 70.0% accuracy and 2.0 blunders a game. Lately: 80.0% and 1.0.',
     ]);
   });
@@ -180,75 +189,104 @@ describe('the Mistakes card', () => {
   it('leaves out the halves note and the year rows for undated games', () => {
     const undated = cardsOf(batch(24, 'u', () => ({ game: { at: null }, review: { brilliant: 1 } }))).mistakes!;
     expect(undated.rows).toEqual([]);
-    expect(undated.notes).toHaveLength(2);
+    expect(undated.notes).toHaveLength(1);
     expect(undated.notes.join(' ')).not.toContain('Early on');
   });
 
-  it('leaves out the Brilliant and Great note when both counts are zero, and keeps it when either is above zero', () => {
-    const none = cardsOf(batch(24, 'z')).mistakes!;
-    expect(none.notes.join(' ')).not.toContain('Brilliant');
-    expect(none.notes).toHaveLength(2); // the classes note and the halves note
-    const onlyBrilliant = cardsOf(batch(24, 'z', () => ({ review: { brilliant: 1 } }))).mistakes!;
-    expect(onlyBrilliant.notes).toContain('24 Brilliant moves and 0 Great moves.');
-    const onlyGreat = cardsOf(batch(24, 'z', (i) => ({ review: { great: i === 0 ? 1 : 0 } }))).mistakes!;
-    expect(onlyGreat.notes).toContain('0 Brilliant moves and 1 Great move.');
+  it('holds no Brilliant or Great note any more: that is the card of its own', () => {
+    expect(cardsOf(D).mistakes!.notes.join(' ')).not.toContain('Brilliant');
   });
 });
 
-describe('the Biggest swing card', () => {
+describe('the Brilliant and Great card', () => {
+  it('gives both counts in a sentence and the games each came in as rows', () => {
+    // D: 2 games with a Brilliant move (1 each), 1 game with 5 Great moves
+    const c = cardsOf(D).marks!;
+    expect(c.sentence).toBe('2 Brilliant moves and 5 Great moves.');
+    expect(c.rows).toEqual([
+      { label: 'Brilliant', detail: '2 moves in 2 games' },
+      { label: 'Great', detail: '5 moves in 1 game' },
+    ]);
+    expect(c.value).toBe('');
+  });
+
+  it('says "move" for one, "none" for a zero row, and is left out when both counts are zero', () => {
+    const onlyGreat = cardsOf(batch(24, 'z', (i) => ({ review: { great: i === 0 ? 1 : 0 } }))).marks!;
+    expect(onlyGreat.sentence).toBe('0 Brilliant moves and 1 Great move.');
+    expect(onlyGreat.rows).toEqual([
+      { label: 'Brilliant', detail: 'none' },
+      { label: 'Great', detail: '1 move in 1 game' },
+    ]);
+    const onlyBrilliant = cardsOf(batch(24, 'z', () => ({ review: { brilliant: 1 } }))).marks!;
+    expect(onlyBrilliant.sentence).toBe('24 Brilliant moves and 0 Great moves.');
+    expect(cardsOf(batch(24, 'z')).marks).toBeUndefined();
+  });
+});
+
+describe('the Comebacks card', () => {
   const win = (id: string, low: number | null, extra: Partial<GameSpec> = {}) =>
     reviewed(game({ id, at: utc(2024, 3, 10), tc: '180+2', ...extra }), { low });
 
-  it('names the lowest win%, the class and month, then notes the pool and how the game was reviewed', () => {
-    const c = cardsOf([...pad(20), win('w1', 3)]).swing!;
-    expect(c.value).toBe('3%');
-    expect(c.sentence).toBe('You won a game where you had only a 3% chance, a blitz game in March 2024.');
-    expect(c.notes).toEqual(['Out of 1 win.']);
+  it('counts the wins from under 5%, names the most unlikely one, with its class and month', () => {
+    const c = cardsOf([
+      ...pad(20),
+      win('w1', 3),
+      win('w2', 4.9, { variantSalt: '2' }),
+      win('w3', 5, { variantSalt: '3' }),
+    ]).comebacks!;
+    expect(c.value).toBe('2');
+    expect(c.sentence).toBe('wins from a position where you had under a 5% chance.');
+    expect(c.notes).toEqual(['Your most unlikely win: you had only a 3% chance, a blitz game in March 2024.']);
   });
 
-  it('rounds the percentage and says "under 1%" below 1', () => {
+  it('says "win" for one comeback', () => {
+    const c = cardsOf([...pad(20), win('w1', 3)]).comebacks!;
+    expect(c.value).toBe('1');
+    expect(c.sentence).toBe('win from a position where you had under a 5% chance.');
+  });
+
+  it('rounds the chance and says "less than a 1% chance" below 1', () => {
     for (const [low, text] of [
-      [2.5, '3%'],
-      [14.4, '14%'],
-      [1, '1%'],
-      [0.99, 'under 1%'],
-      [0, 'under 1%'],
+      [2.5, 'only a 3% chance'],
+      [4.4, 'only a 4% chance'],
+      [0.99, 'less than a 1% chance'],
+      [0, 'less than a 1% chance'],
     ] as const) {
-      expect(cardsOf([...pad(20), win('w1', low)]).swing!.value).toBe(text);
+      expect(cardsOf([...pad(20), win('w1', low)]).comebacks!.notes[0]).toBe(
+        `Your most unlikely win: you had ${text}, a blitz game in March 2024.`,
+      );
     }
-    expect(cardsOf([...pad(20), win('w1', 0.4)]).swing!.sentence).toBe(
-      'You won a game where you had less than a 1% chance, a blitz game in March 2024.',
-    );
   });
 
-  it('puts the pool first, then how many other wins fell that low, in the singular and the plural', () => {
-    const two = cardsOf([...pad(20), win('a', 3), win('b', 3)]).swing!;
-    expect(two.notes).toEqual(['Out of 2 wins.', '1 other win also fell that low.']);
-    const three = cardsOf([...pad(20), win('a', 3), win('b', 3), win('c', 3)]).swing!;
-    expect(three.notes.slice(0, 2)).toEqual(['Out of 3 wins.', '2 other wins also fell that low.']);
+  it('says how many other wins fell that low, in the singular and the plural', () => {
+    const two = cardsOf([...pad(20), win('a', 3), win('b', 3, { variantSalt: 'b' })]).comebacks!;
+    expect(two.notes.slice(1)).toEqual(['1 other win fell that low.']);
+    const three = cardsOf([
+      ...pad(20),
+      win('a', 3),
+      win('b', 3, { variantSalt: 'b' }),
+      win('c', 3, { variantSalt: 'c' }),
+    ]).comebacks!;
+    expect(three.notes.slice(1)).toEqual(['2 other wins fell that low.']);
   });
 
   it('names a review made on this device by its preset', () => {
     const dev = reviewed(game({ id: 'd', at: utc(2024, 3, 10) }), { low: 3, advance: false, preset: 'quick' });
-    expect(cardsOf([...pad(20), dev]).swing!.notes).toEqual([
-      'Out of 1 win.',
-      'This game was reviewed on this device (Quick).',
-    ]);
+    expect(cardsOf([...pad(20), dev]).comebacks!.notes.at(-1)).toBe('This game was reviewed on this device (Quick).');
   });
 
   it('builds the clause from what the game has: class and date, date only, class only, neither', () => {
-    const sentence = (extra: Partial<GameSpec>) => cardsOf([...pad(20), win('w1', 3, extra)]).swing!.sentence;
-    expect(sentence({})).toBe('You won a game where you had only a 3% chance, a blitz game in March 2024.');
-    expect(sentence({ tc: '-' })).toBe('You won a game where you had only a 3% chance, a game in March 2024.');
-    expect(sentence({ at: null })).toBe('You won a game where you had only a 3% chance, a blitz game.');
-    expect(sentence({ at: null, tc: '-' })).toBe('You won a game where you had only a 3% chance.');
+    const sentence = (extra: Partial<GameSpec>) => cardsOf([...pad(20), win('w1', 3, extra)]).comebacks!.notes[0];
+    expect(sentence({})).toBe('Your most unlikely win: you had only a 3% chance, a blitz game in March 2024.');
+    expect(sentence({ tc: '-' })).toBe('Your most unlikely win: you had only a 3% chance, a game in March 2024.');
+    expect(sentence({ at: null })).toBe('Your most unlikely win: you had only a 3% chance, a blitz game.');
+    expect(sentence({ at: null, tc: '-' })).toBe('Your most unlikely win: you had only a 3% chance.');
   });
 
-  it('says "No reviewed win yet." with no value and no notes when no reviewed game was won', () => {
-    const c = cardsOf(pad(20)).swing!;
-    expect(c.sentence).toBe('No reviewed win yet.');
-    expect(c.value).toBe('');
-    expect(c.notes).toEqual([]);
+  it('is left out with no comeback: no reviewed win, or none from under 5%', () => {
+    expect(cardsOf(pad(20)).comebacks).toBeUndefined();
+    expect(cardsOf([...pad(20), win('w1', 5)]).comebacks).toBeUndefined();
+    expect(cardsOf([...pad(20), win('w1', null)]).comebacks).toBeUndefined();
   });
 });
 
@@ -281,7 +319,7 @@ describe('the Most accurate game card', () => {
 
   it('is left out when no reviewed game has 25 moves', () => {
     const ids = storyCards(stats(pad(20, 24))).map((c) => c.id);
-    expect(ids).toContain('swing');
+    expect(ids).toContain('mistakes');
     expect(ids).not.toContain('bestGame');
   });
 });
@@ -368,5 +406,30 @@ describe('the newest years on the Mistakes card', () => {
     expect(cards.mistakes!.notes.at(-1)).toBe(
       'Early on: 65.0% accuracy and 4.0 blunders a game. Lately: 80.0% and 1.0.',
     );
+  });
+});
+
+describe('the classes listed on the Accuracy card', () => {
+  const inClass = (tc: string, count: number) =>
+    batch(count, `k${tc}`.replace('/', '-'), (i) => ({ game: { tc, variantSalt: `${tc}${i}` } }));
+
+  it('lists the three most reviewed classes, in class order, and no more', () => {
+    const records = [
+      ...inClass('60', 10),
+      ...inClass('180', 14),
+      ...inClass('600', 30),
+      ...inClass('1500', 11),
+      ...inClass('1/86400', 12),
+    ];
+    expect(CLASS_ROWS_SHOWN).toBe(3);
+    expect(cardsOf(records).accuracy!.rows.map((r) => r.label)).toEqual([
+      'Blitz · 14 games',
+      'Rapid · 30 games',
+      'Daily · 12 games',
+    ]);
+  });
+
+  it('lists every class when there are three or fewer', () => {
+    expect(cardsOf([...inClass('180', 12), ...inClass('600', 12)]).accuracy!.rows).toHaveLength(2);
   });
 });

@@ -136,7 +136,7 @@ export class RepertoireTrainer {
             { value: 'b', label: 'Black repertoire' },
           ],
           'w',
-          'Repertoire colour',
+          'Repertoire color',
         )}
         <section class="wc-tab-panel" ${tabPanelAttrs('rep', 'build', 'build')}>
           <p class="wc-trainer-text" data-testid="rep-summary"></p>
@@ -184,7 +184,7 @@ export class RepertoireTrainer {
         </div>
         <div class="wc-rep-foot wc-action-bar wc-grow" data-testid="rep-foot-drill" hidden>
           <button type="button" class="wc-btn wc-btn-primary wc-btn-lg wc-grow" data-testid="btn-rep-start">Start drill</button>
-          <button type="button" class="wc-btn wc-btn-secondary wc-btn-lg wc-grow" data-testid="btn-rep-practise" title="Asks every position of this repertoire. Nothing is graded, so your schedule stays as it is." hidden>Practise anyway</button>
+          <button type="button" class="wc-btn wc-btn-secondary wc-btn-lg wc-grow" data-testid="btn-rep-practise" title="Asks every position of this repertoire. Nothing is graded, so your schedule stays as it is." hidden>Practice anyway</button>
         </div>`,
     });
     const mount = this.root.querySelector('[data-testid="rep-board-mount"]') as HTMLElement;
@@ -611,7 +611,7 @@ export class RepertoireTrainer {
     this.els.reveal.disabled = !asking;
     const hasWork = !!this.due && this.due.ordered.length > 0 && !!this.index && repertoireStats(this.index).moves > 0;
     const running = this.drillState === 'playing' || this.drillState === 'asking';
-    // With nothing due, "Practise anyway" takes the place of "Start drill"
+    // With nothing due, "Practice anyway" takes the place of "Start drill"
     const canPractise = !running && !hasWork && !!this.index && repertoireStats(this.index).myPositions > 0;
     this.els.start.hidden = canPractise;
     this.els.start.disabled = running || !hasWork;
@@ -623,7 +623,7 @@ export class RepertoireTrainer {
     this.els.practise.classList.toggle('wc-btn-primary', canPractise);
     this.els.practise.classList.toggle('wc-btn-secondary', !canPractise);
     this.els.practise.textContent =
-      this.drillState === 'done' && this.practising ? 'Practise another line' : 'Practise anyway';
+      this.drillState === 'done' && this.practising ? 'Practice another line' : 'Practice anyway';
   }
 
   /** The trainer's screen went away: a drill under way is dropped (answers already given stay graded). */

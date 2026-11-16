@@ -113,11 +113,9 @@ describe('the summary covers the whole library, not the filtered list', () => {
 });
 
 describe('against the Story and Insights', () => {
-  const NOW = utc(2026, 6, 20);
-
   it('equals the Story’s count when every game is one the Story counts', () => {
     const rs = Array.from({ length: 25 }, (_, i) => advance(`s${i}`, utc(2026, 1 + (i % 5), 3 + i)));
-    const story = computeStoryStats(rs, mine, NOW).all.review.inAdvance;
+    const story = computeStoryStats(rs, mine).all.review.inAdvance;
     expect(story).toBe(25);
     expect(summaryOf(rs)).toBe(`25 games · ${story} reviewed`);
   });
@@ -133,7 +131,7 @@ describe('against the Story and Insights', () => {
       ),
     ];
     const rs = [...counted, ...left];
-    const story = computeStoryStats(rs, mine, NOW).all.review.inAdvance;
+    const story = computeStoryStats(rs, mine).all.review.inAdvance;
     expect(story).toBe(20);
     expect(summaryOf(rs)).toBe(`25 games · ${story + left.length} reviewed`);
   });

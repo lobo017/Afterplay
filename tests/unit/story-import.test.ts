@@ -228,7 +228,7 @@ describe('added accounts', () => {
     const added = run(10, 'b', (i) => ({ variantSalt: `b${i}`, me: OTHER_ME, at: utc(2026, 2, 1 + i) }));
     await library.saveSyncedGames([...mine, ...added]);
 
-    const count = async () => computeStoryStats(await library.list(), library.getUserAccounts(), NOW).all.games;
+    const count = async () => computeStoryStats(await library.list(), library.getUserAccounts()).all.games;
     expect(await count()).toBe(35);
 
     await removeMoreAccount(library, 'chesscom', OTHER_ME.toUpperCase());
@@ -264,7 +264,7 @@ describe('added accounts', () => {
 
 describe('the preset’s story text', () => {
   const stats = (records: Parameters<typeof computeStoryStats>[0]) =>
-    computeStoryStats(records, [{ site: 'chesscom', username: ME }], NOW);
+    computeStoryStats(records, [{ site: 'chesscom', username: ME }]);
   const many = run(30, 'p', (i) => ({
     variantSalt: `p${i}`,
     foe: FOES[i % FOES.length]!,

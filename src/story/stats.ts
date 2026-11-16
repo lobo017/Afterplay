@@ -34,21 +34,23 @@ export const MIN_GAMES_FOR_STREAKS = 20;
 export const MIN_GAMES_FOR_STORY = 20;
 /** A game is the same on both sites only from this many plies. */
 export const MIN_PLIES_FOR_DUPLICATE = 20;
-/** The rating trend covers this many calendar months, the current one included. */
-export const TREND_MONTHS = 12;
-/** A trend needs this many rated games in the window... */
-export const MIN_TREND_GAMES = 10;
-/** ...in at least this many different months. */
-export const MIN_TREND_MONTHS = 2;
+/** Exact time controls kept per scope. */
+export const TOP_CONTROLS = 3;
+/** A rating journey is told for a site and class from this many rated games. */
+export const MIN_JOURNEY_GAMES = 10;
+/** A win from under this chance (win%, my side) is a comeback. */
+export const COMEBACK_BELOW = 5;
+/** A live game that seems to last longer than this is a clock or header error and adds no time at the board. */
+export const MAX_LIVE_GAME_SECONDS = 12 * 3600;
 
-/** The review cards need this many reviewed games (the same number halves a trend: dated games). */
+/** The review cards need this many reviewed games (the same number halves the games by date). */
 export const MIN_REVIEWED_GAMES = 20;
 /** A review row or note (a class, a colour, wins or losses, a year) needs this many reviewed games. */
 export const MIN_REVIEWED_ROW = 10;
 /** "Most accurate game" is chosen among games with at least this many of my moves. */
 export const MIN_MOVES_FOR_BEST_GAME = 25;
 
-export const STATS_VERSION = 2;
+export const STATS_VERSION = 3;
 
 export type StoryScope = 'all' | 'chesscom' | 'lichess';
 export type StorySite = 'chesscom' | 'lichess';
@@ -73,10 +75,103 @@ export interface ClassStats extends Wld {
 export interface OpeningStats extends Wld {
   /** The opening family, e.g. "Sicilian Defense". */
   name: string;
+  /** The most-played named variation of the family ("Alapin Variation"), or null when no game has one. */
+  topVariation: { name: string; games: number } | null;
+}
+
+/** How a game ended, in a small fixed set read the same way for both sites. */
+export type EndKind =
+  'checkmate' | 'resignation' | 'time' | 'left' | 'repetition' | 'insufficient' | 'agreement' | 'stalemate' | 'other';
+export const END_KINDS: readonly EndKind[] = [
+  'checkmate',
+  'resignation',
+  'time',
+  'left',
+  'repetition',
+  'insufficient',
+  'agreement',
+  'stalemate',
+  'other',
+];
+export type EndCounts = Record<EndKind, number>;
+/** Counts of each ending, for my wins, losses and draws. */
+export interface Endings {
+  win: EndCounts;
+  loss: EndCounts;
+  draw: EndCounts;
+}
+
+/** An exact time control ("10 min", "15+10", "1 day") with its class. */
+export interface ControlStats {
+  /** The PGN TimeControl as stored ("600", "900+10", "1/86400"). */
+  control: string;
+  label: string;
+  timeClass: TimeClass | null;
+  games: number;
+}
+
+export interface JourneyPoint {
+  rating: number;
+  /** "2025-09" (UTC). */
+  month: string;
+}
+
+/** My rating in one site and class: the first rated game, the peak (its first month) and the latest. */
+export interface JourneySeries {
+  site: StorySite;
+  timeClass: TimeClass;
+  ratedGames: number;
+  first: JourneyPoint;
+  peak: JourneyPoint;
+  latest: JourneyPoint;
+}
+
+/** What a long game says about itself: no id, name or link. */
+export interface LongGame {
+  /** Moves of the whole game: ceil(plies / 2). */
+  moves: number;
+  playedAt: number | null;
+  timeClass: TimeClass | null;
+  outcome: 'win' | 'loss' | 'draw';
+  ending: EndKind;
+}
+
+export interface Records {
+  /** Reviewed games the longest game was chosen from (the stored plies come from the review). */
+  games: number;
+  longest: LongGame;
+  longestWin: LongGame | null;
+}
+
+/** Hours and days at the board, from the game dates and the UTC clocks of the live games. */
+export interface Activity {
+  /** Games with a date. */
+  datedGames: number;
+  /** Seconds of the live games that have both a start and an end time (daily games are left out). */
+  liveSeconds: number;
+  timedGames: number;
+  /** Different UTC days with a game. */
+  days: number;
+  /** The most days in a row with a game. */
+  longestRun: number;
+  busiestDay: { day: string; games: number } | null;
+  busiestMonth: { month: string; games: number } | null;
+  busiestYear: { year: number; games: number } | null;
+}
+
+export interface Upset {
+  /** Opponent rating minus mine. */
+  points: number;
+  opponentRating: number;
+  myRating: number;
+  timeClass: TimeClass | null;
+  playedAt: number | null;
 }
 
 export interface BestWin {
   opponentRating: number;
+  /** My rating in that game, when the game has it. */
+  myRating: number | null;
   /** ms since the epoch (UTC), or null when the game has no date. */
   playedAt: number | null;
   timeClass: TimeClass | null;
@@ -92,28 +187,8 @@ export interface Streaks {
   enough: boolean;
   longestWin: number;
   longestLoss: number;
-}
-
-export interface TrendPoint {
-  /** "2026-03" (UTC). */
-  month: string;
-  /** My rating in the last game of that month. */
-  rating: number;
-}
-
-export interface TrendSeries {
-  site: StorySite;
-  timeClass: TimeClass;
-  /** Months with games in the window, oldest first. */
-  points: TrendPoint[];
-  /** Rated games in the window. */
-  ratedGames: number;
-  /** MIN_TREND_GAMES rated games in at least MIN_TREND_MONTHS months. */
-  enough: boolean;
-  /** The latest month with any game in this site and class ("2024-03"), or null. */
-  lastGameMonth: string | null;
-  /** False when no game of this site and class falls in the window. */
-  anyInWindow: boolean;
+  /** Games in a row without a loss (wins and draws). */
+  longestUnbeaten: number;
 }
 
 export interface AccuracyGroup {
@@ -173,11 +248,15 @@ export interface ReviewStats {
   halves: { first: ReviewHalf & { endMonth: string }; second: ReviewHalf } | null;
   /** Years with at least MIN_REVIEWED_ROW reviewed games, oldest first. */
   byYear: ReviewYearRow[];
+  /** The games that have at least one Brilliant (or Great) move. */
+  brilliantGames: number;
+  greatGames: number;
   /**
-   * The reviewed win in which my win% was lowest (ties: the earliest game). `reviewedWins` is the pool it was chosen
-   * from (reviewed wins that have a lowest win%); `alsoLow` is how many other wins share that lowest value.
+   * `count` is the wins from under COMEBACK_BELOW%. `game` is the most unlikely reviewed win: the one in which my win%
+   * was lowest (ties: the highest opponent rating, then the latest game). `reviewedWins` is the pool it was chosen from (reviewed wins that have a
+   * lowest win%); `alsoLow` is how many other wins share that lowest value.
    */
-  swing: { game: ReviewedGameRef & { low: number }; reviewedWins: number; alsoLow: number } | null;
+  comebacks: { count: number; game: ReviewedGameRef & { low: number }; reviewedWins: number; alsoLow: number } | null;
   /** The most accurate reviewed game of at least MIN_MOVES_FOR_BEST_GAME of my moves (ties: the earliest). */
   bestGame: { game: ReviewedGameRef & { accuracy: number; moves: number }; eligible: number } | null;
 }
@@ -196,8 +275,19 @@ export interface ScopeStats extends Wld {
   streaks: Streaks;
   openings: { white: OpeningStats[]; black: OpeningStats[]; withoutOpening: number };
   bestWin: BestWin | null;
-  /** One series per site in the scope (the sites are never combined); empty when the site has no games. */
-  trends: TrendSeries[];
+  /** The win against the biggest rating gap (opponent above me); null when no win was against a higher rating. */
+  upset: Upset | null;
+  /** Wins against an opponent rated above me. */
+  higherRatedWins: number;
+  /** How my games ended. */
+  endings: Endings;
+  /** The most-played exact time controls, most played first (at most TOP_CONTROLS). */
+  controls: ControlStats[];
+  /** One series per site and class (the sites are never combined), in site then class order. */
+  journeys: JourneySeries[];
+  /** Longest game and longest win, from the stored plies; null with no reviewed game. */
+  records: Records | null;
+  activity: Activity;
   /** First and last game, ms since the epoch (UTC), or null. */
   firstPlayedAt: number | null;
   lastPlayedAt: number | null;
@@ -266,9 +356,18 @@ interface CountedGame {
   outcome: 'win' | 'loss' | 'draw';
   timeClass: TimeClass | null;
   playedAt: number | null;
+  /** The UTC day ("2026-03-14") of the game, or '' when it has no date. */
+  day: string;
   opponentRating: number | null;
   myRating: number | null;
   opening: string;
+  /** The named variation of the opening ("Alapin Variation"), or '' when the name has none. */
+  variation: string;
+  /** The exact time control as stored ("600", "900+10", "1/86400"), or null when it cannot be read. */
+  control: string | null;
+  ending: EndKind;
+  /** Seconds from the start to the end clock of a live game, or null. */
+  liveSeconds: number | null;
   /**
    * Duplicate key between sites, or null when the game is too short or undated. Built on the first call, not when the
    * game is read: it tokenises the whole game, which is the costly part, and nothing needs it unless games from both
@@ -285,6 +384,92 @@ function isStandard(headers: Readonly<Record<string, string>>): boolean {
   if ('FEN' in headers) return false;
   if ((headers.SetUp ?? '').trim() === '1') return false;
   return true;
+}
+
+/** "Sicilian Defense: Alapin Variation, Smith-Morra" → "Alapin Variation"; no ":" → ''. */
+export function variationOf(openingName: string): string {
+  const at = openingName.indexOf(':');
+  return at < 0
+    ? ''
+    : openingName
+        .slice(at + 1)
+        .split(',')[0]!
+        .trim();
+}
+
+/** The PGN TimeControl as one comparable key, or null when it is not a live or daily control. */
+export function controlKey(timeControl: string | undefined): string | null {
+  const tc = (timeControl ?? '').trim();
+  return /^\d+(\+\d+)?$/.test(tc) || /^1\/\d+$/.test(tc) ? tc : null;
+}
+
+/** "600" → "10 min", "900+10" → "15+10", "30" → "30 sec", "90" → "90 sec", "1/86400" → "1 day". */
+export function controlLabel(control: string): string {
+  const daily = /^1\/(\d+)$/.exec(control);
+  if (daily) {
+    const days = Math.max(1, Math.round(Number(daily[1]) / 86400));
+    return days === 1 ? '1 day' : `${days} days`;
+  }
+  const [baseText, incText] = control.split('+');
+  const base = Number(baseText);
+  const whole = base % 60 === 0;
+  if (incText === undefined || Number(incText) === 0) return whole ? `${base / 60} min` : `${base} sec`;
+  return `${whole ? base / 60 : `${base} sec`}+${incText}`;
+}
+
+const MATE_AT_END = /[A-Za-z0-9=]\+?#(?:\s*\{[^}]*\})?\s*(?:1-0|0-1|1\/2-1\/2|\*)?\s*$/;
+
+/**
+ * How the game ended, from the result (outcome) and the ending words of the `Termination` header, never from a name:
+ * Chess.com writes "<name> won by resignation" or "Game drawn by repetition", Lichess "Normal", "Time forfeit" or
+ * "Abandoned". A header with no usable ending falls back to the last move: a mate sign is a checkmate.
+ */
+export function endingOf(termination: string | undefined, pgn: string, outcome: CountedGame['outcome']): EndKind {
+  const t = (termination ?? '').trim().toLowerCase();
+  const mate = (): boolean => MATE_AT_END.test(pgn.slice(-400));
+  let kind: EndKind | null = null;
+  if (/timeout vs insufficient material$/.test(t)) kind = 'other';
+  else if (/by checkmate$/.test(t)) kind = 'checkmate';
+  else if (/by resignation$/.test(t)) kind = 'resignation';
+  else if (/on time$/.test(t) || t === 'time forfeit') kind = 'time';
+  else if (/abandoned$/.test(t)) kind = 'left';
+  else if (/by repetition$/.test(t)) kind = 'repetition';
+  else if (/by insufficient material$/.test(t)) kind = 'insufficient';
+  else if (/by agreement$/.test(t)) kind = 'agreement';
+  else if (/by stalemate$/.test(t)) kind = 'stalemate';
+  else if (t === 'normal') kind = outcome === 'draw' ? 'other' : mate() ? 'checkmate' : 'resignation';
+  if (kind === null) return outcome !== 'draw' && mate() ? 'checkmate' : 'other';
+  const decisive: EndKind[] = ['checkmate', 'resignation', 'time', 'left'];
+  const drawn: EndKind[] = ['repetition', 'insufficient', 'agreement', 'stalemate'];
+  // A win with a draw's ending (or the other way round) is a game the header and the result disagree on
+  if (outcome === 'draw' ? decisive.includes(kind) : drawn.includes(kind)) return 'other';
+  return kind;
+}
+
+/** A "YYYY.MM.DD" date and a "HH:MM:SS" clock as ms since the epoch, or null. Plain slicing: it runs for every game. */
+function clockMs(date: string | undefined, time: string | undefined): number | null {
+  if (date === undefined || time === undefined || date.length !== 10 || time.length < 7 || time.length > 8) return null;
+  const parts = time.split(':');
+  if (parts.length !== 3) return null;
+  const ms = Date.UTC(
+    Number(date.slice(0, 4)),
+    Number(date.slice(5, 7)) - 1,
+    Number(date.slice(8, 10)),
+    Number(parts[0]),
+    Number(parts[1]),
+    Number(parts[2]),
+  );
+  return Number.isFinite(ms) ? ms : null;
+}
+
+/** The length of a live game from the PGN's UTC start and end clocks, or null (daily games, no clocks, nonsense). */
+function liveSecondsOf(headers: Readonly<Record<string, string>>, control: string | null): number | null {
+  if (control === null || control.startsWith('1/')) return null;
+  const start = clockMs(headers.UTCDate ?? headers.Date, headers.UTCTime ?? headers.StartTime);
+  const end = clockMs(headers.EndDate ?? headers.UTCDate ?? headers.Date, headers.EndTime);
+  if (start === null || end === null) return null;
+  const seconds = (end - start) / 1000;
+  return seconds >= 0 && seconds <= MAX_LIVE_GAME_SECONDS ? seconds : null;
 }
 
 /** The main-line SAN tokens: comments, variations, numbers, NAGs and the result removed. */
@@ -340,7 +525,8 @@ function readGame(record: StoredGameRecord, accounts: readonly UserAccount[]): C
   if (source !== 'chesscom' && source !== 'lichess') return 'pastedOrBot';
   const color = myColor(record, accounts);
   if (color === null) return 'notMine';
-  const headers = readPgnHeaders(record.pgn);
+  const pgn = record.pgn;
+  const headers = readPgnHeaders(pgn);
   if (!isStandard(headers)) return 'nonStandard';
   if (!FINISHED.has(record.result)) return 'unfinished';
   const outcome = resultFor(record.result, color);
@@ -360,6 +546,7 @@ function readGame(record: StoredGameRecord, accounts: readonly UserAccount[]): C
     }
     return key;
   };
+  const control = controlKey(record.timeControl);
   return {
     id: record.id,
     site: source,
@@ -367,9 +554,14 @@ function readGame(record: StoredGameRecord, accounts: readonly UserAccount[]): C
     outcome,
     timeClass: timeClassOf(record.timeControl),
     playedAt,
+    day,
     opponentRating: typeof theirs === 'number' && theirs > 0 ? theirs : null,
     myRating: typeof mine === 'number' && mine > 0 ? mine : null,
     opening: record.openingName ? openingFamily(record.openingName) : '',
+    variation: record.openingName ? variationOf(record.openingName) : '',
+    control,
+    ending: endingOf(headers.Termination, pgn, outcome),
+    liveSeconds: liveSecondsOf(headers, control),
     duplicateKey,
     review: readReviewNumbers(record, color),
   };
@@ -389,34 +581,50 @@ function add(into: Wld, outcome: CountedGame['outcome']): void {
 const byTimeThenId = (a: CountedGame, b: CountedGame) =>
   (a.playedAt ?? 0) - (b.playedAt ?? 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 
-function streaksOf(games: readonly CountedGame[]): Streaks {
-  const dated = games.filter((g) => g.playedAt !== null).sort(byTimeThenId);
+function streaksOf(dated: readonly CountedGame[]): Streaks {
   let win = 0;
   let loss = 0;
+  let unbeaten = 0;
   let longestWin = 0;
   let longestLoss = 0;
+  let longestUnbeaten = 0;
   for (const g of dated) {
-    // A draw ends both streaks
+    // A draw ends both the winning and the losing streak, and keeps the unbeaten one going
     win = g.outcome === 'win' ? win + 1 : 0;
     loss = g.outcome === 'loss' ? loss + 1 : 0;
+    unbeaten = g.outcome === 'loss' ? 0 : unbeaten + 1;
     longestWin = Math.max(longestWin, win);
     longestLoss = Math.max(longestLoss, loss);
+    longestUnbeaten = Math.max(longestUnbeaten, unbeaten);
   }
-  return { datedGames: dated.length, enough: dated.length >= MIN_GAMES_FOR_STREAKS, longestWin, longestLoss };
+  return {
+    datedGames: dated.length,
+    enough: dated.length >= MIN_GAMES_FOR_STREAKS,
+    longestWin,
+    longestLoss,
+    longestUnbeaten,
+  };
 }
 
+const byName = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
 function topOpenings(games: readonly CountedGame[], color: Color): OpeningStats[] {
-  const map = new Map<string, OpeningStats>();
+  const map = new Map<string, OpeningStats & { variations: Map<string, number> }>();
   for (const g of games) {
     if (g.color !== color || g.opening === '') continue;
-    const entry = map.get(g.opening) ?? { name: g.opening, ...emptyWld() };
+    const entry = map.get(g.opening) ?? { name: g.opening, ...emptyWld(), topVariation: null, variations: new Map() };
     add(entry, g.outcome);
+    if (g.variation !== '') entry.variations.set(g.variation, (entry.variations.get(g.variation) ?? 0) + 1);
     map.set(g.opening, entry);
   }
   return [...map.values()]
     .filter((o) => o.games >= MIN_OPENING_GAMES)
-    .sort((a, b) => b.games - a.games || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
-    .slice(0, TOP_OPENINGS);
+    .sort((a, b) => b.games - a.games || byName(a.name, b.name))
+    .slice(0, TOP_OPENINGS)
+    .map(({ variations, ...o }) => {
+      const top = [...variations.entries()].sort((a, b) => b[1] - a[1] || byName(a[0], b[0]))[0];
+      return { ...o, topVariation: top ? { name: top[0], games: top[1] } : null };
+    });
 }
 
 function bestWinOf(games: readonly CountedGame[]): BestWin | null {
@@ -435,6 +643,7 @@ function bestWinOf(games: readonly CountedGame[]): BestWin | null {
     ? null
     : {
         opponentRating: best.opponentRating!,
+        myRating: best.myRating,
         playedAt: best.playedAt,
         timeClass: best.timeClass,
         opening: best.opening,
@@ -444,45 +653,130 @@ function bestWinOf(games: readonly CountedGame[]): BestWin | null {
 
 const monthOf = (ms: number): string => new Date(ms).toISOString().slice(0, 7);
 
-/** The TREND_MONTHS month labels ending with the month of `now`, oldest first. */
-export function trendWindow(now: number): string[] {
-  const d = new Date(now);
-  const out: string[] = [];
-  for (let i = TREND_MONTHS - 1; i >= 0; i--) {
-    out.push(new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - i, 1)).toISOString().slice(0, 7));
+/** The win against the biggest gap above my own rating, and how many wins were against a higher rating. */
+function upsetsOf(games: readonly CountedGame[]): { upset: Upset | null; higherRatedWins: number } {
+  let best: CountedGame | null = null;
+  let higherRatedWins = 0;
+  for (const g of games) {
+    if (g.outcome !== 'win' || g.opponentRating === null || g.myRating === null) continue;
+    const gap = g.opponentRating - g.myRating;
+    if (gap <= 0) continue;
+    higherRatedWins++;
+    if (
+      best === null ||
+      gap > best.opponentRating! - best.myRating! ||
+      (gap === best.opponentRating! - best.myRating! && byTimeThenId(g, best) < 0)
+    ) {
+      best = g;
+    }
+  }
+  return {
+    higherRatedWins,
+    upset:
+      best === null
+        ? null
+        : {
+            points: best.opponentRating! - best.myRating!,
+            opponentRating: best.opponentRating!,
+            myRating: best.myRating!,
+            timeClass: best.timeClass,
+            playedAt: best.playedAt,
+          },
+  };
+}
+
+function endingsOf(games: readonly CountedGame[]): Endings {
+  const zero = (): EndCounts => Object.fromEntries(END_KINDS.map((k) => [k, 0])) as EndCounts;
+  const out: Endings = { win: zero(), loss: zero(), draw: zero() };
+  for (const g of games) out[g.outcome][g.ending]++;
+  return out;
+}
+
+/** The most-played exact controls; a tie goes to the faster (smaller base) control, so input order never matters. */
+function controlsOf(games: readonly CountedGame[]): ControlStats[] {
+  const map = new Map<string, number>();
+  for (const g of games) if (g.control !== null) map.set(g.control, (map.get(g.control) ?? 0) + 1);
+  const seconds = (c: string): number => (c.startsWith('1/') ? Infinity : (effectiveSeconds(c) ?? Infinity));
+  return [...map.entries()]
+    .sort((a, b) => b[1] - a[1] || seconds(a[0]) - seconds(b[0]) || byName(a[0], b[0]))
+    .slice(0, TOP_CONTROLS)
+    .map(([control, count]) => ({
+      control,
+      label: controlLabel(control),
+      timeClass: timeClassOf(control),
+      games: count,
+    }));
+}
+
+/** First, peak and latest rating per site and class (`dated` is sorted by time). The sites are never combined. */
+function journeysOf(sites: readonly StorySite[], dated: readonly CountedGame[]): JourneySeries[] {
+  const out: JourneySeries[] = [];
+  for (const site of sites) {
+    for (const timeClass of TIME_CLASSES) {
+      const rated = dated.filter((g) => g.site === site && g.timeClass === timeClass && g.myRating !== null);
+      if (rated.length < MIN_JOURNEY_GAMES) continue;
+      const point = (g: CountedGame): JourneyPoint => ({ rating: g.myRating!, month: monthOf(g.playedAt!) });
+      const peak = rated.reduce((best, g) => (g.myRating! > best.myRating! ? g : best));
+      out.push({
+        site,
+        timeClass,
+        ratedGames: rated.length,
+        first: point(rated[0]!),
+        peak: point(peak),
+        latest: point(rated[rated.length - 1]!),
+      });
+    }
   }
   return out;
 }
 
-function trendOf(site: StorySite, games: readonly CountedGame[], now: number): TrendSeries | null {
-  const mine = games.filter((g) => g.site === site && g.timeClass !== null);
-  if (mine.length === 0) return null;
-  const counts = new Map<TimeClass, number>();
-  for (const g of mine) counts.set(g.timeClass!, (counts.get(g.timeClass!) ?? 0) + 1);
-  // Most-played class; a tie goes to the faster class (fixed order), so the result never depends on input order
-  const timeClass = TIME_CLASSES.filter((c) => counts.has(c)).sort((a, b) => counts.get(b)! - counts.get(a)!)[0]!;
-  const ofClass = mine.filter((g) => g.timeClass === timeClass && g.playedAt !== null).sort(byTimeThenId);
-  const window = new Set(trendWindow(now));
-  const inWindow = ofClass.filter((g) => window.has(monthOf(g.playedAt!)));
-  const last = new Map<string, number>();
-  let rated = 0;
-  for (const g of inWindow) {
-    if (g.myRating === null) continue;
-    rated++;
-    last.set(monthOf(g.playedAt!), g.myRating);
+/** Longest busiest-key: the key with the most games (ties: the earliest key). */
+function busiest(counts: ReadonlyMap<string, number>): { key: string; games: number } | null {
+  let best: { key: string; games: number } | null = null;
+  for (const key of [...counts.keys()].sort()) {
+    const games = counts.get(key)!;
+    if (best === null || games > best.games) best = { key, games };
   }
-  const points = [...last.entries()]
-    .sort((a, b) => (a[0] < b[0] ? -1 : 1))
-    .map(([month, rating]) => ({ month, rating }));
-  const latest = ofClass[ofClass.length - 1];
+  return best;
+}
+
+function activityOf(dated: readonly CountedGame[]): Activity {
+  const perDay = new Map<string, number>();
+  const perMonth = new Map<string, number>();
+  const perYear = new Map<string, number>();
+  let liveSeconds = 0;
+  let timedGames = 0;
+  for (const g of dated) {
+    const day = g.day;
+    perDay.set(day, (perDay.get(day) ?? 0) + 1);
+    perMonth.set(day.slice(0, 7), (perMonth.get(day.slice(0, 7)) ?? 0) + 1);
+    perYear.set(day.slice(0, 4), (perYear.get(day.slice(0, 4)) ?? 0) + 1);
+    if (g.liveSeconds !== null) {
+      liveSeconds += g.liveSeconds;
+      timedGames++;
+    }
+  }
+  let longestRun = 0;
+  let run = 0;
+  let previous = 0;
+  for (const day of [...perDay.keys()].sort()) {
+    const at = Date.parse(`${day}T00:00:00Z`);
+    run = run > 0 && at - previous === 86_400_000 ? run + 1 : 1;
+    previous = at;
+    longestRun = Math.max(longestRun, run);
+  }
+  const day = busiest(perDay);
+  const month = busiest(perMonth);
+  const year = busiest(perYear);
   return {
-    site,
-    timeClass,
-    points,
-    ratedGames: rated,
-    enough: rated >= MIN_TREND_GAMES && points.length >= MIN_TREND_MONTHS,
-    lastGameMonth: latest ? monthOf(latest.playedAt!) : null,
-    anyInWindow: inWindow.length > 0,
+    datedGames: dated.length,
+    liveSeconds,
+    timedGames,
+    days: perDay.size,
+    longestRun,
+    busiestDay: day && { day: day.key, games: day.games },
+    busiestMonth: month && { month: month.key, games: month.games },
+    busiestYear: year && { year: Number(year.key), games: year.games },
   };
 }
 
@@ -512,6 +806,18 @@ function reviewRef(item: ReviewedGame): ReviewedGameRef {
     depth: item.review.depth,
     preset: item.review.preset,
   };
+}
+
+/**
+ * Whether win `a` is a more unlikely win than `b`: a lower lowest win%; at the same value the higher opponent rating
+ * (no rating counts lowest), then the later game, then the smaller id, so the pick never depends on input order.
+ */
+function moreUnlikely(a: ReviewedGame, b: ReviewedGame): boolean {
+  if (a.review.low !== b.review.low) return a.review.low! < b.review.low!;
+  const rating = (i: ReviewedGame): number => i.game.opponentRating ?? -1;
+  if (rating(a) !== rating(b)) return rating(a) > rating(b);
+  if ((a.game.playedAt ?? 0) !== (b.game.playedAt ?? 0)) return (a.game.playedAt ?? 0) > (b.game.playedAt ?? 0);
+  return a.game.id < b.game.id;
 }
 
 function reviewStatsOf(games: readonly CountedGame[]): ReviewStats {
@@ -556,12 +862,11 @@ function reviewStatsOf(games: readonly CountedGame[]): ReviewStats {
     }));
 
   const wins = items.filter((i) => i.game.outcome === 'win' && i.review.low !== null);
-  let swing: ReviewStats['swing'] = null;
+  let comebacks: ReviewStats['comebacks'] = null;
   if (wins.length > 0) {
-    const pick = wins.reduce((best, i) =>
-      i.review.low! < best.review.low! || (i.review.low === best.review.low && earliestFirst(i, best) < 0) ? i : best,
-    );
-    swing = {
+    const pick = wins.reduce((best, i) => (moreUnlikely(i, best) ? i : best));
+    comebacks = {
+      count: wins.filter((i) => i.review.low! < COMEBACK_BELOW).length,
       game: { ...reviewRef(pick), low: pick.review.low! },
       reviewedWins: wins.length,
       alsoLow: wins.filter((i) => i.review.low === pick.review.low).length - 1,
@@ -603,6 +908,8 @@ function reviewStatsOf(games: readonly CountedGame[]): ReviewStats {
           },
     brilliant: items.reduce((sum, i) => sum + i.review.brilliant, 0),
     great: items.reduce((sum, i) => sum + i.review.great, 0),
+    brilliantGames: items.filter((i) => i.review.brilliant > 0).length,
+    greatGames: items.filter((i) => i.review.great > 0).length,
     byClass,
     white: accuracyGroup(ofColour('w')),
     black: accuracyGroup(ofColour('b')),
@@ -610,12 +917,42 @@ function reviewStatsOf(games: readonly CountedGame[]): ReviewStats {
     losses: accuracyGroup(ofOutcome('loss')),
     halves,
     byYear,
-    swing,
+    comebacks,
     bestGame,
   };
 }
 
-function scopeStats(scope: StoryScope, games: readonly CountedGame[], now: number): ScopeStats {
+/** The longest game and the longest win, by the stored plies (the earliest game wins a tie). */
+function recordsOf(games: readonly CountedGame[]): Records | null {
+  const reviewed = games.filter((g) => g.review !== null);
+  const longestOf = (list: readonly CountedGame[]): LongGame | null => {
+    let pick: CountedGame | null = null;
+    for (const g of list) {
+      if (
+        pick === null ||
+        g.review!.plies > pick.review!.plies ||
+        (g.review!.plies === pick.review!.plies && byTimeThenId(g, pick) < 0)
+      ) {
+        pick = g;
+      }
+    }
+    return pick === null
+      ? null
+      : {
+          moves: Math.ceil(pick.review!.plies / 2),
+          playedAt: pick.playedAt,
+          timeClass: pick.timeClass,
+          outcome: pick.outcome,
+          ending: pick.ending,
+        };
+  };
+  const longest = longestOf(reviewed);
+  return longest === null
+    ? null
+    : { games: reviewed.length, longest, longestWin: longestOf(reviewed.filter((g) => g.outcome === 'win')) };
+}
+
+function scopeStats(scope: StoryScope, games: readonly CountedGame[]): ScopeStats {
   const total = emptyWld();
   const white = emptyWld();
   const black = emptyWld();
@@ -644,6 +981,8 @@ function scopeStats(scope: StoryScope, games: readonly CountedGame[], now: numbe
     return { timeClass, ...w, showPercent: w.games >= MIN_CLASS_GAMES_FOR_PERCENT };
   });
   const most = Math.max(0, ...byClass.map((c) => c.games));
+  // Sorted once for the streaks, the rating journeys and the days at the board
+  const dated = games.filter((g) => g.playedAt !== null).sort(byTimeThenId);
   const sites: StorySite[] = scope === 'all' ? ['chesscom', 'lichess'] : [scope];
   return {
     scope,
@@ -654,10 +993,15 @@ function scopeStats(scope: StoryScope, games: readonly CountedGame[], now: numbe
     white,
     black,
     enough: total.games >= MIN_GAMES_FOR_STORY,
-    streaks: streaksOf(games),
+    streaks: streaksOf(dated),
     openings: { white: topOpenings(games, 'w'), black: topOpenings(games, 'b'), withoutOpening },
     bestWin: bestWinOf(games),
-    trends: sites.map((s) => trendOf(s, games, now)).filter((t): t is TrendSeries => t !== null),
+    ...upsetsOf(games),
+    endings: endingsOf(games),
+    controls: controlsOf(games),
+    journeys: journeysOf(sites, dated),
+    records: recordsOf(games),
+    activity: activityOf(dated),
     firstPlayedAt: first,
     lastPlayedAt: last,
     review: reviewStatsOf(games),
@@ -714,26 +1058,30 @@ function countGames(records: readonly StoredGameRecord[], accounts: readonly Use
 /**
  * The Story's numbers for all, Chess.com and Lichess. A game on both sites (same main-line moves, result, my
  * colour and UTC date, at least MIN_PLIES_FOR_DUPLICATE plies) is counted once in `all` and stays in both site
- * scopes, so all = Chess.com + Lichess − onBothSites. `now` (ms since the epoch) fixes the trend's 12 months.
+ * scopes, so all = Chess.com + Lichess − onBothSites.
  */
-export function computeStoryStats(
-  records: readonly StoredGameRecord[],
-  accounts: readonly UserAccount[],
-  now: number,
-): StoryStats {
+export function computeStoryStats(records: readonly StoredGameRecord[], accounts: readonly UserAccount[]): StoryStats {
   const { counted, chesscom, lichess, excluded, dropped } = countGames(records, accounts);
+  const chesscomStats = scopeStats('chesscom', chesscom);
+  const lichessStats = scopeStats('lichess', lichess);
+  // With games from one site only, "all" holds the same games as that site: its numbers are reused, not counted again
+  const all: ScopeStats =
+    lichess.length === 0
+      ? { ...chesscomStats, scope: 'all' }
+      : chesscom.length === 0
+        ? { ...lichessStats, scope: 'all' }
+        : scopeStats(
+            'all',
+            counted.filter((g) => !dropped.has(g.id)),
+          );
   return {
     version: STATS_VERSION,
     storedGames: records.length,
     excluded,
     onBothSites: dropped.size,
-    all: scopeStats(
-      'all',
-      counted.filter((g) => !dropped.has(g.id)),
-      now,
-    ),
-    chesscom: scopeStats('chesscom', chesscom, now),
-    lichess: scopeStats('lichess', lichess, now),
+    all,
+    chesscom: chesscomStats,
+    lichess: lichessStats,
   };
 }
 

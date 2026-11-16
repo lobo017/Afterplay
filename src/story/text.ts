@@ -4,12 +4,17 @@
  * shown as one plain paragraph and never read for numbers.
  */
 import {
+  COMEBACK_BELOW,
   MIN_GAMES_FOR_STORY,
-  MIN_GAMES_FOR_STREAKS,
   MIN_MOVES_FOR_BEST_GAME,
   MIN_REVIEWED_GAMES,
+  type Activity,
   type BestWin,
   type ClassStats,
+  type ControlStats,
+  type EndKind,
+  type JourneySeries,
+  type LongGame,
   type OpeningStats,
   type ReviewedGameRef,
   type ReviewStats,
@@ -17,7 +22,6 @@ import {
   type StoryScope,
   type StoryStats,
   type TimeClass,
-  type TrendSeries,
 } from './stats';
 
 export type StoryCardId =
@@ -25,19 +29,30 @@ export type StoryCardId =
   | 'totals'
   | 'chesscom'
   | 'lichess'
+  | 'time'
+  | 'ends'
+  | 'openings'
   | 'accuracy'
   | 'mistakes'
-  | 'swing'
+  | 'marks'
   | 'bestGame'
-  | 'openings'
+  | 'comebacks'
   | 'bestWin'
-  | 'trend'
+  | 'records'
+  | 'hours'
+  | 'journey'
   | 'closing';
 
 export interface StoryTableRow {
   label: string;
   /** "12 W · 3 L · 2 D" */
   detail: string;
+}
+
+/** A short list of bars: one row per way a game ended, `share` is 0–1 of the whole list's title. */
+export interface StoryMeter {
+  title: string;
+  rows: { label: string; count: number; share: number }[];
 }
 
 export interface StoryCard {
@@ -50,6 +65,8 @@ export interface StoryCard {
   /** Further plain lines under the sentence (notes), possibly none. */
   notes: string[];
   rows: StoryTableRow[];
+  /** Bars under the rows (the "How your games end" card only). */
+  meters: StoryMeter[];
   /** The optional personal paragraph (intro and closing only); plain text. */
   personal: string | null;
 }
@@ -83,8 +100,10 @@ const MONTHS = [
   'December',
 ];
 
+const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
 export const TIME_CLASS_NOTE =
-  'Time classes follow one rule for both sites, so a few games may be labelled differently on Chess.com or Lichess.';
+  'Time classes follow one rule for both sites, so a few games may be labeled differently on Chess.com or Lichess.';
 
 const n = (value: number): string => value.toLocaleString('en-US');
 const plural = (count: number, one: string, many = `${one}s`): string => `${n(count)} ${count === 1 ? one : many}`;
@@ -96,6 +115,20 @@ export function monthLabel(month: string): string {
   const m = /^(\d{4})-(\d{2})$/.exec(month);
   const name = m ? MONTHS[Number(m[2]) - 1] : undefined;
   return m && name ? `${name} ${m[1]}` : month;
+}
+
+/** "2025-09" → "Sep 2025". */
+export function monthShort(month: string): string {
+  const m = /^(\d{4})-(\d{2})$/.exec(month);
+  const name = m ? MONTHS_SHORT[Number(m[2]) - 1] : undefined;
+  return m && name ? `${name} ${m[1]}` : month;
+}
+
+/** "2023-08-18" → "August 18, 2023". */
+export function dayLabel(day: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
+  const name = m ? MONTHS[Number(m[2]) - 1] : undefined;
+  return m && name ? `${name} ${Number(m[3])}, ${m[1]}` : day;
 }
 
 /** "Not enough games yet (12 of 20)." */
@@ -114,55 +147,231 @@ function personalOf(text: string | null | undefined): string | null {
 }
 
 function card(id: StoryCardId, label: string, extra: Partial<StoryCard> = {}): StoryCard {
-  return { id, label, value: '', sentence: '', notes: [], rows: [], personal: null, ...extra };
+  return { id, label, value: '', sentence: '', notes: [], rows: [], meters: [], personal: null, ...extra };
 }
 
 // ---------------------------------------------------------------------------- sentences
 
 export function favouriteSentence(scope: ScopeStats): string {
-  if (scope.favouriteClasses.length === 0) return 'No game has a time control, so there is no favourite yet.';
+  if (scope.favouriteClasses.length === 0) return 'No game has a time control, so there is no favorite yet.';
   const names = scope.favouriteClasses.map((c) => CLASS_LABEL[c].toLowerCase());
   const games = scope.byClass.find((c) => c.timeClass === scope.favouriteClasses[0])!.games;
   const each = scope.favouriteClasses.length > 1 ? ' each' : '';
-  return `Your favourite is ${names.join(' and ')}: ${plural(games, 'game')}${each}.`;
+  return `Your favorite is ${names.join(' and ')}: ${plural(games, 'game')}${each}.`;
 }
 
 export function colourSentence(scope: ScopeStats): string {
   return `You played ${plural(scope.white.games, 'game')} as White and ${plural(scope.black.games, 'game')} as Black.`;
 }
 
-export function streakSentence(scope: ScopeStats): string {
-  const s = scope.streaks;
-  if (!s.enough) return notEnoughGames(s.datedGames, MIN_GAMES_FOR_STREAKS);
-  return `Your longest winning streak is ${plural(s.longestWin, 'game')} and your longest losing streak ${plural(s.longestLoss, 'game')}.`;
+/** "Longest winning streak ..." sentence is gone: the Records card shows the numbers as rows. */
+
+/** Most played exact controls: "Most played: 10 min (1,604 games), then 15+10 (1,576 games)." */
+export function controlsSentence(controls: readonly ControlStats[]): string {
+  if (controls.length === 0) return '';
+  const one = (c: ControlStats): string => `${c.label} (${plural(c.games, 'game')})`;
+  return controls.length === 1
+    ? `Most played: ${one(controls[0]!)}.`
+    : `Most played: ${one(controls[0]!)}, then ${one(controls[1]!)}.`;
 }
 
-export function openingSentence(color: 'White' | 'Black', list: readonly OpeningStats[]): string {
-  if (list.length === 0) return `As ${color}, no opening has enough games yet.`;
-  return `As ${color}: ${list.map((o) => `${o.name} (${plural(o.games, 'game')}, ${wld(o)})`).join('; ')}.`;
+/** The share of games won, whole percent. */
+const wonPercent = (w: { games: number; wins: number }): number => Math.round((w.wins / w.games) * 100);
+
+/** One opening row: the family and its games above, the win rate and the most-played variation below. */
+export function openingRow(color: 'White' | 'Black', o: OpeningStats): StoryTableRow {
+  const rate = o.games >= MIN_OPENING_ROW_GAMES ? `${wonPercent(o)}% won` : wld(o);
+  const top = o.topVariation ? ` · mostly ${o.topVariation.name}` : '';
+  return { label: `${color} · ${o.name} · ${plural(o.games, 'game')}`, detail: `${rate}${top}` };
 }
+/** A win rate is a percentage from this many games of the opening. */
+const MIN_OPENING_ROW_GAMES = 10;
+
+/** How many openings of each colour the Openings card lists. */
+export const OPENING_ROWS_PER_COLOUR = 2;
 
 export function bestWinSentence(best: BestWin | null): string {
   if (best === null) return 'No rated win yet.';
   const cls = best.timeClass ? ` ${CLASS_LABEL[best.timeClass].toLowerCase()}` : '';
   const when = best.playedAt === null ? '' : ` in ${monthLabel(new Date(best.playedAt).toISOString().slice(0, 7))}`;
-  return `Your best win was against a player rated ${n(best.opponentRating)}, in a${cls} game${when}.`;
+  const mine = best.myRating === null ? '' : ` You were rated ${n(best.myRating)}.`;
+  return `Your best win was against a player rated ${n(best.opponentRating)}, in a${cls} game${when}.${mine}`;
 }
 
-export function trendSentence(t: TrendSeries): string {
-  const cls = CLASS_LABEL[t.timeClass].toLowerCase();
-  const site = SITE_LABEL[t.site];
-  if (!t.anyInWindow) {
-    return t.lastGameMonth === null
-      ? `No ${cls} games on ${site} yet.`
-      : `No games since ${monthLabel(t.lastGameMonth)}.`;
+/** "Biggest upset: a win against a player rated 503 points above you (1,790 against your 1,287), ..." */
+export function upsetSentence(u: NonNullable<ScopeStats['upset']>): string {
+  const cls = u.timeClass ? ` ${CLASS_LABEL[u.timeClass].toLowerCase()}` : '';
+  const when = u.playedAt === null ? '' : ` in ${monthLabel(new Date(u.playedAt).toISOString().slice(0, 7))}`;
+  return `Biggest upset: a${cls} win${when} against a player ${plural(u.points, 'point')} above you (${n(u.opponentRating)} against your ${n(u.myRating)}).`;
+}
+
+export function higherRatedSentence(wins: number): string {
+  return `You have beaten a higher-rated player ${plural(wins, 'time')}.`;
+}
+
+// ---------------------------------------------------------------------------- how games end
+
+const WIN_END: Partial<Record<EndKind, string>> = {
+  checkmate: 'You checkmated them',
+  resignation: 'They resigned',
+  time: 'They ran out of time',
+  left: 'They left',
+  other: 'Other',
+};
+const LOSS_END: Partial<Record<EndKind, string>> = {
+  checkmate: 'You were checkmated',
+  resignation: 'You resigned or left',
+  time: 'You ran out of time',
+  other: 'Other',
+};
+const DRAW_END: Partial<Record<EndKind, string>> = {
+  repetition: 'by repetition',
+  agreement: 'by agreement',
+  insufficient: 'with too few pieces',
+  stalemate: 'by stalemate',
+  other: 'another way',
+};
+
+function meterOf(
+  title: string,
+  total: number,
+  counts: Record<EndKind, number>,
+  labels: Partial<Record<EndKind, string>>,
+): StoryMeter {
+  const rows = (Object.keys(labels) as EndKind[])
+    // A loss by leaving is a loss by resigning in all but name: the two are one row
+    .map((kind) => ({ kind, count: counts[kind] + (labels === LOSS_END && kind === 'resignation' ? counts.left : 0) }))
+    .filter((r) => r.count > 0)
+    .sort((a, b) => b.count - a.count)
+    .map((r) => ({ label: labels[r.kind]!, count: r.count, share: r.count / total }));
+  return { title, rows };
+}
+
+/** "72 by repetition, 22 by agreement and 1 another way" for the drawn games. */
+export function drawsSentence(draw: Record<EndKind, number>, draws: number): string {
+  const parts = (Object.keys(DRAW_END) as EndKind[])
+    .filter((k) => draw[k] > 0)
+    .sort((a, b) => draw[b] - draw[a])
+    .map((k) => `${n(draw[k])} ${DRAW_END[k]}`);
+  const list = parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}` : parts[0]!;
+  return `You drew ${plural(draws, 'game')}: ${list}.`;
+}
+
+/** How many of the losses were by leaving (the row "Resigned or left" holds them with the resignations). */
+export function leftSentence(left: number, resignedOrLeft: number): string {
+  return `${n(left)} of the ${n(resignedOrLeft)} "resigned or left" ${resignedOrLeft === 1 ? 'game was' : 'games were'} by leaving.`;
+}
+
+function endsCard(s: ScopeStats): StoryCard | null {
+  const e = s.endings;
+  const meters: StoryMeter[] = [];
+  if (s.wins > 0) meters.push(meterOf(`You won ${n(s.wins)}`, s.wins, e.win, WIN_END));
+  if (s.losses > 0) meters.push(meterOf(`You lost ${n(s.losses)}`, s.losses, e.loss, LOSS_END));
+  if (meters.length === 0 && s.draws === 0) return null;
+  const notes: string[] = [];
+  if (e.loss.left > 0) notes.push(leftSentence(e.loss.left, e.loss.resignation + e.loss.left));
+  if (s.draws > 0) notes.push(drawsSentence(e.draw, s.draws));
+  return card('ends', 'How your games end', { meters, notes });
+}
+
+// ---------------------------------------------------------------------------- records, time at the board, rating journey
+
+/** "a rapid win by checkmate in March 2024". */
+export function longGameSentence(kind: 'game' | 'win', g: LongGame): string {
+  const cls = g.timeClass === null ? '' : ` ${CLASS_LABEL[g.timeClass].toLowerCase()}`;
+  const how: Record<EndKind, string> = {
+    checkmate: 'by checkmate',
+    resignation: 'by resignation',
+    time: 'on time',
+    left: 'by leaving',
+    repetition: 'by repetition',
+    insufficient: 'with too few pieces',
+    agreement: 'by agreement',
+    stalemate: 'by stalemate',
+    other: '',
+  };
+  const outcome = g.outcome === 'win' ? 'win' : g.outcome === 'loss' ? 'loss' : 'draw';
+  const ending = how[g.ending] === '' ? '' : ` ${how[g.ending]}`;
+  return `Your longest ${kind} lasted ${plural(g.moves, 'move')}: a${cls} ${outcome}${ending}${inMonth(g.playedAt)}.`;
+}
+
+function recordsCard(s: ScopeStats): StoryCard | null {
+  const st = s.streaks;
+  const rows: StoryTableRow[] = [];
+  if (st.enough) {
+    rows.push({ label: 'Losses in a row', detail: n(st.longestLoss) });
+    rows.push({ label: 'Games without a loss', detail: n(st.longestUnbeaten) });
   }
-  if (!t.enough) return `Not enough rated ${cls} games on ${site} in the last 12 months to draw a trend.`;
-  const first = t.points[0]!;
-  const last = t.points[t.points.length - 1]!;
-  const change = last.rating - first.rating;
-  const how = change === 0 ? 'unchanged' : `${change > 0 ? 'up' : 'down'} ${n(Math.abs(change))}`;
-  return `Your ${site} ${cls} rating went from ${n(first.rating)} in ${monthLabel(first.month)} to ${n(last.rating)} in ${monthLabel(last.month)}: ${how}.`;
+  if (s.records) {
+    rows.push({ label: 'Longest game', detail: plural(s.records.longest.moves, 'move') });
+    if (s.records.longestWin) rows.push({ label: 'Longest win', detail: plural(s.records.longestWin.moves, 'move') });
+  }
+  if (rows.length === 0) return null;
+  return card('records', 'Records', {
+    value: st.enough ? n(st.longestWin) : '',
+    sentence: st.enough
+      ? `${st.longestWin === 1 ? 'win' : 'wins'} in a row: your longest streak.`
+      : 'Your longest games.',
+    rows,
+    notes: s.records ? [longGameSentence('game', s.records.longest)] : [],
+  });
+}
+
+/** "Not enough time info": hours need clocks; without them the card tells the days. */
+export function hoursSentence(a: Activity): string {
+  const hours = Math.max(1, Math.round(a.liveSeconds / 3600));
+  return a.timedGames > 0
+    ? `${hours === 1 ? 'hour' : 'hours'} at the board in live games, over ${plural(a.days, 'day')}.`
+    : `${a.days === 1 ? 'day' : 'days'} with a game.`;
+}
+
+function hoursCard(a: Activity): StoryCard | null {
+  if (a.datedGames === 0) return null;
+  const hours = Math.max(1, Math.round(a.liveSeconds / 3600));
+  const notes: string[] = [];
+  if (a.longestRun > 1) notes.push(`Your longest run: ${plural(a.longestRun, 'day')} in a row.`);
+  if (a.busiestMonth)
+    notes.push(`Busiest month: ${monthLabel(a.busiestMonth.month)}, ${plural(a.busiestMonth.games, 'game')}.`);
+  if (a.busiestYear) notes.push(`Busiest year: ${a.busiestYear.year}, ${plural(a.busiestYear.games, 'game')}.`);
+  if (a.busiestDay && a.busiestDay.games > 1) {
+    notes.push(`Busiest day: ${plural(a.busiestDay.games, 'game')}, on ${dayLabel(a.busiestDay.day)}.`);
+  }
+  return card('hours', 'Time at the board', {
+    value: n(a.timedGames > 0 ? hours : a.days),
+    sentence: hoursSentence(a),
+    notes,
+  });
+}
+
+/** The rating of one site and class: "Started 533 · peak 1,708, Sep 2025 · latest 1,500, Dec 2025". */
+export function journeyDetail(j: JourneySeries): string {
+  const same = j.peak.rating === j.latest.rating && j.peak.month === j.latest.month;
+  const peak = same
+    ? `peak and latest ${n(j.peak.rating)}, ${monthShort(j.peak.month)}`
+    : `peak ${n(j.peak.rating)}, ${monthShort(j.peak.month)}`;
+  return `Started ${n(j.first.rating)} · ${peak}${same ? '' : ` · latest ${n(j.latest.rating)}, ${monthShort(j.latest.month)}`}`;
+}
+
+/** At most this many classes are listed (the most played): a fifth row would not fit a short phone. */
+export const JOURNEY_ROWS = 4;
+
+function journeyCard(s: ScopeStats): StoryCard | null {
+  if (s.journeys.length === 0) return null;
+  const sites = new Set(s.journeys.map((j) => j.site));
+  const shown = [...s.journeys]
+    .sort((a, b) => b.ratedGames - a.ratedGames)
+    .slice(0, JOURNEY_ROWS)
+    .sort((a, b) => s.journeys.indexOf(a) - s.journeys.indexOf(b));
+  const main = [...shown].sort((a, b) => b.ratedGames - a.ratedGames)[0]!;
+  return card('journey', 'Rating journey', {
+    value: n(main.peak.rating),
+    sentence: `is your ${CLASS_LABEL[main.timeClass].toLowerCase()} peak, in ${monthLabel(main.peak.month)}.`,
+    rows: shown.map((j) => ({
+      label: sites.size > 1 ? `${CLASS_LABEL[j.timeClass]} · ${SITE_LABEL[j.site]}` : CLASS_LABEL[j.timeClass],
+      detail: journeyDetail(j),
+    })),
+    notes: sites.size > 1 ? ['Ratings are never combined across sites.'] : [],
+  });
 }
 
 // ---------------------------------------------------------------------------- engine review sentences
@@ -226,9 +435,6 @@ export function halvesSentence(h: NonNullable<ReviewStats['halves']>): string {
 }
 
 /** "3%", or "under 1%" below 1. */
-export function chanceText(low: number): string {
-  return low < 1 ? 'under 1%' : `${Math.round(low)}%`;
-}
 
 /** "only a 3% chance", "only an 8% chance", "less than a 1% chance". */
 function chanceClause(low: number): string {
@@ -238,15 +444,11 @@ function chanceClause(low: number): string {
 }
 
 /** The clause follows what the game has: class and date, date only, class only, or neither (no clause). */
-export function swingSentence(s: NonNullable<ReviewStats['swing']>): string {
+export function unlikeliestSentence(s: NonNullable<ReviewStats['comebacks']>): string {
   const g = s.game;
   const clause =
     g.timeClass === null && g.playedAt === null ? '' : `, a${classWord(g.timeClass)} game${inMonth(g.playedAt)}`;
-  return `You won a game where you had ${chanceClause(g.low)}${clause}.`;
-}
-
-export function swingPoolNote(s: NonNullable<ReviewStats['swing']>): string {
-  return `Out of ${plural(s.reviewedWins, 'win')}.`;
+  return `Your most unlikely win: you had ${chanceClause(g.low)}${clause}.`;
 }
 
 export function bestGameSentence(b: NonNullable<ReviewStats['bestGame']>): string {
@@ -258,6 +460,17 @@ export function bestGameSentence(b: NonNullable<ReviewStats['bestGame']>): strin
 
 export function bestGamePoolNote(b: NonNullable<ReviewStats['bestGame']>): string {
   return `Out of ${plural(b.eligible, 'game')} of ${MIN_MOVES_FOR_BEST_GAME} moves or more.`;
+}
+
+/**
+ * The Accuracy card lists this many classes (the most reviewed, in class order): more rows make it taller than the
+ * Story's scroller on a short phone. The Time controls card lists every class.
+ */
+export const CLASS_ROWS_SHOWN = 3;
+
+function mostReviewedClasses(rows: ReviewStats['byClass']): ReviewStats['byClass'] {
+  const keep = new Set([...rows].sort((a, b) => b.games - a.games).slice(0, CLASS_ROWS_SHOWN));
+  return rows.filter((row) => keep.has(row));
 }
 
 function reviewClassRow(c: ReviewStats['byClass'][number]): StoryTableRow {
@@ -305,7 +518,7 @@ function accuracyCard(r: ReviewStats): StoryCard {
   return card('accuracy', 'Accuracy', {
     value: percent(r.accuracy!),
     sentence: accuracySentence(r.accuracy!, r.reviewed),
-    rows: r.byClass.map(reviewClassRow),
+    rows: mostReviewedClasses(r.byClass).map(reviewClassRow),
     notes,
   });
 }
@@ -319,29 +532,36 @@ function mistakesCard(r: ReviewStats): StoryCard {
     rows: r.byYear.slice(-YEAR_ROWS_SHOWN).map(reviewYearRow),
     notes: [
       ...(hiddenYears > 0 ? [earlierYearsNote(hiddenYears)] : []),
-      `Mistakes: ${oneDecimal(per.mistake)} a game. Inaccuracies: ${oneDecimal(per.inaccuracy)} a game. ` +
-        `Your reviewed games average ${n(Math.round(per.moves))} of your moves.`,
-      // Left out when the engine marked none of either
-      ...(r.brilliant > 0 || r.great > 0
-        ? [
-            `${n(r.brilliant)} Brilliant ${r.brilliant === 1 ? 'move' : 'moves'} and ${n(r.great)} Great ${r.great === 1 ? 'move' : 'moves'}.`,
-          ]
-        : []),
+      `Mistakes: ${oneDecimal(per.mistake)} a game. Inaccuracies: ${oneDecimal(per.inaccuracy)} a game.`,
       ...(r.halves ? [halvesSentence(r.halves)] : []),
     ],
   });
 }
 
-function swingCard(r: ReviewStats): StoryCard {
-  const s = r.swing;
-  if (s === null) return card('swing', 'Biggest swing', { sentence: 'No reviewed win yet.' });
-  return card('swing', 'Biggest swing', {
-    value: chanceText(s.game.low),
-    sentence: swingSentence(s),
+/** Brilliant and Great moves; left out (null) when there are none of either. */
+function marksCard(r: ReviewStats): StoryCard | null {
+  if (r.brilliant === 0 && r.great === 0) return null;
+  const row = (label: string, moves: number, games: number): StoryTableRow => ({
+    label,
+    detail: moves === 0 ? 'none' : `${plural(moves, 'move')} in ${plural(games, 'game')}`,
+  });
+  return card('marks', 'Brilliant and Great', {
+    sentence: `${n(r.brilliant)} Brilliant ${r.brilliant === 1 ? 'move' : 'moves'} and ${n(r.great)} Great ${r.great === 1 ? 'move' : 'moves'}.`,
+    rows: [row('Brilliant', r.brilliant, r.brilliantGames), row('Great', r.great, r.greatGames)],
+  });
+}
+
+/** Wins from under COMEBACK_BELOW%; left out (null) when there is none. */
+function comebacksCard(r: ReviewStats): StoryCard | null {
+  const c = r.comebacks;
+  if (c === null || c.count === 0) return null;
+  return card('comebacks', 'Comebacks', {
+    value: n(c.count),
+    sentence: `${c.count === 1 ? 'win' : 'wins'} from a position where you had under a ${COMEBACK_BELOW}% chance.`,
     notes: [
-      swingPoolNote(s),
-      ...(s.alsoLow > 0 ? [`${plural(s.alsoLow, 'other win')} also fell that low.`] : []),
-      ...gameReviewNote(s.game),
+      unlikeliestSentence(c),
+      ...(c.alsoLow > 0 ? [`${plural(c.alsoLow, 'other win')} fell that low.`] : []),
+      ...gameReviewNote(c.game),
     ],
   });
 }
@@ -357,11 +577,16 @@ function bestGameCard(r: ReviewStats): StoryCard | null {
   });
 }
 
-/** The review cards: none with no reviewed game, one "not enough" card below MIN_REVIEWED_GAMES, else all four. */
+/**
+ * The review cards: none with no reviewed game, one "not enough" card below MIN_REVIEWED_GAMES, else accuracy, mistakes,
+ * Brilliant and Great (when there are any), the most accurate game and the comebacks (when there are any).
+ */
 export function reviewCards(r: ReviewStats): StoryCard[] {
   if (r.reviewed === 0) return [];
   if (!r.enough) return [accuracyCard(r)];
-  return [accuracyCard(r), mistakesCard(r), swingCard(r), bestGameCard(r)].filter((c): c is StoryCard => c !== null);
+  return [accuracyCard(r), mistakesCard(r), marksCard(r), bestGameCard(r), comebacksCard(r)].filter(
+    (c): c is StoryCard => c !== null,
+  );
 }
 
 // ---------------------------------------------------------------------------- cards
@@ -379,14 +604,55 @@ function scopeCard(id: 'chesscom' | 'lichess', s: ScopeStats): StoryCard {
   });
 }
 
+function timeCard(s: ScopeStats): StoryCard | null {
+  if (s.byClass.length === 0) return null;
+  const favourite = s.byClass.find((c) => c.timeClass === s.favouriteClasses[0])!;
+  return card('time', 'Time controls', {
+    value: s.favouriteClasses.map((c) => CLASS_LABEL[c]).join(' and '),
+    sentence: `is your favorite: ${plural(favourite.games, 'game')}${s.favouriteClasses.length > 1 ? ' each' : ''}.`,
+    rows: s.byClass.map(classRow),
+    notes: s.controls.length > 0 ? [controlsSentence(s.controls)] : [],
+  });
+}
+
+function openingsCard(s: ScopeStats): StoryCard | null {
+  const rows = [
+    ...s.openings.white.slice(0, OPENING_ROWS_PER_COLOUR).map((o) => openingRow('White', o)),
+    ...s.openings.black.slice(0, OPENING_ROWS_PER_COLOUR).map((o) => openingRow('Black', o)),
+  ];
+  if (rows.length === 0) return null;
+  return card('openings', 'Openings', {
+    sentence: 'The openings that come up most in your games',
+    rows,
+    notes: s.openings.withoutOpening > 0 ? [`${plural(s.openings.withoutOpening, 'game')} had no named opening.`] : [],
+  });
+}
+
+function bestWinCard(s: ScopeStats): StoryCard | null {
+  if (s.bestWin === null) return null;
+  return card('bestWin', 'Best win', {
+    value: n(s.bestWin.opponentRating),
+    sentence: bestWinSentence(s.bestWin),
+    notes: [
+      ...(s.upset ? [upsetSentence(s.upset)] : []),
+      ...(s.higherRatedWins > 0 ? [higherRatedSentence(s.higherRatedWins)] : []),
+    ],
+  });
+}
+
 /**
- * The cards in their fixed order: intro, totals, Chess.com, Lichess, the review cards (none without reviewed games),
- * openings, best win, trend, closing.
+ * The cards in their fixed order, as a story: who you are (intro, totals, the sites when both have games), your time
+ * at the board and rating journey, how you play (time controls, how games end, openings), how well (accuracy, mistakes,
+ * Brilliant and Great, the most accurate game), the highlights (best win, comebacks, records) and the closing. A card
+ * with nothing to say is left out.
  */
 export function storyCards(stats: StoryStats, personal: PersonalText = {}): StoryCard[] {
   const all = stats.all;
   const thin = !all.enough;
   const cards: StoryCard[] = [];
+  const add = (c: StoryCard | null): void => {
+    if (c !== null) cards.push(c);
+  };
 
   cards.push(
     card('intro', 'Your story', {
@@ -415,70 +681,47 @@ export function storyCards(stats: StoryStats, personal: PersonalText = {}): Stor
     const list = parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}` : parts[0]!;
     totalNotes.push(`${list} ${e.total === 1 ? 'is' : 'are'} left out.`);
   }
-  // The two notes about how the sites differ say nothing with one site
+  // Both notes about how the sites differ say nothing with one site
   const bothSites = stats.chesscom.games > 0 && stats.lichess.games > 0;
-  const timeClassNotes = bothSites ? [TIME_CLASS_NOTE] : [];
   cards.push(
     all.games === 0
       ? card('totals', 'Total', {
           sentence: 'No games yet. Add your username and import.',
-          notes: timeClassNotes,
+          notes: bothSites ? [TIME_CLASS_NOTE] : [],
         })
       : card('totals', 'Total', {
           value: n(all.games),
           sentence: `${plural(all.games, 'game')} in all: ${wld(all)}.`,
-          rows: all.byClass.map(classRow),
           notes: [
-            ...(thin ? [notEnoughGames(all.games)] : [favouriteSentence(all), colourSentence(all)]),
+            ...(thin ? [notEnoughGames(all.games)] : [colourSentence(all)]),
             ...totalNotes,
-            ...timeClassNotes,
+            ...(bothSites ? [TIME_CLASS_NOTE] : []),
           ],
         }),
   );
 
-  cards.push(scopeCard('chesscom', stats.chesscom));
-  // The Lichess section appears only when Lichess games are stored
-  if (stats.lichess.games > 0) cards.push(scopeCard('lichess', stats.lichess));
+  // With games from one site only, the site card would repeat the Total card
+  if (bothSites) {
+    cards.push(scopeCard('chesscom', stats.chesscom));
+    cards.push(scopeCard('lichess', stats.lichess));
+  }
 
-  cards.push(...reviewCards(all.review));
+  if (thin) {
+    if (all.games > 0) cards.push(card('openings', 'Openings', { sentence: notEnoughGames(all.games) }));
+  } else {
+    add(hoursCard(all.activity));
+    add(journeyCard(all));
+    add(timeCard(all));
+    add(endsCard(all));
+    add(openingsCard(all));
+  }
 
-  cards.push(
-    thin
-      ? card('openings', 'Openings', { sentence: notEnoughGames(all.games) })
-      : card('openings', 'Openings', {
-          sentence: openingSentence('White', all.openings.white),
-          notes: [
-            openingSentence('Black', all.openings.black),
-            ...(all.openings.withoutOpening > 0
-              ? [`${plural(all.openings.withoutOpening, 'game')} had no named opening.`]
-              : []),
-            streakSentence(all),
-          ],
-        }),
-  );
-
-  cards.push(
-    card('bestWin', 'Best win', {
-      value: all.bestWin ? n(all.bestWin.opponentRating) : '',
-      sentence: bestWinSentence(all.bestWin),
-    }),
-  );
-
-  cards.push(
-    thin
-      ? card('trend', 'Rating', { sentence: notEnoughGames(all.games) })
-      : all.trends.length === 0
-        ? card('trend', 'Rating', { sentence: 'No games with a time control yet.' })
-        : card('trend', 'Rating', {
-            sentence: trendSentence(all.trends[0]!),
-            notes: [
-              ...all.trends.slice(1).map(trendSentence),
-              ...(bothSites
-                ? ['Ratings are never combined across sites, and unrated games cannot be told apart on Chess.com.']
-                : []),
-            ],
-          }),
-  );
+  // The comebacks come after the best win, the other review cards before it
+  const review = reviewCards(all.review);
+  cards.push(...review.filter((c) => c.id !== 'comebacks'));
+  if (!thin) add(bestWinCard(all));
+  add(review.find((c) => c.id === 'comebacks') ?? null);
+  if (!thin) add(recordsCard(all));
 
   cards.push(
     card('closing', 'And on', { sentence: 'That is the story so far.', personal: personalOf(personal.closing) }),

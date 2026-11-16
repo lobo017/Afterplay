@@ -191,7 +191,7 @@ export class GamesList {
           <label>Source <select class="wc-select wc-select-sm" data-testid="games-filter-source">
             <option value="all">All</option><option value="lichess">Lichess</option><option value="chesscom">Chess.com</option><option value="paste">Pasted / file</option><option value="play">Played here</option>
           </select></label>
-          <label>Colour <select class="wc-select wc-select-sm" data-testid="games-filter-color">
+          <label>Color <select class="wc-select wc-select-sm" data-testid="games-filter-color">
             <option value="all">Any</option><option value="w">White</option><option value="b">Black</option>
           </select></label>
           <label>Result <select class="wc-select wc-select-sm" data-testid="games-filter-result">

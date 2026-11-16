@@ -1,14 +1,14 @@
 /**
  * Games › Story: the account form, then the cards. One column in a vertical scroll with CSS scroll-snap (no gesture
  * code). The numbers come from `computeStoryStats` and the sentences from `storyCards`; nothing here reads a preset.
- * This version shows the gift's cards (intro, totals, Chess.com, Lichess, the four review cards, closing). "Start import" and "Continue" ask
+ * The cards are `storyCards`' (the sites' cards only when both have games). "Start import" and "Continue" ask
  * the app's shared sync runner (app.ts) for the Chess.com games; the view only shows how far it is and what went
  * wrong, in plain words.
  */
 import type { GameLibrary } from '../library/library';
 import { tapWordLower } from '../ui/pointer-words';
 import { computeStoryStats, type ScopeStats, type StoryStats } from './stats';
-import { storyCards, type PersonalText, type StoryCard, type StoryCardId } from './text';
+import { storyCards, type PersonalText, type StoryCard, type StoryCardId, type StoryMeter } from './text';
 import type { StoryLanding } from './landing';
 import {
   SITE_NAME,
@@ -18,18 +18,8 @@ import {
   type AccountSite,
 } from '../library/more-accounts';
 
-/** The cards this version shows (the order is `storyCards`'; the others are built after the gift). */
-export const SHOWN_CARDS: readonly StoryCardId[] = [
-  'intro',
-  'totals',
-  'chesscom',
-  'lichess',
-  'accuracy',
-  'mistakes',
-  'swing',
-  'bestGame',
-  'closing',
-];
+/** Cards whose rows are two parts that do not fit side by side on a phone: the label above, the detail under it. */
+const STACKED_CARDS: readonly StoryCardId[] = ['mistakes', 'openings', 'journey'];
 /** The numbers are recounted at most this often while games arrive. */
 export const RECOUNT_INTERVAL_MS = 2000;
 
@@ -79,6 +69,19 @@ function wldBar(s: ScopeStats): string {
       <span class="wc-story-bar-w" style="width:${pct(s.wins)}"></span><span class="wc-story-bar-d" style="width:${pct(s.draws)}"></span><span class="wc-story-bar-l" style="width:${pct(s.losses)}"></span>
     </div>
     <div class="wc-story-bar-key"><span>${n(s.wins)} won</span><span>${n(s.draws)} drawn</span><span>${n(s.losses)} lost</span></div>`;
+}
+
+/** One list of bars ("You won 2,405"): a label, a bar as wide as its share, and the count. */
+function meterHtml(m: StoryMeter): string {
+  return `<div class="wc-story-meter" role="group" aria-label="${escapeHtml(m.title)}">
+      <p class="wc-story-meter-title">${escapeHtml(m.title)}</p>
+      ${m.rows
+        .map(
+          (r) =>
+            `<div class="wc-story-meter-row"><span>${escapeHtml(r.label)}</span><span class="wc-story-meter-track" aria-hidden="true"><i style="width:${(r.share * 100).toFixed(1)}%"></i></span><b>${n(r.count)}</b></div>`,
+        )
+        .join('')}
+    </div>`;
 }
 
 export class StoryView {
@@ -151,7 +154,7 @@ export class StoryView {
         this.again = false;
         this.lastCount = Date.now();
         const lib = this.options.library;
-        this.stats = computeStoryStats(await lib.list(), lib.getUserAccounts(), Date.now());
+        this.stats = computeStoryStats(await lib.list(), lib.getUserAccounts());
       } while (this.again);
     } finally {
       this.counting = false;
@@ -329,7 +332,7 @@ export class StoryView {
             : null;
     // Year rows are two parts that do not fit side by side on a phone: the label above, the detail under it. The block
     // layout can drop the table's semantics for a screen reader, so the stacked table says what it is.
-    const stacked = card.id === 'mistakes';
+    const stacked = STACKED_CARDS.includes(card.id);
     const rows = card.rows.length
       ? `<table class="wc-story-table${stacked ? ' wc-story-table-stack' : ''}"${stacked ? ' role="table"' : ''}><tbody${stacked ? ' role="rowgroup"' : ''}>${card.rows
           .map((r) =>
@@ -347,8 +350,9 @@ export class StoryView {
     return `<section class="wc-story-card" data-testid="story-card-${card.id}" data-card="${card.id}" aria-label="${escapeHtml(card.label)}">
       <p class="wc-story-label">${escapeHtml(card.label)}</p>
       ${card.value ? `<p class="wc-story-value" data-testid="story-value-${card.id}">${escapeHtml(card.value)}</p>` : ''}
-      <p class="wc-story-sentence">${escapeHtml(card.sentence)}</p>
+      ${card.sentence ? `<p class="wc-story-sentence">${escapeHtml(card.sentence)}</p>` : ''}
       ${scope && scope.games > 0 ? wldBar(scope) : ''}
+      ${card.meters.map(meterHtml).join('')}
       ${rows}
       ${card.notes.map((t) => `<p class="wc-story-note">${escapeHtml(t)}</p>`).join('')}
       ${personal}${top}
@@ -368,7 +372,7 @@ export class StoryView {
     // A new user sees the form first; with no counted games it stays above the empty cards
     const formOnly = landing === 'new' && this.load.kind === 'idle';
     const keepTop = this.root.querySelector('.wc-story-scroll')?.scrollTop ?? 0;
-    const cards = storyCards(stats, this.options.getPersonal?.() ?? {}).filter((c) => SHOWN_CARDS.includes(c.id));
+    const cards = storyCards(stats, this.options.getPersonal?.() ?? {});
     const body = formOnly
       ? this.formHtml()
       : `${empty || this.sync.kind === 'field-error' ? this.formHtml() : ''}${cards.map((c) => this.cardHtml(c, stats)).join('')}`;

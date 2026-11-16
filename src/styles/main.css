@@ -6524,6 +6524,51 @@ label.wc-setting-row {
   font-variant-numeric: tabular-nums;
 }
 
+/* "How your games end": one list of bars per result; the label and the count carry the meaning, the bar only the size */
+.wc-story-meter {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.wc-story-meter-title {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.wc-story-meter-row {
+  display: grid;
+  grid-template-columns: 10.6rem 1fr 2.8rem;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.wc-story-meter-row b {
+  text-align: right;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
+.wc-story-meter-track {
+  height: 0.55rem;
+  border-radius: 0.3rem;
+  overflow: hidden;
+  background: var(--bg-elevated);
+}
+
+.wc-story-meter-track i {
+  display: block;
+  height: 100%;
+  background: var(--status-ok);
+}
+
+.wc-story-meter + .wc-story-meter .wc-story-meter-track i {
+  background: var(--status-danger);
+}
+
 .wc-story-field {
   display: flex;
   flex-direction: column;
