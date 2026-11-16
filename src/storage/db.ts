@@ -3,6 +3,7 @@ import type { Color } from '../core/rules';
 import type { GameTermination, SerializedGameTree } from '../core/game-tree';
 import type { StoredGameSource } from '../capture/game-id';
 import type { SavedReview } from '../library/saved-review';
+import type { PhaseNumbers } from '../review/phase-numbers';
 
 export const DEFAULT_DB_NAME = 'wizards-chess-db';
 export const LATEST_SCHEMA_VERSION = 4;
@@ -59,6 +60,11 @@ export interface SideAnalysisSummary {
   /** The side's largest single-move loss in win% points, and the ply of that move. */
   drop: number;
   dropPly: number | null;
+  /**
+   * The side's moves, accuracy and error counts in the opening, middlegame and endgame (src/review/phase-numbers.ts), added
+   * to a history file's summaries by scripts/history-phases.mjs. Absent when the game has none.
+   */
+  phases?: PhaseNumbers;
 }
 
 export interface GameAnalysisSummary {
