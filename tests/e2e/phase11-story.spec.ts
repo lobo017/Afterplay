@@ -1037,7 +1037,12 @@ test.describe('Chess Story: the engine review cards', () => {
           };
         }),
       );
-      expect(rowShape).toEqual([{ stacked: true, labelLines: 1, detailLines: 1 }]); // one year in the invented data
+      // (one year in the invented data) Stacked on a phone; from 760 px the rows are normal table rows, label left, detail right
+      expect(rowShape).toEqual(
+        width < 760
+          ? [{ stacked: true, labelLines: 1, detailLines: 1 }]
+          : [expect.objectContaining({ stacked: false })],
+      );
 
       await expect(page.getByTestId('story-card-comebacks')).toHaveCount(0);
       await expect(page.getByTestId('story-card-swing')).toHaveCount(0);
@@ -1340,5 +1345,95 @@ test.describe('Chess Story: the richer cards', () => {
     await openWithHistory(page, richHistory());
     await expect(page.getByTestId('story-card-totals').locator('table')).toHaveCount(0);
     await expect(page.getByTestId('story-card-time').locator('table')).toHaveCount(1);
+  });
+});
+
+test.describe('Chess Story: the wide layouts', () => {
+  /** The cards, headings and tiles of the Story with where they are on the page. */
+  const layout = (page: Page) =>
+    page.evaluate(() => {
+      const box = document.querySelector<HTMLElement>('[data-testid="story-scroll"]')!;
+      const rect = (e: Element) => {
+        const r = e.getBoundingClientRect();
+        return { left: Math.round(r.left), top: Math.round(r.top + scrollY), width: Math.round(r.width) };
+      };
+      return {
+        overflowY: getComputedStyle(box).overflowY,
+        snap: getComputedStyle(box).scrollSnapType,
+        boxScrolls: box.scrollHeight > box.clientHeight + 1,
+        pageScrolls: document.documentElement.scrollHeight > innerHeight,
+        boxWidth: Math.round(box.getBoundingClientRect().width),
+        cards: [...box.querySelectorAll<HTMLElement>(':scope > section')].map((c) => ({
+          id: c.dataset.card!,
+          ...rect(c),
+        })),
+        headings: [...box.querySelectorAll('h2')].map((h) => h.textContent),
+      };
+    });
+
+  test('at 1440x900 the cards sit side by side and the page scrolls, with four tiles, section headings and a working "Start from the top"', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openWithHistory(page, richHistory());
+    const l = await layout(page);
+    // No inner scroller, no snap: the page scrolls
+    expect(l.overflowY).toBe('visible');
+    expect(l.snap).toBe('none');
+    expect(l.boxScrolls).toBe(false);
+    expect(l.pageScrolls).toBe(true);
+    expect(l.boxWidth).toBeLessThanOrEqual(1120);
+    // Several columns: some cards share a row, with different left edges
+    const rows = new Map<number, number[]>();
+    for (const c of l.cards) rows.set(c.top, [...(rows.get(c.top) ?? []), c.left]);
+    expect(Math.max(...[...rows.values()].map((lefts) => new Set(lefts).size))).toBeGreaterThanOrEqual(3);
+    // The closing card has the full width
+    const closing = l.cards.find((c) => c.id === 'closing')!;
+    expect(closing.width).toBeGreaterThan(1000);
+    // Four headline tiles, numbers the cards below also show
+    await expect(page.getByTestId('story-tiles').locator('.wc-story-tile')).toHaveCount(4);
+    await expect(page.getByTestId('story-tile-games')).toContainText('30');
+    await expect(page.getByTestId('story-tile-games')).toContainText('Games counted');
+    await expect(page.getByTestId('story-tile-peak')).toContainText('Peak rating');
+    await expect(page.getByTestId('story-tile-accuracy')).toContainText('Accuracy');
+    await expect(page.getByTestId('story-tile-streak')).toContainText('Longest winning streak');
+    // Section headings, all visible but the hero's (which is for screen readers)
+    for (const name of ['Your years', 'How you play', 'How well you play', 'Your best']) {
+      await expect(page.getByRole('heading', { name, level: 2 })).toBeVisible();
+    }
+    expect(l.headings).toEqual(['Your story', 'Your years', 'How you play', 'How well you play', 'Your best']);
+    await shot(page, 'wide-1440');
+    // "Start from the top" scrolls the page
+    const top = page.getByTestId('story-top');
+    await top.scrollIntoViewIfNeeded();
+    await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(0);
+    await top.click();
+    await expect.poll(() => page.evaluate(() => scrollY)).toBe(0);
+  });
+
+  test('at 800x900 there are two columns, the page scrolls and nothing snaps', async ({ page }) => {
+    await page.setViewportSize({ width: 800, height: 900 });
+    await openWithHistory(page, richHistory());
+    const l = await layout(page);
+    expect(l.overflowY).toBe('visible');
+    expect(l.snap).toBe('none');
+    expect(l.boxScrolls).toBe(false);
+    expect(l.pageScrolls).toBe(true);
+    const lefts = new Set(l.cards.map((c) => c.left));
+    expect(lefts.size).toBe(2);
+    // A card beside another one exists, and none is wider than the box
+    expect(l.cards.some((c) => c.width < l.boxWidth - 100)).toBe(true);
+    expect(Math.max(...l.cards.map((c) => c.width))).toBeLessThanOrEqual(l.boxWidth);
+    await shot(page, 'wide-800');
+  });
+
+  test('on a phone the headings and tiles are hidden and the box still scrolls with snap', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openWithHistory(page, richHistory());
+    await expect(page.getByTestId('story-tiles')).toBeHidden();
+    await expect(page.getByRole('heading', { name: 'Your years' })).toBeHidden();
+    const l = await layout(page);
+    expect(l.overflowY).toBe('auto');
+    expect(l.snap).toContain('mandatory');
   });
 });
