@@ -238,7 +238,7 @@ test.describe('Phase 7 — repertoire trainer', () => {
     await shot(page, 'desktop-repertoire-done.png');
     await expect(page.getByTestId('nav-train-count')).toBeHidden();
 
-    // Nothing is due, so "Practise anyway" stands in for "Start drill": it asks every position of a
+    // Nothing is due, so "Practice anyway" stands in for "Start drill": it asks every position of a
     // line, and grades nothing (the schedule stays as it was)
     await expect(page.getByTestId('btn-rep-start')).toBeHidden();
     await expect(page.getByTestId('btn-rep-practise')).toBeVisible();
@@ -277,7 +277,7 @@ test.describe('Phase 7 — repertoire trainer', () => {
     await expect(page.getByTestId('rep-result')).toContainText(
       `of ${asked} position${asked === 1 ? '' : 's'} right first time.`,
     );
-    await expect(page.getByTestId('btn-rep-practise')).toHaveText('Practise another line');
+    await expect(page.getByTestId('btn-rep-practise')).toHaveText('Practice another line');
     await page.waitForTimeout(400);
     expect(await schedule()).toEqual(before);
     expect(await remaining()).toBe(0);

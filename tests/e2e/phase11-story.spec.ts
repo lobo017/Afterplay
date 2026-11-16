@@ -162,16 +162,27 @@ test.describe('Chess Story: the sample link’s history', () => {
     expect(banners.some((b) => /^Loading your games: \d+ of 450$/.test(b))).toBe(true);
     expect(requests).toHaveLength(1);
 
-    // The cards, in order; no Lichess card (no Lichess game is stored)
+    // The cards, in order; one site only, so neither a Chess.com nor a Lichess card
     const order = await page
       .locator('[data-testid="story-scroll"] > section')
       .evaluateAll((els) => els.map((e) => (e as HTMLElement).dataset.card));
-    expect(order).toEqual(['intro', 'totals', 'chesscom', 'closing']);
+    expect(order).toEqual([
+      'intro',
+      'totals',
+      'hours',
+      'journey',
+      'time',
+      'ends',
+      'openings',
+      'bestWin',
+      'records',
+      'closing',
+    ]);
     await expect(page.getByTestId('story-card-totals')).toContainText('450 games in all: 225 W · 135 L · 90 D');
     await expect(page.getByTestId('story-card-totals')).not.toContainText(
-      'Time classes follow one rule for both sites, so a few games may be labelled differently on Chess.com or Lichess.',
+      'Time classes follow one rule for both sites, so a few games may be labeled differently on Chess.com or Lichess.',
     );
-    await expect(page.getByTestId('story-card-chesscom')).toContainText('450 games on Chess.com');
+    await expect(page.getByTestId('story-card-chesscom')).toHaveCount(0);
     await expect(page.getByTestId('story-card-closing')).toContainText('That is the story so far.');
 
     // The sync's month record came with the file; the file's other settings did not
@@ -262,7 +273,18 @@ test.describe('Chess Story: the sample link’s history', () => {
     await expect.poll(() => landingValue(page)).toBe('seen');
 
     // Every card at 390 px
-    for (const id of ['intro', 'totals', 'chesscom', 'closing']) {
+    for (const id of [
+      'intro',
+      'totals',
+      'hours',
+      'journey',
+      'time',
+      'ends',
+      'openings',
+      'bestWin',
+      'records',
+      'closing',
+    ]) {
       const card = page.getByTestId(`story-card-${id}`);
       await card.evaluate((el) => el.scrollIntoView({ block: 'start' }));
       await expect(card).toBeVisible();
@@ -329,7 +351,7 @@ test.describe('Chess Story: offline', () => {
     await context.setOffline(true);
     await page.goto(`${server.url}/#story`);
     await expect(page.getByTestId('story-value-totals')).toHaveText('30', { timeout: 15_000 });
-    await expect(page.getByTestId('story-card-chesscom')).toContainText('30 games on Chess.com');
+    await expect(page.getByTestId('story-card-totals')).toContainText('30 games in all');
     await context.setOffline(false);
   });
 });
@@ -504,7 +526,7 @@ test.describe('Chess Story: Start import', () => {
       chesscom: PLAYER_A,
       lichess: '',
     });
-    await expect(page.getByTestId('story-card-chesscom')).toContainText('4 games on Chess.com');
+    await expect(page.getByTestId('story-card-totals')).toContainText('4 games in all');
     await expect.poll(() => landingValue(page)).toBe('seen');
     expect(await libraryGames(page)).toBe(4);
     await shot(page, 'import-finished');
@@ -867,7 +889,8 @@ function wantFor(games: SampleGame[]) {
   const byTime = [...rows].sort((a, b) => a.g.playedAt - b.g.playedAt || (a.g.id < b.g.id ? -1 : 1));
   const first = byTime.slice(0, Math.floor(total / 2));
   const second = byTime.slice(first.length);
-  const swing = wins.reduce((b, r) => (r.n.low < b.n.low ? r : b));
+  // The invented lowest win% starts at 10: no win is a comeback (under 5%), so no Comebacks card
+  expect(Math.min(...wins.map((r) => r.n.low))).toBeGreaterThanOrEqual(5);
   const best = rows.filter((r) => r.n.moves >= 25).reduce((b, r) => (r.n.accuracy > b.n.accuracy ? r : b));
   const classRows = (['bullet', 'blitz', 'rapid', 'classical'] as const).flatMap((c) => {
     const rs = rows.filter((r) => r.cls === c);
@@ -899,14 +922,9 @@ function wantFor(games: SampleGame[]) {
         label: `2026 · ${total} games`,
         detail: `${pct(acc(rows))} accuracy · ${blunders.toFixed(1)} blunders a game`,
       },
-      classesNote: `Mistakes: ${per(rows, (n) => n.mistake).toFixed(1)} a game. Inaccuracies: ${per(rows, (n) => n.inaccuracy).toFixed(1)} a game. Your reviewed games average ${Math.round(per(rows, (n) => n.moves))} of your moves.`,
+      classesNote: `Mistakes: ${per(rows, (n) => n.mistake).toFixed(1)} a game. Inaccuracies: ${per(rows, (n) => n.inaccuracy).toFixed(1)} a game.`,
       markNote: `${rows.reduce((s, r) => s + r.n.brilliant, 0)} Brilliant moves and ${rows.reduce((s, r) => s + r.n.great, 0)} Great moves.`,
       halvesNote: `Early on: ${pct(acc(first))} accuracy and ${per(first, (n) => n.blunder).toFixed(1)} blunders a game. Lately: ${pct(acc(second))} and ${per(second, (n) => n.blunder).toFixed(1)}.`,
-    },
-    swing: {
-      value: `${swing.n.low}%`,
-      sentence: `You won a game where you had only a ${swing.n.low}% chance, a ${swing.cls} game in ${monthName(swing.g.playedAt)}.`,
-      pool: `Out of ${wins.length} wins.`,
     },
     best: {
       value: pct(best.n.accuracy),
@@ -963,11 +981,17 @@ test.describe('Chess Story: the engine review cards', () => {
       expect(await cardOrder(page)).toEqual([
         'intro',
         'totals',
-        'chesscom',
+        'hours',
+        'journey',
+        'time',
+        'ends',
+        'openings',
         'accuracy',
         'mistakes',
-        'swing',
+        'marks',
         'bestGame',
+        'bestWin',
+        'records',
         'closing',
       ]);
 
@@ -993,7 +1017,9 @@ test.describe('Chess Story: the engine review cards', () => {
         want.mistakes.row.detail,
       );
       await expect(mistakes).toContainText(want.mistakes.classesNote);
-      await expect(mistakes).toContainText(want.mistakes.markNote);
+      const marks = page.getByTestId('story-card-marks');
+      await expect(marks).toContainText(want.mistakes.markNote);
+      await expect(mistakes).not.toContainText('Brilliant');
       await expect(mistakes).toContainText(want.mistakes.halvesNote);
       await expect(mistakes).not.toContainText("Lichess's formula");
       await expect(mistakes).not.toContainText('not listed');
@@ -1013,12 +1039,8 @@ test.describe('Chess Story: the engine review cards', () => {
       );
       expect(rowShape).toEqual([{ stacked: true, labelLines: 1, detailLines: 1 }]); // one year in the invented data
 
-      const swing = page.getByTestId('story-card-swing');
-      await expect(page.getByTestId('story-value-swing')).toHaveText(want.swing.value);
-      await expect(swing).toContainText(want.swing.sentence);
-      await expect(swing).toContainText(want.swing.pool);
-      await expect(swing).not.toContainText('reviewed in advance');
-      await expect(swing).not.toContainText('also fell that low');
+      await expect(page.getByTestId('story-card-comebacks')).toHaveCount(0);
+      await expect(page.getByTestId('story-card-swing')).toHaveCount(0);
 
       const best = page.getByTestId('story-card-bestGame');
       await expect(page.getByTestId('story-value-bestGame')).toHaveText(want.best.value);
@@ -1027,7 +1049,7 @@ test.describe('Chess Story: the engine review cards', () => {
       await expect(best).not.toContainText('reviewed in advance');
 
       // Layout: no sideways overflow, no note outside its card, sentences short enough to read at a glance
-      for (const id of ['accuracy', 'mistakes', 'swing', 'bestGame']) {
+      for (const id of ['accuracy', 'mistakes', 'marks', 'bestGame']) {
         const m = await measureCard(page, id);
         noteLayout(`${label}-${id}`, m);
         expect(m.overflowX).toBeLessThanOrEqual(1);
@@ -1044,25 +1066,48 @@ test.describe('Chess Story: the engine review cards', () => {
       await openSampleLink(page);
       await closeWelcomeIfShown(page);
       await expect(page.getByTestId('story-value-totals')).toHaveText('30');
-      expect(await cardOrder(page)).toEqual(['intro', 'totals', 'chesscom', 'closing']);
-      for (const id of ['accuracy', 'mistakes', 'swing', 'bestGame']) {
+      expect(await cardOrder(page)).toEqual([
+        'intro',
+        'totals',
+        'hours',
+        'journey',
+        'time',
+        'ends',
+        'openings',
+        'bestWin',
+        'records',
+        'closing',
+      ]);
+      for (const id of ['accuracy', 'mistakes', 'marks', 'bestGame']) {
         await expect(page.getByTestId(`story-card-${id}`)).toHaveCount(0);
       }
-      await measureCard(page, 'chesscom');
+      await measureCard(page, 'time');
       await lookAt(page, `${label}-no-review`);
     });
 
     test(`shows one "not enough" card for 12 reviewed games, at ${label} px`, async ({ page }) => {
       await page.setViewportSize({ width, height });
       await openWithHistory(page, reviewedHistory(12));
-      expect(await cardOrder(page)).toEqual(['intro', 'totals', 'chesscom', 'accuracy', 'closing']);
+      expect(await cardOrder(page)).toEqual([
+        'intro',
+        'totals',
+        'hours',
+        'journey',
+        'time',
+        'ends',
+        'openings',
+        'accuracy',
+        'bestWin',
+        'records',
+        'closing',
+      ]);
       const card = page.getByTestId('story-card-accuracy');
       await expect(card).toContainText('Not enough reviewed games yet (12 of 20).');
       await expect(card).toContainText('Based on 12 of your 30 games.');
       await expect(card).not.toContainText('replaces its earlier numbers');
       await expect(page.getByTestId('story-value-accuracy')).toHaveCount(0);
       await expect(card.locator('table')).toHaveCount(0);
-      for (const id of ['mistakes', 'swing', 'bestGame']) {
+      for (const id of ['mistakes', 'marks', 'bestGame']) {
         await expect(page.getByTestId(`story-card-${id}`)).toHaveCount(0);
       }
       const m = await measureCard(page, 'accuracy');
@@ -1099,7 +1144,18 @@ test.describe('Chess Story: the engine review cards', () => {
     await page.getByTestId('games-tab-story').click();
     await expect(page.getByTestId('story-value-totals')).toHaveText('30');
     expect(requests).toEqual([]);
-    expect(await cardOrder(page)).toEqual(['intro', 'totals', 'chesscom', 'closing']);
+    expect(await cardOrder(page)).toEqual([
+      'intro',
+      'totals',
+      'hours',
+      'journey',
+      'time',
+      'ends',
+      'openings',
+      'bestWin',
+      'records',
+      'closing',
+    ]);
     await expect(page.getByTestId('story-load-status')).toHaveCount(0);
     await expect(page.getByTestId('story-sync-status')).toHaveCount(0);
     await expect(page.getByTestId('story-scroll')).not.toContainText(/paused|stopped|could not/i);
@@ -1157,5 +1213,132 @@ test.describe('Chess Story: the engine review cards', () => {
     expect(accuracies.every((a) => typeof a === 'number')).toBe(true);
     const shown = parseFloat((await page.getByTestId('story-value-accuracy').textContent())!);
     expect(Math.abs(shown - mean(accuracies as number[]))).toBeLessThanOrEqual(0.051);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------- the richer Story
+
+/** The sample's games with a Termination header as Chess.com writes it, so the "How your games end" card has data. */
+function endingFor(g: SampleGame, i: number): string {
+  const me = g.playerColor === 'w' ? (g.white as string) : (g.black as string);
+  const them = g.playerColor === 'w' ? (g.black as string) : (g.white as string);
+  const out = outcomeOf(g);
+  if (out === 'win') return [`${me} won by resignation`, `${me} won by checkmate`, `${me} won on time`][i % 3]!;
+  if (out === 'loss') return `${them} won ${['by resignation', '- game abandoned'][i % 2]}`;
+  return i % 2 ? 'Game drawn by repetition' : 'Game drawn by agreement';
+}
+
+function richHistory(): SampleGame[] {
+  return reviewedHistory().map((g, i) => ({
+    ...g,
+    pgn: (g.pgn as string).replace(/\r?\n\r?\n/, `\n[Termination "${endingFor(g, i)}"]\n\n`),
+  }));
+}
+
+test.describe('Chess Story: the richer cards', () => {
+  test('shows the ends, time, rating and records cards from the invented history, and every card fits a short phone', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 375, height: 667 });
+    const games = richHistory();
+    await openWithHistory(page, games);
+    const ids = await cardOrder(page);
+    expect(ids).toEqual([
+      'intro',
+      'totals',
+      'hours',
+      'journey',
+      'time',
+      'ends',
+      'openings',
+      'accuracy',
+      'mistakes',
+      'marks',
+      'bestGame',
+      'bestWin',
+      'records',
+      'closing',
+    ]);
+    // One site: no Chess.com card, and no Lichess card
+    await expect(page.getByTestId('story-card-chesscom')).toHaveCount(0);
+    await expect(page.getByTestId('story-card-lichess')).toHaveCount(0);
+
+    // How your games end: the counts are worked out here from the games themselves
+    const rows = games.map((g, i) => ({ out: outcomeOf(g), end: endingFor(g, i) }));
+    const count = (out: string, test: (end: string) => boolean) =>
+      rows.filter((r) => r.out === out && test(r.end)).length;
+    const ends = page.getByTestId('story-card-ends');
+    const winMeter = ends.getByRole('group', { name: `You won ${count('win', () => true)}` });
+    for (const [label, how] of [
+      ['They resigned', 'by resignation'],
+      ['You checkmated them', 'by checkmate'],
+      ['They ran out of time', 'on time'],
+    ] as const) {
+      const n = count('win', (e) => e.endsWith(how));
+      await expect(winMeter.locator('.wc-story-meter-row', { hasText: label })).toContainText(String(n));
+    }
+    const lossMeter = ends.getByRole('group', { name: `You lost ${count('loss', () => true)}` });
+    await expect(lossMeter.locator('.wc-story-meter-row', { hasText: 'You resigned or left' })).toContainText(
+      String(count('loss', () => true)),
+    );
+    const left = count('loss', (e) => e.endsWith('abandoned'));
+    await expect(ends).toContainText(`${left} of the ${count('loss', () => true)} "resigned or left"`);
+    const rep = count('draw', (e) => e.endsWith('repetition'));
+    const agr = count('draw', (e) => e.endsWith('agreement'));
+    const parts = [
+      ...(rep > 0 ? [[rep, `${rep} by repetition`] as const] : []),
+      ...(agr > 0 ? [[agr, `${agr} by agreement`] as const] : []),
+    ]
+      .sort((x, y) => y[0] - x[0])
+      .map((x) => x[1]);
+    await expect(ends).toContainText(
+      `You drew ${count('draw', () => true)} games: ${parts.length > 1 ? `${parts[0]} and ${parts[1]}` : parts[0]}.`,
+    );
+
+    // Time controls: the exact control comes from the file's own time controls
+    const controls = new Map<string, number>();
+    for (const g of games) controls.set(g.timeControl, (controls.get(g.timeControl) ?? 0) + 1);
+    const top = [...controls.entries()].sort((a, b) => b[1] - a[1])[0]!;
+    await expect(page.getByTestId('story-card-time')).toContainText('Most played:');
+    expect(top[1]).toBeGreaterThan(0);
+
+    // Every card is fully inside the scroll box on this screen, once scrolled to
+    const fits: Array<{ id: string; top: number; bottom: number; box: number }> = [];
+    for (const id of ids) {
+      const m = await page.getByTestId(`story-card-${id}`).evaluate((el) => {
+        el.scrollIntoView({ block: 'start' });
+        const scroller = el.closest('.wc-story-scroll')!.getBoundingClientRect();
+        const r = el.getBoundingClientRect();
+        return {
+          top: r.top - scroller.top,
+          bottom: scroller.bottom - r.bottom,
+          box: scroller.height,
+          vh: innerHeight,
+          sb: scroller.bottom,
+        };
+      });
+      fits.push({ id: id!, top: Math.round(m.top), bottom: Math.round(m.bottom), box: Math.round(m.box) });
+      noteLayout(`375x667-${id}`, {
+        top: m.top,
+        bottom: m.bottom,
+        box: m.box,
+        scrollerBottom: m.sb,
+        innerHeight: m.vh,
+      });
+      await lookAt(page, `375x667-card-${id}`, id!);
+    }
+    for (const f of fits) {
+      expect(f.top, `${f.id} starts inside the box`).toBeGreaterThanOrEqual(-1);
+      expect(f.bottom, `${f.id} ends inside the box`).toBeGreaterThanOrEqual(-1);
+    }
+  });
+
+  test('keeps the Chess.com and Lichess cards out until both sites have games, and the totals hold no class rows', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await openWithHistory(page, richHistory());
+    await expect(page.getByTestId('story-card-totals').locator('table')).toHaveCount(0);
+    await expect(page.getByTestId('story-card-time').locator('table')).toHaveCount(1);
   });
 });

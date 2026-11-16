@@ -562,7 +562,7 @@ test.describe('Phase 5 — Game review', () => {
       .toBeGreaterThanOrEqual(4);
     await page.getByTestId('btn-review-cancel').click();
     await expect(page.getByTestId('review-panel')).toHaveAttribute('data-state', 'cancelled');
-    await expect(page.getByTestId('review-progress-text')).toContainText('Cancelled at');
+    await expect(page.getByTestId('review-progress-text')).toContainText('Canceled at');
     const review = await readReview(page);
     expect(review.complete).toBe(false);
     expect(review.total).toBe(82);
