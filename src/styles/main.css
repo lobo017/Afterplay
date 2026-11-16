@@ -2674,6 +2674,12 @@ select.wc-select option {
   pointer-events: none;
 }
 
+/* Little room below the "i": the popup opens above it (set by fitPopup) */
+.wc-review-tooltip[data-place='above'] {
+  top: auto;
+  bottom: calc(100% + 0.35rem);
+}
+
 /* The head (title and X) stays while the text scrolls */
 .wc-review-tooltip .wc-popup-head {
   margin: -0.2rem -0.3rem 0.35rem 0;
@@ -2697,6 +2703,20 @@ select.wc-select option {
 
 .wc-review-tooltip p:last-child {
   margin-bottom: 0;
+}
+
+/* The plain summary, then "The exact formulas" */
+.wc-review-tooltip-plain {
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.wc-review-tooltip-subhead {
+  margin: 0.55rem 0 0.3rem;
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--accent-gold);
 }
 
 .wc-review-tooltip-levels {

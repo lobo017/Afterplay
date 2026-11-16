@@ -82,23 +82,32 @@ function scrollerOf(el: Element): Element {
   return document.scrollingElement ?? document.documentElement;
 }
 
+/** Below this much room under its trigger, a popup that may flip opens above the trigger instead, in px. */
+const FLIP_BELOW = 240;
+
 export interface FitOptions {
   /**
    * The popup is opened by a tap, click or key: the page may scroll a little so the popup clears the bottom tab bar.
    * Hover and focus only cap its height.
    */
   scroll?: boolean;
+  /**
+   * The popup normally opens below `anchor` and may open above it instead (`data-place="above"`, placed by its CSS)
+   * when the room below is small, or clearly less than the room above, so it is not squeezed.
+   */
+  flip?: boolean;
+  anchor?: Element;
 }
 
 /**
  * Fits the popup again when the screen changes size or turns while it is open (no scrolling then). Returns the
  * function that stops watching.
  */
-export function watchFit(popup: HTMLElement): () => void {
+export function watchFit(popup: HTMLElement, options: FitOptions = {}): () => void {
   let frame = 0;
   const refit = (): void => {
     cancelAnimationFrame(frame);
-    frame = requestAnimationFrame(() => fitPopup(popup));
+    frame = requestAnimationFrame(() => fitPopup(popup, { ...options, scroll: false }));
   };
   window.addEventListener('resize', refit);
   window.visualViewport?.addEventListener('resize', refit);
@@ -115,6 +124,7 @@ export function watchFit(popup: HTMLElement): () => void {
  */
 export function fitPopup(popup: HTMLElement, options: FitOptions = {}): void {
   popup.style.maxHeight = '';
+  if (options.flip) popup.removeAttribute('data-place');
   let band = visibleBand(popup);
   const room = Math.max(MIN_HEIGHT, band.bottom - band.top);
   popup.style.maxHeight = `${Math.floor(room)}px`;
@@ -129,6 +139,15 @@ export function fitPopup(popup: HTMLElement, options: FitOptions = {}): void {
     else scroller.scrollTop += dy;
     band = visibleBand(popup);
     r = popup.getBoundingClientRect();
+  }
+  // Still sticking out below with little room there: open above the trigger instead
+  if (options.flip && options.anchor && r.bottom > band.bottom + 0.5) {
+    const below = band.bottom - Math.max(r.top, band.top);
+    const above = options.anchor.getBoundingClientRect().top - band.top;
+    if (above > below && (below < FLIP_BELOW || below < above * 0.6)) {
+      popup.setAttribute('data-place', 'above');
+      r = popup.getBoundingClientRect();
+    }
   }
   // What still does not fit is cut off at the edge it crosses (the popup scrolls inside)
   if (r.bottom > band.bottom) {

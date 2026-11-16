@@ -57,6 +57,14 @@ import { Menu } from '../ui/components/menu';
 import { closeButtonHtml, fitPopup, watchFit } from '../ui/components/popup';
 import { tapWord, tapWordLower } from '../ui/pointer-words';
 
+/** The plain summary at the top of the info popup ("i" beside the accuracy tiles); the exact formulas follow it. */
+export const FORMULAS_PLAIN =
+  'These numbers come from the engine checking every move of this reviewed game. ' +
+  "Accuracy runs from 0 to 100: the closer a player's moves were to the best ones, the higher it is. " +
+  'ACPL is how much each move gave away on average, in hundredths of a pawn, so lower is better. ' +
+  "Bot level is a rough guess at playing strength: it matches the app's bot that gives away about as much per move as that player did in this game. " +
+  'It is not a rating.';
+
 export const CLASS_BADGE: Record<MoveClassification, { glyph: string; slug: string }> = {
   Brilliant: { glyph: '!!', slug: 'brilliant' },
   Great: { glyph: '!', slug: 'great' },
@@ -465,7 +473,9 @@ export class ReviewPanel {
                 ${closeButtonHtml('review-formulas-close')}
               </div>
               <div class="wc-popup-body" id="wc-review-formulas-tip" role="tooltip">
+              <p class="wc-review-tooltip-plain" data-testid="review-formulas-plain">${FORMULAS_PLAIN}</p>
               <p class="wc-review-tooltip-levels"><b>Bot level (approx.)</b>: <span data-testid="review-bot-name-w">White</span> <b data-testid="review-bot-level-w">—</b> · <span data-testid="review-bot-name-b">Black</span> <b data-testid="review-bot-level-b">—</b></p>
+              <h3 class="wc-review-tooltip-subhead" data-testid="review-formulas-subhead">The exact formulas</h3>
               <p><b>Win%</b> = 50 + 50·(2 / (1 + e<sup>−0.00368208·cp</sup>) − 1), from the engine score in centipawns, clamped to ±1000. A forced mate counts as ±1000 (97.5% / 2.5%), as on Lichess.</p>
               <p><b>Move accuracy</b> = 103.1668·e<sup>−0.04354·drop</sup> − 3.1669 + 1, clamped to 0–100, where drop is how much the move lowered your Win% (the +1 is Lichess's allowance for imprecise evaluations).</p>
               <p><b>Game accuracy</b> (Lichess method): the average of (a) your move accuracies weighted by how volatile the game was around each move (standard deviation of Win% over a sliding window) and (b) their harmonic mean, which pulls the result down for a few very bad moves.</p>
@@ -647,12 +657,12 @@ export class ReviewPanel {
         this.closeTipByX(wrap);
       });
       wrap.addEventListener('pointerenter', (e) => {
-        if (e.pointerType === 'mouse') fitPopup(popup);
+        if (e.pointerType === 'mouse') fitPopup(popup, this.tipFit(tip));
       });
       wrap.addEventListener('pointerleave', () => wrap.removeAttribute('data-tip-dismissed'));
       wrap.addEventListener('focusin', () => {
         wrap.removeAttribute('data-tip-dismissed');
-        fitPopup(popup);
+        fitPopup(popup, this.tipFit(tip));
       });
     }
     document.addEventListener('keydown', (e) => {
@@ -685,8 +695,16 @@ export class ReviewPanel {
     wrap.removeAttribute('data-tip-dismissed');
     // Opened by a tap, click or key: it fits the visible area (the page scrolls a little if it has to)
     const popup = wrap.querySelector<HTMLElement>('.wc-review-tooltip')!;
-    fitPopup(popup, { scroll: true });
-    this.stopTipFit = watchFit(popup);
+    // Each opening starts at the top of its text
+    const body = popup.querySelector<HTMLElement>('.wc-popup-body');
+    if (body) body.scrollTop = 0;
+    fitPopup(popup, { ...this.tipFit(tip), scroll: true });
+    this.stopTipFit = watchFit(popup, this.tipFit(tip));
+  }
+
+  /** The info popup opens above its "i" when the room below is small; the status details stay below the status line. */
+  private tipFit(tip: 'formulas' | 'status'): { flip?: boolean; anchor?: Element } {
+    return tip === 'formulas' ? { flip: true, anchor: this.els.info } : {};
   }
 
   /**
