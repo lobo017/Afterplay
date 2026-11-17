@@ -36,6 +36,7 @@ import {
   playerHeading,
   playerMeta,
   playerInfo,
+  seeAllMomentsCount,
   stepCycle,
   type ReviewPerspective,
   type ShownKeyMoment,
@@ -315,6 +316,8 @@ export class ReviewPanel {
     >;
     counts: HTMLTableElement;
     moments: HTMLElement;
+    seeAll: HTMLButtonElement;
+    classes: HTMLDetailsElement;
     errorPrev: HTMLButtonElement;
     errorNext: HTMLButtonElement;
     errorLabel: HTMLElement;
@@ -437,6 +440,7 @@ export class ReviewPanel {
           <div class="wc-coach-head">
             <span class="wc-coach-label" data-testid="review-coach-label">Key moments</span>
             <ol class="wc-review-moments" data-testid="review-key-moments" aria-label="Key moments"></ol>
+            <button type="button" class="wc-btn wc-btn-ghost wc-review-see-all" data-testid="btn-review-see-all" aria-label="Browse all moments" data-off></button>
           </div>
           <div class="wc-review-card" data-testid="review-move-card">
             <div class="wc-review-card-head">
@@ -571,6 +575,8 @@ export class ReviewPanel {
       sides: { w: sideEls('w'), b: sideEls('b') },
       counts: q('review-counts'),
       moments: q('review-key-moments'),
+      seeAll: q('btn-review-see-all'),
+      classes: q('review-classes'),
       errorPrev: q('btn-review-prev-mistake'),
       errorNext: q('btn-review-next-mistake'),
       errorLabel: q('review-mistake-position'),
@@ -626,6 +632,11 @@ export class ReviewPanel {
       const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-node-id]');
       const id = btn?.getAttribute('data-node-id');
       if (id) this.host.goToNode(id);
+    });
+    this.els.seeAll.addEventListener('click', () => {
+      // The fold holds a count for every class: open it and bring it into view
+      this.els.classes.open = true;
+      this.els.classes.scrollIntoView({ block: 'start', behavior: 'smooth' });
     });
     this.els.counts.addEventListener('click', (e) => {
       const btn = (e.target as HTMLElement).closest<HTMLElement>('button[data-class]');
@@ -1285,6 +1296,10 @@ export class ReviewPanel {
   private renderMoments(review: GameReview): void {
     const moments = perspectiveKeyMoments(review, this.perspective);
     const byId = new Map(review.moves.map((m) => [m.nodeId, m]));
+    const all = seeAllMomentsCount(review.moves, this.perspective);
+    // Only when the fold has more to show than the chips do; otherwise the link takes no room
+    this.els.seeAll.textContent = `Browse all ${all} ${all === 1 ? 'moment' : 'moments'}`;
+    this.els.seeAll.toggleAttribute('data-off', all <= moments.length);
     if (moments.length === 0) {
       this.els.moments.innerHTML = `<li class="wc-review-muted">${
         review.complete || this.state !== 'running' ? 'No big swings.' : 'Key moments appear as the review runs.'

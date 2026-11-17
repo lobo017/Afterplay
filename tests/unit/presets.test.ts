@@ -20,6 +20,7 @@ import {
 import {
   PROFILE_STORAGE_KEY,
   ProfileStore,
+  botsByRating,
   customBotFor,
   sanitizeProfile,
   welcomeWithAppName,
@@ -545,5 +546,23 @@ describe('Phase 11 — personal presets (gift.local/start/, never committed)', (
       expect(preset, `preset ${i + 1}`).not.toBeNull();
       expect(problems, `preset ${i + 1}`).toEqual([]);
     });
+  });
+});
+
+describe('Phase 11 — the order of the named bots', () => {
+  it('lists them lowest rating first, each keeping its place in the profile, and ties keep the list order', () => {
+    const bots = [
+      { name: 'Student', rating: 1500, style: 'solid' as const },
+      { name: 'Boss', rating: 1800, style: 'solid' as const },
+      { name: 'Warm-up', rating: 800, style: 'solid' as const },
+      { name: 'Even', rating: 1200, style: 'solid' as const },
+      { name: 'Even too', rating: 1200, style: 'aggressive' as const },
+    ];
+    const sorted = botsByRating(bots);
+    expect(sorted.map((b) => b.bot.rating)).toEqual([800, 1200, 1200, 1500, 1800]);
+    expect(sorted.map((b) => b.bot.name)).toEqual(['Warm-up', 'Even', 'Even too', 'Student', 'Boss']);
+    expect(sorted.map((b) => b.index)).toEqual([2, 3, 4, 0, 1]);
+    // The list itself is not reordered
+    expect(bots.map((b) => b.name)[0]).toBe('Student');
   });
 });

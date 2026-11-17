@@ -29,7 +29,7 @@ import { getPieceSvgMarkup } from '../render/piece-sets';
 import { ChessClock, TIME_CONTROL_PRESETS, type ClockSnapshot, type TimeControlPresetId } from './clock';
 import type { DevOverlayController } from './dev-overlay';
 import { AppSettingsStore, MAX_PREMOVES_LIMIT, type AppSettings, type NewGameOptions } from './app-settings';
-import { ProfileStore, customBotFor } from '../preset/profile';
+import { ProfileStore, botsByRating, customBotFor } from '../preset/profile';
 import { icon } from './components/icons';
 import { Menu } from './components/menu';
 import { Tabs, tabListHtml, tabPanelAttrs } from './components/tabs';
@@ -648,7 +648,8 @@ export class PlayController {
     const bots = this.profile.get().bots;
     this.customBotsEl.replaceChildren();
     this.customBotsEl.hidden = bots.length === 0;
-    bots.forEach((bot, i) => {
+    // Lowest rating first. The test id keeps the bot's place in the profile's list, so ids do not move with the sort.
+    botsByRating(bots).forEach(({ bot, index: i }) => {
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'wc-custom-bot';

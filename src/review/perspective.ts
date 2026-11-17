@@ -98,6 +98,17 @@ export function movesOfClass(
   return moves.filter((m) => m.color === color && m.classification === classification);
 }
 
+/** The classes whose moves the key-moment link counts: the ones worth a look, all listed in "All moves by class". */
+const SEE_ALL_CLASSES: readonly MoveClassification[] = ['Brilliant', 'Great', 'Miss', 'Mistake', 'Blunder'];
+
+/**
+ * How many moves "Browse all moments" leads to: the perspective's Brilliant, Great, Miss, Mistake and Blunder moves
+ * (one side's in a one-side view). Every one of them has a count in "All moves by class" to step through.
+ */
+export function seeAllMomentsCount(moves: readonly ReviewedMove[], perspective: ReviewPerspective): number {
+  return moves.filter((m) => coversMove(perspective, m) && SEE_ALL_CLASSES.includes(m.classification)).length;
+}
+
 /** A key moment as the panel shows it. */
 export interface ShownKeyMoment extends KeyMoment {
   /**
