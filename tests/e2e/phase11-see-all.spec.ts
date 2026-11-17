@@ -57,11 +57,11 @@ test.describe('Phase 11 — named bots by rating', () => {
     ]);
     // The default selection (800) is still the one chosen
     await expect(page.getByTestId('custom-bot-2')).toHaveAttribute('aria-pressed', 'true');
-    await expect(page.getByTestId('bot-rating-label')).toHaveText('Warm-up Bot · 800 Elo');
+    await expect(page.getByTestId('bot-rating-label')).toHaveText('Warm-up Bot · Solid · 800 Elo');
     await page.getByTestId('welcome-done').click();
     await expect(page.getByTestId('welcome-sheet')).toBeHidden();
     await page.getByTestId('custom-bot-0').click();
-    await expect(page.getByTestId('bot-rating-label')).toHaveText('Student Bot · 1500 Elo');
+    await expect(page.getByTestId('bot-rating-label')).toHaveText('Student Bot · Solid · 1500 Elo');
   });
 });
 

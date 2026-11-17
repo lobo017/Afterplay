@@ -70,14 +70,14 @@ test.describe('Phase 11 — presets and the first-run link', () => {
     await expect(page.getByTestId('bottom-player-name')).toHaveText('Ada (White)');
     await expect(page.getByTestId('bottom-player-title')).toHaveText('Countess');
     await expect(page.getByTestId('bottom-player-title')).toBeVisible();
-    await expect(page.getByTestId('top-player-name')).toHaveText('Professor Rook (800)');
+    await expect(page.getByTestId('top-player-name')).toHaveText('Professor Rook · Solid (800)');
     await expect(page.getByTestId('top-player-title')).toBeHidden();
 
     // The New game card: the three named bots, the preset's level and time control chosen
     await expect(page.getByTestId('custom-bots').locator('button')).toHaveCount(3);
     await expect(page.getByTestId('custom-bot-0')).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByTestId('custom-bot-1')).toHaveAttribute('aria-pressed', 'false');
-    await expect(page.getByTestId('bot-rating-label')).toHaveText('Professor Rook · 800 Elo');
+    await expect(page.getByTestId('bot-rating-label')).toHaveText('Professor Rook · Solid · 800 Elo');
     await expect(page.getByTestId('time-control-10+0')).toHaveAttribute('aria-checked', 'true');
     await expect(page.getByTestId('bottom-clock')).toHaveText('10:00');
     await screenshot(page, 'preset-play');
@@ -129,7 +129,7 @@ test.describe('Phase 11 — presets and the first-run link', () => {
     await expect(playFrame(page)).toHaveAttribute('data-theme', 'imperial-walnut');
     await expect(playFrame(page)).toHaveAttribute('data-piece-set', 'classic');
     await expect(page.getByTestId('bottom-player-name')).toHaveText('Ada L. (White)');
-    await expect(page.getByTestId('top-player-name')).toHaveText('Professor Rook (800)');
+    await expect(page.getByTestId('top-player-name')).toHaveText('Professor Rook · Solid (800)');
     await expect(page).toHaveTitle("Ada's Chess");
     await page.waitForTimeout(1500);
     await expect(page.getByTestId('welcome-sheet')).toBeHidden();
@@ -142,10 +142,10 @@ test.describe('Phase 11 — presets and the first-run link', () => {
     await openLink(page, SAMPLE, 'applied');
     await closeWelcome(page);
     await page.getByTestId('custom-bot-1').click();
-    await expect(page.getByTestId('bot-rating-label')).toHaveText('The Gambit Goblin · 1200 Elo');
+    await expect(page.getByTestId('bot-rating-label')).toHaveText('The Gambit Goblin · Gambiteer · 1200 Elo');
     await expect(page.getByTestId('bot-style-gambiteer')).toHaveAttribute('aria-checked', 'true');
     await page.getByTestId('btn-new-game').click();
-    await expect(page.getByTestId('top-player-name')).toHaveText('The Gambit Goblin (1200)');
+    await expect(page.getByTestId('top-player-name')).toHaveText('The Gambit Goblin · Gambiteer (1200)');
     await page.evaluate(() => window.__wizardChessPlay!.controller.setBotMoveDelayMs(5));
     await page.getByTestId('play-layout').getByTestId('square-e2').click();
     await page.getByTestId('play-layout').getByTestId('square-e4').click();
@@ -198,9 +198,9 @@ test.describe('Phase 11 — presets and the first-run link', () => {
     await openLink(page, '/', 'none');
     await expect(page.getByTestId('bottom-player-name')).toHaveText('You (White)');
     await expect(page.getByTestId('bottom-player-title')).toBeHidden();
-    await expect(page.getByTestId('top-player-name')).toHaveText('Stockfish Club (1400)');
+    await expect(page.getByTestId('top-player-name')).toHaveText('Stockfish Club · Solid (1400)');
     await expect(page.getByTestId('custom-bots')).toBeHidden();
-    await expect(page.getByTestId('bot-rating-label')).toHaveText('1400 Elo (Club)');
+    await expect(page.getByTestId('bot-rating-label')).toHaveText('1400 Elo (Club) · Solid');
     await expect(page).toHaveTitle('Afterplay');
     await expect(page.getByTestId('brand-title')).toHaveText('Afterplay');
     await page.getByTestId('btn-settings').click();
@@ -369,7 +369,7 @@ test.describe('Phase 11 — the first-run link offline', () => {
     expect(await page.evaluate(() => window.crossOriginIsolated)).toBe(true);
     await expect(playFrame(page)).toHaveAttribute('data-theme', 'green');
     await expect(page.getByTestId('bottom-player-name')).toHaveText('Ada (White)');
-    await expect(page.getByTestId('top-player-name')).toHaveText('Professor Rook (800)');
+    await expect(page.getByTestId('top-player-name')).toHaveText('Professor Rook · Solid (800)');
     // The worker wrote the link's page from its cache (phase11-link-worker.spec.ts reads the page as served)
     await expect(page).toHaveTitle("Ada's Chess");
     expect(await page.evaluate(() => document.querySelector('link[rel="manifest"]')?.getAttribute('href'))).toBe(

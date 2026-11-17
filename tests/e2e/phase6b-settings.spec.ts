@@ -111,7 +111,7 @@ test.describe('Phase 6b — Settings', () => {
 
     await page.reload();
     await expect(page.getByTestId('play-layout')).toBeVisible();
-    await expect(page.getByTestId('bot-rating-label')).toHaveText('1800 Elo (Expert)');
+    await expect(page.getByTestId('bot-rating-label')).toHaveText('1800 Elo (Expert) · Solid');
     await expect(page.getByTestId('time-control-10+0')).toHaveAttribute('aria-checked', 'true');
     await expect(page.getByTestId('play-as-b')).toHaveAttribute('aria-checked', 'true');
     await expect(frame).toHaveAttribute('data-theme', 'imperial-walnut');

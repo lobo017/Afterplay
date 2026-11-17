@@ -98,7 +98,7 @@ async function workerInControl(page: Page): Promise<void> {
 async function expectSamplePreset(page: Page): Promise<void> {
   await expect(playFrame(page)).toHaveAttribute('data-theme', 'green');
   await expect(page.getByTestId('bottom-player-name')).toHaveText('Ada (White)');
-  await expect(page.getByTestId('top-player-name')).toHaveText('Professor Rook (800)');
+  await expect(page.getByTestId('top-player-name')).toHaveText('Professor Rook · Solid (800)');
   await expect(page).toHaveTitle("Ada's Chess");
 }
 

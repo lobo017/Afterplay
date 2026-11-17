@@ -24,26 +24,26 @@ async function clickMove(page: Page, from: string, to: string): Promise<void> {
 }
 
 test.describe('Phase 6b — Play', () => {
-  test('New game choices wait for Play, then all apply together', async ({ page }) => {
+  test('New game choices show on the waiting board at once, then Play starts the game as shown', async ({ page }) => {
     await openPlay(page);
     const card = page.getByTestId('new-game-card');
     await expect(card).toBeVisible();
     await expect(page.getByTestId('game-view')).toBeHidden();
     await expect(page.getByTestId('btn-back-to-game')).toBeHidden();
-    await expect(page.getByTestId('bot-rating-label')).toHaveText('1400 Elo (Club)');
+    await expect(page.getByTestId('bot-rating-label')).toHaveText('1400 Elo (Club) · Solid');
     await expect(page.getByTestId('time-control-5+3')).toHaveAttribute('aria-checked', 'true');
     await expect(page.getByTestId('play-as-w')).toHaveAttribute('aria-checked', 'true');
     await expect(page.getByTestId('bot-tier-Club')).toHaveAttribute('aria-pressed', 'true');
 
-    // Change everything: nothing on the board changes yet
+    // Change everything: the waiting board follows at once (the name with its style, the clocks, my side)
     await page.getByTestId('bot-tier-Expert').click();
     await page.getByTestId('bot-style-aggressive').click();
     await page.getByTestId('time-control-10+0').click();
     await page.getByTestId('play-as-b').click();
-    await expect(page.getByTestId('bot-rating-label')).toHaveText('1800 Elo (Expert)');
-    await expect(page.getByTestId('top-player-name')).toHaveText('Stockfish Club (1400)');
-    await expect(page.getByTestId('bottom-clock')).toHaveText('5:00');
-    expect(await page.evaluate(() => window.__wizardChessPlay!.controller.getBoard().isFlipped())).toBe(false);
+    await expect(page.getByTestId('bot-rating-label')).toHaveText('1800 Elo (Expert) · Aggressive');
+    await expect(page.getByTestId('top-player-name')).toHaveText('Stockfish Expert · Aggressive (1800)');
+    await expect(page.getByTestId('bottom-clock')).toHaveText('10:00');
+    expect(await page.evaluate(() => window.__wizardChessPlay!.controller.getBoard().isFlipped())).toBe(true);
     await page.screenshot({ path: path.join(SCREENSHOT_DIR, 'desktop-play-new-game.png') });
 
     // Arrow keys move along a choice group
@@ -57,7 +57,7 @@ test.describe('Phase 6b — Play', () => {
     await expect(page.getByTestId('game-view')).toBeVisible();
     await expect(card).toBeHidden();
     expect(await page.evaluate(() => window.__wizardChessPlay!.controller.getBoard().isFlipped())).toBe(true);
-    await expect(page.getByTestId('top-player-name')).toHaveText('Stockfish Expert (1800)');
+    await expect(page.getByTestId('top-player-name')).toHaveText('Stockfish Expert · Aggressive (1800)');
     await expect(page.getByTestId('bottom-player-name')).toHaveText('You (Black)');
     expect(await page.evaluate(() => window.__wizardChessPlay!.controller.getBot().getStyle())).toBe('aggressive');
     // The bot plays White's first move; the clocks are 10 minutes
@@ -83,7 +83,7 @@ test.describe('Phase 6b — Play', () => {
     await page.getByTestId('bot-tier-Novice').click();
     expect(await plies(page)).toBe(2);
     expect(await page.evaluate(() => window.__wizardChessPlay!.controller.isGameInProgress())).toBe(true);
-    await expect(page.getByTestId('top-player-name')).toHaveText('Stockfish Club (1400)');
+    await expect(page.getByTestId('top-player-name')).toHaveText('Stockfish Club · Solid (1400)');
 
     await page.getByTestId('btn-back-to-game').click();
     await expect(page.getByTestId('game-view')).toBeVisible();
@@ -107,7 +107,7 @@ test.describe('Phase 6b — Play', () => {
     await page.getByTestId('btn-new-game-end').click();
     await expect(page.getByTestId('game-view')).toBeVisible();
     await expect(page.getByTestId('bottom-player-name')).toHaveText('You (Black)');
-    await expect(page.getByTestId('top-player-name')).toHaveText('Stockfish Novice (600)');
+    await expect(page.getByTestId('top-player-name')).toHaveText('Stockfish Novice · Solid (600)');
   });
 
   test('a new game from Review (Play vs bot here) also asks before ending a game in progress', async ({ page }) => {
