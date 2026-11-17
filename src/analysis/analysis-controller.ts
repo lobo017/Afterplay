@@ -33,6 +33,7 @@ import { announce } from '../ui/announcer';
 import type { AppSettings, AppSettingsStore } from '../ui/app-settings';
 import { switchRowHtml } from '../ui/components/controls';
 import { icon } from '../ui/components/icons';
+import { Menu } from '../ui/components/menu';
 import { Sheet } from '../ui/components/sheet';
 import { Tabs, tabListHtml, tabPanelAttrs } from '../ui/components/tabs';
 import { detectOpponentThreat, type ThreatDetectionResult } from './threat-detector';
@@ -77,6 +78,15 @@ export interface AnalysisControllerOptions {
 export type ReviewShellTab = 'review' | 'analysis' | 'moves';
 
 /**
+ * The Review screen's two pages (one tab, one controller, one address).
+ * - `board`: free analysis. The toolbar (New board, Edit position, Load FEN or PGN) and Sample game show. The start
+ *   state; also after New board, the editor's Apply, a FEN and a PGN with no moves.
+ * - `game`: a game with at least one main-line move is open, or a review was started: review only, no toolbar and no
+ *   Sample game. The same tools are in the "Board tools" menu under the board, which is on both pages.
+ */
+export type ReviewPage = 'board' | 'game';
+
+/**
  * Phase 4 Analysis Board Controller.
  * Coordinates:
  * - Animated, mate-aware EvalBar that flips with the board
@@ -117,6 +127,10 @@ export class AnalysisController {
   private unsubscribeSettings: (() => void) | null = null;
   private shellTabs!: Tabs;
   private loadSheet!: Sheet;
+  private boardTools!: Menu;
+  /** Which page the screen shows (see ReviewPage). Moves played on the free board never change it. */
+  private page: ReviewPage = 'board';
+  private readonly pageListeners: Array<(page: ReviewPage) => void> = [];
   private lastNavigationAt = -Infinity;
   /** The latest navigation came hard on the heels of the previous one. */
   private rapidNavigation = false;
@@ -201,6 +215,7 @@ export class AnalysisController {
     this.adapter = new RulesAdapter(this.gameTree.currentNode.fen, {
       chess960: this.gameTree.isChess960(),
     });
+    this.page = this.pageOf(this.gameTree);
 
     this.mountLayout();
     this.bindKeyboardShortcuts();
@@ -225,19 +240,22 @@ export class AnalysisController {
             <div class="wc-board-mount" data-testid="analysis-board-mount"></div>
           </div>
 
-          <div class="wc-transport" role="group" aria-label="Move navigation">
-            <button type="button" class="wc-btn wc-btn-secondary wc-transport-btn" data-testid="btn-nav-start" title="Start (Home)" aria-label="Start of game">${icon('first')}</button>
-            <button type="button" class="wc-btn wc-btn-secondary wc-transport-btn" data-testid="btn-nav-prev" title="Previous move (←)" aria-label="Previous move">${icon('back')}</button>
-            <button type="button" class="wc-btn wc-btn-secondary wc-transport-btn" data-testid="btn-nav-next" title="Next move (→)" aria-label="Next move">${icon('next')}</button>
-            <button type="button" class="wc-btn wc-btn-secondary wc-transport-btn" data-testid="btn-nav-end" title="End (End)" aria-label="End of game">${icon('last')}</button>
-            <button type="button" class="wc-btn wc-btn-secondary wc-transport-btn wc-transport-flip" data-testid="btn-flip-board" title="Flip board (F)" aria-label="Flip board">${icon('flip')}</button>
+          <!-- Move navigation, then the Board tools menu (added in code): on the board page and the game page -->
+          <div class="wc-transport-row" data-testid="transport-row">
+            <div class="wc-transport" role="group" aria-label="Move navigation">
+              <button type="button" class="wc-btn wc-btn-secondary wc-transport-btn" data-testid="btn-nav-start" title="Start (Home)" aria-label="Start of game">${icon('first')}</button>
+              <button type="button" class="wc-btn wc-btn-secondary wc-transport-btn" data-testid="btn-nav-prev" title="Previous move (←)" aria-label="Previous move">${icon('back')}</button>
+              <button type="button" class="wc-btn wc-btn-secondary wc-transport-btn" data-testid="btn-nav-next" title="Next move (→)" aria-label="Next move">${icon('next')}</button>
+              <button type="button" class="wc-btn wc-btn-secondary wc-transport-btn" data-testid="btn-nav-end" title="End (End)" aria-label="End of game">${icon('last')}</button>
+              <button type="button" class="wc-btn wc-btn-secondary wc-transport-btn wc-transport-flip" data-testid="btn-flip-board" title="Flip board (F)" aria-label="Flip board">${icon('flip')}</button>
+            </div>
           </div>
         </div>
 
-        <!-- Side panel: free-analysis tools, status, and the Review / Analysis / Moves tabs -->
+        <!-- Side panel: free-analysis tools (board page only), status, and the Review / Analysis / Moves tabs -->
         <aside class="wc-panel wc-review-shell" data-testid="review-shell" data-view="tabs" aria-label="Review and analysis">
           <div class="wc-panel-inner">
-            <div class="wc-review-toolbar" role="toolbar" aria-label="Free analysis">
+            <div class="wc-review-toolbar" data-testid="review-toolbar" role="toolbar" aria-label="Free analysis">
               <button type="button" class="wc-btn wc-btn-secondary wc-tool-btn" data-testid="btn-reset-analysis" title="An empty board at the starting position">${icon('board')}<span>New board</span></button>
               <button type="button" class="wc-btn wc-btn-secondary wc-tool-btn" data-testid="btn-toggle-editor" aria-expanded="false" title="Set up any position">${icon('edit')}<span>Edit position</span></button>
               <button type="button" class="wc-btn wc-btn-secondary wc-tool-btn" data-testid="btn-load-pgn" aria-haspopup="dialog" title="Paste a FEN or a PGN">${icon('upload')}<span>Load<span class="wc-tool-more"> FEN / PGN</span></span></button>
@@ -427,8 +445,43 @@ export class AnalysisController {
       },
     });
 
+    // ⋯ at the end of the transport row: the free-analysis tools, on both pages (the toolbar shows them only on the
+    // board page). Its item ids differ from the toolbar's, so no test id is in the page twice.
+    this.boardTools = new Menu(
+      this.container.querySelector('[data-testid="transport-row"]') as HTMLElement,
+      [
+        {
+          id: 'new-board',
+          label: 'New board',
+          testId: 'menu-new-board',
+          icon: 'board',
+          onSelect: () => this.newBoard(),
+        },
+        {
+          id: 'edit-position',
+          label: 'Edit position',
+          testId: 'menu-edit-position',
+          icon: 'edit',
+          onSelect: () => this.setEditorVisible(true),
+        },
+        {
+          id: 'load',
+          label: 'Load FEN or PGN',
+          testId: 'menu-load-pgn',
+          icon: 'upload',
+          onSelect: () => this.openLoadSheet(),
+        },
+      ],
+      {
+        testId: 'board-tools',
+        label: 'Board tools',
+        buttonClass: 'wc-btn wc-btn-secondary wc-transport-btn wc-transport-tools',
+      },
+    );
+
     this.shellTabs = new Tabs(this.container.querySelector('[data-testid="review-tabs-view"]') as HTMLElement);
     this.bindUiEvents();
+    this.renderPage();
     if (this.settings) {
       this.unsubscribeSettings = this.settings.subscribe((next, prev) => this.applySettings(next, prev));
     }
@@ -443,6 +496,45 @@ export class AnalysisController {
     }
     if (next.captureEffects !== prev.captureEffects) this.board.setCaptureEffectsEnabled(next.captureEffects);
     if (next.navigationAnimation !== this.navAnimation) this.setNavAnimation(next.navigationAnimation);
+  }
+
+  /** The board page (free analysis) or the game page (a game is open: review only). */
+  public getPage(): ReviewPage {
+    return this.page;
+  }
+
+  /** Called when the screen changes between the board page and the game page. */
+  public onPageChange(listener: (page: ReviewPage) => void): void {
+    this.pageListeners.push(listener);
+  }
+
+  /** A review starts on the moves on the board: they are a game now. */
+  public showGamePage(): void {
+    this.setPage('game');
+  }
+
+  private setPage(page: ReviewPage): void {
+    if (this.page === page) return;
+    this.page = page;
+    this.renderPage();
+    for (const listener of this.pageListeners) listener(page);
+  }
+
+  /** The page of a tree just loaded: a game needs at least one move on its main line. */
+  private pageOf(tree: GameTree): ReviewPage {
+    return tree.root.children.length > 0 ? 'game' : 'board';
+  }
+
+  private renderPage(): void {
+    this.container.querySelector('[data-testid="analysis-layout"]')?.setAttribute('data-page', this.page);
+    const toolbar = this.container.querySelector<HTMLElement>('[data-testid="review-toolbar"]');
+    if (toolbar) toolbar.hidden = this.page === 'game';
+  }
+
+  /** New board: the starting position, nothing from the last game, the engine lines in view. */
+  private newBoard(): void {
+    this.loadFen(DEFAULT_POSITION);
+    this.showTab('analysis');
   }
 
   /** Shows one of the side panel's tabs (Review, Analysis, Moves). */
@@ -619,10 +711,8 @@ export class AnalysisController {
       this.setEditorVisible(false);
     });
 
-    // New board: the starting position, nothing from the last game, the engine lines in view
     this.container.querySelector('[data-testid="btn-reset-analysis"]')?.addEventListener('click', () => {
-      this.loadFen(DEFAULT_POSITION);
-      this.showTab('analysis');
+      this.newBoard();
     });
 
     this.container.querySelector('[data-testid="btn-load-pgn"]')?.addEventListener('click', () => {
@@ -1119,6 +1209,8 @@ export class AnalysisController {
     this.gameTree = new GameTree(fen.trim(), {
       chess960: validation.isChess960,
     });
+    // A position, not a game: the board page (New board, the editor's Apply and a pasted FEN all come here)
+    this.setPage('board');
     this.notifyTreeReplaced();
     this.positionEditor.setTool('pointer');
     this.syncAllFromCurrentNode({ treeChanged: true });
@@ -1127,6 +1219,7 @@ export class AnalysisController {
 
   public loadGameTree(tree: GameTree): void {
     this.gameTree = GameTree.fromJSON(tree.toJSON());
+    this.setPage(this.pageOf(this.gameTree));
     this.notifyTreeReplaced();
     this.syncAllFromCurrentNode({ treeChanged: true });
   }
@@ -1135,6 +1228,7 @@ export class AnalysisController {
     try {
       const parsed = parsePgn(pgnText);
       this.gameTree = parsed;
+      this.setPage(this.pageOf(parsed));
       this.notifyTreeReplaced();
       this.pgnStatusEl.textContent = 'PGN Loaded';
       this.pgnStatusEl.setAttribute('data-status', 'ok');
@@ -1164,6 +1258,7 @@ export class AnalysisController {
     await new Promise((resolve) => setTimeout(resolve, 0));
     parsed.goToStart();
     this.gameTree = parsed;
+    this.setPage(this.pageOf(parsed));
     this.notifyTreeReplaced();
     this.pgnStatusEl.textContent = 'PGN Loaded';
     this.pgnStatusEl.setAttribute('data-status', 'ok');
@@ -1848,6 +1943,7 @@ export class AnalysisController {
   public destroy(): void {
     this.cancelActiveSearches();
     this.unsubscribeSettings?.();
+    this.boardTools.destroy();
     this.loadSheet.close();
     if (this.pgnSyncTimer !== null) {
       clearTimeout(this.pgnSyncTimer);

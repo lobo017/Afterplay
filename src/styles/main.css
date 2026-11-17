@@ -4591,6 +4591,17 @@ label.wc-setting-row {
   padding: 0;
 }
 
+/* Move navigation, then the Board tools menu at the end of the row (its list opens upward, over the board) */
+.wc-transport-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 3.4rem;
+  gap: 0.5rem;
+}
+
+.wc-transport-row > .wc-menu-wrap {
+  display: grid;
+}
+
 .wc-review-toolbar {
   flex: none;
   display: flex;
@@ -5483,7 +5494,9 @@ label.wc-setting-row {
     gap: 0.35rem;
   }
 
+  /* Each button as wide as its label needs (equal thirds cut "Edit position" off at 375 px); what is left is shared */
   .wc-tool-btn {
+    flex: 1 1 auto;
     font-size: 0.78rem;
     gap: 0.25rem;
     padding: 0 0.3rem;
@@ -5495,6 +5508,11 @@ label.wc-setting-row {
 
   .wc-transport {
     grid-template-columns: repeat(4, minmax(0, 1fr)) 3rem;
+    gap: 0.35rem;
+  }
+
+  .wc-transport-row {
+    grid-template-columns: minmax(0, 1fr) 3rem;
     gap: 0.35rem;
   }
 

@@ -730,7 +730,7 @@ export class GamesList {
       el.textContent = 'Capture extension not detected';
       el.title = 'Install the capture extension (see README) to collect your Lichess and Chess.com games here.';
       this.els.captureDetail.textContent =
-        'Install the capture extension (README: npm run build:ext, then load dist-ext/ unpacked in Chrome) and your Lichess and Chess.com games arrive here by themselves.';
+        'Add the capture extension to Chrome and your Lichess and Chess.com games arrive here by themselves. The README has the steps.';
       return;
     }
     this.els.captureDetail.textContent =

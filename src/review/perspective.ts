@@ -98,8 +98,80 @@ export function movesOfClass(
   return moves.filter((m) => m.color === color && m.classification === classification);
 }
 
-export function perspectiveKeyMoments(review: GameReview, perspective: ReviewPerspective): KeyMoment[] {
-  return perspective === 'both' ? review.keyMoments : findKeyMoments(review.moves, perspective);
+/** A key moment as the panel shows it. */
+export interface ShownKeyMoment extends KeyMoment {
+  /**
+   * Set on a Brilliant or Great move that is shown for its class, not for its swing (such a move barely changes the
+   * winning chances, so the swings alone never include it).
+   */
+  highlight?: 'Brilliant' | 'Great';
+}
+
+/** The most key moments shown: five chips are three rows on a phone, and three rows are reserved. */
+export const KEY_MOMENTS_SHOWN_MAX = 5;
+/** The largest swings that a Brilliant or Great move never pushes out. */
+const KEY_MOMENT_SWINGS_KEPT = 3;
+/** The most Brilliant and Great moves added to the swings. */
+const KEY_MOMENT_HIGHLIGHTS_MAX = 2;
+
+/** The move's signed change in White's win% (what a key moment's `swing` holds). */
+function whiteSwing(move: ReviewedMove): number {
+  const whiteBefore = move.color === 'w' ? move.winBefore : 100 - move.winBefore;
+  return move.whiteWinAfter - whiteBefore;
+}
+
+/**
+ * The key moments shown for a perspective, in game order: the review's swings (the game's for Both, one side's drops
+ * otherwise) plus up to two of the perspective's Brilliant and Great moves, five at most.
+ *
+ * - The three largest swings always stay.
+ * - Then the highlights: Brilliant before Great, then the larger swing, then the earlier move.
+ * - What room is left goes to the next largest swings.
+ *
+ * With no Brilliant or Great move to add, the swings are returned as they are (for Both, `review.keyMoments` itself).
+ */
+export function perspectiveKeyMoments(review: GameReview, perspective: ReviewPerspective): ShownKeyMoment[] {
+  const swings = perspective === 'both' ? review.keyMoments : findKeyMoments(review.moves, perspective);
+  const highlights = review.moves
+    .filter(
+      (m): m is ReviewedMove & { classification: 'Brilliant' | 'Great' } =>
+        coversMove(perspective, m) && (m.classification === 'Brilliant' || m.classification === 'Great'),
+    )
+    .map((move) => ({ move, swing: whiteSwing(move) }))
+    .sort(
+      (a, b) =>
+        Number(b.move.classification === 'Brilliant') - Number(a.move.classification === 'Brilliant') ||
+        Math.abs(b.swing) - Math.abs(a.swing) ||
+        a.move.ply - b.move.ply,
+    );
+  if (highlights.length === 0) return swings;
+
+  const bySize = [...swings].sort((a, b) => Math.abs(b.swing) - Math.abs(a.swing) || a.ply - b.ply);
+  const shown = new Map<string, ShownKeyMoment>();
+  for (const k of bySize.slice(0, KEY_MOMENT_SWINGS_KEPT)) shown.set(k.nodeId, k);
+  let added = 0;
+  for (const { move, swing } of highlights) {
+    if (added >= KEY_MOMENT_HIGHLIGHTS_MAX || shown.size >= KEY_MOMENTS_SHOWN_MAX) break;
+    // Already shown for its swing: once is enough, and it keeps its swing
+    if (shown.has(move.nodeId)) continue;
+    const asSwing = swings.find((k) => k.nodeId === move.nodeId);
+    shown.set(
+      move.nodeId,
+      asSwing ?? {
+        ply: move.ply,
+        nodeId: move.nodeId,
+        swing,
+        label: `${move.moveNumber}${move.color === 'w' ? '.' : '...'} ${move.san} — ${move.classification}`,
+        highlight: move.classification,
+      },
+    );
+    added++;
+  }
+  for (const k of bySize.slice(KEY_MOMENT_SWINGS_KEPT)) {
+    if (shown.size >= KEY_MOMENTS_SHOWN_MAX) break;
+    if (!shown.has(k.nodeId)) shown.set(k.nodeId, k);
+  }
+  return [...shown.values()].sort((a, b) => a.ply - b.ply);
 }
 
 /** The win% series from the perspective's side (White's for Both). */

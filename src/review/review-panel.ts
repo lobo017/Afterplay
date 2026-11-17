@@ -3,6 +3,7 @@ import { RulesAdapter, type Color } from '../core/rules';
 import { describeDeparture, type RepertoireDeparture } from '../trainers/repertoire';
 import { EngineCancelledError, type EngineClient } from '../engine/engine-client';
 import type { UciScore } from '../engine/uci-parser';
+import type { ReviewPage } from '../analysis/analysis-controller';
 import { formatEvalBarScore } from '../analysis/eval-bar';
 import { lookupOpeningByFen } from '../analysis/opening-lookup';
 import { describeHintedMoves, hintedMoves } from './hints';
@@ -37,6 +38,7 @@ import {
   playerInfo,
   stepCycle,
   type ReviewPerspective,
+  type ShownKeyMoment,
   type UserAccount,
 } from './perspective';
 import { ReviewAnalysisClient } from './review-analysis-client';
@@ -118,6 +120,11 @@ export interface ReviewPanelHost {
   setMoveInterceptor(fn: ((node: GameNode, created: boolean) => void) | null): void;
   onNavigate(listener: (node: GameNode) => void): void;
   onTreeReplaced(listener: () => void): void;
+  /** The screen's page: the free board (Sample game shows) or a game (review only). */
+  getPage(): ReviewPage;
+  onPageChange(listener: (page: ReviewPage) => void): void;
+  /** A review starts on the board's moves: the screen becomes the game page. */
+  showGamePage(): void;
 }
 
 export interface ReviewPanelOptions {
@@ -351,6 +358,8 @@ export class ReviewPanel {
 
     this.host.onNavigate((node) => this.handleNavigate(node));
     this.host.onTreeReplaced(() => this.reset());
+    // Sample game belongs to the board page only
+    this.host.onPageChange(() => this.renderState());
     this.renderState();
     this.renderMoveCard(this.host.getCurrentNode());
   }
@@ -728,6 +737,14 @@ export class ReviewPanel {
     return this.review;
   }
 
+  /**
+   * The key moments as shown for the current "Review as" side, in game order: the swings plus the Brilliant and Great
+   * moves added to them (`review.keyMoments` holds the swings only). For tests and diagnostics.
+   */
+  public getKeyMoments(): ShownKeyMoment[] {
+    return this.review ? [...perspectiveKeyMoments(this.review, this.perspective)] : [];
+  }
+
   public getRunResult(): ReviewRunResult | null {
     return this.result;
   }
@@ -767,11 +784,16 @@ export class ReviewPanel {
 
   public async loadSampleGame(): Promise<ReviewRunResult | null> {
     this.cancel();
+    // The button leaves the row once its game is open (the game page has no Sample game)
+    const hadFocus = document.activeElement === this.els.sample;
     // Parsing the game, showing it and starting the review are each ~10–30 ms of main-thread
     // work (more on a busy machine): separate tasks, so none becomes a long task
     if (!(await this.host.importPgnFromStart(SAMPLE_GAME_PGN))) return null;
     await new Promise((resolve) => setTimeout(resolve, 0));
-    return this.start();
+    const run = this.start();
+    // Keyboard focus goes on to Cancel, the one action while the review runs
+    if (hadFocus && this.state === 'running' && !this.els.sample.isConnected) this.els.cancel.focus();
+    return run;
   }
 
   /** Reviews the board's current game; resolves when the review finishes or is cancelled. */
@@ -802,6 +824,8 @@ export class ReviewPanel {
     this.options.onRunningChange?.(true);
     this.els.body.hidden = false;
     this.savedAt = null;
+    // Moves played on the free board are a game once they are reviewed
+    this.host.showGamePage();
     this.renderPlayers(tree.getHeaders());
     this.setPerspective(defaultPerspective(tree.getHeaders(), this.accounts()));
     this.renderState();
@@ -949,17 +973,20 @@ export class ReviewPanel {
 
   /**
    * The action row in the order it is drawn, so Tab follows the screen. A list game with no review here: "Review this
-   * game", its line and its message come first, then the setting, Cancel and Sample game. Otherwise the usual row:
-   * setting, Start review, Cancel, Sample game. Nodes move only when the order changes.
+   * game", its line and its message come first, then the setting and Cancel. Otherwise the usual row: setting, Start
+   * review, Cancel. Sample game follows Cancel on the board page only; on the game page (a game is open) it is taken
+   * out of the row. Nodes move only when the order changes.
    */
   private placeActions(library: boolean): void {
     const els = this.els;
     const row = els.start.parentElement;
     if (!row) return;
+    const sample = this.host.getPage() === 'board' ? [els.sample] : [];
     const order = library
-      ? [els.start, els.storedHelp, els.storedError, els.preset, els.cancel, els.sample]
-      : [els.preset, els.start, els.cancel, els.sample, els.storedHelp, els.storedError];
-    if (order.every((el, i) => row.children[i] === el)) return;
+      ? [els.start, els.storedHelp, els.storedError, els.preset, els.cancel, ...sample]
+      : [els.preset, els.start, els.cancel, ...sample, els.storedHelp, els.storedError];
+    if (sample.length === 0) els.sample.remove();
+    if (row.children.length === order.length && order.every((el, i) => row.children[i] === el)) return;
     row.append(...order);
   }
 
@@ -1271,8 +1298,11 @@ export class ReviewPanel {
         if (!move) return '';
         const sentence = move.explanation ?? this.classSentence(move);
         const swing = this.perspective === 'b' ? -k.swing : k.swing;
-        const title = `${moveLabel(move)} — ${move.classification} (${swing > 0 ? '+' : ''}${swing.toFixed(0)}% for ${forSide}). ${sentence}`;
-        return `<li><button type="button" class="wc-review-moment" data-node-id="${k.nodeId}" data-testid="review-moment-${k.ply}" data-color="${move.color}" title="${escapeHtml(title)}">${classBadgeHtml(move.classification)}<span class="wc-review-moment-move">${escapeHtml(moveLabel(move))}</span><span class="wc-review-moment-text">${escapeHtml(sentence)}</span></button></li>`;
+        // A Brilliant or Great move shown for its class: its swing is about nothing, so the title leaves it out
+        const title = k.highlight
+          ? `${moveLabel(move)} — ${move.classification}. ${sentence}`
+          : `${moveLabel(move)} — ${move.classification} (${swing > 0 ? '+' : ''}${swing.toFixed(0)}% for ${forSide}). ${sentence}`;
+        return `<li><button type="button" class="wc-review-moment" data-node-id="${k.nodeId}" data-testid="review-moment-${k.ply}" data-color="${move.color}"${k.highlight ? ` data-highlight="${k.highlight}"` : ''} title="${escapeHtml(title)}">${classBadgeHtml(move.classification)}<span class="wc-review-moment-move">${escapeHtml(moveLabel(move))}</span><span class="wc-review-moment-text">${escapeHtml(sentence)}</span></button></li>`;
       })
       .join('');
   }
