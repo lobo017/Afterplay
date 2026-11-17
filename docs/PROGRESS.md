@@ -215,6 +215,14 @@ player's side only), so the Story can show accuracy and mistakes. The plan is "S
 - **Games tabs:** after an import the page on a phone was taller than the screen by the Story banner (43 px after it, 68 px while it ran), so a swipe moved the tab bar under the sticky top bar (`header.wc-topbar`, sticky, z-index 50, top 0, 390 × 52) and the Story's own scroll box (scroll chaining off) kept it there. The tabs are now sticky under the top bar, and on a phone the banner shares the Story's height instead of adding to it.
 - **Tests:** `tests/e2e/phase11-overlays.spec.ts` (X, fit and scroll for each kind at 375x667, 390x844, 844x390; the tabs after a Chess.com import and after the sample link, at 390x844 and 375x667, scrolled, every tab pressed where it is, turned and back).
 
+**Popups, Games tabs, info popup, Story check and the import profile (2026-11-16, commits `016d2af` to `1dfb493`; preview only, no Juno gate yet).** The block above is committed as `016d2af` (code) and `c3d4544` (tests).
+- **Popups:** every popup that covers content now has a close X from the shared helper (`popup.ts`), and the popups fit between the top bar and the bottom navigation.
+- **Games tabs:** Library, Insights and Story are no longer hidden behind the banner on phones. Cause: the Story page grew taller than the screen and the tab bar scrolled under the top bar. Fix: sticky tabs, and the banner shares the Story's height.
+- **Info popup (`06164fb`, tests `1dfb493`):** it opens above the "i" when there is little room below, and starts with a plain summary.
+- **Story on the real file:** checked with the personal link: all cards present, including Accuracy, Mistakes and Game phases. For a plain Chess.com import without stored reviews the review cards are hidden by design.
+- **First-run import profile:** on Playwright WebKit for Windows 4,623 games take about 150 s (about 15 ms per record write, however the writes are sent); chromium 6.6 s. A batched save was tried: the stored results were identical on the real file (hashes matched), but it gave no gain on WebKit, so it was not shipped and sits in the git stash "faster-save-import".
+- **Open:** the import time on a real iPhone.
+
 ## Open items from earlier phases
 
 - **Scenario-2 `perf:drag`** (analysis board, MultiPV 5, ghosts, navigation sweep) passed clean on Juno on the final code (p95 16.67 ms, 0 dropped).
