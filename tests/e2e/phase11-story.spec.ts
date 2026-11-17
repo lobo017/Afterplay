@@ -923,7 +923,10 @@ function wantFor(games: SampleGame[]) {
         detail: `${pct(acc(rows))} accuracy · ${blunders.toFixed(1)} blunders a game`,
       },
       classesNote: `Mistakes: ${per(rows, (n) => n.mistake).toFixed(1)} a game. Inaccuracies: ${per(rows, (n) => n.inaccuracy).toFixed(1)} a game.`,
-      markNote: `${rows.reduce((s, r) => s + r.n.brilliant, 0)} Brilliant moves and ${rows.reduce((s, r) => s + r.n.great, 0)} Great moves.`,
+      marks: {
+        brilliant: `${rows.reduce((s, r) => s + r.n.brilliant, 0)} Brilliant moves`,
+        great: `${rows.reduce((s, r) => s + r.n.great, 0)} Great moves`,
+      },
       halvesNote: `Early on: ${pct(acc(first))} accuracy and ${per(first, (n) => n.blunder).toFixed(1)} blunders a game. Lately: ${pct(acc(second))} and ${per(second, (n) => n.blunder).toFixed(1)}.`,
     },
     best: {
@@ -1018,7 +1021,13 @@ test.describe('Chess Story: the engine review cards', () => {
       );
       await expect(mistakes).toContainText(want.mistakes.classesNote);
       const marks = page.getByTestId('story-card-marks');
-      await expect(marks).toContainText(want.mistakes.markNote);
+      // The two totals are the card's large numbers: the number, then its words (the badge between them is not text)
+      await expect(marks.getByTestId('story-figure-brilliant')).toHaveText(
+        new RegExp(`^${want.mistakes.marks.brilliant.replace(' ', '\\s*(!!)?\\s*')}$`),
+      );
+      await expect(marks.getByTestId('story-figure-great')).toHaveText(
+        new RegExp(`^${want.mistakes.marks.great.replace(' ', '\\s*!?\\s*')}$`),
+      );
       await expect(mistakes).not.toContainText('Brilliant');
       await expect(mistakes).toContainText(want.mistakes.halvesNote);
       await expect(mistakes).not.toContainText("Lichess's formula");
