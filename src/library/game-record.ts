@@ -121,3 +121,15 @@ export function formatTimeControl(tc: string | undefined): string {
   }
   return v === '' || v === '-' ? '–' : v;
 }
+
+/**
+ * True for an ordinary game of standard chess: no other variant (Chess960, ...), no set-up position. The Story counts
+ * only these, and so does every "not reviewed" count.
+ */
+export function isStandardGame(headers: Readonly<Record<string, string>>): boolean {
+  const variant = (headers.Variant ?? '').toLowerCase().replace(/[\s_-]/g, '');
+  if (variant !== '' && variant !== 'standard' && variant !== 'chess') return false;
+  if ('FEN' in headers) return false;
+  if ((headers.SetUp ?? '').trim() === '1') return false;
+  return true;
+}

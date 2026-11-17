@@ -198,7 +198,7 @@ describe('hasSavedReview', () => {
 describe('summary-only games in the list', () => {
   const advance = () => record(PGN, { analysis: summaryOnly(87.3), accuracy: 87.3 });
 
-  it('count as not analyzed for the filter, yet their accuracy filters and sorts', () => {
+  it('count as reviewed for the filter, and their accuracy filters and sorts', () => {
     const rows = [
       toRow(advance(), ME),
       toRow(
@@ -207,8 +207,8 @@ describe('summary-only games in the list', () => {
       ),
     ];
     const count = (f: Partial<typeof NO_FILTER>) => rows.filter((r) => matchesFilter(r, { ...NO_FILTER, ...f })).length;
-    expect(count({ analyzed: 'analyzed' })).toBe(1);
-    expect(count({ analyzed: 'not-analyzed' })).toBe(1);
+    expect(count({ analyzed: 'analyzed' })).toBe(2);
+    expect(count({ analyzed: 'not-analyzed' })).toBe(0);
     expect(rows[0]!.accuracy).toBe(87.3);
     expect(gameAccuracy(rows[0]!)).toBe(87.3);
     expect(count({ minAccuracy: 80 })).toBe(1);

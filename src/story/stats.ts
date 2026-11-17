@@ -7,7 +7,7 @@
 import type { UserAccount } from '../review/perspective';
 import type { StoredGameRecord } from '../storage/db';
 import { readPgnHeaders } from '../capture/pgn-time';
-import { myColor, resultFor } from '../library/game-record';
+import { isStandardGame, myColor, resultFor } from '../library/game-record';
 import { PHASES, openingFamily, type GamePhase } from '../library/insights';
 import { readReviewNumbers, type ReviewNumbers } from '../library/review-numbers';
 import type { Color } from '../core/rules';
@@ -439,14 +439,6 @@ interface CountedGame {
   review: ReviewNumbers | null;
 }
 
-function isStandard(headers: Readonly<Record<string, string>>): boolean {
-  const variant = (headers.Variant ?? '').toLowerCase().replace(/[\s_-]/g, '');
-  if (variant !== '' && variant !== 'standard' && variant !== 'chess') return false;
-  if ('FEN' in headers) return false;
-  if ((headers.SetUp ?? '').trim() === '1') return false;
-  return true;
-}
-
 /** "Sicilian Defense: Alapin Variation, Smith-Morra" → "Alapin Variation"; no ":" → ''. */
 export function variationOf(openingName: string): string {
   const at = openingName.indexOf(':');
@@ -588,7 +580,7 @@ function readGame(record: StoredGameRecord, accounts: readonly UserAccount[]): C
   if (color === null) return 'notMine';
   const pgn = record.pgn;
   const headers = readPgnHeaders(pgn);
-  if (!isStandard(headers)) return 'nonStandard';
+  if (!isStandardGame(headers)) return 'nonStandard';
   if (!FINISHED.has(record.result)) return 'unfinished';
   const outcome = resultFor(record.result, color);
   if (outcome === 'unfinished') return 'unfinished';

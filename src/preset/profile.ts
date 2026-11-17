@@ -66,6 +66,14 @@ export function customBotFor(profile: Profile, rating: number, style: BotStyleId
   return profile.bots.find((bot) => bot.rating === rating && bot.style === style) ?? null;
 }
 
+/**
+ * The named bot for a rating: the one with that rating and style, else the first with that rating. A bot keeps its name
+ * when the style changes; the style is only a suffix.
+ */
+export function namedBotForRating(profile: Profile, rating: number, style: BotStyleId): CustomBot | null {
+  return customBotFor(profile, rating, style) ?? profile.bots.find((bot) => bot.rating === rating) ?? null;
+}
+
 /** The bots lowest rating first (a tie keeps the list's order), each with its place in the profile's list. */
 export function botsByRating(bots: readonly CustomBot[]): Array<{ bot: CustomBot; index: number }> {
   return bots.map((bot, index) => ({ bot, index })).sort((a, b) => a.bot.rating - b.bot.rating || a.index - b.index);

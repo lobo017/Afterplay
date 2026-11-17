@@ -12,7 +12,7 @@ import {
   openingChoices,
   openingLabel,
   playedOf,
-  reviewedInAdvance,
+  isReviewed,
   sortRows,
   toRow,
   type AnalyzedFilter,
@@ -155,10 +155,7 @@ export class GamesList {
 
   private mount(): void {
     const presetOptions = (Object.keys(REVIEW_PRESET_MOVETIME_MS) as ReviewPreset[])
-      .map(
-        (p) =>
-          `<option value="${p}" ${p === DEFAULT_LIST_PRESET ? 'selected' : ''}>${PRESET_LABEL[p]} · ${(REVIEW_PRESET_MOVETIME_MS[p] / 1000).toFixed(1)} s</option>`,
-      )
+      .map((p) => `<option value="${p}" ${p === DEFAULT_LIST_PRESET ? 'selected' : ''}>${PRESET_LABEL[p]}</option>`)
       .join('');
     this.root.innerHTML = `
       <div class="wc-games-head">
@@ -666,14 +663,13 @@ export class GamesList {
           ? `${rows.length} game${rows.length === 1 ? '' : 's'}`
           : `${rows.length} of ${this.records.length} games`;
     // The summary covers the whole library, whatever the filters show (the line under the list has the filtered count)
-    const everyRow = this.records.map((r) => this.toRow(r));
     this.els.summary.textContent =
       this.records.length === 0
         ? ''
         : gamesSummary({
             games: this.records.length,
             analyzed: this.records.filter((r) => hasSavedReview(r)).length,
-            inAdvance: everyRow.filter(reviewedInAdvance).length,
+            inAdvance: this.records.filter((r) => isReviewed(r) && !hasSavedReview(r)).length,
           });
     this.renderSelection(rows);
   }

@@ -2,8 +2,8 @@ import type { StoredGameSource } from '../capture/game-id';
 import { localDateTime, playedAtDetail, readPgnHeaders, type PlayedAt } from '../capture/pgn-time';
 import type { Color } from '../core/rules';
 import type { UserAccount } from '../review/perspective';
-import { hasSavedReview, type StoredGameRecord } from '../storage/db';
-import { myColor, resultFor, type MyResult } from './game-record';
+import type { StoredGameRecord } from '../storage/db';
+import { isStandardGame, myColor, resultFor, type MyResult } from './game-record';
 import { readReviewNumbers } from './review-numbers';
 
 /** One library game as the list and the insights see it. */
@@ -52,11 +52,24 @@ export function gameAccuracy(row: GameRow): number | null {
 }
 
 /**
- * Games with no review of any kind (the Today screen's count). A game reviewed in advance
- * (summary only) is not in it, though it has no stored review to open.
+ * The one meaning of "reviewed" everywhere (Games list, Today screen): the game has a review summary stored in advance
+ * or a review made on this device. Reads the record only.
  */
+export function isReviewed(record: Pick<StoredGameRecord, 'analysis'>): boolean {
+  return Boolean(record.analysis);
+}
+
+/**
+ * The one meaning of "not reviewed": no review of either kind, and a game that can be reviewed in a meaningful way.
+ * The variant games the Story leaves out (Chess960, set-up positions) are never counted as waiting for a review.
+ */
+export function isNotReviewed(record: Pick<StoredGameRecord, 'analysis' | 'pgn'>): boolean {
+  return !isReviewed(record) && isStandardGame(readPgnHeaders(record.pgn));
+}
+
+/** Games that are not reviewed (the Today screen's count and the Games list's "Not reviewed" filter). */
 export function countUnreviewed(records: readonly StoredGameRecord[]): number {
-  return records.filter((r) => !r.analysis).length;
+  return records.filter(isNotReviewed).length;
 }
 
 /**
@@ -154,9 +167,9 @@ export function matchesFilter(row: GameRow, filter: GameFilter): boolean {
   if ((filter.result === 'win' || filter.result === 'loss') && (row.color === null || row.result !== filter.result))
     return false;
   if (filter.color !== 'all' && row.color !== filter.color) return false;
-  const analyzed = hasSavedReview(r);
-  if (filter.analyzed === 'analyzed' && !analyzed) return false;
-  if (filter.analyzed === 'not-analyzed' && analyzed) return false;
+  // Reviewed: a review made here or one stored in advance. Not reviewed: neither, and not a variant game
+  if (filter.analyzed === 'analyzed' && !isReviewed(r)) return false;
+  if (filter.analyzed === 'not-analyzed' && !isNotReviewed(r)) return false;
   const opening = filter.opening.trim().toLowerCase();
   if (opening !== '' && !openingLabel(r).toLowerCase().includes(opening)) return false;
   if (filter.from !== '' || filter.to !== '') {

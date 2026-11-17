@@ -369,10 +369,7 @@ export class ReviewPanel {
 
   private mount(): void {
     const presetOptions = (Object.keys(REVIEW_PRESET_MOVETIME_MS) as ReviewPreset[])
-      .map(
-        (p) =>
-          `<option value="${p}" ${p === this.preset ? 'selected' : ''}>${PRESET_LABEL[p]} · ${(REVIEW_PRESET_MOVETIME_MS[p] / 1000).toFixed(1)} s</option>`,
-      )
+      .map((p) => `<option value="${p}" ${p === this.preset ? 'selected' : ''}>${PRESET_LABEL[p]}</option>`)
       .join('');
     const side = (c: 'w' | 'b') => `
       <div class="wc-review-side wc-review-side-${c}" data-testid="review-side-${c}" data-emphasis="none">

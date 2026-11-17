@@ -59,9 +59,9 @@ export function mountAppSettingsSections(panel: SettingsPanel, store: AppSetting
       'select-review-default',
       'How thorough',
       [
-        { value: 'quick', label: 'Quick · 0.2 s a position' },
-        { value: 'standard', label: 'Standard · 0.6 s' },
-        { value: 'deep', label: 'Deep · 1.5 s' },
+        { value: 'quick', label: 'Quick' },
+        { value: 'standard', label: 'Standard' },
+        { value: 'deep', label: 'Deep' },
       ],
       s.reviewPreset,
     )}`;

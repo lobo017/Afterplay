@@ -21,6 +21,7 @@ import {
   PROFILE_STORAGE_KEY,
   ProfileStore,
   botsByRating,
+  namedBotForRating,
   customBotFor,
   sanitizeProfile,
   welcomeWithAppName,
@@ -564,5 +565,33 @@ describe('Phase 11 — the order of the named bots', () => {
     expect(sorted.map((b) => b.index)).toEqual([2, 3, 4, 0, 1]);
     // The list itself is not reordered
     expect(bots.map((b) => b.name)[0]).toBe('Student');
+  });
+});
+
+describe('Phase 11 — a named bot keeps its name when the style changes', () => {
+  const profile = {
+    displayName: '',
+    title: '',
+    appName: '',
+    welcome: null,
+    bots: [
+      { name: 'Warm-up', rating: 800, style: 'solid' as const },
+      { name: 'Twin solid', rating: 1200, style: 'solid' as const },
+      { name: 'Twin sharp', rating: 1200, style: 'aggressive' as const },
+    ],
+  };
+
+  it('finds the bot by rating whatever the style is', () => {
+    expect(namedBotForRating(profile, 800, 'solid')?.name).toBe('Warm-up');
+    expect(namedBotForRating(profile, 800, 'gambiteer')?.name).toBe('Warm-up');
+  });
+
+  it('prefers the bot with the same style when two share a rating, else the first', () => {
+    expect(namedBotForRating(profile, 1200, 'aggressive')?.name).toBe('Twin sharp');
+    expect(namedBotForRating(profile, 1200, 'gambiteer')?.name).toBe('Twin solid');
+  });
+
+  it('knows no bot at a rating that has none', () => {
+    expect(namedBotForRating(profile, 1400, 'solid')).toBeNull();
   });
 });

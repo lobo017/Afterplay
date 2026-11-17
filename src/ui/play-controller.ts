@@ -29,7 +29,7 @@ import { getPieceSvgMarkup } from '../render/piece-sets';
 import { ChessClock, TIME_CONTROL_PRESETS, type ClockSnapshot, type TimeControlPresetId } from './clock';
 import type { DevOverlayController } from './dev-overlay';
 import { AppSettingsStore, MAX_PREMOVES_LIMIT, type AppSettings, type NewGameOptions } from './app-settings';
-import { ProfileStore, botsByRating, customBotFor } from '../preset/profile';
+import { ProfileStore, botsByRating, namedBotForRating } from '../preset/profile';
 import { icon } from './components/icons';
 import { Menu } from './components/menu';
 import { Tabs, tabListHtml, tabPanelAttrs } from './components/tabs';
@@ -206,6 +206,8 @@ export class PlayController {
 
   private playerColor: Color = 'w';
   private playerColorChoice: Color | 'random' = 'w';
+  /** The board waits for a game and the card's side is Random: the bars name no side and the board is not flipped. */
+  private sideUndecided = false;
   private botRating: number;
   private botStyle: BotStyleId;
   private timeControlId: TimeControlPresetId;
@@ -329,6 +331,13 @@ export class PlayController {
       this.updatePlayerBars();
     });
     this.updateAllHud();
+    // A freshly opened board shows the card's choices (a caller that passes its own bot or time control keeps them)
+    if (
+      options.initialBotRating === undefined &&
+      options.initialBotStyle === undefined &&
+      options.initialTimeControl === undefined
+    )
+      this.previewPendingChoices();
   }
 
   private mountLayout(): void {
@@ -620,14 +629,16 @@ export class PlayController {
     if (slider && Number(slider.value) !== ng.botRating) slider.value = String(ng.botRating);
     const tier = getTierForRating(ng.botRating);
     const label = q('bot-rating-label');
-    if (label) label.textContent = `${ng.botRating} Elo (${tier})`;
+    const styleLabel = BOT_STYLE_PRESETS[ng.botStyle].label;
+    if (label) label.textContent = `${ng.botRating} Elo (${tier}) · ${styleLabel}`;
     for (const el of this.container.querySelectorAll<HTMLElement>('.wc-tier-tick')) {
       el.setAttribute('aria-pressed', String(el.dataset.tier === tier));
     }
-    const named = customBotFor(this.profile.get(), ng.botRating, ng.botStyle);
-    if (label && named) label.textContent = `${named.name} · ${ng.botRating} Elo`;
+    const named = namedBotForRating(this.profile.get(), ng.botRating, ng.botStyle);
+    if (label && named) label.textContent = `${named.name} · ${styleLabel} · ${ng.botRating} Elo`;
     for (const el of this.customBotsEl.querySelectorAll<HTMLElement>('.wc-custom-bot')) {
-      const chosen = el.dataset.rating === String(ng.botRating) && el.dataset.style === ng.botStyle;
+      // The bot stays highlighted when only the style changes
+      const chosen = named !== null && el.dataset.rating === String(named.rating) && el.dataset.style === named.style;
       el.setAttribute('aria-pressed', String(chosen));
     }
     setChoice(this.container.querySelector('[data-seg="style"]'), ng.botStyle);
@@ -673,8 +684,13 @@ export class PlayController {
 
   /** The bot's name: its own if the profile names this rating and style, otherwise "Stockfish <tier>". */
   private botName(): string {
-    const named = customBotFor(this.profile.get(), this.botRating, this.botStyle);
+    const named = namedBotForRating(this.profile.get(), this.botRating, this.botStyle);
     return named ? named.name : `Stockfish ${getTierForRating(this.botRating)}`;
+  }
+
+  /** The opponent as the player bars show it: the bot's name and its style, "Warm-up Bot · Solid". */
+  private botLabel(): string {
+    return `${this.botName()} · ${BOT_STYLE_PRESETS[this.botStyle].label}`;
   }
 
   /**
@@ -683,8 +699,26 @@ export class PlayController {
    * move played is left alone.
    */
   public adoptPendingChoices(): void {
+    this.previewPendingChoices();
+  }
+
+  /**
+   * Shows the card's choices on the board that waits at the start position, live: the opponent's name, style and rating,
+   * both clocks (the base time), my side and the board's direction (Random: no side named, board not flipped). A game
+   * with a move played, one that is over, and a bot that is thinking are left alone.
+   */
+  private previewPendingChoices(): void {
     if (this.plyHistory.length > 0 || this.gameOver || this.isBotThinking) return;
-    this.applyNewGameOptions(this.settings.get().newGame);
+    if (this.clock.getSnapshot().activeColor !== null) return;
+    const ng = this.settings.get().newGame;
+    this.applyNewGameOptions(ng);
+    // A position sent here from Review brings its own side
+    if (!this.pendingStartOptions?.playerColor) {
+      this.sideUndecided = ng.color === 'random';
+      this.playerColor = ng.color === 'random' ? 'w' : ng.color;
+      this.board.setInteractiveColor(this.playerColor);
+      this.board.setFlipped(this.playerColor === 'b');
+    }
     this.clock.reset(TIME_CONTROL_PRESETS[this.timeControlId]);
     this.updateAllHud();
   }
@@ -793,7 +827,10 @@ export class PlayController {
       this.board.setMaxPremoves(next.maxPremoves);
     }
     if (next.playLiveEval !== this.infiniteAnalysisEnabled) this.setInfiniteAnalysis(next.playLiveEval);
-    if (next.newGame !== prev.newGame) this.renderNewGameCard();
+    if (next.newGame !== prev.newGame) {
+      this.renderNewGameCard();
+      this.previewPendingChoices();
+    }
   }
 
   /** Copies the pending new-game choices into the game about to start. */
@@ -964,6 +1001,7 @@ export class PlayController {
       this.playerColor = this.playerColorChoice;
     }
 
+    this.sideUndecided = false;
     this.hintsRemaining = this.maxHintsPerGame;
     this.gameOver = false;
     this.gameStartedAt = Date.now();
@@ -1495,7 +1533,11 @@ export class PlayController {
     const myName = profile.displayName || 'You';
 
     const labelForColor = (c: Color): string =>
-      c === this.playerColor ? `${myName} (${c === 'w' ? 'White' : 'Black'})` : `${this.botName()} (${this.botRating})`;
+      c === this.playerColor
+        ? this.sideUndecided
+          ? `${myName} (random side)`
+          : `${myName} (${c === 'w' ? 'White' : 'Black'})`
+        : `${this.botLabel()} (${this.botRating})`;
     const showTitle = (el: HTMLElement, c: Color): void => {
       const title = c === this.playerColor ? profile.title : '';
       setTextIfChanged(el, title);
