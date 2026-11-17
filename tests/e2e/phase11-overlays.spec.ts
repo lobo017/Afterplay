@@ -312,9 +312,36 @@ test.describe('Popups: an X, the visible area, scrolling inside', () => {
       await press(page, 'review-menu-close');
       await expect(page.getByTestId('review-menu-popup')).toBeHidden();
 
+      // The Board tools ⋯ menu under the board (new): its name in the head, the X, the three tools
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await press(page, 'board-tools');
+      await expect(page.getByTestId('board-tools-popup')).toBeVisible();
+      await expect(page.getByTestId('board-tools')).toHaveAccessibleName('Board tools');
+      await expect(page.getByTestId('board-tools-popup').locator('.wc-popup-title')).toHaveText('Board tools');
+      await expect(page.getByTestId('board-tools-list').getByRole('menuitem')).toHaveText([
+        'New board',
+        'Edit position',
+        'Load FEN or PGN',
+      ]);
+      await expectCloseButton(page, 'board-tools-popup', 'board-tools-close', 'Close');
+      await expectFitsBand(page, 'board-tools-popup');
+      await expectScrollsInside(page, '[data-testid="board-tools-list"]', 'board-tools-close');
+      await press(page, 'board-tools-close');
+      await expect(page.getByTestId('board-tools-popup')).toBeHidden();
+      await expect(page.getByTestId('board-tools')).toHaveAttribute('aria-expanded', 'false');
+      // Escape still closes it
+      await press(page, 'board-tools');
+      await expect(page.getByTestId('board-tools-popup')).toBeVisible();
+      await page.keyboard.press('Escape');
+      await expect(page.getByTestId('board-tools-popup')).toBeHidden();
+
       // The Load FEN or PGN sheet
       await page.evaluate(() => window.scrollTo(0, 0));
-      await press(page, 'btn-load-pgn');
+      // Old: press(page, 'btn-load-pgn') (the toolbar). New: a reviewed game is open, so the sheet is opened from Board
+      // tools; the sheet's own checks below are unchanged.
+      await expect(page.getByTestId('review-toolbar')).toBeHidden();
+      await press(page, 'board-tools');
+      await press(page, 'menu-load-pgn');
       await expect(page.getByTestId('pgn-sheet')).toBeVisible();
       await expectCloseButton(page, 'pgn-sheet', 'pgn-sheet-close', 'Close Load FEN or PGN');
       await expectFitsScreen(page, 'pgn-sheet');

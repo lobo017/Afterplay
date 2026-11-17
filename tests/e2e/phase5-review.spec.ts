@@ -80,6 +80,15 @@ async function readReview(page: Page): Promise<ReviewSnapshot> {
   });
 }
 
+/** The key moments as the panel shows them for the current "Review as" side (the chips), in game order. */
+async function shownKeyMoments(page: Page): Promise<Array<{ ply: number; nodeId: string; highlight: string | null }>> {
+  return page.evaluate(() =>
+    window
+      .__wizardChessReview!.panel.getKeyMoments()
+      .map((k) => ({ ply: k.ply, nodeId: k.nodeId, highlight: k.highlight ?? null })),
+  );
+}
+
 async function currentNode(page: Page) {
   return page.evaluate(() => {
     const tree = window.__wizardChessAnalysis!.controller.getGameTree();
@@ -252,7 +261,12 @@ test.describe('Phase 5 — Game review', () => {
     else await page.keyboard.press('Escape');
 
     // Key moments jump to their move
-    const moment = review.keyMoments[review.keyMoments.length - 1]!;
+    // Old: const moment = review.keyMoments[review.keyMoments.length - 1]! (the review's swings). New: the last of the
+    // key moments as shown (the swings plus Brilliant and Great moves, five at most), which is what has a chip.
+    const shownMoments = await shownKeyMoments(page);
+    expect(shownMoments.length).toBeGreaterThanOrEqual(3);
+    expect(shownMoments.length).toBeLessThanOrEqual(5);
+    const moment = shownMoments[shownMoments.length - 1]!;
     await page.getByTestId(`review-moment-${moment.ply}`).click();
     expect((await currentNode(page)).id).toBe(moment.nodeId);
     await expect(page.getByTestId('review-chart-cursor')).toHaveAttribute('data-ply', String(moment.ply));
@@ -824,7 +838,26 @@ test.describe('Phase 5 — Review perspective', () => {
     expect(view.chartStartY).toBeCloseTo(100 - review.series[0]!, 1);
     await expect(page.getByTestId('review-side-w')).toHaveAttribute('data-emphasis', 'none');
     await expect(page.getByTestId('review-side-b')).toHaveAttribute('data-emphasis', 'none');
-    expect(view.moments.map((m) => m.nodeId)).toEqual(review.keyMoments.map((k) => k.nodeId));
+    // Old: expect(view.moments.map((m) => m.nodeId)).toEqual(review.keyMoments.map((k) => k.nodeId)) (the chips are the
+    // review's swings). New: the chips are the key moments as shown, in game order; the three largest swings of the
+    // review are always among them, and anything else shown is a smaller swing or a Brilliant or Great move.
+    const shown = await shownKeyMoments(page);
+    expect(view.moments.map((m) => m.nodeId)).toEqual(shown.map((k) => k.nodeId));
+    expect(shown.map((k) => k.ply)).toEqual([...shown.map((k) => k.ply)].sort((a, b) => a - b));
+    expect(shown.length).toBeLessThanOrEqual(5);
+    const swingIds = new Set(review.keyMoments.map((k) => k.nodeId));
+    const largest = await page.evaluate(() =>
+      [...window.__wizardChessReview!.panel.getReview()!.keyMoments]
+        .sort((a, b) => Math.abs(b.swing) - Math.abs(a.swing) || a.ply - b.ply)
+        .slice(0, 3)
+        .map((k) => k.nodeId),
+    );
+    for (const id of largest) expect(shown.map((k) => k.nodeId)).toContain(id);
+    for (const k of shown) {
+      if (swingIds.has(k.nodeId)) continue;
+      expect(k.highlight, `shown key moment at ply ${k.ply}`).toMatch(/^(Brilliant|Great)$/);
+      expect(review.moves.find((m) => m.nodeId === k.nodeId)?.classification).toBe(k.highlight);
+    }
     expect(new Set(view.markerPlies.map((p) => p % 2)).size).toBe(2);
     const allErrors = errorsOf(review, 'both');
     await page.evaluate(() => window.__wizardChessAnalysis!.controller.goToStart());

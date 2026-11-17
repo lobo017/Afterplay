@@ -47,7 +47,12 @@ test.describe('Phase 6b — Games', () => {
     await openGames(page);
     await expect(page.getByTestId('games-summary')).toHaveText('');
     await expect(page.getByTestId('games-extension-status')).toHaveText('Capture extension not detected');
-    await expect(page.getByTestId('games-capture-detail')).toContainText('npm run build:ext');
+    // Old: toContainText('npm run build:ext') (a developer's command in the app's text). New: the plain line, whole,
+    // with no command and no folder name in it.
+    await expect(page.getByTestId('games-capture-detail')).toHaveText(
+      'Add the capture extension to Chrome and your Lichess and Chess.com games arrive here by themselves. The README has the steps.',
+    );
+    await expect(page.getByTestId('games-capture-detail')).not.toContainText(/npm|dist-ext/);
     await expect(page.getByTestId('games-auto-analyze')).not.toBeChecked();
     await paste(page, TWO_GAMES);
     await expect(page.getByTestId('games-row')).toHaveCount(2);

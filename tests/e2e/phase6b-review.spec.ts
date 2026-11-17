@@ -33,8 +33,11 @@ async function reviewSample(page: Page): Promise<Array<{ ply: number; nodeId: st
   await page.getByTestId('select-review-preset').selectOption('quick');
   await page.getByTestId('btn-review-sample').click();
   await expect(page.getByTestId('review-panel')).toHaveAttribute('data-state', 'done', { timeout: 120_000 });
+  // Old: [...panel.getReview()!.keyMoments] (the review's swings). New: the key moments as shown, which may also hold a
+  // Brilliant or Great move and then leave out a small swing; the chips and the coach card walk through these.
   return page.evaluate(() =>
-    [...window.__wizardChessReview!.panel.getReview()!.keyMoments]
+    window
+      .__wizardChessReview!.panel.getKeyMoments()
       .map((k) => ({ ply: k.ply, nodeId: k.nodeId }))
       .sort((a, b) => a.ply - b.ply),
   );
@@ -60,22 +63,38 @@ test.describe('Phase 6b — Review', () => {
     await expect(page.getByTestId('review-shell-tab-review')).toHaveAttribute('aria-selected', 'true');
   });
 
-  test('free analysis is one click away: New board, Edit position, Load FEN / PGN', async ({ page }) => {
+  test('free analysis is one click away with no game open, two with a game open: New board, Edit position, Load FEN / PGN', async ({
+    page,
+  }) => {
     await openReview(page);
+    const layout = page.getByTestId('analysis-layout');
+    const toolbar = page.getByTestId('review-toolbar');
+    // No game open: the board page, with the toolbar (one click)
+    await expect(layout).toHaveAttribute('data-page', 'board');
+    await expect(toolbar).toBeVisible();
     // A game on the board first
     await page.evaluate((pgn) => window.__wizardChessAnalysis!.controller.importPgn(pgn), SHORT_PGN);
     expect(await page.evaluate(() => window.__wizardChessAnalysis!.controller.getGameTree().getMainLine().length)).toBe(
       6,
     );
+    // The game page: no toolbar; the same tools are in Board tools, under the board
+    await expect(layout).toHaveAttribute('data-page', 'game');
+    await expect(toolbar).toBeHidden();
 
     // New board: the start position, no moves, the engine lines in view
-    await page.getByTestId('btn-reset-analysis').click();
+    // Old: page.getByTestId('btn-reset-analysis').click() (the toolbar, with the game open). New: Board tools, then its
+    // New board; what it does is checked by the same lines as before.
+    await page.getByTestId('board-tools').click();
+    await page.getByTestId('menu-new-board').click();
     expect(await fen(page)).toBe(START_FEN);
     expect(await page.evaluate(() => window.__wizardChessAnalysis!.controller.getGameTree().getMainLine().length)).toBe(
       0,
     );
     expect(await tab(page)).toBe('analysis');
     await expect(page.getByTestId('engine-lines-panel')).toBeVisible();
+    // Back on the board page: the toolbar again, one click for each tool (the lines below are unchanged)
+    await expect(layout).toHaveAttribute('data-page', 'board');
+    await expect(toolbar).toBeVisible();
 
     // Edit position: the editor takes the panel's place; Done brings the tabs back
     await page.getByTestId('btn-toggle-editor').click();
@@ -107,13 +126,31 @@ test.describe('Phase 6b — Review', () => {
       6,
     );
     expect(await tab(page)).toBe('review');
+    // A game again: the game page
+    await expect(layout).toHaveAttribute('data-page', 'game');
+    await expect(toolbar).toBeHidden();
 
     // Nonsense: an error, and the sheet stays open with the text
-    await page.getByTestId('btn-load-pgn').click();
+    // Old: page.getByTestId('btn-load-pgn').click() (the toolbar, with the game open). New: Board tools, then its Load
+    // FEN or PGN.
+    await page.getByTestId('board-tools').click();
+    await page.getByTestId('menu-load-pgn').click();
     await page.getByTestId('textarea-pgn').fill('1. e4 e5 2. Qxx9 ???');
     await page.getByTestId('btn-import-pgn').click();
     await expect(sheet).toBeVisible();
     await expect(page.getByTestId('pgn-status')).toHaveAttribute('data-status', 'error');
+    await page.keyboard.press('Escape');
+    await expect(sheet).toBeHidden();
+    // Old: expect(page.getByTestId('btn-load-pgn')).toBeFocused(). New: focus goes back to what opened the sheet, which
+    // is now the Board tools button. (The game is still there: the failed load changed nothing.)
+    await expect(page.getByTestId('board-tools')).toBeFocused();
+    await expect(layout).toHaveAttribute('data-page', 'game');
+
+    // From the board page the toolbar's Load still gets the focus back, as before
+    await page.getByTestId('board-tools').click();
+    await page.getByTestId('menu-new-board').click();
+    await page.getByTestId('btn-load-pgn').click();
+    await expect(sheet).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(sheet).toBeHidden();
     await expect(page.getByTestId('btn-load-pgn')).toBeFocused();
@@ -227,13 +264,21 @@ test.describe('Phase 6b — Review', () => {
   test('phone: the toolbar fits, the coach card and footer fit, no sideways scroll', async ({ page }) => {
     test.setTimeout(150_000);
     await openReview(page, 390, 844);
-    for (const id of ['btn-reset-analysis', 'btn-toggle-editor', 'btn-load-pgn']) {
+    // Old list: btn-reset-analysis, btn-toggle-editor, btn-load-pgn. New: the same three, and the Board tools button
+    // at the end of the transport row.
+    for (const id of ['btn-reset-analysis', 'btn-toggle-editor', 'btn-load-pgn', 'board-tools']) {
       const box = (await page.getByTestId(id).boundingBox())!;
       expect(box.x + box.width, id).toBeLessThanOrEqual(390);
       expect(box.height, id).toBeGreaterThanOrEqual(40);
       expect(await page.getByTestId(id).evaluate((n) => n.scrollWidth <= n.clientWidth), `${id} fits`).toBe(true);
     }
     await reviewSample(page);
+    // With the sample game open the toolbar is gone and Board tools is still there, inside the screen
+    await expect(page.getByTestId('review-toolbar')).toBeHidden();
+    const tools = (await page.getByTestId('board-tools').boundingBox())!;
+    expect(tools.x + tools.width, 'board-tools on the game page').toBeLessThanOrEqual(390);
+    expect(tools.width, 'board-tools width').toBeGreaterThanOrEqual(44);
+    expect(tools.height, 'board-tools height').toBeGreaterThanOrEqual(44);
     await page.getByTestId('btn-coach-next').click();
     for (const id of ['btn-review-retry', 'btn-review-refutation', 'btn-coach-prev', 'btn-coach-next', 'review-menu']) {
       const box = (await page.getByTestId(id).boundingBox())!;

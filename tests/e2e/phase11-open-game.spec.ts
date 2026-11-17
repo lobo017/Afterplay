@@ -263,15 +263,19 @@ test.describe('Open a game: numbers made in advance', () => {
     expect(btnBox.y).toBeGreaterThanOrEqual(storedBox.y + storedBox.height - 1);
     await expect(page.getByTestId('review-stored-help')).toHaveText(HELP_QUICK);
     await expect(page.getByTestId('review-progress-text')).toHaveText(`${tap()} Review this game to see every move.`);
-    // The page order is the screen order: the button, its line, then the setting, Cancel and Sample game
+    // The page order is the screen order: the button, its line, then the setting and Cancel
+    // Old: the same list ending with 'btn-review-sample'. New: a game is open (the game page), which has no Sample
+    // game: it is not in the row, nor anywhere in the page.
     expect(await actionOrder(page)).toEqual([
       'btn-review-start',
       'review-stored-help',
       'review-stored-error',
       'select-review-preset',
       'btn-review-cancel',
-      'btn-review-sample',
     ]);
+    await expect(page.getByTestId('btn-review-sample')).toHaveCount(0);
+    await expect(page.getByTestId('analysis-layout')).toHaveAttribute('data-page', 'game');
+    await expect(page.getByTestId('review-toolbar')).toBeHidden();
     if (!touch()) {
       // Tab reaches the button before the setting
       await startBtn(page).focus();
@@ -353,13 +357,15 @@ test.describe('Open a game: Review this game', () => {
     await expect(page.getByTestId('review-body')).toBeVisible();
     await expect(startBtn(page)).toHaveText('Review again');
     await expect(page.getByTestId('review-progress-text')).toHaveText(/^Reviewed · Quick · /);
-    // The usual row again: setting, Start, Cancel, Sample game
-    expect((await actionOrder(page)).slice(0, 4)).toEqual([
+    // The usual row again: setting, Start, Cancel
+    // Old: the first four were 'select-review-preset', 'btn-review-start', 'btn-review-cancel', 'btn-review-sample'.
+    // New: the first three, the same; Sample game is not on the game page.
+    expect((await actionOrder(page)).slice(0, 3)).toEqual([
       'select-review-preset',
       'btn-review-start',
       'btn-review-cancel',
-      'btn-review-sample',
     ]);
+    await expect(page.getByTestId('btn-review-sample')).toHaveCount(0);
     // Every move of the review has its class on the board, as after any review
     const reviewed = await page.evaluate(() => window.__wizardChessReview!.panel.getReview()!.moves.length);
     expect(reviewed).toBeGreaterThan(0);

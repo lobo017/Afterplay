@@ -337,7 +337,11 @@ test.describe('Phase 4 — Analysis Board, Eval Bar, MultiPV Ghost Previews, Thr
     // Navigate to end of mainline (3. Bb5!), add comment and user arrow, then export PGN
     await page.keyboard.press('End');
     await page.getByTestId('square-b5').click({ button: 'right' });
-    await page.getByTestId('btn-load-pgn').click();
+    // Old: page.getByTestId('btn-load-pgn').click() (the toolbar). New: a game is open now, so the toolbar is gone and
+    // the Load sheet is opened from Board tools under the board; the export lines below are unchanged.
+    await expect(page.getByTestId('review-toolbar')).toBeHidden();
+    await page.getByTestId('board-tools').click();
+    await page.getByTestId('menu-load-pgn').click();
     await page.getByTestId('btn-export-pgn').click();
 
     const exportedPgn = await page.getByTestId('textarea-pgn').inputValue();
