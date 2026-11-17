@@ -168,8 +168,8 @@ describe('the review block of the stats', () => {
       comebacks: null,
       bestGame: null,
     });
-    expect(STATS_VERSION).toBe(4);
-    expect(stats([]).version).toBe(4);
+    expect(STATS_VERSION).toBe(5);
+    expect(stats([]).version).toBe(5);
   });
 
   it('averages accuracy and counts per game, and splits the sources', () => {

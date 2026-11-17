@@ -973,6 +973,8 @@ export function mountAppShell(container: HTMLElement): {
       };
       workspaceHostEl.replaceChildren(roots[mode]);
       if (mode === 'games') {
+        // Back on the Story (from a game opened from a card, or any other screen): the same place as before
+        if (gamesTabs?.getSelected() === 'story') storyView?.restorePosition();
         void gamesList?.refresh();
         if (gamesTabs?.getSelected() === 'insights') void insightsView?.refresh();
         // A review saved elsewhere (on the board, in the background) since the Story last counted
@@ -1350,6 +1352,7 @@ export function mountAppShell(container: HTMLElement): {
     gamesTabs = new Tabs(gamesRootEl, (id) => {
       if (id === 'insights') void insightsView?.refresh();
       if (id === 'story') {
+        storyView?.restorePosition();
         storyStale = false;
         storyView?.shown();
       }
@@ -1377,6 +1380,11 @@ export function mountAppShell(container: HTMLElement): {
         void readImportRecord(lib).then((rec) => runHistoryLoad(rec.file.slug || firstRun.slug));
       },
       onStartImport: () => runStoryImport(),
+      // The same path as a row of the Games list: the stored numbers at once, plus "Review this game"
+      onOpenGame: async (id) => {
+        const record = await lib.get(id);
+        return record ? openLibraryGame(record) : false;
+      },
       getPersonal: () => ({ intro: profile.get().story?.intro, closing: profile.get().story?.closing }),
       onRendered: markSeenIfDue,
     });

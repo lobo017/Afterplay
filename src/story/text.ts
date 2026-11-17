@@ -13,8 +13,10 @@ import {
   type ClassStats,
   type ControlStats,
   type EndKind,
+  type FeaturedGame,
   type JourneySeries,
   type LongGame,
+  type MarkedGame,
   type OpeningStats,
   type PhaseStat,
   type ReviewedGameRef,
@@ -57,6 +59,29 @@ export interface StoryMeter {
   rows: { label: string; count: number; share: number }[];
 }
 
+/** One of the large numbers of a highlight card (Brilliant and Great): the number and the words under it. */
+export interface StoryFigure {
+  key: 'brilliant' | 'great';
+  value: string;
+  /** "Brilliant moves", "Great move". */
+  label: string;
+}
+
+/**
+ * An "Open this game" button of a card that features one stored game. It says which game by its part in the Story,
+ * never by its id: the view looks the id up in the stats (`featuredGameId`), so no card text holds one.
+ */
+export interface StoryOpen {
+  /** Which game of the card: also the button's test id ("story-open-<key>"). */
+  key: FeaturedGame;
+  /** The words on the button. */
+  text: string;
+  /** The accessible name: it says which game ("Open your most accurate game"). */
+  name: string;
+}
+
+export const OPEN_GAME_TEXT = 'Open this game';
+
 export interface StoryCard {
   id: StoryCardId;
   label: string;
@@ -71,6 +96,10 @@ export interface StoryCard {
   meters: StoryMeter[];
   /** The optional personal paragraph (intro and closing only); plain text. */
   personal: string | null;
+  /** Large numbers side by side, the first one leading (the Brilliant and Great card only). */
+  figures: StoryFigure[];
+  /** The games the card can open, possibly none. */
+  open: StoryOpen[];
 }
 
 export interface PersonalText {
@@ -149,7 +178,19 @@ function personalOf(text: string | null | undefined): string | null {
 }
 
 function card(id: StoryCardId, label: string, extra: Partial<StoryCard> = {}): StoryCard {
-  return { id, label, value: '', sentence: '', notes: [], rows: [], meters: [], personal: null, ...extra };
+  return {
+    id,
+    label,
+    value: '',
+    sentence: '',
+    notes: [],
+    rows: [],
+    meters: [],
+    personal: null,
+    figures: [],
+    open: [],
+    ...extra,
+  };
 }
 
 // ---------------------------------------------------------------------------- sentences
@@ -309,7 +350,19 @@ function recordsCard(s: ScopeStats): StoryCard | null {
     if (s.records.longestWin) rows.push({ label: 'Longest win', detail: plural(s.records.longestWin.moves, 'move') });
   }
   if (rows.length === 0) return null;
+  const open: StoryOpen[] = [];
+  if (s.records) {
+    // The longest win is often the longest game itself: one button then
+    const two = s.featured.longestWin !== undefined && s.featured.longestWin !== s.featured.longest;
+    open.push({
+      key: 'longest',
+      text: two ? 'Open longest game' : OPEN_GAME_TEXT,
+      name: 'Open your longest game',
+    });
+    if (two) open.push({ key: 'longestWin', text: 'Open longest win', name: 'Open your longest win' });
+  }
   return card('records', 'Records', {
+    open,
     value: st.enough ? n(st.longestWin) : '',
     sentence: st.enough
       ? `${st.longestWin === 1 ? 'win' : 'wins'} in a row: your longest streak.`
@@ -599,16 +652,56 @@ function phasesCard(r: ReviewStats): StoryCard | null {
   });
 }
 
-/** Brilliant and Great moves; left out (null) when there are none of either. */
+/** "August 18, 2023" (UTC) for a time in ms. */
+const dayOf = (playedAt: number): string => dayLabel(new Date(playedAt).toISOString().slice(0, 10));
+
+/**
+ * "You played a Brilliant move in 12 of your 4,535 reviewed games, about one every 378 games." The last part is left
+ * out when it would say "every 1 games"; with no Brilliant move the sentence says so.
+ */
+export function brilliantSentence(r: Pick<ReviewStats, 'reviewed' | 'brilliantGames'>): string {
+  const games = plural(r.reviewed, 'reviewed game');
+  if (r.brilliantGames === 0) return `No Brilliant move yet in your ${games}.`;
+  const every = Math.round(r.reviewed / r.brilliantGames);
+  return `You played a Brilliant move in ${n(r.brilliantGames)} of your ${games}${every >= 2 ? `, about one every ${n(every)} games` : ''}.`;
+}
+
+/** "Your most brilliant game: a rapid win as White on March 14, 2024 (10 min)." No move and no name: the data has neither. */
+export function mostBrilliantSentence(g: MarkedGame): string {
+  const when = g.playedAt === null ? '' : ` on ${dayOf(g.playedAt)}`;
+  const control = g.control === null ? '' : ` (${g.control})`;
+  return `Your most brilliant game: a${classWord(g.timeClass)} ${g.outcome} as ${g.color === 'w' ? 'White' : 'Black'}${when}${control}.`;
+}
+
+/**
+ * Brilliant and Great moves, as a highlight card: the two totals as large numbers (Brilliant first), how often a game
+ * has a Brilliant move, the most in one game, the best year and the latest one, and the game with the most. Every line
+ * needs its own data and is left out without it. The card is left out (null) when there are none of either.
+ */
 function marksCard(r: ReviewStats): StoryCard | null {
   if (r.brilliant === 0 && r.great === 0) return null;
-  const row = (label: string, moves: number, games: number): StoryTableRow => ({
-    label,
-    detail: moves === 0 ? 'none' : `${plural(moves, 'move')} in ${plural(games, 'game')}`,
-  });
+  const { topGame, bestYear, latestAt } = r.marks;
+  const rows: StoryTableRow[] = [];
+  if (topGame) {
+    rows.push({
+      label: 'Most in one game',
+      detail: `${n(topGame.brilliant)} Brilliant${topGame.great > 0 ? ` · ${n(topGame.great)} Great` : ''}`,
+    });
+  }
+  if (bestYear) rows.push({ label: 'Best year', detail: `${bestYear.year} · ${n(bestYear.brilliant)} Brilliant` });
+  if (latestAt !== null) rows.push({ label: 'Latest Brilliant move', detail: dayOf(latestAt) });
+  if (r.greatGames > 0) {
+    rows.push({ label: 'Games with a Great move', detail: `${n(r.greatGames)} of ${n(r.reviewed)}` });
+  }
   return card('marks', 'Brilliant and Great', {
-    sentence: `${n(r.brilliant)} Brilliant ${r.brilliant === 1 ? 'move' : 'moves'} and ${n(r.great)} Great ${r.great === 1 ? 'move' : 'moves'}.`,
-    rows: [row('Brilliant', r.brilliant, r.brilliantGames), row('Great', r.great, r.greatGames)],
+    figures: [
+      { key: 'brilliant', value: n(r.brilliant), label: r.brilliant === 1 ? 'Brilliant move' : 'Brilliant moves' },
+      { key: 'great', value: n(r.great), label: r.great === 1 ? 'Great move' : 'Great moves' },
+    ],
+    sentence: brilliantSentence(r),
+    rows,
+    notes: topGame ? [mostBrilliantSentence(topGame)] : [],
+    open: topGame ? [{ key: 'marks', text: OPEN_GAME_TEXT, name: 'Open your most brilliant game' }] : [],
   });
 }
 
@@ -624,6 +717,7 @@ function comebacksCard(r: ReviewStats): StoryCard | null {
       ...(c.alsoLow > 0 ? [`${plural(c.alsoLow, 'other win')} fell that low.`] : []),
       ...gameReviewNote(c.game),
     ],
+    open: [{ key: 'comebacks', text: OPEN_GAME_TEXT, name: 'Open your most unlikely win' }],
   });
 }
 
@@ -635,6 +729,7 @@ function bestGameCard(r: ReviewStats): StoryCard | null {
     value: percent(b.game.accuracy),
     sentence: bestGameSentence(b),
     notes: [bestGamePoolNote(b), ...gameReviewNote(b.game)],
+    open: [{ key: 'bestGame', text: OPEN_GAME_TEXT, name: 'Open your most accurate game' }],
   });
 }
 
@@ -698,6 +793,7 @@ function bestWinCard(s: ScopeStats): StoryCard | null {
       ...(s.upset ? [upsetSentence(s.upset)] : []),
       ...(s.higherRatedWins > 0 ? [higherRatedSentence(s.higherRatedWins)] : []),
     ],
+    open: [{ key: 'bestWin', text: OPEN_GAME_TEXT, name: 'Open your best win' }],
   });
 }
 

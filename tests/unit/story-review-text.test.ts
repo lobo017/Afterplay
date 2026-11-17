@@ -199,26 +199,36 @@ describe('the Mistakes card', () => {
 });
 
 describe('the Brilliant and Great card', () => {
-  it('gives both counts in a sentence and the games each came in as rows', () => {
-    // D: 2 games with a Brilliant move (1 each), 1 game with 5 Great moves
+  it('gives both counts as large numbers, and the games each came in as a sentence and rows', () => {
+    // D: 2 games with a Brilliant move (1 each, the later one on January 1, 2026 at 06:00), 1 game with 5 Great moves
     const c = cardsOf(D).marks!;
-    expect(c.sentence).toBe('2 Brilliant moves and 5 Great moves.');
+    expect(c.figures).toEqual([
+      { key: 'brilliant', value: '2', label: 'Brilliant moves' },
+      { key: 'great', value: '5', label: 'Great moves' },
+    ]);
+    expect(c.sentence).toBe('You played a Brilliant move in 2 of your 24 reviewed games, about one every 12 games.');
     expect(c.rows).toEqual([
-      { label: 'Brilliant', detail: '2 moves in 2 games' },
-      { label: 'Great', detail: '5 moves in 1 game' },
+      { label: 'Most in one game', detail: '1 Brilliant' },
+      { label: 'Latest Brilliant move', detail: 'January 1, 2026' },
+      { label: 'Games with a Great move', detail: '1 of 24' },
     ]);
     expect(c.value).toBe('');
   });
 
-  it('says "move" for one, "none" for a zero row, and is left out when both counts are zero', () => {
+  it('says "move" for one, has no Brilliant line with none, and is left out when both counts are zero', () => {
     const onlyGreat = cardsOf(batch(24, 'z', (i) => ({ review: { great: i === 0 ? 1 : 0 } }))).marks!;
-    expect(onlyGreat.sentence).toBe('0 Brilliant moves and 1 Great move.');
-    expect(onlyGreat.rows).toEqual([
-      { label: 'Brilliant', detail: 'none' },
-      { label: 'Great', detail: '1 move in 1 game' },
+    expect(onlyGreat.figures).toEqual([
+      { key: 'brilliant', value: '0', label: 'Brilliant moves' },
+      { key: 'great', value: '1', label: 'Great move' },
     ]);
+    expect(onlyGreat.sentence).toBe('No Brilliant move yet in your 24 reviewed games.');
+    expect(onlyGreat.rows).toEqual([{ label: 'Games with a Great move', detail: '1 of 24' }]);
     const onlyBrilliant = cardsOf(batch(24, 'z', () => ({ review: { brilliant: 1 } }))).marks!;
-    expect(onlyBrilliant.sentence).toBe('24 Brilliant moves and 0 Great moves.');
+    expect(onlyBrilliant.figures).toEqual([
+      { key: 'brilliant', value: '24', label: 'Brilliant moves' },
+      { key: 'great', value: '0', label: 'Great moves' },
+    ]);
+    expect(onlyBrilliant.sentence).toBe('You played a Brilliant move in 24 of your 24 reviewed games.');
     expect(cardsOf(batch(24, 'z')).marks).toBeUndefined();
   });
 });

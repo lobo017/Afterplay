@@ -1,7 +1,8 @@
 /**
  * The numbers behind the Chess Story, computed from stored game records. Pure: no storage, no network, no clock
  * (the caller passes `now`). `StoryStats` holds no player or opponent name, so nothing built from it (a card, a
- * cache, a shared image) can carry one.
+ * cache, a shared image) can carry one. The games a card can open are kept by their stored ids in one place per scope
+ * (`featured`, and the best win's `gameId`); the review block and the records hold no id.
  */
 import type { UserAccount } from '../review/perspective';
 import type { StoredGameRecord } from '../storage/db';
@@ -51,7 +52,7 @@ export const MIN_REVIEWED_ROW = 10;
 /** "Most accurate game" is chosen among games with at least this many of my moves. */
 export const MIN_MOVES_FOR_BEST_GAME = 25;
 
-export const STATS_VERSION = 4;
+export const STATS_VERSION = 5;
 
 export type StoryScope = 'all' | 'chesscom' | 'lichess';
 export type StorySite = 'chesscom' | 'lichess';
@@ -238,6 +239,36 @@ export interface PhaseStat {
   games: number;
 }
 
+/** The game with the most Brilliant moves; it holds no id, name or link. */
+export interface MarkedGame {
+  brilliant: number;
+  great: number;
+  playedAt: number | null;
+  color: Color;
+  outcome: 'win' | 'loss' | 'draw';
+  timeClass: TimeClass | null;
+  /** The exact time control as a label ("10 min", "15+10"), or null when it cannot be read. */
+  control: string | null;
+}
+
+/**
+ * Highlights of the Brilliant moves, from the per-game counts only (the summaries hold no moves, so no move is named).
+ */
+export interface MarkStats {
+  /**
+   * The game with the most Brilliant moves (ties: more Great moves, then the latest game, then the smaller id); null
+   * when no game has one.
+   */
+  topGame: MarkedGame | null;
+  /**
+   * The calendar year (UTC) with the most Brilliant moves, and the games that had one (ties: the later year). Null when
+   * no dated game has one, or when the dated reviewed games are all from one year (a best of one says nothing).
+   */
+  bestYear: { year: number; brilliant: number; games: number } | null;
+  /** When the latest dated game with a Brilliant move was played; null when there is none. */
+  latestAt: number | null;
+}
+
 export interface ReviewStats {
   /** Counted games in the scope (the denominator of "X of Y counted games have an engine review"). */
   counted: number;
@@ -267,6 +298,7 @@ export interface ReviewStats {
   /** The games that have at least one Brilliant (or Great) move. */
   brilliantGames: number;
   greatGames: number;
+  marks: MarkStats;
   /**
    * `count` is the wins from under COMEBACK_BELOW%. `game` is the most unlikely reviewed win: the one in which my win%
    * was lowest (ties: the highest opponent rating, then the latest game). `reviewedWins` is the pool it was chosen from (reviewed wins that have a
@@ -281,6 +313,12 @@ export interface ReviewStats {
   /** The most accurate reviewed game of at least MIN_MOVES_FOR_BEST_GAME of my moves (ties: the earliest). */
   bestGame: { game: ReviewedGameRef & { accuracy: number; moves: number }; eligible: number } | null;
 }
+
+/** The games a card can feature and open. */
+export type FeaturedGame = 'marks' | 'bestGame' | 'bestWin' | 'comebacks' | 'longest' | 'longestWin';
+
+/** The stored ids of the scope's featured games, for "Open this game"; a game the scope does not have is absent. */
+export type FeaturedIds = Partial<Record<FeaturedGame, string>>;
 
 export interface ScopeStats extends Wld {
   scope: StoryScope;
@@ -314,6 +352,8 @@ export interface ScopeStats extends Wld {
   lastPlayedAt: number | null;
   /** The engine-review numbers of the games in the scope. */
   review: ReviewStats;
+  /** The ids of the games the cards can open. */
+  featured: FeaturedIds;
 }
 
 export interface ExcludedCounts {
@@ -841,7 +881,60 @@ function moreUnlikely(a: ReviewedGame, b: ReviewedGame): boolean {
   return a.game.id < b.game.id;
 }
 
-function reviewStatsOf(games: readonly CountedGame[]): ReviewStats {
+/**
+ * Whether `a` is a more brilliant game than `b`: more Brilliant moves; then more Great moves; then the later game (a
+ * game with no date counts as the oldest); then the smaller id, so the pick never depends on input order.
+ */
+function moreBrilliant(a: ReviewedGame, b: ReviewedGame): boolean {
+  if (a.review.brilliant !== b.review.brilliant) return a.review.brilliant > b.review.brilliant;
+  if (a.review.great !== b.review.great) return a.review.great > b.review.great;
+  const at = (i: ReviewedGame): number => i.game.playedAt ?? -Infinity;
+  if (at(a) !== at(b)) return at(a) > at(b);
+  return a.game.id < b.game.id;
+}
+
+function marksOf(items: readonly ReviewedGame[], featured: FeaturedIds): MarkStats {
+  const withOne = items.filter((i) => i.review.brilliant > 0);
+  let topGame: MarkedGame | null = null;
+  if (withOne.length > 0) {
+    const pick = withOne.reduce((best, i) => (moreBrilliant(i, best) ? i : best));
+    topGame = {
+      brilliant: pick.review.brilliant,
+      great: pick.review.great,
+      playedAt: pick.game.playedAt,
+      color: pick.game.color,
+      outcome: pick.game.outcome,
+      timeClass: pick.game.timeClass,
+      control: pick.game.control === null ? null : controlLabel(pick.game.control),
+    };
+    featured.marks = pick.game.id;
+  }
+  const reviewedYears = new Set<number>();
+  const perYear = new Map<number, { brilliant: number; games: number }>();
+  let latestAt: number | null = null;
+  for (const i of items) {
+    if (i.game.playedAt === null) continue;
+    const year = new Date(i.game.playedAt).getUTCFullYear();
+    reviewedYears.add(year);
+    if (i.review.brilliant === 0) continue;
+    const entry = perYear.get(year) ?? { brilliant: 0, games: 0 };
+    entry.brilliant += i.review.brilliant;
+    entry.games++;
+    perYear.set(year, entry);
+    latestAt = latestAt === null ? i.game.playedAt : Math.max(latestAt, i.game.playedAt);
+  }
+  let bestYear: MarkStats['bestYear'] = null;
+  if (reviewedYears.size > 1) {
+    for (const year of [...perYear.keys()].sort((a, b) => a - b)) {
+      const entry = perYear.get(year)!;
+      if (bestYear === null || entry.brilliant >= bestYear.brilliant) bestYear = { year, ...entry };
+    }
+  }
+  return { topGame, bestYear, latestAt };
+}
+
+/** The review numbers of the scope; the ids of the games it picks go to `featured`, not into the numbers. */
+function reviewStatsOf(games: readonly CountedGame[], featured: FeaturedIds): ReviewStats {
   const items: ReviewedGame[] = [];
   for (const game of games) if (game.review) items.push({ game, review: game.review });
   const dated = items.filter((i) => i.game.playedAt !== null).sort(earliestFirst);
@@ -892,6 +985,7 @@ function reviewStatsOf(games: readonly CountedGame[]): ReviewStats {
       reviewedWins: wins.length,
       alsoLow: wins.filter((i) => i.review.low === pick.review.low).length - 1,
     };
+    featured.comebacks = pick.game.id;
   }
 
   const long = items.filter((i) => i.review.moves >= MIN_MOVES_FOR_BEST_GAME);
@@ -907,6 +1001,7 @@ function reviewStatsOf(games: readonly CountedGame[]): ReviewStats {
       game: { ...reviewRef(pick), accuracy: pick.review.accuracy, moves: pick.review.moves },
       eligible: long.length,
     };
+    featured.bestGame = pick.game.id;
   }
 
   const phased = items.filter((i) => i.review.phases);
@@ -948,6 +1043,7 @@ function reviewStatsOf(games: readonly CountedGame[]): ReviewStats {
     great: items.reduce((sum, i) => sum + i.review.great, 0),
     brilliantGames: items.filter((i) => i.review.brilliant > 0).length,
     greatGames: items.filter((i) => i.review.great > 0).length,
+    marks: marksOf(items, featured),
     byClass,
     white: accuracyGroup(ofColour('w')),
     black: accuracyGroup(ofColour('b')),
@@ -961,10 +1057,12 @@ function reviewStatsOf(games: readonly CountedGame[]): ReviewStats {
   };
 }
 
-/** The longest game and the longest win, by the stored plies (the earliest game wins a tie). */
-function recordsOf(games: readonly CountedGame[]): Records | null {
+/**
+ * The longest game and the longest win, by the stored plies (the earliest game wins a tie). Their ids go to `featured`.
+ */
+function recordsOf(games: readonly CountedGame[], featured: FeaturedIds): Records | null {
   const reviewed = games.filter((g) => g.review !== null);
-  const longestOf = (list: readonly CountedGame[]): LongGame | null => {
+  const longestOf = (list: readonly CountedGame[], which: 'longest' | 'longestWin'): LongGame | null => {
     let pick: CountedGame | null = null;
     for (const g of list) {
       if (
@@ -975,20 +1073,27 @@ function recordsOf(games: readonly CountedGame[]): Records | null {
         pick = g;
       }
     }
-    return pick === null
-      ? null
-      : {
-          moves: Math.ceil(pick.review!.plies / 2),
-          playedAt: pick.playedAt,
-          timeClass: pick.timeClass,
-          outcome: pick.outcome,
-          ending: pick.ending,
-        };
+    if (pick === null) return null;
+    featured[which] = pick.id;
+    return {
+      moves: Math.ceil(pick.review!.plies / 2),
+      playedAt: pick.playedAt,
+      timeClass: pick.timeClass,
+      outcome: pick.outcome,
+      ending: pick.ending,
+    };
   };
-  const longest = longestOf(reviewed);
+  const longest = longestOf(reviewed, 'longest');
   return longest === null
     ? null
-    : { games: reviewed.length, longest, longestWin: longestOf(reviewed.filter((g) => g.outcome === 'win')) };
+    : {
+        games: reviewed.length,
+        longest,
+        longestWin: longestOf(
+          reviewed.filter((g) => g.outcome === 'win'),
+          'longestWin',
+        ),
+      };
 }
 
 function scopeStats(scope: StoryScope, games: readonly CountedGame[]): ScopeStats {
@@ -1023,6 +1128,9 @@ function scopeStats(scope: StoryScope, games: readonly CountedGame[]): ScopeStat
   // Sorted once for the streaks, the rating journeys and the days at the board
   const dated = games.filter((g) => g.playedAt !== null).sort(byTimeThenId);
   const sites: StorySite[] = scope === 'all' ? ['chesscom', 'lichess'] : [scope];
+  const bestWin = bestWinOf(games);
+  const featured: FeaturedIds = {};
+  if (bestWin) featured.bestWin = bestWin.gameId;
   return {
     scope,
     ...total,
@@ -1034,16 +1142,17 @@ function scopeStats(scope: StoryScope, games: readonly CountedGame[]): ScopeStat
     enough: total.games >= MIN_GAMES_FOR_STORY,
     streaks: streaksOf(dated),
     openings: { white: topOpenings(games, 'w'), black: topOpenings(games, 'b'), withoutOpening },
-    bestWin: bestWinOf(games),
+    bestWin,
     ...upsetsOf(games),
     endings: endingsOf(games),
     controls: controlsOf(games),
     journeys: journeysOf(sites, dated),
-    records: recordsOf(games),
+    records: recordsOf(games, featured),
     activity: activityOf(dated),
     firstPlayedAt: first,
     lastPlayedAt: last,
-    review: reviewStatsOf(games),
+    review: reviewStatsOf(games, featured),
+    featured,
   };
 }
 
@@ -1122,6 +1231,11 @@ export function computeStoryStats(records: readonly StoredGameRecord[], accounts
     chesscom: chesscomStats,
     lichess: lichessStats,
   };
+}
+
+/** The stored id of a featured game of the scope, or null when the scope has no such game. */
+export function featuredGameId(s: ScopeStats, which: FeaturedGame): string | null {
+  return s.featured[which] ?? null;
 }
 
 /** A game the Story counts in "all", reduced to what other views need: no id, name or link. */

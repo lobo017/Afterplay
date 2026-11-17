@@ -6830,6 +6830,67 @@ label.wc-setting-row {
   line-height: 1.4;
 }
 
+/* A highlight card's large numbers (Brilliant and Great): side by side, the first one leading. The colors are the
+   review's move-class colors; the badge and the words carry the meaning, never the color alone */
+.wc-story-figures {
+  display: flex;
+  align-items: flex-end;
+  gap: 1.4rem;
+}
+
+.wc-story-figure {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.wc-story-figure-value {
+  font-size: 2.4rem;
+  font-weight: 800;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.wc-story-figure-lead .wc-story-figure-value {
+  font-size: 3.6rem;
+}
+
+.wc-story-figure-brilliant .wc-story-figure-value {
+  color: #2dd4bf;
+}
+
+.wc-story-figure-great .wc-story-figure-value {
+  color: #60a5fa;
+}
+
+.wc-story-figure-label {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+/* "Open this game": at the bottom of its card, so the buttons of a row of cards line up */
+.wc-story-open {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: auto;
+}
+
+/* Two buttons (Records) share the row on a 375 px phone: their words stay on one line, and the longer label gets the
+   wider button */
+.wc-story-open-btn {
+  flex: 1 1 auto;
+  padding-inline: 0.5rem;
+  font-size: 0.875rem;
+  white-space: nowrap;
+}
+
 .wc-story-note,
 .wc-story-personal {
   margin: 0;
@@ -7037,6 +7098,12 @@ label.wc-setting-row {
     flex: 1 1 0;
     height: auto;
     min-height: 0;
+  }
+
+  /* The highlight card has four fact rows above its button: a little tighter, so it fits a 375x667 phone */
+  .wc-story-card[data-card='marks'] .wc-story-table th,
+  .wc-story-card[data-card='marks'] .wc-story-table td {
+    padding: 0.25rem 0;
   }
 }
 

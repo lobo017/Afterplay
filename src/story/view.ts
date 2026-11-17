@@ -7,8 +7,16 @@
  */
 import type { GameLibrary } from '../library/library';
 import { tapWordLower } from '../ui/pointer-words';
-import { computeStoryStats, type ScopeStats, type StoryStats } from './stats';
-import { storyCards, type PersonalText, type StoryCard, type StoryCardId, type StoryMeter } from './text';
+import { computeStoryStats, featuredGameId, type ScopeStats, type StoryStats } from './stats';
+import {
+  storyCards,
+  type PersonalText,
+  type StoryCard,
+  type StoryCardId,
+  type StoryFigure,
+  type StoryMeter,
+  type StoryOpen,
+} from './text';
 import type { StoryLanding } from './landing';
 import {
   SITE_NAME,
@@ -129,6 +137,11 @@ export interface StoryViewOptions {
    * account. Called from the click handler only, once per press.
    */
   onStartImport(): Promise<void>;
+  /**
+   * "Open this game" on a card: the app opens the stored game as the Games list does. Resolves to false when the game
+   * could not be opened (it is no longer stored); the Story then counts again.
+   */
+  onOpenGame(gameId: string): Promise<boolean>;
   /** The preset's optional intro and closing paragraphs (never read for numbers). */
   getPersonal?(): PersonalText;
   /** Called after each render; `finished` is true when cards (not the form) are showing and no load is running. */
@@ -162,6 +175,29 @@ function meterHtml(m: StoryMeter): string {
     </div>`;
 }
 
+/** The two large numbers of a highlight card, the first one leading; each with its move-class badge, as the review shows it. */
+function figuresHtml(figures: readonly StoryFigure[]): string {
+  if (figures.length === 0) return '';
+  const glyph: Record<StoryFigure['key'], string> = { brilliant: '!!', great: '!' };
+  return `<div class="wc-story-figures">${figures
+    .map(
+      (f, i) =>
+        `<p class="wc-story-figure wc-story-figure-${f.key}${i === 0 ? ' wc-story-figure-lead' : ''}" data-testid="story-figure-${f.key}"><span class="wc-story-figure-value">${escapeHtml(f.value)}</span> <span class="wc-story-figure-label"><span class="wc-class-badge wc-class-${f.key}" aria-hidden="true">${glyph[f.key]}</span>${escapeHtml(f.label)}</span></p>`,
+    )
+    .join('')}</div>`;
+}
+
+/** The "Open this game" buttons of a card: real buttons, 44 px high, each named after its game. */
+function openHtml(targets: readonly StoryOpen[]): string {
+  if (targets.length === 0) return '';
+  return `<div class="wc-story-open">${targets
+    .map(
+      (t) =>
+        `<button type="button" class="wc-btn wc-btn-secondary wc-story-btn wc-story-open-btn" data-story-open="${t.key}" data-testid="story-open-${t.key}" aria-label="${escapeHtml(t.name)}">${escapeHtml(t.text)}</button>`,
+    )
+    .join('')}</div>`;
+}
+
 export class StoryView {
   private readonly root: HTMLElement;
   private stats: StoryStats | null = null;
@@ -178,6 +214,17 @@ export class StoryView {
   private saved = false;
   /** The markup on the page: an unchanged recount leaves the DOM (and the reader's scroll and taps) alone. */
   private lastHtml = '';
+  /**
+   * Where the reader is: the scroll box's offset (the phone) and the page's (the wide layout). Kept while the Story is
+   * on screen, and put back when it is shown again: a pane that was hidden or taken off the page loses its scroll.
+   */
+  private readonly position = { box: 0, page: 0 };
+  /** The games the cards on the page can open. */
+  private openIds = new Set<string>();
+  /** Of those, the ones deleted since the last count: their buttons are not shown. */
+  private gone = new Set<string>();
+  private checkingStored = false;
+  private checkStoredAgain = false;
 
   constructor(private readonly options: StoryViewOptions) {
     this.root = options.container;
@@ -187,6 +234,17 @@ export class StoryView {
       if (!this.draftsDirty) this.syncDrafts();
       void this.recount();
     });
+    // A deleted game's button goes away at once (the numbers follow at the next count)
+    options.library.onChange((change) => {
+      if (change.updated.length > 0) void this.checkStored();
+    });
+    // Scroll events do not bubble: the box's are caught on the way down
+    this.root.addEventListener('scroll', () => this.notePosition(), { capture: true, passive: true });
+    window.addEventListener('scroll', () => this.notePosition(), { passive: true });
+    // A scroll event arrives a frame late: a tab pressed right after a scroll would hide the Story first, and the
+    // place would be lost. So every press anywhere notes it too, before the press does anything.
+    document.addEventListener('click', () => this.notePosition(), { capture: true, passive: true });
+    document.addEventListener('keydown', () => this.notePosition(), { capture: true, passive: true });
     this.root.addEventListener('click', (e) => this.onClick(e));
     this.root.addEventListener('input', (e) => {
       const input = e.target as HTMLInputElement | null;
@@ -233,6 +291,8 @@ export class StoryView {
         this.lastCount = Date.now();
         const lib = this.options.library;
         this.stats = computeStoryStats(await lib.list(), lib.getUserAccounts());
+        // Every game the new numbers name was just read from the library
+        this.gone = new Set();
       } while (this.again);
     } finally {
       this.counting = false;
@@ -255,6 +315,71 @@ export class StoryView {
     void this.recount();
   }
 
+  private scrollBox(): HTMLElement | null {
+    return this.root.querySelector<HTMLElement>('.wc-story-scroll');
+  }
+
+  /** On the page and not in a hidden pane. */
+  private onScreen(): boolean {
+    return this.root.isConnected && this.root.getClientRects().length > 0;
+  }
+
+  /** Remembers where the reader is, while the Story is on screen. */
+  private notePosition(): void {
+    const box = this.scrollBox();
+    if (!box || !this.onScreen()) return;
+    // The phone scrolls inside the box; the wide layout scrolls the page
+    if (getComputedStyle(box).overflowY === 'auto') this.position.box = box.scrollTop;
+    else this.position.page = window.scrollY;
+  }
+
+  /**
+   * Puts the reader back where they were. The app calls it when Games › Story comes back on screen (from another
+   * screen, such as a game opened from a card, or from another Games tab).
+   */
+  public restorePosition(): void {
+    const box = this.scrollBox();
+    if (!box || !this.onScreen()) return;
+    if (getComputedStyle(box).overflowY === 'auto') {
+      if (box.scrollTop !== this.position.box) box.scrollTop = this.position.box;
+    } else if (window.scrollY !== this.position.page) {
+      window.scrollTo({ top: this.position.page, behavior: 'instant' });
+    }
+  }
+
+  /** Looks whether the games the cards can open are still stored; a missing one loses its button. */
+  private async checkStored(): Promise<void> {
+    if (this.checkingStored) {
+      this.checkStoredAgain = true;
+      return;
+    }
+    this.checkingStored = true;
+    try {
+      do {
+        this.checkStoredAgain = false;
+        if (this.openIds.size === 0) break;
+        const stored = new Set(await this.options.library.listIds());
+        const gone = [...this.openIds].filter((id) => !stored.has(id));
+        if (gone.some((id) => !this.gone.has(id))) {
+          for (const id of gone) this.gone.add(id);
+          this.render();
+        }
+      } while (this.checkStoredAgain);
+    } finally {
+      this.checkingStored = false;
+    }
+  }
+
+  /** "Open this game": the place in the Story is noted first, then the app opens the game. */
+  private async openGame(gameId: string): Promise<void> {
+    this.notePosition();
+    if (await this.options.onOpenGame(gameId)) return;
+    // Not stored any more: the button goes, and the numbers are counted again
+    this.gone.add(gameId);
+    this.render();
+    await this.recount();
+  }
+
   private syncDrafts(): void {
     const mine = this.options.library.getMyAccounts();
     this.drafts.chesscom = mine?.chesscom ?? '';
@@ -269,6 +394,12 @@ export class StoryView {
       this.root.querySelectorAll<HTMLElement>('input[data-more-input]').forEach((i) => i.blur());
       if (more.dataset.moreAction === 'add') void this.addAccount(site);
       else void removeMoreAccount(this.options.library, site, more.dataset.username ?? '');
+      return;
+    }
+    const opener = (e.target as HTMLElement).closest<HTMLElement>('[data-story-open]');
+    if (opener) {
+      const id = this.stats ? featuredGameId(this.stats.all, opener.dataset.storyOpen as StoryOpen['key']) : null;
+      if (id !== null) void this.openGame(id);
       return;
     }
     const button = (e.target as HTMLElement).closest<HTMLElement>('[data-story-action]');
@@ -432,11 +563,18 @@ export class StoryView {
     return `<section class="wc-story-card${extraClass}" data-testid="story-card-${card.id}" data-card="${card.id}" aria-label="${escapeHtml(card.label)}">
       <p class="wc-story-label">${escapeHtml(card.label)}</p>
       ${card.value ? `<p class="wc-story-value" data-testid="story-value-${card.id}">${escapeHtml(card.value)}</p>` : ''}
+      ${figuresHtml(card.figures)}
       ${card.sentence ? `<p class="wc-story-sentence">${gl(card.sentence)}</p>` : ''}
       ${scope && scope.games > 0 ? wldBar(scope) : ''}
       ${card.meters.map(meterHtml).join('')}
       ${rows}
       ${card.notes.map((t) => `<p class="wc-story-note">${gl(t)}</p>`).join('')}
+      ${openHtml(
+        card.open.filter((t) => {
+          const id = featuredGameId(stats.all, t.key);
+          return id !== null && !this.gone.has(id);
+        }),
+      )}
       ${personal}${top}
     </section>`;
   }
@@ -497,6 +635,9 @@ export class StoryView {
     const keepTop = this.root.querySelector('.wc-story-scroll')?.scrollTop ?? 0;
     const keepPage = window.scrollY;
     const cards = storyCards(stats, this.options.getPersonal?.() ?? {});
+    this.openIds = new Set(
+      formOnly ? [] : cards.flatMap((c) => c.open.flatMap((t) => featuredGameId(stats.all, t.key) ?? [])),
+    );
     const body = formOnly
       ? this.formHtml()
       : `${empty || this.sync.kind === 'field-error' ? this.formHtml() : ''}${this.sectionsHtml(cards, stats)}`;
