@@ -408,7 +408,7 @@ test.describe('The info popup opens where it has room', () => {
       const popup = page.getByTestId('review-formulas-tooltip');
       const places: string[] = [];
       // First with the "i" near the end of the page (it cannot be scrolled up: the popup opens above it), then with
-      // "All moves by class" open, so the page goes on below the "i" and it can be put at the top or the middle
+      // "How you played" closed and then open, so the page goes on below the "i" and it can be put at the top or the middle
       for (const [pass, where] of [
         ['page end', 'top'],
         ['page end', 'middle'],
@@ -417,6 +417,11 @@ test.describe('The info popup opens where it has room', () => {
         ['long page', 'middle'],
         ['long page', 'bottom'],
       ] as const) {
+        if (pass === 'page end' && (await page.getByTestId('review-counts').isVisible())) {
+          // Open by default: closed for the page-end passes
+          await page.getByTestId('review-classes').locator('summary').click();
+          await expect(page.getByTestId('review-counts')).toBeHidden();
+        }
         if (pass === 'long page' && !(await page.getByTestId('review-counts').isVisible())) {
           await page.getByTestId('review-classes').locator('summary').click();
           await expect(page.getByTestId('review-counts')).toBeVisible();

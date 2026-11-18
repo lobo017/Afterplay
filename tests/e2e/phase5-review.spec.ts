@@ -236,8 +236,8 @@ test.describe('Phase 5 — Game review', () => {
     }
     await expect(page.getByTestId('review-status-tooltip')).toBeHidden();
     await expect(page.getByTestId('review-accuracy-w')).toHaveText(review.white.accuracy!.toFixed(1));
-    // The counts table is under "All moves by class"
-    await page.getByTestId('review-classes').locator('summary').click();
+    // The counts table is under "How you played", open by default
+    await expect(page.getByTestId('review-counts')).toBeVisible();
     await expect(page.getByTestId('review-count-book')).toBeVisible();
     // Neither player is one of my accounts: both sides, White's chart, names from the PGN
     await expect(page.getByTestId('review-panel')).toHaveAttribute('data-perspective', 'both');
@@ -758,7 +758,7 @@ test.describe('Phase 5 — Review perspective', () => {
     const slug = cls.toLowerCase();
     await expect(page.getByTestId(`review-count-${slug}-b`)).toHaveText(String(ofClass.length));
     await page.evaluate(() => window.__wizardChessAnalysis!.controller.goToStart());
-    await page.getByTestId('review-classes').locator('summary').click(); // the counts table
+    await expect(page.getByTestId('review-counts')).toBeVisible(); // the counts table, open by default
     for (const expected of [...ofClass, ofClass[0]!]) {
       await page.getByTestId(`review-count-${slug}-b`).click();
       expect((await currentNode(page)).id).toBe(expected.nodeId);

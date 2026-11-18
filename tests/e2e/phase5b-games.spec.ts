@@ -148,7 +148,10 @@ test.describe('Phase 5b — Games list (no extension)', () => {
     await page.getByTestId('games-filter-analyzed').selectOption('analyzed');
     await expect(page.getByTestId('games-row')).toHaveCount(0);
     await page.getByTestId('games-filter-analyzed').selectOption('not-analyzed');
-    await expect(page.getByTestId('games-row')).toHaveCount(6);
+    // Not reviewed: the games that can be reviewed; the pasted games under 10 plies are "Too short to review" and not waiting
+    await expect(page.getByTestId('games-row')).toHaveCount(2);
+    await page.getByTestId('games-filter-analyzed').selectOption('all');
+    await expect(page.locator('[data-analysis="short"]')).toHaveCount(4);
 
     // Sort
     await page.getByTestId('games-sort').selectOption('opponent');
@@ -260,8 +263,7 @@ test.describe('Phase 5b — Games list (no extension)', () => {
     expect(opened.perspective).toBe('b');
     expect(opened.blunder).toBe('Blunder');
     expect(opened.openId).toBe('chesscom:live-999000111');
-    // The counts table (under "All moves by class") shows the saved review's classes
-    await page.getByTestId('review-classes').locator('summary').click();
+    // The counts table (under "How you played", open by default) shows the saved review's classes
     await expect(page.getByTestId('review-counts').locator('.wc-class-badge[data-class="Blunder"]')).toBeVisible();
     await page.screenshot({ path: path.join(SCREENSHOT_DIR, 'saved-review-opened.png') });
 
