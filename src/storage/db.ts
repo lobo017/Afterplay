@@ -576,6 +576,10 @@ export class WizardChessStorage {
     });
   }
 
+  public async deleteSetting(key: string): Promise<void> {
+    await this.db.delete('settings', key);
+  }
+
   public async getSetting<T>(key: string, defaultValue?: T): Promise<T | undefined> {
     const rec = await this.db.get('settings', key);
     if (!rec) return defaultValue;

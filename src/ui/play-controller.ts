@@ -22,6 +22,7 @@ import {
 } from '../engine/bot';
 import { EngineCancelledError, EngineClient, type EngineAnalysisResult } from '../engine/engine-client';
 import { BotSelectionClient } from '../engine/bot-selection-client';
+import { decisionEvaluation } from '../engine/bot-profile';
 import { formatScore, type UciScore } from '../engine/uci-parser';
 import { CathedralAudio } from '../render/audio';
 import { BoardRenderer } from '../render/board-renderer';
@@ -29,7 +30,15 @@ import { getPieceSvgMarkup } from '../render/piece-sets';
 import { ChessClock, TIME_CONTROL_PRESETS, type ClockSnapshot, type TimeControlPresetId } from './clock';
 import type { DevOverlayController } from './dev-overlay';
 import { AppSettingsStore, MAX_PREMOVES_LIMIT, type AppSettings, type NewGameOptions } from './app-settings';
-import { ProfileStore, botsByRating, namedBotForRating } from '../preset/profile';
+import {
+  ProfileStore,
+  awaitBotBooks,
+  botsByRating,
+  namedBotForRating,
+  scheduleIdle,
+  warmBotBooks,
+  type BookTextLoader,
+} from '../preset/profile';
 import { icon } from './components/icons';
 import { Menu } from './components/menu';
 import { Tabs, tabListHtml, tabPanelAttrs } from './components/tabs';
@@ -145,6 +154,8 @@ export interface PlayControllerOptions {
   settings?: AppSettingsStore;
   /** My name and title, and the bots with names of their own (an empty profile if absent). */
   profile?: ProfileStore;
+  /** Reads the text of a book a preset brought, by name (the database). Absent: bots with such books play without. */
+  bookLoader?: BookTextLoader;
   /** ⋯ › Analyze this position: open the game in Review. */
   onAnalyzeGame?: () => void;
   /** Game over › Review this game. */
@@ -210,6 +221,7 @@ export class PlayController {
   private sideUndecided = false;
   private botRating: number;
   private botStyle: BotStyleId;
+  private readonly bookLoader: BookTextLoader | undefined;
   private timeControlId: TimeControlPresetId;
   private allowTakebacks = true;
   private maxHintsPerGame: number;
@@ -217,6 +229,8 @@ export class PlayController {
   private botMinDelayMs: number;
   private botMaxDelayMs: number;
   private lastBotThinkTimeMs = 0;
+  /** Whether the bot's last move came from its opening book (no engine ran for it). */
+  private lastBotMoveFromBook = false;
   private maxPremoves: number;
 
   private gameOver = false;
@@ -263,6 +277,7 @@ export class PlayController {
     this.engine = options.engine;
     this.settings = options.settings ?? new AppSettingsStore();
     this.profile = options.profile ?? new ProfileStore(null);
+    this.bookLoader = options.bookLoader;
     this.onAnalyzeGame = options.onAnalyzeGame;
     this.onReviewGame = options.onReviewGame;
     this.onGameFinished = options.onGameFinished;
@@ -890,6 +905,11 @@ export class PlayController {
     return this.lastBotThinkTimeMs;
   }
 
+  /** The bot's last move this game came from its opening book (false before its first move). */
+  public wasLastBotMoveFromBook(): boolean {
+    return this.lastBotMoveFromBook;
+  }
+
   private cancelInFlightBotSearch(): void {
     this.gameGeneration++;
     if (this.botAbortController) {
@@ -986,6 +1006,8 @@ export class PlayController {
     this.cancelInFlightBotSearch();
     this.cancelInfiniteAnalysis();
     this.applyNewGameOptions(this.settings.get().newGame);
+    // A named bot with opening books: parse them in idle moments, so its first book move does not wait for the parse
+    warmBotBooks(namedBotForRating(this.profile.get(), this.botRating, this.botStyle), scheduleIdle, this.bookLoader);
 
     const startFen = options?.fen?.trim() || DEFAULT_POSITION;
     this.adapter = new RulesAdapter(startFen);
@@ -1007,6 +1029,7 @@ export class PlayController {
     this.gameStartedAt = Date.now();
     this.gameResult = '*';
     this.gameStatusText = `${this.adapter.turn() === 'w' ? 'White' : 'Black'} to move`;
+    this.lastBotMoveFromBook = false;
     this.setEvalImmediate('+0.00', 0);
 
     this.clock.reset(TIME_CONTROL_PRESETS[this.timeControlId]);
@@ -1160,11 +1183,20 @@ export class PlayController {
 
     const fen = this.adapter.fen();
     const searchStartedAt = performance.now();
-
     try {
+      // A custom bot with opening books plays from them first. Books it refers to may still be loading (read from the
+      // database in an idle moment since the game began): wait for them for 1.5 s at most, then play as the usual bot
+      const books = await awaitBotBooks(
+        namedBotForRating(this.profile.get(), this.botRating, this.botStyle),
+        this.bookLoader,
+      );
+      if (gen !== this.gameGeneration || ac.signal.aborted || this.gameOver) {
+        return;
+      }
       const decision = await this.bot.chooseMove(fen, {
         signal: ac.signal,
         priority: 'live',
+        ...(books.length > 0 ? { personal: { books } } : {}),
       });
 
       if (gen !== this.gameGeneration || ac.signal.aborted || this.gameOver) {
@@ -1220,11 +1252,10 @@ export class PlayController {
       this.isBotThinking = false;
       this.botAbortController = null;
 
-      // Update live evaluation from bot's search
-      this.setEvalImmediate(
-        formatScore(decision.selectedLine.scoreWhite),
-        decision.selectedLine.evalCp * (decision.executedMove.color === 'w' ? 1 : -1),
-      );
+      // Update live evaluation from bot's search. A book move had no search: the shown evaluation stays as it was
+      this.lastBotMoveFromBook = decision.fromBook === true;
+      const evaluation = decisionEvaluation(decision);
+      if (evaluation) this.setEvalImmediate(formatScore(evaluation.scoreWhite), evaluation.whiteCp);
 
       const executed = this.adapter.move(decision.uci);
       if (this.plyHistory.length > 0) {

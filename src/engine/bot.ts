@@ -8,6 +8,7 @@ import {
 } from '../core/rules';
 import type { EngineLine } from './cache';
 import type { EngineClient, EnginePriority } from './engine-client';
+import { personalBookDecision, type PersonalBots } from './bot-profile';
 
 export type BotTierId = 'Novice' | 'Casual' | 'Club' | 'Expert' | 'Master';
 export type BotStyleId = 'aggressive' | 'solid' | 'gambiteer';
@@ -126,6 +127,8 @@ export interface BotMoveDecision {
   selectedLine: EngineLine;
   candidates: CandidateMoveWeight[];
   params: BotEngineParams;
+  /** True when the move came from a personal book: no engine ran, and the evaluation in `selectedLine` is a placeholder. */
+  fromBook?: boolean;
 }
 
 export interface BotThinkTimeOptions {
@@ -1043,9 +1046,13 @@ export class ChessBot {
       signal?: AbortSignal;
       rng?: () => number;
       enableHumanBlunders?: boolean;
+      /** Personal opening books, tried before any engine call (bot-profile.ts). */
+      personal?: PersonalBots;
     },
   ): Promise<BotMoveDecision> {
     const params = this.getParams();
+    const book = options?.personal && personalBookDecision(fen, options.personal, options.rng ?? this.rng, params);
+    if (book) return book;
     const analysis = await this.engine.analyze({
       fen,
       nodes: options?.nodes ?? params.nodes,
