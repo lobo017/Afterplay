@@ -3902,6 +3902,10 @@ select.wc-select option {
   visibility: hidden;
 }
 
+.wc-puzzle-play-on {
+  align-self: flex-start;
+  min-height: 44px;
+}
 
 .wc-puzzle-empty {
   display: flex;

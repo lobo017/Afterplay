@@ -97,6 +97,23 @@ export function sameMove(fen: string, a: string, b: string): boolean {
   return pa !== null && pa === positionAfter(fen, b);
 }
 
+/**
+ * The squares of the move I played in the game, for a puzzle from my games: `playedSan` played from the puzzle position
+ * (`startFen`, where I am to move). Null with no played move, or one that does not apply there (nothing is marked then).
+ */
+export function playedMoveSquares(
+  startFen: string,
+  playedSan: string | undefined,
+): { from: ExecutedMove['from']; to: ExecutedMove['to'] } | null {
+  if (!playedSan) return null;
+  try {
+    const move = new RulesAdapter(startFen).move(playedSan);
+    return { from: move.from, to: move.to };
+  } catch {
+    return null;
+  }
+}
+
 /** UCI of a board move ("e7e8q"). */
 export function moveInputToUci(move: MoveInput): string {
   return `${move.from}${move.to}${move.promotion ?? ''}`;

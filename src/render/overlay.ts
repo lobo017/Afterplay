@@ -62,6 +62,11 @@ export interface BoardOverlayState {
   /** The hovered square is one the held piece may be dropped on (stronger highlight). */
   hoveredIsTarget?: boolean;
   lastMove: { from: Square; to: Square } | null;
+  /**
+   * A move kept highlighted whatever else happens on the board (the move I played in the game, on a puzzle from it),
+   * in the last move's colors.
+   */
+  playedMove?: { from: Square; to: Square } | null;
   checkSquare: Square | null;
   legalMoves: OverlayLegalTarget[];
   /** Queued premoves in execution order. */
@@ -121,6 +126,7 @@ function buildStaticSignature(state: BoardOverlayState): string {
     state.flipped ? 'F1' : 'F0',
     state.selectedSquare ?? '',
     state.lastMove ? `${state.lastMove.from}-${state.lastMove.to}` : '',
+    state.playedMove ? `P${state.playedMove.from}-${state.playedMove.to}` : '',
     state.checkSquare ?? '',
     legalKey,
     premoveKey,
@@ -314,6 +320,18 @@ export class BoardOverlay {
     this.redrawCount++;
 
     const parts: string[] = [];
+
+    // The kept played move: the same squares and colors as a last move
+    if (state.playedMove) {
+      const fromC = squareToBoardCoords(state.playedMove.from, state.flipped);
+      const toC = squareToBoardCoords(state.playedMove.to, state.flipped);
+      parts.push(
+        `<rect x="${fromC.x}" y="${fromC.y}" width="100" height="100" fill="#f59e0b" fill-opacity="0.25" data-testid="overlay-played-from" data-square="${state.playedMove.from}" />`,
+      );
+      parts.push(
+        `<rect x="${toC.x}" y="${toC.y}" width="100" height="100" fill="#f59e0b" fill-opacity="0.29" data-testid="overlay-played-to" data-square="${state.playedMove.to}" />`,
+      );
+    }
 
     // Last-move square highlights (#f59e0b, opacity 0.25 from legacy audit)
     if (state.lastMove) {

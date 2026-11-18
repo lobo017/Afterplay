@@ -11,7 +11,7 @@ import { icon } from '../ui/components/icons';
 import { Menu } from '../ui/components/menu';
 import type { StoredPuzzleRecord } from '../storage/db';
 import { PuzzleDatasetClient, type DatasetInfo } from './puzzle-dataset-client';
-import { moveInputToUci, preparePuzzle, type PreparedPuzzle } from './puzzle-format';
+import { moveInputToUci, playedMoveSquares, preparePuzzle, type PreparedPuzzle } from './puzzle-format';
 import { PuzzleSession, type AttemptOutcome } from './puzzle-session';
 import type { AttemptResult, PuzzleStore } from './puzzle-store';
 import { judgeAlternative, type AlternativeVerdict } from './puzzle-validation';
@@ -56,14 +56,17 @@ function escapeHtml(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-/** Moves in SAN with move numbers, starting at a FEN ("23… Rxf1 24. Qe1"). */
-export function numberedLine(fen: string, sans: readonly string[]): string {
+/**
+ * Moves in SAN with move numbers, starting at a FEN ("23… Rxf1 24. Qe1"). `ellipsis` is what follows a Black move's
+ * number: "…" on screen, "..." in a PGN (a PGN reader does not know "…").
+ */
+export function numberedLine(fen: string, sans: readonly string[], ellipsis = '…'): string {
   const parts = fen.split(' ');
   let moveNo = Number(parts[5]) || 1;
   let white = parts[1] !== 'b';
   return sans
     .map((san, i) => {
-      const text = white ? `${moveNo}. ${san}` : i === 0 ? `${moveNo}… ${san}` : san;
+      const text = white ? `${moveNo}. ${san}` : i === 0 ? `${moveNo}${ellipsis} ${san}` : san;
       if (!white) moveNo++;
       white = !white;
       return text;
@@ -79,7 +82,7 @@ export function puzzlePgn(prepared: PreparedPuzzle, title: string): string {
     '[SetUp "1"]',
     `[FEN "${prepared.setupFen}"]`,
     '',
-    `${numberedLine(prepared.setupFen, sans)} *`,
+    `${numberedLine(prepared.setupFen, sans, '...')} *`,
   ].join('\n');
 }
 
@@ -125,6 +128,7 @@ export class PuzzleTrainer {
     next: HTMLButtonElement;
     retry: HTMLButtonElement;
     analyze: HTMLButtonElement;
+    playOn: HTMLButtonElement;
     flip: HTMLButtonElement;
     empty: HTMLElement;
     emptyText: HTMLElement;
@@ -235,6 +239,7 @@ export class PuzzleTrainer {
               <button type="button" class="wc-btn wc-btn-secondary wc-btn-action" data-testid="btn-puzzle-solution">Show solution</button>
             </div>
             <p class="wc-puzzle-line" data-testid="puzzle-line"></p>
+            <button type="button" class="wc-btn wc-btn-secondary wc-btn-sm wc-puzzle-play-on" data-testid="btn-puzzle-play-on" hidden>Analyze the position</button>
             <div class="wc-puzzle-empty" data-testid="puzzle-empty" hidden>
               <p data-testid="puzzle-empty-text"></p>
               <div class="wc-puzzle-empty-actions" data-testid="puzzle-empty-actions"></div>
@@ -289,6 +294,7 @@ export class PuzzleTrainer {
       next: q('btn-puzzle-next'),
       retry: q('btn-puzzle-retry'),
       analyze: q('btn-puzzle-analyze'),
+      playOn: q('btn-puzzle-play-on'),
       flip: q('btn-puzzle-flip'),
       empty: q('puzzle-empty'),
       emptyText: q('puzzle-empty-text'),
@@ -308,6 +314,8 @@ export class PuzzleTrainer {
     this.els.hint.addEventListener('click', () => this.showHint());
     this.els.solution.addEventListener('click', () => this.showSolution());
     this.els.next.addEventListener('click', () => void this.next());
+    // The same action as "Analyze the position" in the menu, kept in view once the puzzle is over
+    this.els.playOn.addEventListener('click', () => this.analyze());
     this.updateButtons();
   }
 
@@ -396,6 +404,10 @@ export class PuzzleTrainer {
     this.board.clearUserAnnotations();
     this.board.setFlipped(prepared.playerColor === 'b');
     this.board.setInteractiveColor('none');
+    // The move I played in the game stays marked for the whole puzzle: after a wrong try, a hint, the solution, a retry
+    this.board.setPlayedMove(
+      source === 'personal' ? playedMoveSquares(prepared.startFen, (entry as StoredPuzzleRecord).playedSan) : null,
+    );
     this.board.setPosition(prepared.setupFen, { animate: false });
     this.root.setAttribute('data-puzzle-id', entry.id);
     this.root.setAttribute('data-puzzle-state', 'setup');
@@ -683,6 +695,7 @@ export class PuzzleTrainer {
 
   private showEmpty(): void {
     this.loaded = null;
+    this.board.setPlayedMove(null);
     this.board.setInteractiveColor('none');
     this.board.clearUserAnnotations();
     this.root.removeAttribute('data-puzzle-id');
@@ -736,6 +749,7 @@ export class PuzzleTrainer {
     this.els.solution.disabled = !onTurn;
     this.els.retry.disabled = !s || (status !== 'solved' && status !== 'shown' && !s.outcome);
     this.els.analyze.disabled = !this.loaded;
+    this.els.playOn.hidden = status !== 'solved' && status !== 'shown';
     this.els.next.disabled = status === 'checking';
     const over = !s || status === 'solved' || status === 'shown';
     this.els.next.classList.toggle('wc-btn-primary', over);

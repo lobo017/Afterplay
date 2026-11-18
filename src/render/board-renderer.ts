@@ -443,6 +443,8 @@ export class BoardRenderer {
   /** What the board shows: the real position, plus queued premoves played on top. */
   private displaySquares = new Map<Square, Piece>();
   private hintMove: { from: Square; to: Square } | null = null;
+  /** A move that stays highlighted through every position change (see BoardOverlayState.playedMove). */
+  private playedMove: { from: Square; to: Square } | null = null;
   private bestMoveArrow: { from: Square; to: Square } | null = null;
   private threatMoveArrow: { from: Square; to: Square } | null = null;
   private ghostPreview: GhostPreviewInput | null = null;
@@ -1082,6 +1084,7 @@ export class BoardRenderer {
       hoveredSquare: this.hoveredSquare,
       hoveredIsTarget: this.hoveredIsTarget,
       lastMove: this.lastMove,
+      playedMove: this.playedMove,
       checkSquare,
       legalMoves,
       premoves: this.premoves,
@@ -2236,6 +2239,12 @@ export class BoardRenderer {
 
   public getPieceSet(): PieceSetId {
     return this.pieceSet;
+  }
+
+  /** Keeps a move highlighted in the last move's colors until it is replaced or cleared (null). */
+  public setPlayedMove(move: { from: Square; to: Square } | null): void {
+    this.playedMove = move ? { from: move.from, to: move.to } : null;
+    this.syncOverlay();
   }
 
   public setHintMove(hint: { from: Square; to: Square } | null): void {
