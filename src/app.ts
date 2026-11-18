@@ -106,6 +106,7 @@ import { toSavedReview } from './library/saved-review';
 import { storedNumbersFor } from './library/stored-summary';
 import type { StoredGameRecord } from './storage/db';
 import type { MessageWindow } from './capture/protocol';
+import { syncHistoryPuzzles } from './trainers/history-puzzle-file';
 import { PuzzleStore } from './trainers/puzzle-store';
 import { TodayScreen, type PuzzleMode } from './trainers/today-screen';
 import type { PuzzleTrainer } from './trainers/puzzle-trainer';
@@ -1421,6 +1422,8 @@ export function mountAppShell(container: HTMLElement): {
         });
       }
     });
+    // The link's puzzles (if it has a file) load, and each day's release is due, whenever the app opens
+    void runHistoryPuzzles();
     const list = new GamesList({
       container: libraryPane,
       library: lib,
@@ -1684,6 +1687,50 @@ export function mountAppShell(container: HTMLElement): {
     });
   };
 
+  // The link's puzzles made from its history (trainers/history-puzzle-file.ts): fetched once, only on a device whose link
+  // has its games stored, then released a few a day. Nothing is shown when the link has no puzzle file.
+  let puzzlesRunning = false;
+  /** Asked for while a run was going: it runs once more when that one ends, so no release or day change is missed. */
+  let puzzlesAgain = false;
+  const runHistoryPuzzles = async (): Promise<void> => {
+    if (puzzlesRunning) {
+      puzzlesAgain = true;
+      return;
+    }
+    puzzlesRunning = true;
+    try {
+      const slug = firstRun.slug;
+      if (!slug) return;
+      const [{ library: lib }, { store }] = await Promise.all([libraryReady, puzzlesReady]);
+      const record = (await readImportRecord(lib)).file;
+      if (record.slug !== slug || record.status !== 'done') return;
+      const released = await syncHistoryPuzzles({
+        slug,
+        store,
+        listGames: () => lib.list(),
+        getGame: (id) => lib.get(id),
+      });
+      if (released > 0 && currentMode === 'train' && trainView === 'hub') {
+        void todayScreen?.refresh();
+        void trainerTiles?.refresh();
+      }
+    } catch {
+      // The library or the puzzles could not be opened: their screens say so
+    } finally {
+      puzzlesRunning = false;
+      if (puzzlesAgain) {
+        puzzlesAgain = false;
+        void runHistoryPuzzles();
+      }
+    }
+  };
+  if (typeof document !== 'undefined') {
+    // A Home Screen app is often resumed, not reopened: a new day's puzzles are released then
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') void runHistoryPuzzles();
+    });
+  }
+
   // The link's game history (preset/first-run.ts fetches it, story/history-loader.ts stores it): batches of 200 that
   // never overwrite, so a load that stopped continues where it was. A link with no history file changes nothing.
   const runHistoryLoad = async (slug: string): Promise<void> => {
@@ -1726,6 +1773,7 @@ export function mountAppShell(container: HTMLElement): {
       if (state.status === 'done') {
         if (landing === 'importing') setLanding('ready');
         view?.setLoad({ kind: 'idle' });
+        void runHistoryPuzzles();
       } else {
         view?.setLoad({ kind: 'paused', loaded: state.loaded, total: state.total, message: state.failure });
       }

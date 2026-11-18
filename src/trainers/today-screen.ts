@@ -82,6 +82,8 @@ export class TodayScreen {
     drills: Record<DrillKind, DrillCardEls>;
   };
   private refreshing: Promise<void> | null = null;
+  /** Another refresh was asked for while one was running. */
+  private again = false;
   private last: TodaySummary | null = null;
   private lastDrills: DrillSummary | null = null;
 
@@ -179,7 +181,17 @@ export class TodayScreen {
 
   /** Re-counts everything (personal puzzles are synced with the reviewed games first). */
   public refresh(): Promise<void> {
-    this.refreshing ??= this.doRefresh().finally(() => {
+    // A call that comes while a count is running (a release finished meanwhile) is not lost: it counts once more after
+    if (this.refreshing) {
+      this.again = true;
+      return this.refreshing;
+    }
+    this.refreshing = (async () => {
+      do {
+        this.again = false;
+        await this.doRefresh();
+      } while (this.again);
+    })().finally(() => {
       this.refreshing = null;
     });
     return this.refreshing;

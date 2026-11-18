@@ -242,3 +242,72 @@ describe('Phase 6 — puzzle store', () => {
     expect(await storage.getSrsCard(cardId(first.id))).toBeUndefined();
   });
 });
+
+describe('puzzles released from a link’s puzzle file, then the game is reviewed on this device', () => {
+  const DB = 'wizards-chess-puzzle-store-history-test';
+  let storage: WizardChessStorage;
+  let store: PuzzleStore;
+  const record = gameRecord();
+  const analyzed: StoredGameRecord = {
+    ...record,
+    analysis: { preset: 'standard', savedAt: NOW, whiteAccuracy: 80, blackAccuracy: 70 },
+  };
+
+  beforeEach(async () => {
+    await deleteWizardChessDB(DB);
+    storage = await WizardChessStorage.create({ dbName: DB });
+    store = new PuzzleStore(storage);
+  });
+
+  it('keeps one puzzle per move (no duplicate, no second card), keeps its progress, and the device review owns it from then on', async () => {
+    const scanned = scanPersonalPuzzles(record, savedReview(600), ME).puzzles;
+    const target = scanned.find((p) => p.classification === 'Mistake' || p.classification === 'Blunder')!;
+    expect(target).toBeDefined();
+    // The offline file has the same puzzle for this game (the same move, the same position)
+    const prepared = preparePuzzle(target);
+    const entry = {
+      id: record.id,
+      ply: target.ply!,
+      fen: target.fen,
+      moves: [target.moves[0]!, target.moves[1]!] as [string, string],
+      bestLineSan: [prepared.solutionSan[0]!],
+      playedSan: target.playedSan!,
+      class: target.classification as 'Mistake' | 'Blunder',
+      loss: 30,
+      mateIn: null,
+    };
+    await store.loadHistoryPuzzles({ input: '0123456789ab', entries: [entry] }, 'ada-sample', [record], NOW);
+    expect(await store.releaseHistoryPuzzles(async () => record, NOW)).toBe(1);
+    const released = (await store.getPuzzle(target.id))!;
+    expect(released.origin).toBe('history');
+    await store.recordAttempt(released, 'personal', outcome({}), NOW);
+
+    // No review on this device: the sync leaves it
+    expect(await store.syncAll([record], async () => undefined, ME, NOW + 1000)).toBe(0);
+    expect((await store.getPuzzle(target.id))?.attempts).toBe(1);
+
+    // Reviewed on this device: the game's puzzles are the review's (this one among them, progress kept, no longer flagged)
+    expect(await store.syncAll([analyzed], async () => savedReview(600), ME, NOW + 2000)).toBe(1);
+    const personal = await store.listPuzzles('personal');
+    expect(personal.map((p) => p.id).sort()).toEqual(scanned.map((p) => p.id).sort());
+    const mine = (await store.getPuzzle(target.id))!;
+    expect(mine.attempts).toBe(1);
+    expect(mine.origin).toBeUndefined();
+    expect(mine.reviewSavedAt).toBe(NOW);
+    expect(await storage.listSrsCards('puzzle')).toHaveLength(scanned.length);
+
+    // Releasing again adds nothing, and the review's puzzles are the device's logic again
+    expect(await store.releaseHistoryPuzzles(async () => record, NOW + DAY)).toBe(0);
+    expect(await storage.listPuzzles('personal')).toHaveLength(scanned.length);
+    // Not my game any more: the review's puzzles go as before, the released one with them
+    expect(
+      await store.syncAll(
+        [analyzed],
+        async () => savedReview(600),
+        [{ site: 'lichess', username: 'other' }],
+        NOW + 3000,
+      ),
+    ).toBe(1);
+    expect(await store.listPuzzles('personal')).toEqual([]);
+  });
+});

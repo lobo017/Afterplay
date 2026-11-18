@@ -24,3 +24,5 @@ export const presetUrl = (slug: string): string => `${START_PATH_PREFIX}${slug}/
 export const startManifestUrl = (slug: string): string => `${START_PATH_PREFIX}${slug}/manifest.webmanifest`;
 /** A link's optional game history, beside its preset (first-run.ts, story/history-loader.ts). */
 export const historyUrl = (slug: string): string => `${START_PATH_PREFIX}${slug}/history.json`;
+/** A link's optional puzzles made from that history, beside it (trainers/history-puzzle-file.ts). */
+export const puzzlesUrl = (slug: string): string => `${START_PATH_PREFIX}${slug}/puzzles.json`;

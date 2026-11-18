@@ -118,6 +118,11 @@ export interface StoredPuzzleRecord {
   rating: number;
   themes: string[];
   sourceGameId?: string;
+  /**
+   * Personal: 'history' for a puzzle released from a link's offline puzzle file (trainers/history-puzzles.ts). Its game
+   * may have no review on this device, so the sync leaves it alone until a device review of that game takes it over.
+   */
+  origin?: 'history';
   dueDate: number;
   attempts: number;
   solvedCount: number;
@@ -191,6 +196,15 @@ export interface SchemaMetaRecord {
   key: 'schema_version' | 'migration_history';
   value: number | MigrationHistoryEntry[];
   updatedAt: number;
+}
+
+/** What `WizardChessStorage.atomically` hands its work: reads and writes that share one transaction. */
+export interface AtomicAccess {
+  getSetting<V>(key: string): Promise<V | undefined>;
+  setSetting<V>(key: string, value: V): Promise<void>;
+  getPuzzle(id: string): Promise<StoredPuzzleRecord | undefined>;
+  savePuzzle(puzzle: StoredPuzzleRecord): Promise<void>;
+  saveSrsCard(card: StoredSrsCardRecord): Promise<void>;
 }
 
 export interface WizardChessDBSchema extends DBSchema {
@@ -589,6 +603,46 @@ export class WizardChessStorage {
       out[item.key] = item.value;
     }
     return out;
+  }
+
+  /**
+   * Runs `work` in ONE read-write transaction over the settings, puzzles and spaced-repetition stores: everything it
+   * writes is stored together or not at all (a thrown error aborts it), and no other transaction on these stores
+   * (another tab, another page of the app) runs in between its reads and its writes. `work` may only wait for the
+   * accessors it is given: waiting for anything else lets the browser close the transaction under it.
+   */
+  public async atomically<T>(work: (access: AtomicAccess) => Promise<T>): Promise<T> {
+    const tx = this.db.transaction(['settings', 'puzzles', 'srs_cards'], 'readwrite');
+    const settings = tx.objectStore('settings');
+    const puzzles = tx.objectStore('puzzles');
+    const cards = tx.objectStore('srs_cards');
+    const access: AtomicAccess = {
+      getSetting: async <V>(key: string) => (await settings.get(key))?.value as V | undefined,
+      setSetting: async <V>(key: string, value: V) => {
+        await settings.put({ key, value, updatedAt: Date.now() });
+      },
+      getPuzzle: (id) => puzzles.get(id),
+      savePuzzle: async (puzzle) => {
+        await puzzles.put(puzzle);
+      },
+      saveSrsCard: async (card) => {
+        await cards.put(card);
+      },
+    };
+    let result: T;
+    try {
+      result = await work(access);
+    } catch (err) {
+      try {
+        tx.abort();
+      } catch {
+        // Already finished
+      }
+      await tx.done.catch(() => undefined);
+      throw err;
+    }
+    await tx.done;
+    return result;
   }
 
   // --- Puzzles & SRS Stores ---

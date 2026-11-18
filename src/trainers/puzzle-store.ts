@@ -10,11 +10,28 @@ import {
 } from '../storage/db';
 import { newCard, reviewCard, type SrsCard } from './fsrs';
 import { DEFAULT_PLAYER, ratePuzzleAttempt, type GlickoRating } from './glicko2';
-import { scanPersonalPuzzles, type PersonalPuzzle } from './personal-puzzles';
+import {
+  gameTime,
+  historyPuzzleRecord,
+  localDay,
+  orderNewestFirst,
+  readHistoryPuzzlePending,
+  readHistoryPuzzleState,
+  releaseAllowance,
+  type HistoryGameInfo,
+  type HistoryPuzzleEntry,
+  type HistoryPuzzlePending,
+  type HistoryPuzzleState,
+} from './history-puzzles';
+import { personalPuzzleId, scanPersonalPuzzles, type PersonalPuzzle } from './personal-puzzles';
 import type { AttemptOutcome } from './puzzle-session';
 
 const RATING_SETTING = 'puzzles.rating';
 const SYNC_SETTING = 'puzzles.personalSync';
+/** Puzzles from a link's puzzle file: what was loaded and released, the puzzles still pending, the last "not found". */
+const HISTORY_STATE_SETTING = 'puzzles.fromHistory.state';
+const HISTORY_PENDING_SETTING = 'puzzles.fromHistory.pending';
+const HISTORY_MISS_SETTING = 'puzzles.fromHistory.miss';
 /** Rating history entries kept (for the Phase 8 "puzzle rating over time" chart). */
 export const RATING_HISTORY_LIMIT = 5000;
 
@@ -221,8 +238,11 @@ export class PuzzleStore {
     existingForGame?: StoredPuzzleRecord[],
   ): Promise<string[]> {
     const wanted: PersonalPuzzle[] = saved ? scanPersonalPuzzles(record, saved, accounts).puzzles : [];
-    const existing =
-      existingForGame ?? (await this.storage.listPuzzles('personal')).filter((p) => p.sourceGameId === record.id);
+    // Puzzles released from a link's puzzle file stay while the game has no review on this device; a device review
+    // takes the game over, as for any other game
+    const existing = (
+      existingForGame ?? (await this.storage.listPuzzles('personal')).filter((p) => p.sourceGameId === record.id)
+    ).filter((p) => saved !== undefined || p.origin !== 'history');
     const wantedIds = new Set(wanted.map((p) => p.id));
     for (const old of existing) {
       if (!wantedIds.has(old.id)) {
@@ -234,7 +254,10 @@ export class PuzzleStore {
       const prev = existing.find((e) => e.id === p.id);
       const samePosition = prev && prev.fen === p.fen && prev.moves.join(' ') === p.moves.join(' ');
       if (prev && samePosition) {
-        await this.storage.savePuzzle({ ...prev, ...p, updatedAt: now });
+        const kept: StoredPuzzleRecord = { ...prev, ...p, updatedAt: now };
+        // The device review made this puzzle its own (progress is kept)
+        delete kept.origin;
+        await this.storage.savePuzzle(kept);
         continue;
       }
       // New, or the review now gives another solution: start over
@@ -299,6 +322,150 @@ export class PuzzleStore {
     }
     this.emit();
     return ids;
+  }
+
+  // ------------------------------------------------------------------------- puzzles from a link's puzzle file
+
+  /** What the device remembers of the puzzle file it loaded; undefined before the first load. */
+  public async historyPuzzleState(): Promise<HistoryPuzzleState | undefined> {
+    return readHistoryPuzzleState(await this.storage.getSetting<unknown>(HISTORY_STATE_SETTING));
+  }
+
+  /** The local day on which the link's puzzle file was last found missing or unusable (a retry waits for the next day). */
+  public async historyPuzzleMissDay(slug: string): Promise<string | undefined> {
+    const miss = await this.storage.getSetting<{ slug?: unknown; day?: unknown }>(HISTORY_MISS_SETTING);
+    return miss && miss.slug === slug && typeof miss.day === 'string' ? miss.day : undefined;
+  }
+
+  public markHistoryPuzzleMiss(slug: string, now: number): Promise<void> {
+    return this.storage.setSetting(HISTORY_MISS_SETTING, { slug, day: localDay(now) });
+  }
+
+  /**
+   * Keeps a checked puzzle file: the puzzles, newest source game first, as one pending blob, and the state that
+   * schedules their release, written together in one transaction that first looks again for a state (another page may
+   * have loaded the file meanwhile). Does nothing when a file was loaded before: a second load never starts over or
+   * duplicates. Returns true when it stored the file. `games` are the library's games, for their dates.
+   */
+  public async loadHistoryPuzzles(
+    file: { input: string; entries: readonly HistoryPuzzleEntry[] },
+    slug: string,
+    games: readonly Pick<StoredGameRecord, 'id' | 'date' | 'playedAt'>[],
+    now: number = Date.now(),
+  ): Promise<boolean> {
+    const times = new Map(games.map((g) => [g.id, gameTime(g)] as const));
+    const pending: HistoryPuzzlePending = {
+      version: 1,
+      input: file.input,
+      entries: orderNewestFirst(file.entries, times),
+    };
+    const day = localDay(now);
+    return this.storage.atomically(async (tx) => {
+      if (readHistoryPuzzleState(await tx.getSetting<unknown>(HISTORY_STATE_SETTING))) return false;
+      await tx.setSetting(HISTORY_PENDING_SETTING, pending);
+      await tx.setSetting<HistoryPuzzleState>(HISTORY_STATE_SETTING, {
+        version: 1,
+        slug,
+        input: file.input,
+        loadedDay: day,
+        total: file.entries.length,
+        released: 0,
+        lastDay: day,
+        lastDayCount: 0,
+      });
+      return true;
+    });
+  }
+
+  /**
+   * Turns the next pending puzzles into personal puzzles with new cards: the first 50 on the day the file was loaded,
+   * then at most 20 a local day (see `releaseAllowance`). A puzzle whose game is not in the library yet stays pending.
+   * One that already exists (the same id) is never added twice.
+   *
+   * The games are looked up first; then ONE transaction reads the saved state and pending list again, decides how
+   * many may still be released today, writes the puzzles, their cards, the shorter pending list and the state (the
+   * released counts are added to what is saved, never replaced). A run that is cut off, or that overlaps another page's,
+   * therefore leaves nothing half done and cannot release more than the day allows. Returns how many were released.
+   */
+  public async releaseHistoryPuzzles(
+    getGame: (id: string) => Promise<HistoryGameInfo | undefined>,
+    now: number = Date.now(),
+  ): Promise<number> {
+    const state = await this.historyPuzzleState();
+    if (!state) return 0;
+    const pending = readHistoryPuzzlePending(await this.storage.getSetting<unknown>(HISTORY_PENDING_SETTING));
+    if (!pending) return 0;
+    const today = localDay(now);
+    const allowed = releaseAllowance(state, today, pending.entries.length);
+    if (allowed === 0) return 0;
+
+    // The puzzles that could be released now, found outside the transaction (a lookup of the library may not be waited
+    // for inside it): the ones that already exist, and the ones whose game is stored
+    const candidates: Array<{ entry: HistoryPuzzleEntry; game: HistoryGameInfo | undefined }> = [];
+    let room = 0;
+    for (const entry of pending.entries) {
+      if (room >= allowed) break;
+      const existing = await this.storage.getPuzzle(personalPuzzleId(entry.id, entry.ply));
+      if (existing) {
+        candidates.push({ entry, game: undefined });
+        if (existing.origin === 'history') room++;
+        continue;
+      }
+      const game = await getGame(entry.id);
+      if (!game) continue;
+      candidates.push({ entry, game });
+      room++;
+    }
+    if (candidates.length === 0) return 0;
+
+    const released = await this.storage.atomically(async (tx) => {
+      const saved = readHistoryPuzzleState(await tx.getSetting<unknown>(HISTORY_STATE_SETTING));
+      const list = readHistoryPuzzlePending(await tx.getSetting<unknown>(HISTORY_PENDING_SETTING));
+      if (!saved || !list) return 0;
+      const left = releaseAllowance(saved, today, list.entries.length);
+      const listed = new Set(list.entries.map((e) => personalPuzzleId(e.id, e.ply)));
+      const done = new Set<string>();
+      let count = 0;
+      for (const { entry, game } of candidates) {
+        const id = personalPuzzleId(entry.id, entry.ply);
+        // Another page released it already
+        if (!listed.has(id)) continue;
+        if (count >= left) break;
+        const existing = await tx.getPuzzle(id);
+        if (existing) {
+          // One of ours that a stop left in the list counts as released; any other (a device review made it) is just dropped
+          done.add(id);
+          if (existing.origin === 'history') count++;
+          continue;
+        }
+        if (!game) continue;
+        const card = newCard(now);
+        await tx.savePuzzle({
+          ...historyPuzzleRecord(entry, game),
+          dueDate: card.dueDate,
+          attempts: 0,
+          solvedCount: 0,
+          updatedAt: now,
+        });
+        await tx.saveSrsCard(toStoredCard(id, card, now));
+        done.add(id);
+        count++;
+      }
+      if (done.size === 0) return 0;
+      await tx.setSetting<HistoryPuzzlePending>(HISTORY_PENDING_SETTING, {
+        ...list,
+        entries: list.entries.filter((e) => !done.has(personalPuzzleId(e.id, e.ply))),
+      });
+      await tx.setSetting<HistoryPuzzleState>(HISTORY_STATE_SETTING, {
+        ...saved,
+        released: saved.released + count,
+        lastDay: today,
+        lastDayCount: (saved.lastDay === today ? saved.lastDayCount : 0) + count,
+      });
+      return count;
+    });
+    if (released > 0) this.emit();
+    return released;
   }
 
   /** Puzzle ids due now: cards already seen (any source) first by due time; new personal puzzles after. */

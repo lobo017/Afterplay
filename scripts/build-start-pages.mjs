@@ -3,7 +3,7 @@
 //
 //   node scripts/build-start-pages.mjs            the committed links (public/start/)
 //   node scripts/build-start-pages.mjs --local    also the personal ones in gift.local/start/ (never committed), with
-//                                                 their history.json when the folder has one
+//                                                 their history.json and puzzles.json when the folder has them
 //
 // `--local` copies personal presets into dist/. They stay on this machine unless that dist/ is deployed, which
 // publishes them at their (unguessable) address: see README, "Presets and first-run links".
@@ -38,6 +38,7 @@ const baseManifest = fs.readFileSync(path.join(DIST, 'manifest.webmanifest'), 'u
 
 let local = 0;
 let withHistory = 0;
+let withPuzzles = 0;
 if (withLocal) {
   for (const slug of slugsIn(LOCAL_START)) {
     if (!START_SLUG_PATTERN.test(slug)) fail(`gift.local/start/${slug}: not a valid link name.`);
@@ -49,6 +50,12 @@ if (withLocal) {
     if (fs.existsSync(history)) {
       fs.copyFileSync(history, path.join(DIST_START, slug, 'history.json'));
       withHistory++;
+    }
+    // Puzzles made offline from that history (scripts: hpc/puzzles/), beside it: the app fetches them only for this link
+    const puzzles = path.join(LOCAL_START, slug, 'puzzles.json');
+    if (fs.existsSync(puzzles)) {
+      fs.copyFileSync(puzzles, path.join(DIST_START, slug, 'puzzles.json'));
+      withPuzzles++;
     }
     local++;
   }
@@ -70,5 +77,7 @@ for (const slug of slugs) {
 }
 console.log(
   `build-start-pages: ${slugs.length} first-run link${slugs.length === 1 ? '' : 's'}` +
-    (withLocal ? ` (${local} from gift.local/start/, ${withHistory} with a history file)` : ''),
+    (withLocal
+      ? ` (${local} from gift.local/start/, ${withHistory} with a history file, ${withPuzzles} with a puzzles file)`
+      : ''),
 );

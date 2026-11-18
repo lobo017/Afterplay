@@ -62,7 +62,8 @@ export interface FirstRunOptions {
   timeoutMs?: number;
 }
 
-const defaultFetch = (url: string, signal: AbortSignal): Promise<Response> =>
+/** The one same-origin request of a first-run link's files (preset, history, puzzles): fresh, no credentials beyond the origin. */
+export const defaultFetch = (url: string, signal: AbortSignal): Promise<Response> =>
   fetch(url, { cache: 'no-store', credentials: 'same-origin', signal });
 
 /** Decides what the address asks for and, when needed, loads and checks the preset. Never throws. */
