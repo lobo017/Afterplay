@@ -7,6 +7,7 @@ import type { ReviewPage } from '../analysis/analysis-controller';
 import { formatEvalBarScore } from '../analysis/eval-bar';
 import { lookupOpeningByFen } from '../analysis/opening-lookup';
 import { describeHintedMoves, hintedMoves } from './hints';
+import { LinePlayer } from './line-player';
 import { CLASS_THRESHOLDS, classFromWinDrop, isErrorClass } from './classification';
 import { formatBotLevel, winPercentFromScore } from './formulas';
 import { buildAnnotatedPgn, evalAnnotation, mainLinePlies, type ReviewPly } from './review-game';
@@ -285,6 +286,24 @@ export class ReviewPanel {
   private readonly analysisClient = new ReviewAnalysisClient();
   /** Set while a Games list game with no review on this device is shown (see LibraryGameState). */
   private libraryGame: LibraryGameState | null = null;
+  /** Plays a refutation out on the board; any user action stops it (line-player.ts). */
+  private readonly linePlayer = new LinePlayer({
+    goTo: (nodeId) => this.host.goToNode(nodeId),
+    schedule: (fn, ms) => setTimeout(fn, ms),
+    cancel: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
+    reducedMotion: () =>
+      typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+    shown: () => this.root.isConnected && this.root.offsetParent !== null,
+    onUserAction: (stop) => {
+      const options = { capture: true } as const;
+      window.addEventListener('pointerdown', stop, options);
+      window.addEventListener('keydown', stop, options);
+      return () => {
+        window.removeEventListener('pointerdown', stop, options);
+        window.removeEventListener('keydown', stop, options);
+      };
+    },
+  });
 
   private els!: {
     preset: HTMLSelectElement;
@@ -1072,6 +1091,7 @@ export class ReviewPanel {
   // ------------------------------------------------------------------ review updates
 
   private reset(): void {
+    this.linePlayer.stop();
     this.cancel();
     this.menu.close();
     this.runGeneration++;
@@ -1487,6 +1507,7 @@ export class ReviewPanel {
   }
 
   private handleNavigate(node: GameNode): void {
+    this.linePlayer.noteNavigation(node.id);
     if (this.retry && node.id !== this.retry.parentId && node.parentId !== this.retry.parentId) {
       this.exitRetry();
     }
@@ -1735,6 +1756,7 @@ export class ReviewPanel {
   }
 
   private showRefutation(): void {
+    this.linePlayer.stop();
     const move = this.currentReviewedMove();
     const tree = this.host.getGameTree();
     const node = move ? tree.getNode(move.nodeId) : undefined;
@@ -1755,8 +1777,8 @@ export class ReviewPanel {
     const added = this.host.addLine(move.nodeId, move.refutationUci, {
       forceNewVariation: extendsGame,
     });
-    const first = added[0];
-    if (first) this.host.goToNode(first.id);
+    // The line plays out on the board move by move, ending on its last move; any action of the user stops it
+    this.linePlayer.play(added.map((n) => n.id));
   }
 
   private exportAnnotatedPgn(): void {
