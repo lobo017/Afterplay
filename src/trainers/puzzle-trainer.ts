@@ -11,7 +11,14 @@ import { icon } from '../ui/components/icons';
 import { Menu } from '../ui/components/menu';
 import type { StoredPuzzleRecord } from '../storage/db';
 import { PuzzleDatasetClient, type DatasetInfo } from './puzzle-dataset-client';
-import { moveInputToUci, playedMoveSquares, preparePuzzle, type PreparedPuzzle } from './puzzle-format';
+import {
+  buildStepLine,
+  moveInputToUci,
+  playedMoveSquares,
+  preparePuzzle,
+  type PreparedPuzzle,
+  type StepLine,
+} from './puzzle-format';
 import { PuzzleSession, type AttemptOutcome } from './puzzle-session';
 import type { AttemptResult, PuzzleStore } from './puzzle-store';
 import { judgeAlternative, type AlternativeVerdict } from './puzzle-validation';
@@ -47,6 +54,10 @@ interface Loaded {
   /** A retry: nothing is recorded. */
   practice: boolean;
   recorded: boolean;
+  /** Once the puzzle is over: the printed line, move by move, for the step buttons (nothing here is graded). */
+  line: StepLine | null;
+  /** The step the board shows (0 = the puzzle position); null until the buttons or arrow keys are used. */
+  step: number | null;
 }
 
 /** Under the puzzle on the My mistakes tab: those puzzles never change the rating (the store rates bundled puzzles only). */
@@ -64,17 +75,20 @@ function escapeHtml(text: string): string {
  * number: "…" on screen, "..." in a PGN (a PGN reader does not know "…").
  */
 export function numberedLine(fen: string, sans: readonly string[], ellipsis = '…'): string {
+  return numberedTokens(fen, sans, ellipsis).join(' ');
+}
+
+/** The pieces of `numberedLine`: one per move, with its number where it has one. */
+export function numberedTokens(fen: string, sans: readonly string[], ellipsis = '…'): string[] {
   const parts = fen.split(' ');
   let moveNo = Number(parts[5]) || 1;
   let white = parts[1] !== 'b';
-  return sans
-    .map((san, i) => {
-      const text = white ? `${moveNo}. ${san}` : i === 0 ? `${moveNo}${ellipsis} ${san}` : san;
-      if (!white) moveNo++;
-      white = !white;
-      return text;
-    })
-    .join(' ');
+  return sans.map((san, i) => {
+    const text = white ? `${moveNo}. ${san}` : i === 0 ? `${moveNo}${ellipsis} ${san}` : san;
+    if (!white) moveNo++;
+    white = !white;
+    return text;
+  });
 }
 
 /** The puzzle (setup move and full solution) as a PGN for the analysis board. */
@@ -132,6 +146,8 @@ export class PuzzleTrainer {
     retry: HTMLButtonElement;
     analyze: HTMLButtonElement;
     playOn: HTMLButtonElement;
+    stepPrev: HTMLButtonElement;
+    stepNext: HTMLButtonElement;
     unratedNote: HTMLElement;
     flip: HTMLButtonElement;
     empty: HTMLElement;
@@ -243,7 +259,11 @@ export class PuzzleTrainer {
               <button type="button" class="wc-btn wc-btn-secondary wc-btn-action" data-testid="btn-puzzle-solution">Show solution</button>
             </div>
             <p class="wc-puzzle-line" data-testid="puzzle-line"></p>
-            <button type="button" class="wc-btn wc-btn-secondary wc-btn-sm wc-puzzle-play-on" data-testid="btn-puzzle-play-on" hidden>Analyze the position</button>
+            <div class="wc-puzzle-over">
+              <button type="button" class="wc-btn wc-btn-secondary wc-transport-btn wc-puzzle-step" data-testid="btn-puzzle-step-prev" title="Previous move (←)" aria-label="Previous move" hidden>${icon('back')}</button>
+              <button type="button" class="wc-btn wc-btn-secondary wc-transport-btn wc-puzzle-step" data-testid="btn-puzzle-step-next" title="Next move (→)" aria-label="Next move" hidden>${icon('next')}</button>
+              <button type="button" class="wc-btn wc-btn-secondary wc-btn-sm wc-puzzle-play-on" data-testid="btn-puzzle-play-on" hidden>Analyze the position</button>
+            </div>
             <p class="wc-puzzle-source wc-puzzle-note" data-testid="puzzle-unrated-note" hidden>${UNRATED_NOTE}</p>
             <div class="wc-puzzle-empty" data-testid="puzzle-empty" hidden>
               <p data-testid="puzzle-empty-text"></p>
@@ -300,6 +320,8 @@ export class PuzzleTrainer {
       retry: q('btn-puzzle-retry'),
       analyze: q('btn-puzzle-analyze'),
       playOn: q('btn-puzzle-play-on'),
+      stepPrev: q('btn-puzzle-step-prev'),
+      stepNext: q('btn-puzzle-step-next'),
       unratedNote: q('puzzle-unrated-note'),
       flip: q('btn-puzzle-flip'),
       empty: q('puzzle-empty'),
@@ -322,6 +344,10 @@ export class PuzzleTrainer {
     this.els.next.addEventListener('click', () => void this.next());
     // The same action as "Analyze the position" in the menu, kept in view once the puzzle is over
     this.els.playOn.addEventListener('click', () => this.analyze());
+    // Step through the line once the puzzle is over (the same two buttons and arrow keys as the review board)
+    this.els.stepPrev.addEventListener('click', () => this.stepBy(-1));
+    this.els.stepNext.addEventListener('click', () => this.stepBy(1));
+    window.addEventListener('keydown', this.handleKeyDown);
     this.updateButtons();
   }
 
@@ -406,8 +432,18 @@ export class PuzzleTrainer {
     this.clearTimers();
     this.els.empty.hidden = true;
     const prepared = preparePuzzle(entry);
-    this.loaded = { source, entry, prepared, session: new PuzzleSession(prepared), practice, recorded: false };
+    this.loaded = {
+      source,
+      entry,
+      prepared,
+      session: new PuzzleSession(prepared),
+      practice,
+      recorded: false,
+      line: null,
+      step: null,
+    };
     this.lastResult = null;
+    this.root.removeAttribute('data-puzzle-step');
     this.board.clearUserAnnotations();
     this.board.setFlipped(prepared.playerColor === 'b');
     this.board.setInteractiveColor('none');
@@ -664,7 +700,85 @@ export class PuzzleTrainer {
     const line =
       l.source === 'personal' && e.bestLineSan && e.bestLineSan.length > 0 ? e.bestLineSan : l.prepared.solutionSan;
     const explanation = l.source === 'personal' && e.explanation ? ` ${e.explanation}` : '';
-    this.els.line.textContent = `${l.source === 'personal' ? 'Best line' : 'Solution'}: ${numberedLine(l.prepared.startFen, line)}.${explanation}`;
+    // The same text as ever; each move is its own span, so the step shown can be marked
+    const stepLine = buildStepLine(l.prepared.startFen, line, l.prepared.solution);
+    l.line = stepLine;
+    const nodes: Array<Node | string> = [`${l.source === 'personal' ? 'Best line' : 'Solution'}: `];
+    numberedTokens(l.prepared.startFen, line).forEach((token, i) => {
+      if (i > 0) nodes.push(' ');
+      if (i >= stepLine.moves.length) {
+        nodes.push(token);
+        return;
+      }
+      const move = document.createElement('span');
+      move.className = 'wc-puzzle-line-move';
+      move.dataset.step = String(i + 1);
+      move.textContent = token;
+      nodes.push(move);
+    });
+    nodes.push(`.${explanation}`);
+    this.els.line.replaceChildren(...nodes);
+    this.markStep();
+  }
+
+  private readonly handleKeyDown = (e: KeyboardEvent): void => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    if (!this.root.isConnected || this.root.offsetParent === null) return;
+    if (document.documentElement.classList.contains('wc-sheet-open')) return;
+    if (e.ctrlKey || e.altKey || e.metaKey || e.shiftKey) return;
+    const target = e.target as HTMLElement | null;
+    if (
+      target &&
+      (target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT' ||
+        target.isContentEditable ||
+        target.closest('[role="menu"]'))
+    )
+      return;
+    if (!this.isOver() || !this.loaded?.line) return;
+    e.preventDefault();
+    this.stepBy(e.key === 'ArrowLeft' ? -1 : 1);
+  };
+
+  /** The puzzle is solved or its solution is shown. */
+  private isOver(): boolean {
+    const status = this.loaded?.session.status;
+    return status === 'solved' || status === 'shown';
+  }
+
+  /** Where the step buttons are: the step shown, or the end of the line while none was chosen. */
+  private currentStep(): number {
+    const l = this.loaded;
+    return l?.step ?? l?.line?.moves.length ?? 0;
+  }
+
+  private stepBy(delta: -1 | 1): void {
+    const l = this.loaded;
+    const line = l?.line;
+    if (!l || !line || !this.isOver()) return;
+    const next = this.currentStep() + delta;
+    if (next < 0 || next > line.moves.length) return;
+    // Only the board and the buttons change: nothing is graded, recorded or scheduled here
+    this.clearTimers();
+    l.step = next;
+    const move = next === 0 ? l.prepared.setupMove : line.moves[next - 1]!;
+    this.board.clearUserAnnotations();
+    this.board.setPosition(line.fens[next]!, { lastMove: move, animate: true });
+    this.root.setAttribute('data-puzzle-step', String(next));
+    if (next > 0) announce(`${move.color === 'w' ? 'White' : 'Black'} plays ${move.san}`);
+    else announce('Puzzle position');
+    this.markStep();
+    this.updateButtons();
+  }
+
+  /** Marks the printed move that is on the board (none until a step was taken). */
+  private markStep(): void {
+    const step = this.loaded?.step ?? null;
+    for (const el of this.els.line.querySelectorAll<HTMLElement>('.wc-puzzle-line-move')) {
+      if (step !== null && Number(el.dataset.step) === step) el.setAttribute('aria-current', 'step');
+      else el.removeAttribute('aria-current');
+    }
   }
 
   /** Records the attempt's outcome once it is decided (never for a practice retry). */
@@ -756,7 +870,13 @@ export class PuzzleTrainer {
     this.els.solution.disabled = !onTurn;
     this.els.retry.disabled = !s || (status !== 'solved' && status !== 'shown' && !s.outcome);
     this.els.analyze.disabled = !this.loaded;
-    this.els.playOn.hidden = status !== 'solved' && status !== 'shown';
+    const finished = status === 'solved' || status === 'shown';
+    this.els.playOn.hidden = !finished;
+    this.els.stepPrev.hidden = !finished;
+    this.els.stepNext.hidden = !finished;
+    const lineLength = this.loaded?.line?.moves.length ?? 0;
+    this.els.stepPrev.disabled = !finished || this.currentStep() <= 0;
+    this.els.stepNext.disabled = !finished || this.currentStep() >= lineLength;
     this.els.next.disabled = status === 'checking';
     const over = !s || status === 'solved' || status === 'shown';
     this.els.next.classList.toggle('wc-btn-primary', over);

@@ -3951,6 +3951,34 @@ select.wc-select option {
   min-height: 44px;
 }
 
+/* Previous move, Next move and Analyze the position, once the puzzle is over */
+.wc-puzzle-over {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.wc-puzzle-over > [hidden] {
+  display: none;
+}
+
+.wc-puzzle-over .wc-puzzle-step {
+  width: 3.4rem;
+  min-height: 44px;
+}
+
+.wc-puzzle-line-move {
+  border-radius: 0.25rem;
+  padding: 0 0.15rem;
+  margin: 0 -0.15rem;
+}
+
+.wc-puzzle-line-move[aria-current='step'] {
+  background: var(--accent-gold-dim);
+  color: var(--accent-gold);
+}
+
 .wc-puzzle-empty {
   display: flex;
   flex-direction: column;

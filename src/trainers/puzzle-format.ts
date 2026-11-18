@@ -114,6 +114,36 @@ export function playedMoveSquares(
   }
 }
 
+/** The positions along a puzzle's solution line, for stepping through it once the puzzle is over. */
+export interface StepLine {
+  /** `fens[k]` is the position after `k` moves of the line; `fens[0]` is the puzzle position. */
+  fens: string[];
+  /** `moves[k - 1]` is the move that leads to `fens[k]`. */
+  moves: ExecutedMove[];
+}
+
+/**
+ * The line played from the puzzle position `startFen`, move by move. `sans` is the line that is printed; a move that
+ * does not apply there ends the line (a line that applies not at all is replaced by `solutionUci`, the puzzle's own).
+ */
+export function buildStepLine(startFen: string, sans: readonly string[], solutionUci: readonly string[]): StepLine {
+  const play = (moves: readonly string[], apply: (adapter: RulesAdapter, move: string) => ExecutedMove): StepLine => {
+    const adapter = new RulesAdapter(startFen);
+    const line: StepLine = { fens: [startFen], moves: [] };
+    for (const move of moves) {
+      try {
+        line.moves.push(apply(adapter, move));
+      } catch {
+        break;
+      }
+      line.fens.push(adapter.fen());
+    }
+    return line;
+  };
+  const printed = play(sans, (adapter, san) => adapter.move(san));
+  return printed.moves.length > 0 ? printed : play(solutionUci, playUci);
+}
+
 /** UCI of a board move ("e7e8q"). */
 export function moveInputToUci(move: MoveInput): string {
   return `${move.from}${move.to}${move.promotion ?? ''}`;
