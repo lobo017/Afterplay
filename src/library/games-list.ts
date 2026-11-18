@@ -13,6 +13,7 @@ import {
   openingLabel,
   playedOf,
   isReviewed,
+  isTooShort,
   sortRows,
   toRow,
   type AnalyzedFilter,
@@ -595,6 +596,9 @@ export class GamesList {
     if (a) {
       const acc = row.accuracy === null ? '' : ` · ${row.accuracy.toFixed(1)}%`;
       return `<span class="wc-games-badge wc-games-badge-done" data-analysis="analyzed" title="Reviewed on ${a.preset ? PRESET_LABEL[a.preset] : 'custom'}">Reviewed${acc}</span>`;
+    }
+    if (isTooShort(row.record)) {
+      return `<span class="wc-games-badge" data-analysis="short" title="Too short for the batch review (under 10 half-moves). Open it and press Review this game to review it yourself.">Too short to review</span>`;
     }
     return `<span class="wc-games-badge" data-analysis="none">Not reviewed</span>`;
   }

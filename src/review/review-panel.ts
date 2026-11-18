@@ -36,7 +36,6 @@ import {
   playerHeading,
   playerMeta,
   playerInfo,
-  seeAllMomentsCount,
   stepCycle,
   type ReviewPerspective,
   type ShownKeyMoment,
@@ -316,7 +315,6 @@ export class ReviewPanel {
     >;
     counts: HTMLTableElement;
     moments: HTMLElement;
-    seeAll: HTMLButtonElement;
     classes: HTMLDetailsElement;
     errorPrev: HTMLButtonElement;
     errorNext: HTMLButtonElement;
@@ -428,50 +426,21 @@ export class ReviewPanel {
         <div class="wc-review-tooltip wc-review-status-tip wc-popup wc-popup-bare" data-testid="review-status-tooltip"><div class="wc-popup-body" id="wc-review-status-tip" role="tooltip" data-testid="review-status-tooltip-text"></div>${closeButtonHtml('review-status-close')}</div>
       </div>
       <div class="wc-review-body" data-testid="review-body" hidden>
-        <div class="wc-review-repertoire" data-testid="review-repertoire" data-kind="" role="status" hidden>
-          <span class="wc-review-repertoire-icon" aria-hidden="true">${icon('book')}</span>
-          <span class="wc-review-repertoire-text" data-testid="review-repertoire-text"></span>
-          <button type="button" class="wc-btn wc-btn-ghost wc-btn-sm" data-testid="btn-review-repertoire-jump" hidden>Show move</button>
-        </div>
-        <section class="wc-coach" data-testid="review-coach" aria-label="Key moments">
-          <div class="wc-coach-head">
-            <span class="wc-coach-label" data-testid="review-coach-label">Key moments</span>
-            <ol class="wc-review-moments" data-testid="review-key-moments" aria-label="Key moments"></ol>
-            <button type="button" class="wc-btn wc-btn-ghost wc-review-see-all" data-testid="btn-review-see-all" aria-label="Browse all moments" data-off></button>
+        <details class="wc-disclosure wc-review-classes" open data-testid="review-classes">
+          <summary>How you played${icon('caret')}</summary>
+          <div class="wc-disclosure-body">
+          <table class="wc-review-counts" data-testid="review-counts" data-perspective="both">
+            <thead>
+              <tr>
+                <th scope="col"><span class="wc-sr-only">Move class</span></th>
+                <th scope="col" class="wc-review-col-w" data-testid="review-counts-head-w">White</th>
+                <th scope="col" class="wc-review-col-b" data-testid="review-counts-head-b">Black</th>
+              </tr>
+            </thead>
+            <tbody>${countRows}</tbody>
+          </table>
           </div>
-          <div class="wc-review-card" data-testid="review-move-card">
-            <div class="wc-review-card-head">
-              <span class="wc-review-card-badge" data-testid="review-card-badge"></span>
-              <span class="wc-review-card-title" data-testid="review-card-title"></span>
-              <span class="wc-review-card-eval" data-testid="review-card-eval"></span>
-            </div>
-            <div class="wc-review-card-text" data-testid="review-card-text"></div>
-            <div class="wc-review-card-detail" data-testid="review-card-detail"></div>
-          </div>
-          <div class="wc-coach-actions">
-            <button type="button" class="wc-btn wc-btn-primary wc-btn-action" data-testid="btn-review-retry">Try it</button>
-            <button type="button" class="wc-btn wc-btn-secondary wc-btn-action" data-testid="btn-review-refutation">Show refutation</button>
-            <span class="wc-grow"></span>
-            <button type="button" class="wc-btn wc-btn-secondary wc-btn-icon" data-testid="btn-coach-prev" aria-label="Previous key moment" title="Previous key moment">${icon('back')}</button>
-            <button type="button" class="wc-btn wc-btn-secondary wc-btn-action wc-coach-next" data-testid="btn-coach-next"><span data-testid="coach-next-label">Next moment</span>${icon('next')}</button>
-          </div>
-        </section>
-        <div class="wc-review-errnav">
-          <button type="button" class="wc-btn wc-btn-ghost wc-btn-sm" data-testid="btn-review-prev-mistake" aria-label="Previous mistake">${icon('back')}</button>
-          <span class="wc-review-errnav-label" data-testid="review-mistake-position">No errors</span>
-          <button type="button" class="wc-btn wc-btn-ghost wc-btn-sm" data-testid="btn-review-next-mistake" aria-label="Next mistake">${icon('next')}</button>
-        </div>
-        <div class="wc-review-chart-wrap">
-          <svg class="wc-review-chart" data-testid="review-chart" viewBox="0 0 ${CHART_W} ${CHART_H}" preserveAspectRatio="none" role="img" aria-label="White's win percentage through the game; ${tapWordLower()} to jump to a move">
-            <rect class="wc-review-chart-bg" x="0" y="0" width="${CHART_W}" height="${CHART_H}"></rect>
-            <path class="wc-review-chart-area" data-testid="review-chart-area" d=""></path>
-            <path class="wc-review-chart-line" d=""></path>
-            <line class="wc-review-chart-mid" x1="0" y1="${CHART_H / 2}" x2="${CHART_W}" y2="${CHART_H / 2}"></line>
-            <g class="wc-review-chart-markers"></g>
-            <line class="wc-review-chart-cursor" data-testid="review-chart-cursor" x1="0" y1="0" x2="0" y2="${CHART_H}"></line>
-          </svg>
-          <span class="wc-review-chart-label" data-testid="review-chart-label" aria-hidden="true">White ↑</span>
-        </div>
+        </details>
         <div class="wc-review-summary">
           ${side('w')}
           ${side('b')}
@@ -495,21 +464,49 @@ export class ReviewPanel {
             </div>
           </div>
         </div>
-        <details class="wc-disclosure wc-review-classes" data-testid="review-classes">
-          <summary>All moves by class${icon('caret')}</summary>
-          <div class="wc-disclosure-body">
-          <table class="wc-review-counts" data-testid="review-counts" data-perspective="both">
-            <thead>
-              <tr>
-                <th scope="col"><span class="wc-sr-only">Move class</span></th>
-                <th scope="col" class="wc-review-col-w" data-testid="review-counts-head-w">White</th>
-                <th scope="col" class="wc-review-col-b" data-testid="review-counts-head-b">Black</th>
-              </tr>
-            </thead>
-            <tbody>${countRows}</tbody>
-          </table>
+        <section class="wc-coach" data-testid="review-coach" aria-label="Key moments">
+          <div class="wc-coach-head">
+            <span class="wc-coach-label" data-testid="review-coach-label">Key moments</span>
+            <ol class="wc-review-moments" data-testid="review-key-moments" aria-label="Key moments"></ol>
           </div>
-        </details>
+          <div class="wc-review-card" data-testid="review-move-card">
+            <div class="wc-review-card-head">
+              <span class="wc-review-card-badge" data-testid="review-card-badge"></span>
+              <span class="wc-review-card-title" data-testid="review-card-title"></span>
+              <span class="wc-review-card-eval" data-testid="review-card-eval"></span>
+            </div>
+            <div class="wc-review-card-text" data-testid="review-card-text"></div>
+            <div class="wc-review-card-detail" data-testid="review-card-detail"></div>
+          </div>
+          <div class="wc-coach-actions">
+            <button type="button" class="wc-btn wc-btn-primary wc-btn-action" data-testid="btn-review-retry">Try it</button>
+            <button type="button" class="wc-btn wc-btn-secondary wc-btn-action" data-testid="btn-review-refutation">Show refutation</button>
+            <span class="wc-grow"></span>
+            <button type="button" class="wc-btn wc-btn-secondary wc-btn-icon" data-testid="btn-coach-prev" aria-label="Previous key moment" title="Previous key moment">${icon('back')}</button>
+            <button type="button" class="wc-btn wc-btn-secondary wc-btn-action wc-coach-next" data-testid="btn-coach-next"><span data-testid="coach-next-label">Next moment</span>${icon('next')}</button>
+          </div>
+        </section>
+        <div class="wc-review-chart-wrap">
+          <svg class="wc-review-chart" data-testid="review-chart" viewBox="0 0 ${CHART_W} ${CHART_H}" preserveAspectRatio="none" role="img" aria-label="White's win percentage through the game; ${tapWordLower()} to jump to a move">
+            <rect class="wc-review-chart-bg" x="0" y="0" width="${CHART_W}" height="${CHART_H}"></rect>
+            <path class="wc-review-chart-area" data-testid="review-chart-area" d=""></path>
+            <path class="wc-review-chart-line" d=""></path>
+            <line class="wc-review-chart-mid" x1="0" y1="${CHART_H / 2}" x2="${CHART_W}" y2="${CHART_H / 2}"></line>
+            <g class="wc-review-chart-markers"></g>
+            <line class="wc-review-chart-cursor" data-testid="review-chart-cursor" x1="0" y1="0" x2="0" y2="${CHART_H}"></line>
+          </svg>
+          <span class="wc-review-chart-label" data-testid="review-chart-label" aria-hidden="true">White ↑</span>
+        </div>
+        <div class="wc-review-errnav">
+          <button type="button" class="wc-btn wc-btn-ghost wc-btn-sm" data-testid="btn-review-prev-mistake" aria-label="Previous mistake">${icon('back')}</button>
+          <span class="wc-review-errnav-label" data-testid="review-mistake-position">No errors</span>
+          <button type="button" class="wc-btn wc-btn-ghost wc-btn-sm" data-testid="btn-review-next-mistake" aria-label="Next mistake">${icon('next')}</button>
+        </div>
+        <div class="wc-review-repertoire" data-testid="review-repertoire" data-kind="" role="status" hidden>
+          <span class="wc-review-repertoire-icon" aria-hidden="true">${icon('book')}</span>
+          <span class="wc-review-repertoire-text" data-testid="review-repertoire-text"></span>
+          <button type="button" class="wc-btn wc-btn-ghost wc-btn-sm" data-testid="btn-review-repertoire-jump" hidden>Show move</button>
+        </div>
         <div class="wc-review-foot" data-testid="review-foot">
           <div class="wc-review-perspective" role="radiogroup" aria-label="Review as" data-testid="review-perspective">
             <span class="wc-review-perspective-label">Review as</span>
@@ -572,7 +569,6 @@ export class ReviewPanel {
       sides: { w: sideEls('w'), b: sideEls('b') },
       counts: q('review-counts'),
       moments: q('review-key-moments'),
-      seeAll: q('btn-review-see-all'),
       classes: q('review-classes'),
       errorPrev: q('btn-review-prev-mistake'),
       errorNext: q('btn-review-next-mistake'),
@@ -629,11 +625,6 @@ export class ReviewPanel {
       const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-node-id]');
       const id = btn?.getAttribute('data-node-id');
       if (id) this.host.goToNode(id);
-    });
-    this.els.seeAll.addEventListener('click', () => {
-      // The fold holds a count for every class: open it and bring it into view
-      this.els.classes.open = true;
-      this.els.classes.scrollIntoView({ block: 'start', behavior: 'smooth' });
     });
     this.els.counts.addEventListener('click', (e) => {
       const btn = (e.target as HTMLElement).closest<HTMLElement>('button[data-class]');
@@ -831,6 +822,8 @@ export class ReviewPanel {
     this.state = 'running';
     this.options.onRunningChange?.(true);
     this.els.body.hidden = false;
+    // "How you played" is open for every new review (a reader may close it; the next review opens it again)
+    this.els.classes.open = true;
     this.savedAt = null;
     // Moves played on the free board are a game once they are reviewed
     this.host.showGamePage();
@@ -920,6 +913,7 @@ export class ReviewPanel {
     if (saved.preset) this.setPreset(saved.preset);
     this.state = 'done';
     this.els.body.hidden = false;
+    this.els.classes.open = true;
     this.renderPlayers(tree.getHeaders());
     this.setPerspective(defaultPerspective(tree.getHeaders(), this.accounts()));
     this.acceptReview(restored.review, true);
@@ -1293,10 +1287,6 @@ export class ReviewPanel {
   private renderMoments(review: GameReview): void {
     const moments = perspectiveKeyMoments(review, this.perspective);
     const byId = new Map(review.moves.map((m) => [m.nodeId, m]));
-    const all = seeAllMomentsCount(review.moves, this.perspective);
-    // Only when the fold has more to show than the chips do; otherwise the link takes no room
-    this.els.seeAll.textContent = `Browse all ${all} ${all === 1 ? 'moment' : 'moments'}`;
-    this.els.seeAll.toggleAttribute('data-off', all <= moments.length);
     if (moments.length === 0) {
       this.els.moments.innerHTML = `<li class="wc-review-muted">${
         review.complete || this.state !== 'running' ? 'No big swings.' : 'Key moments appear as the review runs.'

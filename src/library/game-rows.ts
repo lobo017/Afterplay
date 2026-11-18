@@ -3,8 +3,8 @@ import { localDateTime, playedAtDetail, readPgnHeaders, type PlayedAt } from '..
 import type { Color } from '../core/rules';
 import type { UserAccount } from '../review/perspective';
 import type { StoredGameRecord } from '../storage/db';
-import { isStandardGame, myColor, resultFor, type MyResult } from './game-record';
-import { readReviewNumbers } from './review-numbers';
+import { isStandardGame, mainLineMoves, myColor, resultFor, type MyResult } from './game-record';
+import { MIN_REVIEWED_PLIES, readReviewNumbers } from './review-numbers';
 
 /** One library game as the list and the insights see it. */
 export interface GameRow {
@@ -59,12 +59,30 @@ export function isReviewed(record: Pick<StoredGameRecord, 'analysis'>): boolean 
   return Boolean(record.analysis);
 }
 
+const pliesCache = new WeakMap<object, number>();
+
+/** The moves of the game's main line, counted from the PGN text (cached per record). */
+export function gamePlies(record: Pick<StoredGameRecord, 'pgn'>): number {
+  let n = pliesCache.get(record);
+  if (n === undefined) {
+    n = mainLineMoves(record.pgn).length;
+    pliesCache.set(record, n);
+  }
+  return n;
+}
+
+/** A game with no review that is too short to get one: under MIN_REVIEWED_PLIES plies (the batch review skips it). */
+export function isTooShort(record: Pick<StoredGameRecord, 'analysis' | 'pgn'>): boolean {
+  return !isReviewed(record) && gamePlies(record) < MIN_REVIEWED_PLIES;
+}
+
 /**
  * The one meaning of "not reviewed": no review of either kind, and a game that can be reviewed in a meaningful way.
- * The variant games the Story leaves out (Chess960, set-up positions) are never counted as waiting for a review.
+ * The variant games the Story leaves out (Chess960, set-up games) and the games too short to review are never counted
+ * as waiting for a review.
  */
 export function isNotReviewed(record: Pick<StoredGameRecord, 'analysis' | 'pgn'>): boolean {
-  return !isReviewed(record) && isStandardGame(readPgnHeaders(record.pgn));
+  return !isReviewed(record) && isStandardGame(readPgnHeaders(record.pgn)) && !isTooShort(record);
 }
 
 /** Games that are not reviewed (the Today screen's count and the Games list's "Not reviewed" filter). */

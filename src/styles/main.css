@@ -2668,6 +2668,9 @@ select.wc-select option {
   font-size: 0.72rem;
   line-height: 1.45;
   color: var(--text-marble);
+  /* Closed, it takes no room: a hidden box still counted in the panel's scroll height (about 88 px of blank space
+     under the "Review as" bar once scrolled to the end) */
+  display: none;
   visibility: hidden;
   opacity: 0;
   transition: opacity 120ms ease;
@@ -2732,6 +2735,7 @@ select.wc-select option {
 .wc-review-panel[data-tip-open='status'] .wc-review-status-tip,
 .wc-review-formulas:has(:focus-visible) .wc-review-tooltip,
 .wc-review-progress:focus-visible + .wc-review-status-tip {
+  display: flex;
   visibility: visible;
   opacity: 1;
   pointer-events: auto;
@@ -2740,6 +2744,7 @@ select.wc-select option {
 @media (hover: hover) {
   .wc-review-formulas:hover .wc-review-tooltip,
   .wc-review-status[data-has-details='true']:hover .wc-review-status-tip {
+    display: flex;
     visibility: visible;
     opacity: 1;
     pointer-events: auto;
@@ -2748,6 +2753,7 @@ select.wc-select option {
 
 /* Closed with its X: stays closed while the mouse is still over it */
 .wc-review-panel [data-tip][data-tip-dismissed] .wc-review-tooltip {
+  display: none;
   visibility: hidden;
   opacity: 0;
   pointer-events: none;
@@ -6553,20 +6559,6 @@ label.wc-setting-row {
   box-shadow: inset 0 0 0 3px var(--accent-arcane);
 }
 
-/* "Browse all N moments" under the chips: a 44 px target. Hidden, it takes no room */
-.wc-coach .wc-review-see-all {
-  align-self: flex-start;
-  min-height: 44px;
-  min-width: 44px;
-  max-width: 100%;
-  padding: 0 0.75rem;
-  font-size: 0.82rem;
-}
-
-.wc-coach .wc-review-see-all[data-off] {
-  display: none;
-}
-
 /* Phones: the key moments wrap onto further rows instead of scrolling out of sight. Three rows are always
    reserved (3 x 2.1rem chips + 2 gaps of 0.35rem = 7rem, plus a little slack): five chips with long labels
    (e.g. "10... cxb5") need a third row at 390px, and a row that is cut off would hide a key moment. Always
@@ -6577,6 +6569,51 @@ label.wc-setting-row {
     height: 7.3rem;
     align-content: flex-start;
     overflow: hidden;
+  }
+}
+
+/* Wide screens: the key moments wrap too, so no scrollbar is needed. Two rows are reserved when the panel is wide
+   enough for them (five chips fit in two), three when it is narrow. Phones keep the rule above. */
+@media (min-width: 761px) {
+  .wc-coach .wc-review-moments {
+    flex-wrap: wrap;
+    height: 7.3rem;
+    align-content: flex-start;
+    overflow: hidden;
+  }
+
+  @container wc-review (min-width: 28rem) {
+    .wc-coach .wc-review-moments {
+      height: 4.95rem;
+    }
+  }
+}
+
+/* Thin themed scrollbars (dark track, gold thumb) in the Review panel's scroll area and every scroll area inside it.
+   Chromium and Safari take the prefixed pieces; Firefox takes the standard properties. */
+.wc-review-shell ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.wc-review-shell ::-webkit-scrollbar-track {
+  background: #10131b;
+}
+
+.wc-review-shell ::-webkit-scrollbar-thumb {
+  background: rgba(212, 175, 55, 0.5);
+  border-radius: 4px;
+}
+
+.wc-review-shell ::-webkit-scrollbar-thumb:hover {
+  background: rgba(212, 175, 55, 0.75);
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  .wc-review-shell,
+  .wc-review-shell * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(212, 175, 55, 0.5) #10131b;
   }
 }
 

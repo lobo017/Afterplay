@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { parsePgn } from '../../src/core/pgn';
 import { restoreSavedReview, toSavedReview } from '../../src/library/saved-review';
 import {
-  seeAllMomentsCount,
   DEFAULT_USER_ACCOUNTS,
   KEY_MOMENTS_SHOWN_MAX,
   defaultPerspective,
@@ -290,36 +289,5 @@ describe('review perspective', () => {
     expect(stepCycle(errors, 3, -1)?.ply).toBe(7);
     expect(stepCycle(errors, 0, -1)?.ply).toBe(7);
     expect(stepCycle([], 3, 1)).toBeNull();
-  });
-});
-
-describe('seeAllMomentsCount (the "Browse all N moments" link)', () => {
-  it('counts the Brilliant, Great, Miss, Mistake and Blunder moves, and nothing else', () => {
-    const moves = [
-      move(1, 50, 52, 'Brilliant'),
-      move(2, 48, 49, 'Great'),
-      move(3, 51, 30, 'Mistake'),
-      move(4, 70, 71, 'Inaccuracy'),
-      move(5, 40, 38, 'Best'),
-      move(6, 62, 60, 'Miss'),
-      move(7, 40, 10, 'Blunder'),
-      move(8, 90, 89, 'Good'),
-    ];
-    expect(seeAllMomentsCount(moves, 'both')).toBe(5);
-    expect(seeAllMomentsCount([], 'both')).toBe(0);
-  });
-
-  it('counts the viewed side only in a one-side view', () => {
-    const moves = [
-      move(1, 50, 52, 'Brilliant'), // w
-      move(2, 51, 30, 'Mistake'), // b
-      move(3, 70, 40, 'Blunder'), // w
-      move(4, 60, 58, 'Miss'), // b
-      move(5, 42, 35, 'Inaccuracy'), // w
-      move(6, 65, 60, 'Great'), // b
-    ];
-    expect(seeAllMomentsCount(moves, 'w')).toBe(2);
-    expect(seeAllMomentsCount(moves, 'b')).toBe(3);
-    expect(seeAllMomentsCount(moves, 'both')).toBe(5);
   });
 });

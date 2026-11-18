@@ -133,3 +133,36 @@ export function isStandardGame(headers: Readonly<Record<string, string>>): boole
   if ((headers.SetUp ?? '').trim() === '1') return false;
   return true;
 }
+
+/** The main-line SAN tokens: comments, variations, numbers, NAGs and the result removed. */
+export function mainLineMoves(pgn: string): string[] {
+  const body = pgn
+    .split(/\r?\n/)
+    .filter((line) => !/^\s*\[.*\]\s*$/.test(line) && !/^\s*%/.test(line))
+    .join(' ');
+  let out = '';
+  let braces = false;
+  let depth = 0;
+  let lineComment = false;
+  for (const ch of body) {
+    if (lineComment) {
+      if (ch === '\n') lineComment = false;
+      continue;
+    }
+    if (braces) {
+      if (ch === '}') braces = false;
+      continue;
+    }
+    if (ch === '{') braces = true;
+    else if (ch === ';') lineComment = true;
+    else if (ch === '(') depth++;
+    else if (ch === ')') depth = Math.max(0, depth - 1);
+    else if (depth === 0) out += ch;
+  }
+  return out
+    .replace(/\$\d+/g, ' ')
+    .replace(/\d+\s*\.(\s*\.\.)?/g, ' ')
+    .split(/\s+/)
+    .map((t) => t.replace(/[+#!?]/g, ''))
+    .filter((t) => t !== '' && !/^(1-0|0-1|1\/2-1\/2|\*)$/.test(t));
+}

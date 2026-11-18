@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   countUnreviewed,
+  gamePlies,
   isNotReviewed,
   isReviewed,
+  isTooShort,
   matchesFilter,
   NO_FILTER,
   toRow,
@@ -10,8 +12,11 @@ import {
 import { isStandardGame } from '../../src/library/game-record';
 import type { StoredGameRecord } from '../../src/storage/db';
 
-const STANDARD = '[White "Ada"]\n[Black "Ben"]\n[Result "1-0"]\n\n1. e4 e5 2. Nf3 Nc6 1-0';
-const CHESS960 = '[White "Ada"]\n[Black "Ben"]\n[Variant "Chess960"]\n\n1. g3 g6 1-0';
+const STANDARD =
+  '[White "Ada"]\n[Black "Ben"]\n[Result "1-0"]\n\n1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O Be7 6. Re1 b5 1-0';
+const SHORT = '[White "Ada"]\n[Black "Ben"]\n[Result "1-0"]\n\n1. e4 e5 2. Nf3 Nc6 1-0';
+const CHESS960 =
+  '[White "Ada"]\n[Black "Ben"]\n[Variant "Chess960"]\n\n1. g3 g6 2. Nf3 Nf6 3. d4 d5 4. c4 c6 5. Nc3 e6 6. e3 Bd6 1-0';
 const SET_UP = '[White "Ada"]\n[Black "Ben"]\n[SetUp "1"]\n[FEN "8/8/8/4k3/8/4K3/4P3/8 w - - 0 1"]\n\n1. e4 *';
 const SUMMARY = { preset: null, savedAt: 1, whiteAccuracy: 80, blackAccuracy: null, summaryOnly: true };
 const DEVICE = { preset: 'quick' as const, savedAt: 1, whiteAccuracy: 70, blackAccuracy: 60 };
@@ -81,5 +86,25 @@ describe('one meaning of "not reviewed"', () => {
     expect(isStandardGame({ Variant: 'Chess960' })).toBe(false);
     expect(isStandardGame({ SetUp: '1' })).toBe(false);
     expect(isStandardGame({ FEN: '8/8/8/8/8/8/8/K6k w - - 0 1' })).toBe(false);
+  });
+
+  it('a game under 10 plies with no review is too short to review and not waiting; a review changes nothing', () => {
+    expect(gamePlies(record(SHORT))).toBe(4);
+    expect(gamePlies(record(STANDARD))).toBe(12);
+    expect(isTooShort(record(SHORT))).toBe(true);
+    expect(isNotReviewed(record(SHORT))).toBe(false);
+    expect(isReviewed(record(SHORT))).toBe(false);
+    expect(isTooShort(record(STANDARD))).toBe(false);
+    // Exactly 10 plies is long enough
+    const ten = '[Result "1-0"]\n\n1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O Be7 1-0';
+    expect(gamePlies(record(ten))).toBe(10);
+    expect(isTooShort(record(ten))).toBe(false);
+    expect(isNotReviewed(record(ten))).toBe(true);
+    // Comments, clock times and variations do not count as moves
+    const noisy = '[Result "1-0"]\n\n1. e4 {[%clk 0:09:58]} e5 (1... c5 2. Nf3) 2. Nf3 Nc6 1-0';
+    expect(gamePlies(record(noisy))).toBe(4);
+    // Reviewed in advance: a short game is reviewed, not "too short"
+    expect(isTooShort(record(SHORT, SUMMARY))).toBe(false);
+    expect(countUnreviewed([record(SHORT), record(STANDARD), record(CHESS960)])).toBe(1);
   });
 });

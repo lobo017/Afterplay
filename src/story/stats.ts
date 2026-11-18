@@ -7,7 +7,7 @@
 import type { UserAccount } from '../review/perspective';
 import type { StoredGameRecord } from '../storage/db';
 import { readPgnHeaders } from '../capture/pgn-time';
-import { isStandardGame, myColor, resultFor } from '../library/game-record';
+import { isStandardGame, mainLineMoves, myColor, resultFor } from '../library/game-record';
 import { PHASES, openingFamily, type GamePhase } from '../library/insights';
 import { readReviewNumbers, type ReviewNumbers } from '../library/review-numbers';
 import type { Color } from '../core/rules';
@@ -525,38 +525,7 @@ function liveSecondsOf(headers: Readonly<Record<string, string>>, control: strin
   return seconds >= 0 && seconds <= MAX_LIVE_GAME_SECONDS ? seconds : null;
 }
 
-/** The main-line SAN tokens: comments, variations, numbers, NAGs and the result removed. */
-export function mainLineMoves(pgn: string): string[] {
-  const body = pgn
-    .split(/\r?\n/)
-    .filter((line) => !/^\s*\[.*\]\s*$/.test(line) && !/^\s*%/.test(line))
-    .join(' ');
-  let out = '';
-  let braces = false;
-  let depth = 0;
-  let lineComment = false;
-  for (const ch of body) {
-    if (lineComment) {
-      if (ch === '\n') lineComment = false;
-      continue;
-    }
-    if (braces) {
-      if (ch === '}') braces = false;
-      continue;
-    }
-    if (ch === '{') braces = true;
-    else if (ch === ';') lineComment = true;
-    else if (ch === '(') depth++;
-    else if (ch === ')') depth = Math.max(0, depth - 1);
-    else if (depth === 0) out += ch;
-  }
-  return out
-    .replace(/\$\d+/g, ' ')
-    .replace(/\d+\s*\.(\s*\.\.)?/g, ' ')
-    .split(/\s+/)
-    .map((t) => t.replace(/[+#!?]/g, ''))
-    .filter((t) => t !== '' && !/^(1-0|0-1|1\/2-1\/2|\*)$/.test(t));
-}
+export { mainLineMoves } from '../library/game-record';
 
 function utcDay(playedAt: number | null, pgnDate: string): string {
   if (playedAt !== null) return new Date(playedAt).toISOString().slice(0, 10);

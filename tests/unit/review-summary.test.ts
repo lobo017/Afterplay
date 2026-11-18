@@ -220,10 +220,17 @@ describe('the Today screen’s unreviewed count', () => {
   it('leaves out games reviewed in advance, and counts games with no review', () => {
     const full = record(PGN, { analysis: { preset: 'quick', savedAt: 1, whiteAccuracy: 90, blackAccuracy: 70 } });
     const advance = record(SECOND_PGN, { analysis: summaryOnly(87.3) });
-    const none = record(PGN.replace('2026.01.02', '2026.01.04'), { analysis: null });
-    const unset = record(PGN.replace('2026.01.02', '2026.01.05'));
+    // A game that can be reviewed: 10 plies or more (the scholar's mate in PGN above is too short to count)
+    const LONG = PGN.replace(
+      '2. Qh5 Nc6 3. Bc4 Nf6 4. Qxf7#',
+      '2. Nf3 Nc6 3. Bc4 Nf6 4. d3 Bc5 5. O-O d6 6. c3 O-O',
+    ).replace('1-0', '*');
+    const none = record(LONG.replace('2026.01.02', '2026.01.04'), { analysis: null });
+    const unset = record(LONG.replace('2026.01.02', '2026.01.05'));
     expect(countUnreviewed([full, advance, none, unset])).toBe(2);
     expect(countUnreviewed([advance])).toBe(0);
+    // Too short to review: not waiting
+    expect(countUnreviewed([record(PGN.replace('2026.01.02', '2026.01.06'), { analysis: null })])).toBe(0);
     expect(countUnreviewed([])).toBe(0);
   });
 });
