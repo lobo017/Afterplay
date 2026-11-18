@@ -1,4 +1,5 @@
 import { BOT_STYLE_PRESETS, clampBotRating, type BotStyleId } from '../engine/bot';
+import { parseBook } from '../engine/bot-profile';
 import {
   DEFAULT_APP_SETTINGS,
   DEFAULT_NEW_GAME,
@@ -21,9 +22,20 @@ import {
  *   "story": { "intro": "…", "closing": "…" },          optional text on the first and last Chess Story cards
  *   "settings": { "boardTheme": "green", "newGame": { "botRating": 1200 } },   any app setting
  *   "usernames": { "lichess": "…", "chesscom": "…" },
- *   "bots": [{ "name": "…", "rating": 1200, "style": "solid" }]
+ *   "bots": [{ "name": "…", "rating": 1200, "style": "solid", "books": ["…"] }]
  * }
  * ```
+ *
+ * A bot's optional `books` are 1 to 3 opening books, each the text `serializeBook` writes (engine/bot-profile.ts), tried
+ * in order before the engine is asked; after the books run out the bot plays as the usual bot of its rating and style.
+ * The books are kept with the profile (localStorage, read at every start-up), so their size is capped
+ * (`PRESET_LIMITS.bookChars` each, `booksTotalChars` for all bots together).
+ *
+ * Deeper books travel by reference instead: an optional top-level `books` table (name to book text) and, on a bot,
+ * `bookRefs` (names in that table, 1 to 3, tried in order after the bot's own `books`). The app writes each table book
+ * once into the database (`bots.preset.<name>`, bot-profile-store.ts) and keeps only the names in the profile, so these
+ * books have far larger limits (`bookTableChars`, `bookTableTotalChars`). The file's `version` stays 1: both fields are
+ * additions that an older app reports and ignores.
  */
 export const PRESET_VERSION = 1;
 
@@ -39,13 +51,39 @@ export const PRESET_LIMITS = {
   username: 40,
   botName: 30,
   bots: 8,
+  /** Opening books one bot may carry. */
+  booksPerBot: 3,
+  /**
+   * One book's text, in characters (about 7,000 book moves; parsing one took 10-19 ms in Node on the laptop). The profile lives in localStorage, whose quota in Safari
+   * is about 5 MB; a profile that cannot be written is lost at the next start-up, so the books stay well under it.
+   */
+  bookChars: 500_000,
+  /** All books of all bots together, in characters. */
+  booksTotalChars: 1_500_000,
+  /** Books by reference (the `books` table): names a bot may list in `bookRefs`. */
+  bookRefsPerBot: 3,
+  /** One table book's text, in characters (kept in the database, not in localStorage). */
+  bookTableChars: 3_000_000,
+  /** All table books together, in characters. */
+  bookTableTotalChars: 6_000_000,
+  /** The longest name of a table book. */
+  bookName: 32,
 } as const;
 
-/** A bot with a name of its own: the usual bot at this rating and style. */
+/** A table book's name: lower-case letters, digits and hyphens (it becomes part of a database key). */
+export const BOOK_NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
+export const isBookName = (value: unknown): value is string =>
+  typeof value === 'string' && value.length <= PRESET_LIMITS.bookName && BOOK_NAME_PATTERN.test(value);
+
+/** A bot with a name of its own: the usual bot at this rating and style, optionally opening with its own books. */
 export interface CustomBot {
   name: string;
   rating: number;
   style: BotStyleId;
+  /** 1 to 3 opening books (`serializeBook` text), tried in order; absent when the bot has none. */
+  books?: string[];
+  /** 1 to 3 names of books in the preset's `books` table (kept in the database), tried after `books`; absent when none. */
+  bookRefs?: string[];
 }
 
 export interface WelcomeMessage {
@@ -79,6 +117,8 @@ export interface Preset {
   settings: AppSettingsPatch;
   usernames: PresetUsernames | null;
   bots: CustomBot[];
+  /** The books table (name to book text): only the books some bot refers to. Absent when there are none. */
+  books?: Record<string, string>;
 }
 
 export interface ParsedPreset {
@@ -186,8 +226,117 @@ function parseSettings(value: unknown, problems: string[]): AppSettingsPatch {
   return patch as AppSettingsPatch;
 }
 
-/** Custom bots from a preset or a stored profile: named, in range, no two the same bot. */
-export function parseBots(value: unknown, problems: string[] = []): CustomBot[] {
+/**
+ * A bot's books: text, at most `booksPerBot`, each at most `bookChars` long, all bots' together at most
+ * `booksTotalChars` (`budget` is what is left). With `checkBooks` each must also read as a book (`parseBook`). Whatever
+ * fails is left out and the bot keeps the rest, or plays as the usual bot of its rating and style. The problems name
+ * the place only, never the content.
+ */
+function parseBotBooks(
+  value: unknown,
+  where: string,
+  problems: string[],
+  budget: { left: number },
+  checkBooks: boolean,
+): string[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) {
+    problems.push(`${where}books: must be a list (ignored; the bot plays without a book)`);
+    return [];
+  }
+  const books: string[] = [];
+  value.forEach((book: unknown, j) => {
+    const at = `${where}books[${j}]`;
+    if (books.length >= PRESET_LIMITS.booksPerBot) {
+      problems.push(`${at}: more than ${PRESET_LIMITS.booksPerBot} books for one bot (ignored)`);
+    } else if (typeof book !== 'string') {
+      problems.push(`${at}: must be text (ignored)`);
+    } else if (book.length > PRESET_LIMITS.bookChars) {
+      problems.push(`${at}: longer than ${PRESET_LIMITS.bookChars} characters (ignored)`);
+    } else if (book.length > budget.left) {
+      problems.push(
+        `${at}: the books of all bots together are over ${PRESET_LIMITS.booksTotalChars} characters (ignored)`,
+      );
+    } else if (checkBooks && !parseBook(book)) {
+      problems.push(`${at}: not a valid opening book (ignored)`);
+    } else {
+      budget.left -= book.length;
+      books.push(book);
+    }
+  });
+  return books;
+}
+
+/**
+ * A bot's `bookRefs`: names, at most `bookRefsPerBot`, each a valid book name. With `bookNames` (the preset's own table)
+ * a name that is not in it is dropped too; the stored profile has no table at hand (the books are in the database), so
+ * it only checks the form. A bot left with no valid name is still a bot.
+ */
+function parseBookRefs(
+  value: unknown,
+  where: string,
+  problems: string[],
+  bookNames: ReadonlySet<string> | undefined,
+): string[] {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) {
+    problems.push(`${where}bookRefs: must be a list (ignored; the bot plays without those books)`);
+    return [];
+  }
+  const refs: string[] = [];
+  value.forEach((ref: unknown, j) => {
+    const at = `${where}bookRefs[${j}]`;
+    if (!isBookName(ref)) problems.push(`${at}: not a book name (ignored)`);
+    else if (bookNames && !bookNames.has(ref)) problems.push(`${at}: no book of that name in books (ignored)`);
+    else if (refs.includes(ref)) problems.push(`${at}: listed twice (ignored)`);
+    else if (refs.length >= PRESET_LIMITS.bookRefsPerBot)
+      problems.push(`${at}: more than ${PRESET_LIMITS.bookRefsPerBot} book references for one bot (ignored)`);
+    else refs.push(ref);
+  });
+  return refs;
+}
+
+/**
+ * The preset's `books` table: name to book text. A book is kept when its name is valid, its text is at most
+ * `bookTableChars` long, the table stays within `bookTableTotalChars`, and it reads as a book (`parseBook`). Whatever
+ * fails is left out; the problems name the place only, never the content.
+ */
+function parseBookTable(value: unknown, problems: string[]): Record<string, string> {
+  const table: Record<string, string> = {};
+  if (value === undefined) return table;
+  if (!isObject(value)) {
+    problems.push('books: must be an object (name to book)');
+    return table;
+  }
+  let left: number = PRESET_LIMITS.bookTableTotalChars;
+  for (const [name, text] of Object.entries(value)) {
+    const at = `books[${JSON.stringify(name.slice(0, 40))}]`;
+    if (!isBookName(name)) problems.push(`${at}: not a book name (ignored)`);
+    else if (typeof text !== 'string') problems.push(`${at}: must be text (ignored)`);
+    else if (text.length > PRESET_LIMITS.bookTableChars)
+      problems.push(`${at}: longer than ${PRESET_LIMITS.bookTableChars} characters (ignored)`);
+    else if (text.length > left)
+      problems.push(`${at}: the books table is over ${PRESET_LIMITS.bookTableTotalChars} characters (ignored)`);
+    else if (!parseBook(text)) problems.push(`${at}: not a valid opening book (ignored)`);
+    else {
+      left -= text.length;
+      table[name] = text;
+    }
+  }
+  return table;
+}
+
+/**
+ * Custom bots from a preset or a stored profile: named, in range, no two the same bot. Two bots with the same rating
+ * and style would be the same bot to the Play screen (it finds a bot by rating and prefers the style that matches,
+ * `namedBotForRating`), so a later one is left out even when its books differ. `checkBooks` parses every book (a preset, read once); the stored profile is read
+ * at every start-up and its books are parsed only when the bot plays (`customBotBooks`).
+ */
+export function parseBots(
+  value: unknown,
+  problems: string[] = [],
+  { checkBooks = false, bookNames }: { checkBooks?: boolean; bookNames?: ReadonlySet<string> } = {},
+): CustomBot[] {
   if (value === undefined) return [];
   if (!Array.isArray(value)) {
     problems.push('bots: must be a list');
@@ -195,13 +344,14 @@ export function parseBots(value: unknown, problems: string[] = []): CustomBot[] 
   }
   const styles = Object.keys(BOT_STYLE_PRESETS) as BotStyleId[];
   const bots: CustomBot[] = [];
+  const budget = { left: PRESET_LIMITS.booksTotalChars };
   value.forEach((entry: unknown, i) => {
     const where = `bots[${i}].`;
     if (!isObject(entry)) {
       problems.push(`bots[${i}]: must be an object`);
       return;
     }
-    noteUnknownKeys(entry, ['name', 'rating', 'style'], where, problems);
+    noteUnknownKeys(entry, ['name', 'rating', 'style', 'books', 'bookRefs'], where, problems);
     const name = textField(entry, 'name', where, PRESET_LIMITS.botName, problems);
     if (!name) {
       problems.push(`${where}name: missing (bot ignored)`);
@@ -224,7 +374,15 @@ export function parseBots(value: unknown, problems: string[] = []): CustomBot[] 
       problems.push(`${where.slice(0, -1)}: more than ${PRESET_LIMITS.bots} bots (ignored)`);
       return;
     }
-    bots.push({ name, rating: entry.rating, style: style as BotStyleId });
+    const books = parseBotBooks(entry.books, where, problems, budget, checkBooks);
+    const bookRefs = parseBookRefs(entry.bookRefs, where, problems, bookNames);
+    bots.push({
+      name,
+      rating: entry.rating,
+      style: style as BotStyleId,
+      ...(books.length > 0 ? { books } : {}),
+      ...(bookRefs.length > 0 ? { bookRefs } : {}),
+    });
   });
   return bots;
 }
@@ -272,7 +430,7 @@ export function parsePreset(input: unknown): ParsedPreset {
   }
   noteUnknownKeys(
     input,
-    ['version', 'appName', 'profile', 'welcome', 'story', 'settings', 'usernames', 'bots'],
+    ['version', 'appName', 'profile', 'welcome', 'story', 'settings', 'usernames', 'bots', 'books'],
     '',
     problems,
   );
@@ -304,6 +462,15 @@ export function parsePreset(input: unknown): ParsedPreset {
   }
 
   const story = parseStoryText(input.story, problems);
+  const table = parseBookTable(input.books, problems);
+  const bots = parseBots(input.bots, problems, { checkBooks: true, bookNames: new Set(Object.keys(table)) });
+  // A table book no bot refers to would only take room in the database
+  const used = new Set(bots.flatMap((bot) => bot.bookRefs ?? []));
+  const books: Record<string, string> = {};
+  for (const [name, text] of Object.entries(table)) {
+    if (used.has(name)) books[name] = text;
+    else problems.push(`books[${JSON.stringify(name)}]: no bot refers to it (left out)`);
+  }
   return {
     preset: {
       version: PRESET_VERSION,
@@ -314,7 +481,8 @@ export function parsePreset(input: unknown): ParsedPreset {
       ...(story ? { story } : {}),
       settings: parseSettings(input.settings, problems),
       usernames,
-      bots: parseBots(input.bots, problems),
+      bots,
+      ...(Object.keys(books).length > 0 ? { books } : {}),
     },
     problems,
   };

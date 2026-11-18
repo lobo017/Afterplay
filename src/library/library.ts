@@ -226,6 +226,10 @@ export class GameLibrary {
     return this.storage.setSetting(key, value);
   }
 
+  public deleteSetting(key: string): Promise<void> {
+    return this.storage.deleteSetting(key);
+  }
+
   /**
    * Keeps a game played here. The same game saved again (it went on after a takeback) replaces
    * the entry and drops its review, which no longer matches the moves.

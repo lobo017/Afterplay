@@ -88,6 +88,7 @@ import { EngineLinesPanel, formatPvMovesToSan } from './analysis/engine-lines-pa
 import { PositionEditor, parseFenForEditor, serializeEditorBoardToFen } from './analysis/position-editor';
 import { AnalysisController } from './analysis/analysis-controller';
 import { BotSelectionClient } from './engine/bot-selection-client';
+import { readPresetBookText, savePresetBooks } from './engine/bot-profile-store';
 import { ReviewPanel } from './review/review-panel';
 import { ReviewRunner } from './review/review-runner';
 import { buildGameReview, buildAnnotatedPgn } from './review/review-game';
@@ -589,6 +590,8 @@ export function mountAppShell(container: HTMLElement): {
     audio,
     settings: appSettings,
     profile,
+    // The books a preset brought live in the database (bots.preset.<name>); a bot reads them in an idle moment
+    bookLoader: (name) => libraryReady.then((api) => readPresetBookText(api.library, name)),
     onAnalyzeGame: () => {
       setMode('review', true);
       analysisController.showTab('analysis');
@@ -653,6 +656,12 @@ export function mountAppShell(container: HTMLElement): {
       ...(preset.welcome ? { welcome: welcomeWithAppName(preset.welcome, preset.appName) } : {}),
       ...(preset.story ? { story: preset.story } : {}),
     });
+    // The books the bots refer to go into the database, one row each. Never part of the first run's success: a book that
+    // cannot be written leaves its bot playing as the usual bot, and nothing is shown or logged about it
+    const presetBooks = preset.books;
+    if (presetBooks) {
+      void libraryReady.then((api) => savePresetBooks(api.library, presetBooks)).catch(() => undefined);
+    }
     firstRun = { slug, welcomeSeen: false };
     saveFirstRunState(firstRun);
     applyIdentity(profile.get());
