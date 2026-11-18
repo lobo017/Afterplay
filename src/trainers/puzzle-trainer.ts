@@ -49,6 +49,9 @@ interface Loaded {
   recorded: boolean;
 }
 
+/** Under the puzzle on the My mistakes tab: those puzzles never change the rating (the store rates bundled puzzles only). */
+export const UNRATED_NOTE = 'Practice from your own games. Solve Rated puzzles to change your rating.';
+
 const MODE_LABEL: Record<PuzzleMode, string> = { review: 'Due reviews', mistakes: 'My mistakes', rated: 'Rated' };
 const SIDE: Record<Color, string> = { w: 'White', b: 'Black' };
 
@@ -129,6 +132,7 @@ export class PuzzleTrainer {
     retry: HTMLButtonElement;
     analyze: HTMLButtonElement;
     playOn: HTMLButtonElement;
+    unratedNote: HTMLElement;
     flip: HTMLButtonElement;
     empty: HTMLElement;
     emptyText: HTMLElement;
@@ -240,6 +244,7 @@ export class PuzzleTrainer {
             </div>
             <p class="wc-puzzle-line" data-testid="puzzle-line"></p>
             <button type="button" class="wc-btn wc-btn-secondary wc-btn-sm wc-puzzle-play-on" data-testid="btn-puzzle-play-on" hidden>Analyze the position</button>
+            <p class="wc-puzzle-source wc-puzzle-note" data-testid="puzzle-unrated-note" hidden>${UNRATED_NOTE}</p>
             <div class="wc-puzzle-empty" data-testid="puzzle-empty" hidden>
               <p data-testid="puzzle-empty-text"></p>
               <div class="wc-puzzle-empty-actions" data-testid="puzzle-empty-actions"></div>
@@ -295,6 +300,7 @@ export class PuzzleTrainer {
       retry: q('btn-puzzle-retry'),
       analyze: q('btn-puzzle-analyze'),
       playOn: q('btn-puzzle-play-on'),
+      unratedNote: q('puzzle-unrated-note'),
       flip: q('btn-puzzle-flip'),
       empty: q('puzzle-empty'),
       emptyText: q('puzzle-empty-text'),
@@ -337,6 +343,7 @@ export class PuzzleTrainer {
       btn.setAttribute('aria-selected', String(on));
     }
     this.els.themeWrap.hidden = mode !== 'rated';
+    this.els.unratedNote.hidden = mode !== 'mistakes';
     await this.next();
   }
 

@@ -3937,6 +3937,15 @@ select.wc-select option {
   visibility: hidden;
 }
 
+/* The note below the puzzle reuses the source line's small muted text, but wraps */
+.wc-puzzle-source.wc-puzzle-note {
+  flex: none;
+  min-height: 0;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
+
 .wc-puzzle-play-on {
   align-self: flex-start;
   min-height: 44px;
