@@ -24,6 +24,7 @@ import {
   reviewRunningText,
   storedIdleStatus,
   storedSummaryView,
+  type StoredMoment,
 } from '../library/stored-summary';
 import {
   DEFAULT_USER_ACCOUNTS,
@@ -157,6 +158,8 @@ type PanelState = 'idle' | 'running' | 'done' | 'cancelled' | 'error';
  */
 interface LibraryGameState {
   numbers: ReviewNumbers | null;
+  /** My move with the largest loss, named by the summary made in advance (null: none counts). */
+  moment: StoredMoment | null;
   /** How the last run here ended without finishing ('none' before any run). */
   outcome: 'none' | 'cancelled' | 'failed';
 }
@@ -336,8 +339,11 @@ export class ReviewPanel {
     stored: HTMLElement;
     storedAccuracy: HTMLElement;
     storedTiles: HTMLElement;
+    storedClassRows: HTMLElement;
     storedPhases: HTMLElement;
     storedPhaseRows: HTMLElement;
+    storedMoments: HTMLElement;
+    storedMomentList: HTMLElement;
     storedHelp: HTMLElement;
     storedError: HTMLElement;
     repertoire: HTMLElement;
@@ -402,9 +408,19 @@ export class ReviewPanel {
             <p class="wc-review-stored-accuracy"><b data-testid="review-stored-accuracy"></b><span>${STORED_ACCURACY_LABEL}</span></p>
             <dl class="wc-review-stored-tiles" data-testid="review-stored-tiles"></dl>
           </div>
+          <details class="wc-disclosure wc-review-stored-classes" open data-testid="review-stored-classes">
+            <summary>How you played${icon('caret')}</summary>
+            <div class="wc-disclosure-body">
+              <dl class="wc-review-stored-class-rows" data-testid="review-stored-class-rows"></dl>
+            </div>
+          </details>
           <div class="wc-review-stored-phases" data-testid="review-stored-phases">
             <h4 class="wc-review-stored-sub">${STORED_PHASES_TITLE}</h4>
             <dl class="wc-review-stored-phase-rows" data-testid="review-stored-phase-rows"></dl>
+          </div>
+          <div class="wc-review-stored-moments" data-testid="review-stored-moments" hidden>
+            <h4 class="wc-review-stored-sub">Key moments</h4>
+            <ol class="wc-review-stored-moment-list" data-testid="review-stored-moment-list"></ol>
           </div>
         </section>
         <div class="wc-review-actions">
@@ -590,8 +606,11 @@ export class ReviewPanel {
       stored: q('review-stored'),
       storedAccuracy: q('review-stored-accuracy'),
       storedTiles: q('review-stored-tiles'),
+      storedClassRows: q('review-stored-class-rows'),
       storedPhases: q('review-stored-phases'),
       storedPhaseRows: q('review-stored-phase-rows'),
+      storedMoments: q('review-stored-moments'),
+      storedMomentList: q('review-stored-moment-list'),
       storedHelp: q('review-stored-help'),
       storedError: q('review-stored-error'),
       repertoire: q('review-repertoire'),
@@ -621,6 +640,10 @@ export class ReviewPanel {
       if (value) this.setPerspective(value);
     });
     chart.addEventListener('click', (e) => this.handleChartClick(e));
+    this.els.storedMomentList.addEventListener('click', (e) => {
+      const id = (e.target as HTMLElement).closest<HTMLElement>('[data-node-id]')?.getAttribute('data-node-id');
+      if (id) this.host.goToNode(id);
+    });
     this.els.moments.addEventListener('click', (e) => {
       const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-node-id]');
       const id = btn?.getAttribute('data-node-id');
@@ -929,9 +952,9 @@ export class ReviewPanel {
    * The board's game came from the Games list and has no review on this device: shows my numbers from a review made in
    * advance (none: just the button) at once, with no engine, and "Review this game", which runs the usual review.
    */
-  public showLibraryGame(numbers: ReviewNumbers | null): void {
+  public showLibraryGame(numbers: ReviewNumbers | null, moment: StoredMoment | null = null): void {
     this.cancel();
-    this.libraryGame = { numbers, outcome: 'none' };
+    this.libraryGame = { numbers, moment: numbers ? moment : null, outcome: 'none' };
     this.state = 'idle';
     this.lastError = null;
     this.renderStored();
@@ -998,7 +1021,10 @@ export class ReviewPanel {
     if (!numbers) {
       this.els.storedAccuracy.textContent = '';
       this.els.storedTiles.innerHTML = '';
+      this.els.storedClassRows.innerHTML = '';
       this.els.storedPhaseRows.innerHTML = '';
+      this.els.storedMoments.hidden = true;
+      this.els.storedMomentList.innerHTML = '';
       return;
     }
     const view = storedSummaryView(numbers);
@@ -1009,6 +1035,13 @@ export class ReviewPanel {
           `<div class="wc-review-stored-tile" data-testid="review-stored-${t.key}" data-zero="${t.value === 0}"><dt>${escapeHtml(t.label)}</dt><dd>${t.value}</dd></div>`,
       )
       .join('');
+    this.els.storedClassRows.innerHTML = view.classes
+      .map(
+        (c) =>
+          `<div class="wc-review-stored-class" data-testid="review-stored-class-${CLASS_BADGE[c.cls].slug}" data-zero="${c.count === 0}"><dt>${classBadgeHtml(c.cls)}<span>${c.cls}</span></dt><dd>${c.count}</dd></div>`,
+      )
+      .join('');
+    this.renderStoredMoment();
     this.els.storedPhases.hidden = view.phases.length === 0;
     this.els.storedPhaseRows.innerHTML = view.phases
       .map(
@@ -1016,6 +1049,24 @@ export class ReviewPanel {
           `<div class="wc-review-stored-phase" data-testid="review-stored-phase-${p.phase}"><dt>${escapeHtml(p.label)}</dt><dd><span class="wc-review-stored-track" aria-hidden="true"><i style="width:${(p.share * 100).toFixed(1)}%"></i></span><b>${escapeHtml(p.accuracy)}</b></dd></div>`,
       )
       .join('');
+  }
+
+  /**
+   * The summary's one key moment: my biggest loss, a button that goes to the move. The move comes from the game on the
+   * board; no class or sentence is shown, since the summary has none.
+   */
+  private renderStoredMoment(): void {
+    const moment = this.libraryGame?.moment ?? null;
+    const node = moment ? this.host.getGameTree().getMainLine()[moment.ply - 1] : undefined;
+    if (!moment || !node || node.ply !== moment.ply || node.moveColor !== moment.color) {
+      this.els.storedMoments.hidden = true;
+      this.els.storedMomentList.innerHTML = '';
+      return;
+    }
+    const label = `${node.moveNumber}${moment.color === 'w' ? '.' : '...'} ${node.san}`;
+    const text = `${moment.swing.toFixed(0)}% for ${SIDE_NAME[moment.color]}`;
+    this.els.storedMomentList.innerHTML = `<li><button type="button" class="wc-review-stored-moment" data-node-id="${node.id}" data-testid="review-stored-moment-${moment.ply}" title="${escapeHtml(`${label} (${text})`)}"><span class="wc-review-moment-move">${escapeHtml(label)}</span><span class="wc-review-stored-moment-text">${escapeHtml(text)}</span></button></li>`;
+    this.els.storedMoments.hidden = false;
   }
 
   // ------------------------------------------------------------------ review updates

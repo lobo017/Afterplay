@@ -1,6 +1,6 @@
 import type { Color } from '../core/rules';
 import { isErrorClass } from './classification';
-import { findKeyMoments } from './review-game';
+import { findKeyMoments, KEY_MOMENT_MIN_SWING } from './review-game';
 import type { GameReview, KeyMoment, MoveClassification, ReviewedMove } from './types';
 
 /** Whose review the panel shows: one side's, or both (the two-sided view). */
@@ -172,6 +172,23 @@ export function perspectiveKeyMoments(review: GameReview, perspective: ReviewPer
     if (!shown.has(k.nodeId)) shown.set(k.nodeId, k);
   }
   return [...shown.values()].sort((a, b) => a.ply - b.ply);
+}
+
+/**
+ * The one key moment a stored summary (made in advance, no per-move data) can name: my move with the largest win% loss.
+ * `swing` is in my favour (negative: the loss), as a key moment's swing is for that side. Null when the summary names no
+ * move, the move is not one of my plies, or the loss is under the review's own key-moment minimum. Does not use
+ * `findKeyMoments`.
+ */
+export function storedKeyMoment(
+  side: { drop: number; dropPly: number | null } | undefined,
+  color: Color,
+): { ply: number; swing: number } | null {
+  const ply = side?.dropPly;
+  if (!side || typeof ply !== 'number' || !Number.isInteger(ply) || ply < 1) return null;
+  if ((ply % 2 === 1) !== (color === 'w')) return null;
+  if (!Number.isFinite(side.drop) || side.drop < KEY_MOMENT_MIN_SWING) return null;
+  return { ply, swing: -side.drop };
 }
 
 /** The win% series from the perspective's side (White's for Both). */

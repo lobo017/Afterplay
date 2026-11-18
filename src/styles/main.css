@@ -3902,6 +3902,7 @@ select.wc-select option {
   visibility: hidden;
 }
 
+
 .wc-puzzle-empty {
   display: flex;
   flex-direction: column;
@@ -4833,6 +4834,81 @@ label.wc-setting-row {
   .wc-review-stored-tiles {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
+}
+
+.wc-review-stored-classes {
+  border-style: solid;
+  border-color: var(--border-subtle);
+}
+
+.wc-review-stored-class-rows {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.35rem 1rem;
+}
+
+.wc-review-stored-class {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-width: 0;
+  font-size: 0.88rem;
+}
+
+.wc-review-stored-class dt {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+  color: var(--text-muted);
+}
+
+.wc-review-stored-class dd {
+  margin: 0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.wc-review-stored-class[data-zero='true'] dd {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.wc-review-stored-moment-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.wc-review-stored-moment {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 0.7rem;
+  border-radius: 0.4rem;
+  border: 1px solid var(--border-subtle);
+  background: #090b10;
+  color: var(--text-marble);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.wc-review-stored-moment:hover {
+  border-color: var(--accent-gold);
+}
+
+.wc-review-stored-moment-text {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.wc-review-stored-moments[hidden] {
+  display: none;
 }
 
 .wc-review-stored-sub {

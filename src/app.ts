@@ -104,7 +104,7 @@ import { Tabs, tabListHtml, tabPanelAttrs } from './ui/components/tabs';
 import { ReviewQueue } from './library/review-queue';
 import { ExtensionBridgeClient } from './library/bridge-client';
 import { toSavedReview } from './library/saved-review';
-import { storedNumbersFor } from './library/stored-summary';
+import { storedMomentFor, storedNumbersFor } from './library/stored-summary';
 import type { StoredGameRecord } from './storage/db';
 import type { MessageWindow } from './capture/protocol';
 import { syncHistoryPuzzles } from './trainers/history-puzzle-file';
@@ -1228,7 +1228,10 @@ export function mountAppShell(container: HTMLElement): {
     openGameId = record.id;
     analysisController.goToNode(analysisController.getGameTree().root.id);
     if (saved) reviewPanel.showSavedReview(saved);
-    else if (!hasSavedReview(record)) reviewPanel.showLibraryGame(storedNumbersFor(record, library.getUserAccounts()));
+    else if (!hasSavedReview(record)) {
+      const accounts = library.getUserAccounts();
+      reviewPanel.showLibraryGame(storedNumbersFor(record, accounts), storedMomentFor(record, accounts));
+    }
     analysisController.showTab('review');
     return true;
   };

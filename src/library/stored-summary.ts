@@ -4,8 +4,8 @@
  * the "Review this game" button. Pure: no DOM, no storage.
  */
 import type { Color } from '../core/rules';
-import type { UserAccount } from '../review/perspective';
-import type { ReviewPreset } from '../review/types';
+import { storedKeyMoment, type UserAccount } from '../review/perspective';
+import type { MoveClassification, ReviewPreset } from '../review/types';
 import type { StoredGameRecord } from '../storage/db';
 import { myColor } from './game-record';
 import { PHASES, PHASE_LABEL, type GamePhase } from './insights';
@@ -17,16 +17,42 @@ import { readReviewNumbers, type ReviewNumbers } from './review-numbers';
  * do not name a side, from the one side the summary holds (a review made in advance stores only the player's side).
  */
 export function storedNumbersFor(
-  record: Pick<StoredGameRecord, 'analysis' | 'white' | 'black' | 'source' | 'playerColor'>,
+  record: StoredRecordForSummary,
   accounts: readonly UserAccount[],
 ): ReviewNumbers | null {
-  const a = record.analysis;
-  if (!a || a.summaryOnly !== true) return null;
-  const stored = (['w', 'b'] as const).filter((c) => a.sides?.[c]);
-  const color: Color | null = myColor(record, accounts) ?? (stored.length === 1 ? stored[0]! : null);
+  const color = storedColor(record, accounts);
   if (!color) return null;
   const numbers = readReviewNumbers(record, color);
   return numbers?.source === 'advance' ? numbers : null;
+}
+
+type StoredRecordForSummary = Pick<StoredGameRecord, 'analysis' | 'white' | 'black' | 'source' | 'playerColor'>;
+
+/** The side a summary made in advance is about, or null (no such summary, or no way to tell the side). */
+function storedColor(record: StoredRecordForSummary, accounts: readonly UserAccount[]): Color | null {
+  const a = record.analysis;
+  if (!a || a.summaryOnly !== true) return null;
+  const stored = (['w', 'b'] as const).filter((c) => a.sides?.[c]);
+  return myColor(record, accounts) ?? (stored.length === 1 ? stored[0]! : null);
+}
+
+export interface StoredMoment {
+  color: Color;
+  /** The ply of my move with the largest win% loss (1 = White's first move). */
+  ply: number;
+  /** The loss for me, in win% points (negative). */
+  swing: number;
+}
+
+/**
+ * The key moment a summary made in advance can name: my move with the largest win% loss (the summary stores its ply and
+ * size, no classes per move). Null when the game has no usable summary, or no move lost enough to count.
+ */
+export function storedMomentFor(record: StoredRecordForSummary, accounts: readonly UserAccount[]): StoredMoment | null {
+  const color = storedColor(record, accounts);
+  if (!color || storedNumbersFor(record, accounts) === null) return null;
+  const moment = storedKeyMoment(record.analysis?.sides?.[color], color);
+  return moment ? { color, ...moment } : null;
 }
 
 export interface StoredTile {
@@ -45,10 +71,21 @@ export interface StoredPhaseRow {
   share: number;
 }
 
+/** One row of the stored "How you played" fold: only the classes a summary counts. */
+export interface StoredClassRow {
+  cls: MoveClassification;
+  count: number;
+}
+
+/** The classes a summary made in advance counts, in the review's order (Miss before Blunder). */
+export const STORED_CLASSES = ['Brilliant', 'Great', 'Inaccuracy', 'Mistake', 'Miss', 'Blunder'] as const;
+
 export interface StoredSummaryView {
   /** "87.3%" */
   accuracy: string;
   tiles: StoredTile[];
+  /** My count of each class the summary holds (Best, Excellent, Good and Book are not stored). */
+  classes: StoredClassRow[];
   /** Phases with at least one of my moves, in game order; empty when the summary has no phase numbers. */
   phases: StoredPhaseRow[];
 }
@@ -77,7 +114,11 @@ export function storedSummaryView(n: ReviewNumbers): StoredSummaryView {
         ];
       })
     : [];
-  return { accuracy: percent(n.accuracy), tiles, phases };
+  const classes = STORED_CLASSES.map((cls) => ({
+    cls,
+    count: n[cls.toLowerCase() as 'brilliant' | 'great' | 'inaccuracy' | 'mistake' | 'miss' | 'blunder'],
+  }));
+  return { accuracy: percent(n.accuracy), tiles, classes, phases };
 }
 
 // ------------------------------------------------------------------------------------------------------------ texts
