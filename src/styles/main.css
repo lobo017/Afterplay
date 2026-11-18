@@ -24,6 +24,41 @@
   box-sizing: border-box;
 }
 
+/* One themed scrollbar for the whole app (dark track, gold thumb, thin): the page, popups, sheets, menus, lists,
+   textareas, dialogs and every screen. The app is dark only, so there is one set. The standard properties are read
+   by Firefox, current Chromium and Safari 18.2 and later; the prefixed pieces are for older Safari (a browser that
+   reads the standard properties ignores them). */
+:root {
+  --wc-scrollbar-track: #10131b;
+  --wc-scrollbar-thumb: rgba(212, 175, 55, 0.5);
+  --wc-scrollbar-thumb-hover: rgba(212, 175, 55, 0.75);
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--wc-scrollbar-thumb) var(--wc-scrollbar-track);
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+/* The same colors as the variables, written out: the old Safari that reads these pieces does not resolve variables in them */
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: #10131b;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(212, 175, 55, 0.5);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(212, 175, 55, 0.75);
+}
+
 /* Scrolling a control into view keeps it clear of the sticky top bar (and, on phones, the
    bottom tab bar) */
 html {
@@ -6666,34 +6701,6 @@ label.wc-setting-row {
     .wc-coach .wc-review-moments {
       height: 4.95rem;
     }
-  }
-}
-
-/* Thin themed scrollbars (dark track, gold thumb) in the Review panel's scroll area and every scroll area inside it.
-   Chromium and Safari take the prefixed pieces; Firefox takes the standard properties. */
-.wc-review-shell ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-.wc-review-shell ::-webkit-scrollbar-track {
-  background: #10131b;
-}
-
-.wc-review-shell ::-webkit-scrollbar-thumb {
-  background: rgba(212, 175, 55, 0.5);
-  border-radius: 4px;
-}
-
-.wc-review-shell ::-webkit-scrollbar-thumb:hover {
-  background: rgba(212, 175, 55, 0.75);
-}
-
-@supports not selector(::-webkit-scrollbar) {
-  .wc-review-shell,
-  .wc-review-shell * {
-    scrollbar-width: thin;
-    scrollbar-color: rgba(212, 175, 55, 0.5) #10131b;
   }
 }
 
