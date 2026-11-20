@@ -11,7 +11,7 @@ import {
   matchesFilter,
   openingChoices,
   openingLabel,
-  playedOf,
+  libraryPlayedOf,
   isReviewed,
   isTooShort,
   sortRows,
@@ -72,7 +72,7 @@ function escapeHtml(text: string): string {
 
 /** The date cell: date and time in my time zone (converted from the PGN's UTC date and time). */
 function dateCell(record: StoredGameRecord): string {
-  const played = playedOf(record);
+  const played = libraryPlayedOf(record);
   if (!played) return record.date ? escapeHtml(record.date.replace(/\./g, '-')) : '—';
   if (!played.hasTime) return escapeHtml(formatPlayedAt(played));
   const local = localDateTime(played.ms);

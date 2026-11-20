@@ -3,6 +3,7 @@ import { localDateTime, playedAtDetail, readPgnHeaders, type PlayedAt } from '..
 import type { Color } from '../core/rules';
 import type { UserAccount } from '../review/perspective';
 import type { StoredGameRecord } from '../storage/db';
+import { timeClassOf } from '../story/stats';
 import { isStandardGame, mainLineMoves, myColor, resultFor, type MyResult } from './game-record';
 import { MIN_REVIEWED_PLIES, readReviewNumbers } from './review-numbers';
 
@@ -118,16 +119,43 @@ export function playedOf(record: StoredGameRecord): PlayedAt | null {
   return playedCache.get(record) ?? null;
 }
 
-/** The day a game was played, "2026-10-18" in my time zone ('' when the game has no date). */
+/** When a daily game ended (ms), cached per record: null for a live game or a daily without a usable, later end. */
+const dailyEndCache = new WeakMap<StoredGameRecord, number | null>();
+
+function dailyEndMs(record: StoredGameRecord): number | null {
+  if (dailyEndCache.has(record)) return dailyEndCache.get(record) ?? null;
+  let end: number | null = null;
+  const start = playedOf(record);
+  // Daily: the TimeControl is 1/N (days per move). A game with no start of its own keeps what it has.
+  if (start && !start.isEnd && timeClassOf(record.timeControl) === 'daily') {
+    const headers = readPgnHeaders(record.pgn);
+    const candidate = playedAtDetail({ UTCDate: headers.EndDate ?? '', UTCTime: headers.EndTime ?? '' });
+    if (candidate?.hasTime && candidate.ms > start.ms) end = candidate.ms;
+  }
+  dailyEndCache.set(record, end);
+  return end;
+}
+
+/**
+ * When the Library places a game: the time it started, except for a daily game (TimeControl 1/N) whose PGN has a later
+ * EndDate and EndTime, which is placed by its end (a daily takes days, and the end is when it left the "in progress"
+ * state). The stored `playedAt` and `playedAtDetail` stay the start; Story buckets use the start.
+ */
+export function libraryPlayedOf(record: StoredGameRecord): PlayedAt | null {
+  const end = dailyEndMs(record);
+  return end === null ? playedOf(record) : { ms: end, hasTime: true, isEnd: true };
+}
+
+/** The day a game is shown under, "2026-10-18" in my time zone ('' when the game has no date). */
 export function gameDay(record: StoredGameRecord): string {
-  const played = playedOf(record);
+  const played = libraryPlayedOf(record);
   if (played?.hasTime) return localDateTime(played.ms).date;
   if (played) return new Date(played.ms).toISOString().slice(0, 10);
   return /^\d{4}\.\d{2}\.\d{2}$/.test(record.date) ? record.date.replace(/\./g, '-') : '';
 }
 
 export function sortTime(record: StoredGameRecord): number {
-  return record.playedAt ?? record.capturedAt ?? record.createdAt;
+  return dailyEndMs(record) ?? record.playedAt ?? record.capturedAt ?? record.createdAt;
 }
 
 export type ResultFilter = 'all' | 'win' | 'loss' | 'draw';
