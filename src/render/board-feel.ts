@@ -11,7 +11,7 @@ export interface BoardFeel {
   liftScale: number;
   /** Glide of a dropped piece into its square, and of an illegal drop back home (ms). */
   snapMs: number;
-  /** How far (in squares) past a legal square's edge a drop still lands on it. */
+  /** How far (in squares) past a legal square's edge a drop still lands on it (0: the square under the piece, no pull). */
   dropTolerance: number;
   /** How far (in squares) above the finger a piece dragged by touch is drawn. */
   touchOffset: number;
@@ -44,7 +44,7 @@ export const DEFAULT_BOARD_FEEL: Readonly<BoardFeel> = Object.freeze({
   dragThresholdPx: 3,
   liftScale: 1.12,
   snapMs: 110,
-  dropTolerance: 0.2,
+  dropTolerance: 0,
   touchOffset: 0.8,
   animationMs: 170,
 });
@@ -180,4 +180,25 @@ export function resolveDropSquare(
     }
   }
   return best ?? under;
+}
+
+/**
+ * The square that contains the client point `(clientX, clientY)` on a board whose squares fill
+ * `rect` (left, top, width, height in px), or null when the point is outside it. The right and
+ * bottom edges belong to no square (a point at `width` is off the board, at `width - 1` it is in
+ * the last column). No tolerance and no pull toward any square.
+ */
+export function squareAtClientPoint(
+  clientX: number,
+  clientY: number,
+  rect: { left: number; top: number; width: number; height: number },
+  flipped: boolean,
+): Square | null {
+  if (!(rect.width > 0) || !(rect.height > 0)) return null;
+  const relX = clientX - rect.left;
+  const relY = clientY - rect.top;
+  if (relX < 0 || relY < 0 || relX >= rect.width || relY >= rect.height) return null;
+  const col = Math.min(7, Math.floor((relX / rect.width) * 8));
+  const row = Math.min(7, Math.floor((relY / rect.height) * 8));
+  return squareAtBoardCell(col, row, flipped);
 }

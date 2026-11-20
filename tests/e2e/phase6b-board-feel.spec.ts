@@ -117,7 +117,7 @@ test.describe('Phase 6b — board feel', () => {
     await expect.poll(() => hasPiece(page, 'e4')).toBe(true);
   });
 
-  test('a drag highlights the drop square; a drop just past a legal square lands on it and glides in', async ({
+  test('a drag highlights the drop square; a drop just past a legal square does not land on it, one on it lands and glides in', async ({
     page,
   }) => {
     await openPlay(page);
@@ -133,9 +133,13 @@ test.describe('Phase 6b — board feel', () => {
     const hover = page.getByTestId('overlay-hover-square');
     await expect(hover).toHaveAttribute('data-square', 'e4');
     await expect(hover).toHaveAttribute('data-target', 'false');
-    // 0.15 squares above f3 (inside f4): the tolerance picks f3, highlighted as a target
+    // 0.15 squares above f3 (inside f4): no pull toward f3 (the default drop tolerance is 0), so f4, not a target
     const nearF3 = { x: f3.cx, y: f3.y - f3.height * 0.15 };
     await page.mouse.move(nearF3.x, nearF3.y, { steps: 6 });
+    await expect(hover).toHaveAttribute('data-square', 'f4');
+    await expect(hover).toHaveAttribute('data-target', 'false');
+    // On f3 itself: highlighted as a target
+    await page.mouse.move(f3.cx, f3.cy, { steps: 6 });
     await expect(hover).toHaveAttribute('data-square', 'f3');
     await expect(hover).toHaveAttribute('data-target', 'true');
     await page.screenshot({

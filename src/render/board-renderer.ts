@@ -21,7 +21,7 @@ import {
 import { announce } from '../ui/announcer';
 import { closeButtonHtml } from '../ui/components/popup';
 import { CaptureParticleSystem } from './particles';
-import { boardFeel, resolveDropSquare, type BoardFeel } from './board-feel';
+import { boardFeel, resolveDropSquare, squareAtClientPoint, type BoardFeel } from './board-feel';
 import { attachBoardResizeHandle } from './board-size';
 import { getPieceSvgMarkup } from './piece-sets';
 import { BOARD_THEMES, DEFAULT_BOARD_THEME, DEFAULT_PIECE_SET, type BoardThemeId, type PieceSetId } from './themes';
@@ -649,6 +649,8 @@ export class BoardRenderer {
     this.boardEl.addEventListener('pointerleave', this.handleHoverLeave, { passive: true });
     // Scrolling moves the board on screen: the cached rect is stale after it
     window.addEventListener('scroll', this.invalidateBoardRect, { passive: true, capture: true });
+    // So does a viewport change (a phone's toolbar collapsing, a rotation)
+    window.addEventListener('resize', this.invalidateBoardRect, { passive: true });
     window.addEventListener('pointermove', this.handlePointerMove, {
       passive: true,
     });
@@ -738,21 +740,7 @@ export class BoardRenderer {
   }
 
   public squareFromClientPoint(clientX: number, clientY: number): Square | null {
-    const rect = this.getBoardRect();
-    if (rect.width <= 0 || rect.height <= 0) return null;
-
-    const relX = clientX - rect.left;
-    const relY = clientY - rect.top;
-    if (relX < 0 || relY < 0 || relX >= rect.width || relY >= rect.height) {
-      return null;
-    }
-
-    const col = Math.max(0, Math.min(7, Math.floor((relX / rect.width) * 8)));
-    const row = Math.max(0, Math.min(7, Math.floor((relY / rect.height) * 8)));
-
-    const fileIdx = this.flipped ? 7 - col : col;
-    const rankIdx = this.flipped ? row : 7 - row;
-    return `${FILES[fileIdx]}${rankIdx + 1}` as Square;
+    return squareAtClientPoint(clientX, clientY, this.getBoardRect(), this.flipped);
   }
 
   private getSquareTranslateTransform(square: Square): string {
@@ -1412,8 +1400,9 @@ export class BoardRenderer {
 
   /** Moves the held piece (compositor-only transform, no layout reads). */
   private placeHeldPiece(drag: ActiveDragState, clientX: number, clientY: number): void {
-    const rect = this.cachedBoardRect;
-    if (!rect || rect.width <= 0 || rect.height <= 0) return;
+    // Measured again when a scroll or resize cleared the cache, so the piece keeps following
+    const rect = this.getBoardRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
     const { x, y } = this.heldPiecePoint(drag, clientX, clientY, rect);
     const pctX = (x - 0.5) * 100;
     const pctY = (y - 0.5) * 100;
@@ -1433,7 +1422,7 @@ export class BoardRenderer {
 
   /** The drop square for the held piece at this pointer position (drop tolerance applied). */
   private dropSquareFor(drag: ActiveDragState, clientX: number, clientY: number): Square | null {
-    const rect = this.cachedBoardRect ?? this.getBoardRect();
+    const rect = this.getBoardRect();
     if (rect.width <= 0 || rect.height <= 0) return null;
     const { x, y } = this.heldPiecePoint(drag, clientX, clientY, rect);
     return resolveDropSquare(x, y, this.dragTargets(drag), this.feel.dropTolerance, this.flipped);
@@ -1450,8 +1439,8 @@ export class BoardRenderer {
       return;
     }
 
-    const rect = this.cachedBoardRect;
-    if (!rect || rect.width <= 0 || rect.height <= 0) return;
+    const rect = this.getBoardRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
 
     if (!drag.isDragging) {
       const dist = Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY);
@@ -2333,6 +2322,7 @@ export class BoardRenderer {
     this.boardEl.removeEventListener('pointermove', this.handleHoverMove);
     this.boardEl.removeEventListener('pointerleave', this.handleHoverLeave);
     window.removeEventListener('scroll', this.invalidateBoardRect, true);
+    window.removeEventListener('resize', this.invalidateBoardRect);
     window.removeEventListener('pointermove', this.handlePointerMove);
     window.removeEventListener('pointerup', this.handlePointerUp);
     window.removeEventListener('pointercancel', this.handlePointerCancel);

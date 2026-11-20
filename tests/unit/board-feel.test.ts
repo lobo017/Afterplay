@@ -6,6 +6,7 @@ import {
   BoardFeelStore,
   DEFAULT_BOARD_FEEL,
   resolveDropSquare,
+  squareAtClientPoint,
   sanitizeBoardFeel,
   squareAtBoardCell,
   type FeelStorage,
@@ -187,5 +188,47 @@ describe('Phase 6b — board size', () => {
     expect(loadBoardSize(storage)).toBe(BOARD_SIZE_RANGE.max);
     expect(loadBoardSize(new BlockedStorage())).toBeNull();
     expect(() => saveBoardSize(500, new BlockedStorage())).not.toThrow();
+  });
+});
+
+describe('Drag accuracy — the square that contains a point', () => {
+  // A 400 px board at (50, 30): squares are 50 px
+  const rect = { left: 50, top: 30, width: 400, height: 400 };
+
+  it('the default drop tolerance is 0 (no pull toward legal squares)', () => {
+    expect(DEFAULT_BOARD_FEEL.dropTolerance).toBe(0);
+  });
+
+  it('maps each point inside a square to that square, at 10, 50 and 90 percent', () => {
+    // e4 is column 4, row 4 from the top with White at the bottom
+    for (const f of [0.1, 0.5, 0.9]) {
+      expect(squareAtClientPoint(50 + 200 + 50 * f, 30 + 200 + 50 * f, rect, false)).toBe('e4');
+      expect(squareAtClientPoint(50 + 200 + 50 * f, 30 + 200 + 50 * f, rect, true)).toBe('d5');
+    }
+  });
+
+  it('handles the edges: 0 is the first square, size - 1 px the last, size is off the board', () => {
+    expect(squareAtClientPoint(50, 30, rect, false)).toBe('a8');
+    expect(squareAtClientPoint(50 + 399, 30 + 399, rect, false)).toBe('h1');
+    expect(squareAtClientPoint(50 + 400, 30 + 399, rect, false)).toBeNull();
+    expect(squareAtClientPoint(50 + 399, 30 + 400, rect, false)).toBeNull();
+    expect(squareAtClientPoint(49, 30, rect, false)).toBeNull();
+    expect(squareAtClientPoint(50, 29, rect, false)).toBeNull();
+    expect(squareAtClientPoint(50, 30, rect, true)).toBe('h1');
+    expect(squareAtClientPoint(50 + 399, 30 + 399, rect, true)).toBe('a8');
+  });
+
+  it('puts the line between two squares in the one after it, 1 px either side is the right square', () => {
+    expect(squareAtClientPoint(50 + 49, 30, rect, false)).toBe('a8');
+    expect(squareAtClientPoint(50 + 50, 30, rect, false)).toBe('b8');
+    expect(squareAtClientPoint(50, 30 + 49, rect, false)).toBe('a8');
+    expect(squareAtClientPoint(50, 30 + 50, rect, false)).toBe('a7');
+  });
+
+  it('works on fractional sizes and refuses an empty rectangle', () => {
+    const odd = { left: 10.5, top: 20.25, width: 333.3, height: 333.3 };
+    expect(squareAtClientPoint(10.5 + 333.2, 20.25 + 333.2, odd, false)).toBe('h1');
+    expect(squareAtClientPoint(10.5 + 333.3, 20.25, odd, false)).toBeNull();
+    expect(squareAtClientPoint(5, 5, { left: 0, top: 0, width: 0, height: 0 }, false)).toBeNull();
   });
 });
