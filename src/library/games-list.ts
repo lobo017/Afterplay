@@ -21,9 +21,12 @@ import {
   type GameRow as Row,
   type ResultFilter,
   type SortKey,
+  type TimeClassFilter,
 } from './game-rows';
 import type { GameLibrary } from './library';
 import type { ReviewQueue } from './review-queue';
+import { TIME_CLASSES } from '../story/stats';
+import { CLASS_LABEL } from '../story/text';
 import { icon } from '../ui/components/icons';
 import { Menu } from '../ui/components/menu';
 
@@ -108,6 +111,7 @@ export class GamesList {
     result: HTMLSelectElement;
     color: HTMLSelectElement;
     analyzed: HTMLSelectElement;
+    timeClass: HTMLSelectElement;
     opening: HTMLInputElement;
     openings: HTMLDataListElement;
     from: HTMLInputElement;
@@ -158,6 +162,7 @@ export class GamesList {
     const presetOptions = (Object.keys(REVIEW_PRESET_MOVETIME_MS) as ReviewPreset[])
       .map((p) => `<option value="${p}" ${p === DEFAULT_LIST_PRESET ? 'selected' : ''}>${PRESET_LABEL[p]}</option>`)
       .join('');
+    const timeClassOptions = TIME_CLASSES.map((c) => `<option value="${c}">${CLASS_LABEL[c]}</option>`).join('');
     this.root.innerHTML = `
       <div class="wc-games-head">
         <h2 class="wc-page-title wc-games-title">Games</h2>
@@ -197,6 +202,9 @@ export class GamesList {
           </select></label>
           <label>Review <select class="wc-select wc-select-sm" data-testid="games-filter-analyzed">
             <option value="all">All</option><option value="analyzed">Reviewed</option><option value="not-analyzed">Not reviewed</option>
+          </select></label>
+          <label class="wc-games-time-filter">Time <select class="wc-select wc-select-sm" data-testid="games-filter-time">
+            <option value="all">All</option>${timeClassOptions}
           </select></label>
           <label>Opening <input type="search" class="wc-select wc-select-sm wc-games-opening-input" list="wc-games-openings" placeholder="Any" data-testid="games-filter-opening" /><datalist id="wc-games-openings" data-testid="games-openings-list"></datalist></label>
           <label>From <input type="date" class="wc-select wc-select-sm" data-testid="games-filter-from" /></label>
@@ -277,6 +285,7 @@ export class GamesList {
       result: q('games-filter-result'),
       color: q('games-filter-color'),
       analyzed: q('games-filter-analyzed'),
+      timeClass: q('games-filter-time'),
       opening: q('games-filter-opening'),
       openings: q('games-openings-list'),
       from: q('games-filter-from'),
@@ -330,6 +339,7 @@ export class GamesList {
         result: this.els.result.value as ResultFilter,
         color: this.els.color.value as GameFilter['color'],
         analyzed: this.els.analyzed.value as AnalyzedFilter,
+        timeClass: this.els.timeClass.value as TimeClassFilter,
         opening: this.els.opening.value,
         from: this.els.from.value,
         to: this.els.to.value,
@@ -344,6 +354,7 @@ export class GamesList {
       this.els.result,
       this.els.color,
       this.els.analyzed,
+      this.els.timeClass,
       this.els.sort,
       this.els.from,
       this.els.to,
@@ -483,6 +494,7 @@ export class GamesList {
     this.els.result.value = f.result;
     this.els.color.value = f.color;
     this.els.analyzed.value = f.analyzed;
+    this.els.timeClass.value = f.timeClass;
     this.els.opening.value = f.opening;
     this.els.from.value = f.from;
     this.els.to.value = f.to;

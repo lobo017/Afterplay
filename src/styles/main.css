@@ -6264,6 +6264,11 @@ label.wc-setting-row {
     flex: 1 1 8.5rem;
   }
 
+  /* The Time filter is a touch target of at least 44 px */
+  .wc-games-toolbar .wc-games-time-filter .wc-select {
+    min-height: 44px;
+  }
+
   .wc-games-selbar {
     flex-wrap: wrap;
   }

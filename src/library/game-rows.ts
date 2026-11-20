@@ -3,7 +3,7 @@ import { localDateTime, playedAtDetail, readPgnHeaders, type PlayedAt } from '..
 import type { Color } from '../core/rules';
 import type { UserAccount } from '../review/perspective';
 import type { StoredGameRecord } from '../storage/db';
-import { timeClassOf } from '../story/stats';
+import { timeClassOf, type TimeClass } from '../story/stats';
 import { isStandardGame, mainLineMoves, myColor, resultFor, type MyResult } from './game-record';
 import { MIN_REVIEWED_PLIES, readReviewNumbers } from './review-numbers';
 
@@ -161,6 +161,8 @@ export function sortTime(record: StoredGameRecord): number {
 export type ResultFilter = 'all' | 'win' | 'loss' | 'draw';
 export type AnalyzedFilter = 'all' | 'analyzed' | 'not-analyzed';
 export type SortKey = 'newest' | 'oldest' | 'opponent' | 'accuracy';
+/** The Story's time classes (a 1/N time control is Daily); a game whose class cannot be read shows under 'all' only. */
+export type TimeClassFilter = 'all' | TimeClass;
 
 export interface GameFilter {
   source: 'all' | StoredGameSource;
@@ -175,6 +177,8 @@ export interface GameFilter {
   to: string;
   /** My accuracy at least this, in percent; null for any. */
   minAccuracy: number | null;
+  /** The game's time class, the one the Story uses. */
+  timeClass: TimeClassFilter;
 }
 
 export const NO_FILTER: Readonly<GameFilter> = Object.freeze({
@@ -186,6 +190,7 @@ export const NO_FILTER: Readonly<GameFilter> = Object.freeze({
   from: '',
   to: '',
   minAccuracy: null,
+  timeClass: 'all',
 });
 
 /** The number of filters that are set. */
@@ -197,7 +202,8 @@ export function activeFilters(filter: GameFilter): number {
     Number(filter.analyzed !== 'all') +
     Number(filter.opening.trim() !== '') +
     Number(filter.from !== '' || filter.to !== '') +
-    Number(filter.minAccuracy !== null)
+    Number(filter.minAccuracy !== null) +
+    Number(filter.timeClass !== 'all')
   );
 }
 
@@ -216,6 +222,7 @@ export function matchesFilter(row: GameRow, filter: GameFilter): boolean {
   // Reviewed: a review made here or one stored in advance. Not reviewed: neither, and not a variant game
   if (filter.analyzed === 'analyzed' && !isReviewed(r)) return false;
   if (filter.analyzed === 'not-analyzed' && !isNotReviewed(r)) return false;
+  if (filter.timeClass !== 'all' && timeClassOf(r.timeControl) !== filter.timeClass) return false;
   const opening = filter.opening.trim().toLowerCase();
   if (opening !== '' && !openingLabel(r).toLowerCase().includes(opening)) return false;
   if (filter.from !== '' || filter.to !== '') {
