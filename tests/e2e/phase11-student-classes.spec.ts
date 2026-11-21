@@ -144,6 +144,23 @@ test.describe('Phase 11 — one Student bot whose rating and book follow the tim
     await expect(page.getByTestId('top-player-name')).toHaveText('Plain Bot · Solid (1000)');
   });
 
+  test('the card line of a bot with classes joins the number and Elo with a no-break space; other lines are unchanged', async ({
+    page,
+  }) => {
+    const label = page.getByTestId('bot-rating-label');
+    await expect(label).toHaveText(`Test Student · Rapid · Solid · ${RATING.rapid} Elo`);
+    expect(await label.evaluate((el) => el.textContent)).toBe(
+      `Test Student · Rapid · Solid · ${RATING.rapid}\u00a0Elo`,
+    );
+    await press(page, 'time-control-1+0');
+    expect(await label.evaluate((el) => el.textContent)).toBe(
+      `Test Student · Bullet · Solid · ${RATING.bullet}\u00a0Elo`,
+    );
+    // A bot without classes keeps its plain space, byte for byte
+    await press(page, 'custom-bot-0');
+    expect(await label.evaluate((el) => el.textContent)).toBe('Plain Bot · Solid · 1000 Elo');
+  });
+
   test('Unlimited uses the Rapid rating and book', async ({ page }) => {
     await press(page, 'time-control-1+0');
     await expect(page.getByTestId('top-player-name')).toHaveText(`Test Student · Solid (${RATING.bullet})`);

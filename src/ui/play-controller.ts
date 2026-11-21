@@ -667,8 +667,11 @@ export class PlayController {
     const named = namedBotForRating(this.profile.get(), ng.botRating, ng.botStyle);
     if (label && named) {
       // A bot with classes says which class the Time chip makes it play: "Your Student · Blitz · Solid · 1425 Elo"
+      // (the number and "Elo" are joined by a no-break space there, so "Elo" never wraps alone on a phone; the line of
+      // a bot without classes is unchanged)
       const classPart = named.classes ? `${CLASS_LABELS[botClassOfTimeControl(ng.timeControlId)]} · ` : '';
-      label.textContent = `${named.name} · ${classPart}${styleLabel} · ${ng.botRating} Elo`;
+      const elo = named.classes ? `${ng.botRating}\u00a0Elo` : `${ng.botRating} Elo`;
+      label.textContent = `${named.name} · ${classPart}${styleLabel} · ${elo}`;
     }
     for (const el of this.customBotsEl.querySelectorAll<HTMLElement>('.wc-custom-bot')) {
       // The bot stays highlighted when only the style changes
