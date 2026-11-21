@@ -296,6 +296,13 @@ player's side only), so the Story can show accuracy and mistakes. The plan is "S
 - **Perf (Juno, job 524471):** drag p95 16.67 ms and 0 dropped frames in all four windows; start-up 240 ms; review 17.0 to 17.1 s; 0 tasks of 50 ms or more; +0.3 MB for 50 games.
 - **Production:** build `72068824fc87`, commit `ecb8645`, deployed 2026-11-21 01:52 UTC (Fri 20 Nov, 19:52 CST), verified on all four hosts: data file hashes, 50 of 50 files identical to `dist/`, no "cloudflareinsights" text.
 
+**Release 3, "Library dates and Time filter": gate on `d0f8ceb` and the production deploy (2026-11-20; docs-only entry, no code change).**
+- **What shipped:** the Library lists a daily game by its END date (display only: `playedAt` stays the start, so Story and Insights bucketing is unchanged), and a Time filter (All, Bullet, Blitz, Rapid, Classical, Daily; the select is 44 px high on phones). Commits up to `d0f8ceb`.
+- **Real file counts:** Library 4,623 rows; Bullet 343, Blitz 849, Rapid 3,183, Classical 40, Daily 208. Story and Insights text is identical to before.
+- **Gate (Juno, jobs 524800 to 524804):** chromium 378 passed, 2 skipped (two runs); webkit 352 passed, 2 skipped (two runs); webkit-iphone 354 passed (two runs); unit 1,316 passed, 2 skipped. New specs `library-daily-end-date` 3 of 3 and `library-time-filter` 6 of 6; `phase6b-board-feel` 10 of 10 in every run. No flakes, no held tasks.
+- **Perf (Juno):** drag p95 16.67 ms and 0 dropped frames in all four windows; start-up 237.3 ms; review 17.0 to 17.1 s (one review scenario dropped 1 of 1,037 frames; it is not a drag window); 0 tasks of 50 ms or more; +0.43 MB for 50 games, slightly above the last two gates (+0.3 and +0.37), with DOM and listener growth 0. Watch it at the next gate.
+- **Production:** build `035a64735474`, commit `d0f8ceb`, deployed 2026-11-21 04:16 UTC (Fri 20 Nov, 22:16 CST), verified on all four hosts: data file sizes and hashes, 50 of 50 files identical to `dist/`, no "cloudflareinsights" text.
+
 ## Open items from earlier phases
 
 - **Scenario-2 `perf:drag`** (analysis board, MultiPV 5, ghosts, navigation sweep) passed clean on Juno on the final code (p95 16.67 ms, 0 dropped).
