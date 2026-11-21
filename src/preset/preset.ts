@@ -321,10 +321,11 @@ function parseBookRefs(
 
 /**
  * The preset's `books` table: name to book text. A book is kept when its name is valid, its text is at most
- * `bookTableChars` long, the table stays within `bookTableTotalChars`, and it reads as a book (`parseBook`). Whatever
- * fails is left out; the problems name the place only, never the content.
+ * `bookTableChars` long, the table stays within `bookTableTotalChars`, and (with `checkBooks`) it reads as a book
+ * (`parseBook`, a second full parse of the text). Whatever fails is left out; the problems name the place only, never
+ * the content.
  */
-function parseBookTable(value: unknown, problems: string[]): Record<string, string> {
+function parseBookTable(value: unknown, problems: string[], checkBooks: boolean): Record<string, string> {
   const table: Record<string, string> = {};
   if (value === undefined) return table;
   if (!isObject(value)) {
@@ -340,7 +341,7 @@ function parseBookTable(value: unknown, problems: string[]): Record<string, stri
       problems.push(`${at}: longer than ${PRESET_LIMITS.bookTableChars} characters (ignored)`);
     else if (text.length > left)
       problems.push(`${at}: the books table is over ${PRESET_LIMITS.bookTableTotalChars} characters (ignored)`);
-    else if (!parseBook(text)) problems.push(`${at}: not a valid opening book (ignored)`);
+    else if (checkBooks && !parseBook(text)) problems.push(`${at}: not a valid opening book (ignored)`);
     else {
       left -= text.length;
       table[name] = text;
@@ -515,8 +516,18 @@ export function parseBotsRevision(value: unknown, problems: string[] = []): numb
   return value;
 }
 
-/** Checks a preset file's content. The app uses whatever is valid and ignores the rest. */
-export function parsePreset(input: unknown): ParsedPreset {
+/**
+ * Checks a preset file's content. The app uses whatever is valid and ignores the rest.
+ *
+ * `checkTableBooks` (default true: the first run reads every book of the table, once) is false for the bots-only update
+ * (`checkBotsUpdate`): the books table is then checked for names, text and sizes only. A table book is parsed and
+ * checked again whenever a bot uses it (`awaitBotBooks`), and one that is not a book then gives a bot without books, so
+ * the update need not parse several megabytes of book text in one task.
+ */
+export function parsePreset(
+  input: unknown,
+  { checkTableBooks = true }: { checkTableBooks?: boolean } = {},
+): ParsedPreset {
   const problems: string[] = [];
   if (!isObject(input)) return { preset: null, problems: ['not a preset (a JSON object is expected)'] };
   if (input.version !== PRESET_VERSION) {
@@ -556,7 +567,7 @@ export function parsePreset(input: unknown): ParsedPreset {
   }
 
   const story = parseStoryText(input.story, problems);
-  const table = parseBookTable(input.books, problems);
+  const table = parseBookTable(input.books, problems, checkTableBooks);
   const bots = parseBots(input.bots, problems, { checkBooks: true, bookNames: new Set(Object.keys(table)) });
   // A table book no bot refers to would only take room in the database
   const used = new Set(

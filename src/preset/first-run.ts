@@ -253,6 +253,8 @@ export function remapSavedRating(
   return rating === savedRating ? null : rating;
 }
 
+const yieldToEventLoop = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+
 /**
  * The bots-only update. On a device that applied this link before, and only when the running build is not the one that
  * last looked, the link's preset file (the one same-origin request of the first run, nothing else) is read again and,
@@ -261,7 +263,13 @@ export function remapSavedRating(
  * It touches nothing else: not `applyPreset`, not the settings (except the saved New game rating of a replaced bot),
  * theme, names, welcome, games, puzzles or history, and it never deletes a book row. Books are written first and the
  * profile last, so a failure before the profile write changes nothing and leaves the build unrecorded (it runs again at
- * the next start). Never throws; the caller runs it after start-up has settled, so it blocks nothing.
+ * the next start). Never throws.
+ *
+ * The file is several megabytes, so no step shares a task with another: the body is read, parsed as JSON, checked, and
+ * each book written in a task of its own, with a yield to the event loop between them (a phone runs a single task of all
+ * of it for half a second, and a tap or a move in that time waits). The books table is checked for names, text and sizes
+ * only (`parsePreset` with `checkTableBooks: false`): each book is parsed when a bot uses it. After every yield the
+ * game-in-progress check is made again, and a game that has begun leaves the profile and the build as they were.
  */
 export async function checkBotsUpdate(options: BotsUpdateOptions): Promise<BotsUpdateResult> {
   try {
@@ -274,19 +282,32 @@ export async function checkBotsUpdate(options: BotsUpdateOptions): Promise<BotsU
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? 30_000);
-    let json: unknown;
+    let text: string;
     try {
       const response = await (options.fetchPreset ?? defaultFetch)(presetUrl(slug), controller.signal);
       if (!response.ok) return { kind: 'failed' };
-      json = JSON.parse(await response.text());
+      text = await response.text();
     } catch {
-      // Offline, a timeout, an HTML page from a host that answers every path, text that is not JSON
+      // Offline, a timeout, an HTML page from a host that answers every path
       return { kind: 'failed' };
     } finally {
       clearTimeout(timer);
     }
-    // Reading the whole preset checks every book, a task of 100 ms and more for a file of this size, so a list that is not
-    // newer is told by its number alone (a new build with the same list is the usual case)
+    // A game may begin at any of the yields below: each one is followed by the same check
+    await yieldToEventLoop();
+    if (options.isBusy()) return { kind: 'skipped', reason: 'busy' };
+
+    let json: unknown;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      // Text that is not JSON
+      return { kind: 'failed' };
+    }
+    await yieldToEventLoop();
+    if (options.isBusy()) return { kind: 'skipped', reason: 'busy' };
+
+    // A list that is not newer is told by its number alone (a new build with the same list is the usual case)
     if (!isObject(json) || json.version !== PRESET_VERSION || !Array.isArray(json.bots) || json.bots.length === 0) {
       return { kind: 'failed' };
     }
@@ -294,23 +315,23 @@ export async function checkBotsUpdate(options: BotsUpdateOptions): Promise<BotsU
       options.recordBuild(build);
       return { kind: 'unchanged' };
     }
-    // A game may have started while the file was loading
-    if (options.isBusy()) return { kind: 'skipped', reason: 'busy' };
 
-    const { preset } = parsePreset(json);
+    const { preset } = parsePreset(json, { checkTableBooks: false });
     if (!preset || preset.bots.length === 0) return { kind: 'failed' };
     const revision = preset.botsRevision ?? 0;
-
-    // Books first: every book of the new list must be in the database before any bot refers to it
-    const books = preset.books ?? {};
-    const wanted = Object.keys(books);
-    if (wanted.length > 0) {
-      const written = await options.writeBooks(books);
-      if (!wanted.every((name) => written.includes(name))) return { kind: 'failed' };
-    }
+    await yieldToEventLoop();
     if (options.isBusy()) return { kind: 'skipped', reason: 'busy' };
 
-    // The profile last, and only the bots and their revision
+    // Books first, one row in a task: every book of the new list must be in the database before any bot refers to it.
+    // The row of a book that was written stays when a later step stops the update (books are only ever added)
+    for (const [name, book] of Object.entries(preset.books ?? {})) {
+      const written = await options.writeBooks({ [name]: book });
+      if (!written.includes(name)) return { kind: 'failed' };
+      await yieldToEventLoop();
+      if (options.isBusy()) return { kind: 'skipped', reason: 'busy' };
+    }
+
+    // The profile last, and only the bots and their revision. The check above, after the last yield, is the one before it
     const oldBots = options.profile.get().bots;
     options.profile.set({ bots: preset.bots, botsRevision: revision });
     const choice = options.newGame.get();
