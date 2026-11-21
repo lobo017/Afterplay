@@ -75,15 +75,33 @@ export const BOOK_NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 export const isBookName = (value: unknown): value is string =>
   typeof value === 'string' && value.length <= PRESET_LIMITS.bookName && BOOK_NAME_PATTERN.test(value);
 
+/** The time classes a bot may have its own rating and book for (the Play screen's Time chips make one of these). */
+export const BOT_CLASSES = ['bullet', 'blitz', 'rapid'] as const;
+export type BotClass = (typeof BOT_CLASSES)[number];
+
+/** What one time class changes about a bot: its rating and the books it refers to. */
+export interface BotClassEntry {
+  rating: number;
+  /** 1 to 3 names of books in the preset's `books` table, tried in order; absent: the bot's own `bookRefs`. */
+  bookRefs?: string[];
+}
+
 /** A bot with a name of its own: the usual bot at this rating and style, optionally opening with its own books. */
 export interface CustomBot {
   name: string;
+  /** For a bot with `classes` this is the Rapid rating: the default, and what an older app plays. */
   rating: number;
   style: BotStyleId;
   /** 1 to 3 opening books (`serializeBook` text), tried in order; absent when the bot has none. */
   books?: string[];
   /** 1 to 3 names of books in the preset's `books` table (kept in the database), tried after `books`; absent when none. */
   bookRefs?: string[];
+  /**
+   * One bot whose rating and book follow the time class of the game: the Bullet, Blitz or Rapid rating (and book
+   * references) when the Play screen's Time chip makes that class. A class that is missing plays as the bot's own
+   * rating and `bookRefs` (the Rapid values). Absent for an ordinary bot.
+   */
+  classes?: Partial<Record<BotClass, BotClassEntry>>;
 }
 
 export interface WelcomeMessage {
@@ -119,6 +137,11 @@ export interface Preset {
   bots: CustomBot[];
   /** The books table (name to book text): only the books some bot refers to. Absent when there are none. */
   books?: Record<string, string>;
+  /**
+   * A number that only goes up when the bot list changes. An app that already applied a preset takes a newer list
+   * (bots and their books only) when its number is higher than the one stored with the profile. Absent: 0.
+   */
+  botsRevision?: number;
 }
 
 export interface ParsedPreset {
@@ -326,6 +349,59 @@ function parseBookTable(value: unknown, problems: string[]): Record<string, stri
   return table;
 }
 
+/** Every rating a bot plays at: its own (the Rapid one) and each class's. */
+export function botRatings(bot: CustomBot): number[] {
+  const ratings = [bot.rating];
+  for (const cls of BOT_CLASSES) {
+    const entry = bot.classes?.[cls];
+    if (entry) ratings.push(entry.rating);
+  }
+  return ratings;
+}
+
+/**
+ * A bot's `classes`: for each of Bullet, Blitz and Rapid a rating (a whole number from 400 to 2400) and optionally
+ * `bookRefs`. A class that is wrong is left out and reported, and the bot plays that class as its own rating. A class
+ * rating that is another bot's rating (any class of it) is left out too: the Play screen finds a bot by rating, so it
+ * would be ambiguous. Giving two classes of the same bot the same rating (or its own rating) is fine.
+ */
+function parseBotClasses(
+  value: unknown,
+  where: string,
+  problems: string[],
+  bookNames: ReadonlySet<string> | undefined,
+  takenByOthers: ReadonlySet<number>,
+): CustomBot['classes'] {
+  if (value === undefined) return undefined;
+  if (!isObject(value)) {
+    problems.push(`${where}classes: must be an object (ignored; the bot plays as one bot)`);
+    return undefined;
+  }
+  noteUnknownKeys(value, BOT_CLASSES, `${where}classes.`, problems);
+  const classes: Partial<Record<BotClass, BotClassEntry>> = {};
+  for (const cls of BOT_CLASSES) {
+    const entry = value[cls];
+    if (entry === undefined) continue;
+    const at = `${where}classes.${cls}.`;
+    if (!isObject(entry)) {
+      problems.push(`${at.slice(0, -1)}: must be an object (ignored)`);
+      continue;
+    }
+    noteUnknownKeys(entry, ['rating', 'bookRefs'], at, problems);
+    if (typeof entry.rating !== 'number' || clampBotRating(entry.rating) !== entry.rating) {
+      problems.push(`${at}rating: must be a whole number from 400 to 2400 (class ignored)`);
+      continue;
+    }
+    if (takenByOthers.has(entry.rating)) {
+      problems.push(`${at}rating: the same rating as another bot (class ignored)`);
+      continue;
+    }
+    const bookRefs = parseBookRefs(entry.bookRefs, at, problems, bookNames);
+    classes[cls] = { rating: entry.rating, ...(bookRefs.length > 0 ? { bookRefs } : {}) };
+  }
+  return Object.keys(classes).length > 0 ? classes : undefined;
+}
+
 /**
  * Custom bots from a preset or a stored profile: named, in range, no two the same bot. Two bots with the same rating
  * and style would be the same bot to the Play screen (it finds a bot by rating and prefers the style that matches,
@@ -351,7 +427,7 @@ export function parseBots(
       problems.push(`bots[${i}]: must be an object`);
       return;
     }
-    noteUnknownKeys(entry, ['name', 'rating', 'style', 'books', 'bookRefs'], where, problems);
+    noteUnknownKeys(entry, ['name', 'rating', 'style', 'books', 'bookRefs', 'classes'], where, problems);
     const name = textField(entry, 'name', where, PRESET_LIMITS.botName, problems);
     if (!name) {
       problems.push(`${where}name: missing (bot ignored)`);
@@ -370,18 +446,26 @@ export function parseBots(
       problems.push(`${where.slice(0, -1)}: the same rating and style as an earlier bot (ignored)`);
       return;
     }
+    const takenByOthers = new Set(bots.flatMap(botRatings));
+    // A rating an earlier bot plays at in one of its classes is that bot's, whatever the style
+    if (bots.some((b) => b.classes && botRatings(b).includes(entry.rating as number))) {
+      problems.push(`${where.slice(0, -1)}: the same rating as a class of an earlier bot (ignored)`);
+      return;
+    }
     if (bots.length >= PRESET_LIMITS.bots) {
       problems.push(`${where.slice(0, -1)}: more than ${PRESET_LIMITS.bots} bots (ignored)`);
       return;
     }
     const books = parseBotBooks(entry.books, where, problems, budget, checkBooks);
     const bookRefs = parseBookRefs(entry.bookRefs, where, problems, bookNames);
+    const classes = parseBotClasses(entry.classes, where, problems, bookNames, takenByOthers);
     bots.push({
       name,
       rating: entry.rating,
       style: style as BotStyleId,
       ...(books.length > 0 ? { books } : {}),
       ...(bookRefs.length > 0 ? { bookRefs } : {}),
+      ...(classes ? { classes } : {}),
     });
   });
   return bots;
@@ -421,6 +505,16 @@ export function parseStoryText(value: unknown, problems: string[] = []): StoryTe
   return story.intro || story.closing ? story : null;
 }
 
+/** The bot list's revision: a whole number from 0 up (a wrong value is reported and counts as 0). */
+export function parseBotsRevision(value: unknown, problems: string[] = []): number {
+  if (value === undefined) return 0;
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) {
+    problems.push('botsRevision: must be a whole number, 0 or more (ignored)');
+    return 0;
+  }
+  return value;
+}
+
 /** Checks a preset file's content. The app uses whatever is valid and ignores the rest. */
 export function parsePreset(input: unknown): ParsedPreset {
   const problems: string[] = [];
@@ -430,7 +524,7 @@ export function parsePreset(input: unknown): ParsedPreset {
   }
   noteUnknownKeys(
     input,
-    ['version', 'appName', 'profile', 'welcome', 'story', 'settings', 'usernames', 'bots', 'books'],
+    ['version', 'appName', 'profile', 'welcome', 'story', 'settings', 'usernames', 'bots', 'books', 'botsRevision'],
     '',
     problems,
   );
@@ -465,12 +559,18 @@ export function parsePreset(input: unknown): ParsedPreset {
   const table = parseBookTable(input.books, problems);
   const bots = parseBots(input.bots, problems, { checkBooks: true, bookNames: new Set(Object.keys(table)) });
   // A table book no bot refers to would only take room in the database
-  const used = new Set(bots.flatMap((bot) => bot.bookRefs ?? []));
+  const used = new Set(
+    bots.flatMap((bot) => [
+      ...(bot.bookRefs ?? []),
+      ...BOT_CLASSES.flatMap((cls) => bot.classes?.[cls]?.bookRefs ?? []),
+    ]),
+  );
   const books: Record<string, string> = {};
   for (const [name, text] of Object.entries(table)) {
     if (used.has(name)) books[name] = text;
     else problems.push(`books[${JSON.stringify(name)}]: no bot refers to it (left out)`);
   }
+  const botsRevision = parseBotsRevision(input.botsRevision, problems);
   return {
     preset: {
       version: PRESET_VERSION,
@@ -483,6 +583,7 @@ export function parsePreset(input: unknown): ParsedPreset {
       usernames,
       bots,
       ...(Object.keys(books).length > 0 ? { books } : {}),
+      ...(botsRevision > 0 ? { botsRevision } : {}),
     },
     problems,
   };

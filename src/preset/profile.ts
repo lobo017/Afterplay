@@ -3,10 +3,13 @@ import { parseBook, type Book } from '../engine/bot-profile';
 import type { FeelStorage } from '../render/board-feel';
 import {
   PRESET_LIMITS,
+  botRatings,
   cleanText,
   parseBots,
+  parseBotsRevision,
   parseStoryText,
   parseWelcome,
+  type BotClass,
   type CustomBot,
   type StoryText,
   type WelcomeMessage,
@@ -25,6 +28,8 @@ export interface Profile {
   welcome: WelcomeMessage | null;
   /** The optional intro and closing paragraphs of the Chess Story; absent when there are none. */
   story?: StoryText;
+  /** The `botsRevision` of the bot list this profile holds (see Preset); absent: 0. */
+  botsRevision?: number;
 }
 
 export const EMPTY_PROFILE: Readonly<Profile> = Object.freeze({
@@ -52,6 +57,7 @@ export const PROFILE_STORAGE_KEY = 'wc.profile.v1';
 export function sanitizeProfile(input: unknown): Profile {
   const src = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>;
   const story = parseStoryText(src.story ?? null);
+  const botsRevision = parseBotsRevision(src.botsRevision);
   return {
     displayName: cleanText(src.displayName, PRESET_LIMITS.displayName),
     title: cleanText(src.title, PRESET_LIMITS.title),
@@ -59,6 +65,7 @@ export function sanitizeProfile(input: unknown): Profile {
     bots: parseBots(src.bots ?? []),
     welcome: parseWelcome(src.welcome ?? null),
     ...(story ? { story } : {}),
+    ...(botsRevision > 0 ? { botsRevision } : {}),
   };
 }
 
@@ -75,7 +82,27 @@ export function customBotFor(profile: Profile, rating: number, style: BotStyleId
  * when the style changes; the style is only a suffix.
  */
 export function namedBotForRating(profile: Profile, rating: number, style: BotStyleId): CustomBot | null {
-  return customBotFor(profile, rating, style) ?? profile.bots.find((bot) => bot.rating === rating) ?? null;
+  return (
+    customBotFor(profile, rating, style) ??
+    // A bot with classes is also found by the rating of any of its classes (`parseBots` keeps those unambiguous)
+    profile.bots.find((bot) => botRatings(bot).includes(rating)) ??
+    null
+  );
+}
+
+/**
+ * The bot as it plays in a time class: that class's rating and book references. A bot without classes, or without an
+ * entry for this class, is returned as it is (its own rating and books are the Rapid, the default, ones); a class
+ * without `bookRefs` keeps the bot's own. The result is what `awaitBotBooks` and `warmBotBooks` take, so they need to
+ * know nothing about classes.
+ */
+export function resolveBotForClass(bot: CustomBot, botClass: BotClass): CustomBot {
+  const entry = bot.classes?.[botClass];
+  if (!entry) return bot;
+  const resolved: CustomBot = { ...bot, rating: entry.rating };
+  const bookRefs = entry.bookRefs ?? bot.bookRefs;
+  if (bookRefs) resolved.bookRefs = bookRefs;
+  return resolved;
 }
 
 /** The bots lowest rating first (a tie keeps the list's order), each with its place in the profile's list. */
@@ -233,11 +260,12 @@ export function personalBooksFor(profile: Profile, rating: number, style: BotSty
 function withoutBooks(profile: Profile): Profile {
   return {
     ...profile,
-    bots: profile.bots.map(({ name, rating, style, bookRefs }) => ({
+    bots: profile.bots.map(({ name, rating, style, bookRefs, classes }) => ({
       name,
       rating,
       style,
       ...(bookRefs ? { bookRefs } : {}),
+      ...(classes ? { classes } : {}),
     })),
   };
 }
