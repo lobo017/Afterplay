@@ -126,7 +126,14 @@ import { WelcomeSheet } from './ui/welcome-sheet';
 import { mountNotice } from './ui/notice';
 import { startSlugFromPath, type Preset } from './preset/preset';
 import { DEFAULT_APP_NAME, ProfileStore, welcomeWithAppName, type Profile } from './preset/profile';
-import { loadFirstRunPreset, loadFirstRunState, loadHistoryFile, saveFirstRunState } from './preset/first-run';
+import {
+  checkBotsUpdate,
+  loadFirstRunPreset,
+  loadFirstRunState,
+  loadHistoryFile,
+  saveFirstRunState,
+} from './preset/first-run';
+import { runningBuildId } from './preset/build-id';
 import { landingScreen, readLanding, writeLanding, type StoryLanding } from './story/landing';
 import { STORY_IMPORT_SETTING, readImportRecord, storeHistory } from './story/history-loader';
 import { StoryView } from './story/view';
@@ -287,6 +294,9 @@ const AUDIO_PREWARM_DELAY_MS = 400;
 /** After start-up, when to ask for persistent storage and when the first-run install guide may open (iPhone/iPad). */
 const PERSIST_REQUEST_DELAY_MS = 1000;
 const INSTALL_GUIDE_DELAY_MS = 600;
+/** The bots-only update starts this long after start-up, in an idle moment (at most `BOTS_UPDATE_IDLE_MS` later). */
+const BOTS_UPDATE_DELAY_MS = 2500;
+const BOTS_UPDATE_IDLE_MS = 3000;
 /** The lines panel's note while a review has a phone's only engine. */
 export const REVIEW_PAUSES_ANALYSIS_NOTE = 'Analysis is paused while the review runs.';
 
@@ -652,7 +662,7 @@ export function mountAppShell(container: HTMLElement): {
       ...(preset.displayName ? { displayName: preset.displayName } : {}),
       ...(preset.title ? { title: preset.title } : {}),
       ...(preset.appName ? { appName: preset.appName } : {}),
-      ...(preset.bots.length > 0 ? { bots: preset.bots } : {}),
+      ...(preset.bots.length > 0 ? { bots: preset.bots, botsRevision: preset.botsRevision ?? 0 } : {}),
       ...(preset.welcome ? { welcome: welcomeWithAppName(preset.welcome, preset.appName) } : {}),
       ...(preset.story ? { story: preset.story } : {}),
     });
@@ -662,7 +672,9 @@ export function mountAppShell(container: HTMLElement): {
     if (presetBooks) {
       void libraryReady.then((api) => savePresetBooks(api.library, presetBooks)).catch(() => undefined);
     }
-    firstRun = { slug, welcomeSeen: false };
+    // The running build has now seen this link's bot list, so a fresh install does not ask for the preset again
+    const build = runningBuildId();
+    firstRun = { slug, welcomeSeen: false, ...(build ? { botsBuild: build } : {}) };
     saveFirstRunState(firstRun);
     applyIdentity(profile.get());
     // The board waiting at the start position takes the preset's bot and time control
@@ -679,6 +691,30 @@ export function mountAppShell(container: HTMLElement): {
         await api.gamesList.refresh();
       })
       .catch(() => undefined);
+  };
+  /**
+   * The bots-only update (first-run.ts `checkBotsUpdate`): on a device that applied this link, when the running build
+   * differs from the one that last looked, the preset file is read again and a newer bot list replaces the profile's
+   * bots. Nothing else is touched and applyPreset is not called. Fails closed: no build id, a game in progress, a
+   * failed request or a failed book write all leave everything as it is and the build unrecorded.
+   */
+  const runBotsUpdate = (): void => {
+    void checkBotsUpdate({
+      pathname: window.location.pathname,
+      state: firstRun,
+      build: runningBuildId(),
+      profile,
+      newGame: {
+        get: () => appSettings.get().newGame,
+        setBotRating: (botRating) => appSettings.set({ newGame: { botRating } }),
+      },
+      writeBooks: (books) => libraryReady.then((api) => savePresetBooks(api.library, books)),
+      isBusy: () => playController.isGameInProgress(),
+      recordBuild: (botsBuild) => {
+        firstRun = { ...firstRun, botsBuild };
+        saveFirstRunState(firstRun);
+      },
+    }).catch(() => undefined);
   };
   /** The welcome message if one is waiting (after the guide in iPhone Safari), otherwise the guide's own rule. */
   const showWelcomeOrGuide = (): void => {
@@ -707,6 +743,8 @@ export function mountAppShell(container: HTMLElement): {
       });
     } else {
       setTimeout(showWelcomeOrGuide, INSTALL_GUIDE_DELAY_MS);
+      // A new build of the app asks the link's preset for a newer bot list, once, after start-up has settled
+      if (startSlug !== null) setTimeout(() => whenIdle(runBotsUpdate, BOTS_UPDATE_IDLE_MS), BOTS_UPDATE_DELAY_MS);
     }
   }
 

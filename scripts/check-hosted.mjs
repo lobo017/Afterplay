@@ -318,6 +318,12 @@ try {
     served.manifest === '/start/sample/manifest.webmanifest' &&
     served.title === "Ada's Chess" &&
     served.appleTitle === "Ada's Chess";
+  // The bots-only update asks for the link's preset again only when the running build changed: the build that applied it
+  // is the build of this visit, so the second visit must not request the file at all
+  let presetRequests = 0;
+  link.on('request', (request) => {
+    if (new URL(request.url()).pathname === '/start/sample/preset.json') presetRequests++;
+  });
   const secondResponse = await link.goto(linkUrl, { waitUntil: 'load', timeout: 60_000 });
   const second = servedPage((await secondResponse?.text()) ?? '');
   const secondFromWorker = secondResponse?.fromServiceWorker() ?? false;
@@ -342,6 +348,13 @@ try {
     'first-run link, second visit: still set up and isolated',
     Boolean(stillSetUp) && (await link.evaluate(() => window.crossOriginIsolated)),
     (await shell.getAttribute('data-first-run')) ?? '',
+  );
+  // (the update starts 2.5 s after start-up, in an idle moment of at most 3 s more)
+  await new Promise((resolve) => setTimeout(resolve, 7000));
+  check(
+    'first-run link, second visit: the same build does not ask for the preset again',
+    presetRequests === 0,
+    `${presetRequests} request(s) for the preset file`,
   );
   // With no network, as an installed app opens it on every later launch
   await linkContext.setOffline(true);

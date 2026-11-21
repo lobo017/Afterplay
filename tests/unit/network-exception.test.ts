@@ -69,3 +69,27 @@ describe('The network exception is one address, in one place', () => {
     expect(story).not.toMatch(/setInterval|requestIdleCallback/);
   });
 });
+
+describe('The bots-only update asks only for the link’s own preset file', () => {
+  const firstRun = files.find((f) => f.name === 'preset/first-run.ts')!.text;
+  const buildId = files.find((f) => f.name === 'preset/build-id.ts')!.text;
+  const app = files.find((f) => f.name === 'app.ts')!.text;
+
+  it('is one function, called from one place in the app, and makes its request through the first run’s own same-origin fetch', () => {
+    expect(filesWith(/\bcheckBotsUpdate\(/)).toEqual(['app.ts', 'preset/first-run.ts']);
+    expect(app.match(/\bcheckBotsUpdate\(/g)).toHaveLength(1);
+    // The request is the link's preset file, by the same default fetch as the first run, and the file has no address of its own
+    const update = firstRun.slice(firstRun.indexOf('export async function checkBotsUpdate'));
+    expect(update).toMatch(/\(options\.fetchPreset \?\? defaultFetch\)\(presetUrl\(slug\), controller\.signal\)/);
+    expect(update.match(/\bfetch\(/g)).toBeNull();
+    expect(firstRun.match(/\bfetch\(/g)).toHaveLength(1);
+    expect(firstRun).not.toMatch(/https?:\/\//);
+  });
+
+  it('runs once after start-up in an idle moment, on no timer of its own, and the build id reads the page only', () => {
+    expect(app.match(/runBotsUpdate/g)).toHaveLength(2);
+    expect(app).toMatch(/setTimeout\(\(\) => whenIdle\(runBotsUpdate, BOTS_UPDATE_IDLE_MS\), BOTS_UPDATE_DELAY_MS\)/);
+    expect(app).not.toMatch(/setInterval/);
+    expect(buildId).not.toMatch(/\bfetch\(|XMLHttpRequest|https?:\/\//);
+  });
+});

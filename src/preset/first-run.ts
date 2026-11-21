@@ -1,5 +1,16 @@
 import type { FeelStorage } from '../render/board-feel';
-import { parsePreset, presetUrl, startSlugFromPath, type Preset } from './preset';
+import { botClassOfTimeControl, type TimeControlPresetId } from '../ui/clock';
+import {
+  PRESET_VERSION,
+  botRatings,
+  parseBotsRevision,
+  parsePreset,
+  presetUrl,
+  startSlugFromPath,
+  type CustomBot,
+  type Preset,
+} from './preset';
+import { resolveBotForClass, type Profile } from './profile';
 import { historyUrl } from './start-path';
 
 /**
@@ -18,6 +29,11 @@ export interface FirstRunState {
   slug: string;
   /** The preset's welcome message was shown and closed. */
   welcomeSeen: boolean;
+  /**
+   * The build (`build-id.ts`) that last looked at the link's bot list: it applied the preset, or found its list up to
+   * date, or took a newer list. Absent until one did. The bots-only update asks again only when the running build differs.
+   */
+  botsBuild?: string;
 }
 
 function localStore(): FeelStorage | null {
@@ -32,7 +48,13 @@ export function loadFirstRunState(storage: FeelStorage | null = localStore()): F
   try {
     const raw = storage?.getItem(FIRST_RUN_STORAGE_KEY);
     const v = raw ? (JSON.parse(raw) as Partial<FirstRunState> | null) : null;
-    return { slug: typeof v?.slug === 'string' ? v.slug : '', welcomeSeen: v?.welcomeSeen === true };
+    const botsBuild = typeof v?.botsBuild === 'string' && v.botsBuild.length <= 64 ? v.botsBuild : '';
+    return {
+      slug: typeof v?.slug === 'string' ? v.slug : '',
+      welcomeSeen: v?.welcomeSeen === true,
+      // Returned only when there is one, so a device that never recorded a build reads exactly as before
+      ...(botsBuild ? { botsBuild } : {}),
+    };
   } catch {
     return { slug: '', welcomeSeen: false };
   }
@@ -177,5 +199,126 @@ export async function loadHistoryFile(options: HistoryFileOptions): Promise<Hist
     return { kind: 'failed', message: 'The games for this link could not be loaded. Continue when you are online.' };
   } finally {
     clearTimeout(timer);
+  }
+}
+
+// ---------------------------------------------------------------------------- the link's bots, updated on a new build
+
+/**
+ * What the bots-only update did. Everything but `updated` and `unchanged` leaves the build unrecorded, so the check runs
+ * again at the next start (a game in progress, a request that failed, an answer that is not a preset with bots).
+ */
+export type BotsUpdateResult =
+  | { kind: 'skipped'; reason: 'not-this-link' | 'no-build' | 'same-build' | 'busy' }
+  /** The preset's bot list is not newer than this profile's: nothing changed, the build is recorded. */
+  | { kind: 'unchanged' }
+  /** A newer bot list was taken (its books written first, the profile last), the build recorded. */
+  | { kind: 'updated'; revision: number }
+  | { kind: 'failed' };
+
+export interface BotsUpdateOptions {
+  /** The address of the page (`window.location.pathname`): only the link this device already applied is asked again. */
+  pathname: string;
+  /** What this device remembers (the applied link and the build that last looked). */
+  state: FirstRunState;
+  /** The running build's id (`runningBuildId()`); null when it cannot be told, which skips the update. */
+  build: string | null;
+  profile: { get(): Readonly<Profile>; set(patch: Partial<Profile>): void };
+  /** The saved New game choices: the update moves only the rating, and only when it was one of a replaced bot. */
+  newGame: { get(): { botRating: number; timeControlId: TimeControlPresetId }; setBotRating(rating: number): void };
+  /** Writes the books of the new list, one row each; returns the names that were written. */
+  writeBooks: (books: Readonly<Record<string, string>>) => Promise<string[]>;
+  /** True while a game is in progress: the update then waits for the next start. */
+  isBusy: () => boolean;
+  /** Remembers the build that looked (the caller saves it with the rest of the first-run state). */
+  recordBuild: (build: string) => void;
+  fetchPreset?: (url: string, signal: AbortSignal) => Promise<Response>;
+  timeoutMs?: number;
+}
+
+/**
+ * The saved New game rating after the bot list changed: when it is a rating of a bot that the new list replaces by name
+ * (the same name), the new bot's rating for the class of the time control that is chosen; otherwise null (leave it).
+ */
+export function remapSavedRating(
+  oldBots: readonly CustomBot[],
+  newBots: readonly CustomBot[],
+  savedRating: number,
+  timeControlId: TimeControlPresetId,
+): number | null {
+  const old = oldBots.find((bot) => botRatings(bot).includes(savedRating));
+  const replacement = old ? newBots.find((bot) => bot.name === old.name) : undefined;
+  if (!replacement) return null;
+  const rating = resolveBotForClass(replacement, botClassOfTimeControl(timeControlId)).rating;
+  return rating === savedRating ? null : rating;
+}
+
+/**
+ * The bots-only update. On a device that applied this link before, and only when the running build is not the one that
+ * last looked, the link's preset file (the one same-origin request of the first run, nothing else) is read again and,
+ * when its `botsRevision` is higher than the profile's, its bot list replaces the profile's.
+ *
+ * It touches nothing else: not `applyPreset`, not the settings (except the saved New game rating of a replaced bot),
+ * theme, names, welcome, games, puzzles or history, and it never deletes a book row. Books are written first and the
+ * profile last, so a failure before the profile write changes nothing and leaves the build unrecorded (it runs again at
+ * the next start). Never throws; the caller runs it after start-up has settled, so it blocks nothing.
+ */
+export async function checkBotsUpdate(options: BotsUpdateOptions): Promise<BotsUpdateResult> {
+  try {
+    const slug = startSlugFromPath(options.pathname);
+    if (!slug || slug !== options.state.slug) return { kind: 'skipped', reason: 'not-this-link' };
+    const build = options.build;
+    if (!build) return { kind: 'skipped', reason: 'no-build' };
+    if (options.state.botsBuild === build) return { kind: 'skipped', reason: 'same-build' };
+    if (options.isBusy()) return { kind: 'skipped', reason: 'busy' };
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), options.timeoutMs ?? 30_000);
+    let json: unknown;
+    try {
+      const response = await (options.fetchPreset ?? defaultFetch)(presetUrl(slug), controller.signal);
+      if (!response.ok) return { kind: 'failed' };
+      json = JSON.parse(await response.text());
+    } catch {
+      // Offline, a timeout, an HTML page from a host that answers every path, text that is not JSON
+      return { kind: 'failed' };
+    } finally {
+      clearTimeout(timer);
+    }
+    // Reading the whole preset checks every book, a task of 100 ms and more for a file of this size, so a list that is not
+    // newer is told by its number alone (a new build with the same list is the usual case)
+    if (!isObject(json) || json.version !== PRESET_VERSION || !Array.isArray(json.bots) || json.bots.length === 0) {
+      return { kind: 'failed' };
+    }
+    if (parseBotsRevision(json.botsRevision) <= (options.profile.get().botsRevision ?? 0)) {
+      options.recordBuild(build);
+      return { kind: 'unchanged' };
+    }
+    // A game may have started while the file was loading
+    if (options.isBusy()) return { kind: 'skipped', reason: 'busy' };
+
+    const { preset } = parsePreset(json);
+    if (!preset || preset.bots.length === 0) return { kind: 'failed' };
+    const revision = preset.botsRevision ?? 0;
+
+    // Books first: every book of the new list must be in the database before any bot refers to it
+    const books = preset.books ?? {};
+    const wanted = Object.keys(books);
+    if (wanted.length > 0) {
+      const written = await options.writeBooks(books);
+      if (!wanted.every((name) => written.includes(name))) return { kind: 'failed' };
+    }
+    if (options.isBusy()) return { kind: 'skipped', reason: 'busy' };
+
+    // The profile last, and only the bots and their revision
+    const oldBots = options.profile.get().bots;
+    options.profile.set({ bots: preset.bots, botsRevision: revision });
+    const choice = options.newGame.get();
+    const rating = remapSavedRating(oldBots, preset.bots, choice.botRating, choice.timeControlId);
+    if (rating !== null) options.newGame.setBotRating(rating);
+    options.recordBuild(build);
+    return { kind: 'updated', revision };
+  } catch {
+    return { kind: 'failed' };
   }
 }
