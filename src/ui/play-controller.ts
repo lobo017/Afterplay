@@ -27,7 +27,13 @@ import { formatScore, type UciScore } from '../engine/uci-parser';
 import { CathedralAudio } from '../render/audio';
 import { BoardRenderer } from '../render/board-renderer';
 import { getPieceSvgMarkup } from '../render/piece-sets';
-import { ChessClock, TIME_CONTROL_PRESETS, type ClockSnapshot, type TimeControlPresetId } from './clock';
+import {
+  ChessClock,
+  TIME_CONTROL_PRESETS,
+  botClassOfTimeControl,
+  type ClockSnapshot,
+  type TimeControlPresetId,
+} from './clock';
 import type { DevOverlayController } from './dev-overlay';
 import { AppSettingsStore, MAX_PREMOVES_LIMIT, type AppSettings, type NewGameOptions } from './app-settings';
 import {
@@ -35,10 +41,12 @@ import {
   awaitBotBooks,
   botsByRating,
   namedBotForRating,
+  resolveBotForClass,
   scheduleIdle,
   warmBotBooks,
   type BookTextLoader,
 } from '../preset/profile';
+import type { CustomBot } from '../preset/preset';
 import { icon } from './components/icons';
 import { Menu } from './components/menu';
 import { Tabs, tabListHtml, tabPanelAttrs } from './components/tabs';
@@ -64,6 +72,9 @@ export interface CapturedAndMaterialSummary {
   /** Net material advantage in pawns (positive = White ahead, negative = Black ahead). */
   netAdvantageWhite: number;
 }
+
+/** The class a Time chip makes, as the New game card's line names it for a bot with classes. */
+const CLASS_LABELS = { bullet: 'Bullet', blitz: 'Blitz', rapid: 'Rapid' } as const;
 
 const PIECE_VALUES: Record<PieceSymbol, number> = {
   p: 1,
@@ -341,6 +352,7 @@ export class PlayController {
     this.infiniteAnalysisEnabled = this.settings.get().playLiveEval;
     this.unsubscribeSettings = this.settings.subscribe((next, prev) => this.applySettings(next, prev));
     this.unsubscribeProfile = this.profile.subscribe(() => {
+      this.alignBotRatingToTimeClass();
       this.renderCustomBots();
       this.renderNewGameCard();
       this.updatePlayerBars();
@@ -351,8 +363,11 @@ export class PlayController {
       options.initialBotRating === undefined &&
       options.initialBotStyle === undefined &&
       options.initialTimeControl === undefined
-    )
+    ) {
+      // A saved rating of another class of the same bot (an older backup, a rating set elsewhere) follows the chip
+      this.alignBotRatingToTimeClass();
       this.previewPendingChoices();
+    }
   }
 
   private mountLayout(): void {
@@ -650,7 +665,11 @@ export class PlayController {
       el.setAttribute('aria-pressed', String(el.dataset.tier === tier));
     }
     const named = namedBotForRating(this.profile.get(), ng.botRating, ng.botStyle);
-    if (label && named) label.textContent = `${named.name} · ${styleLabel} · ${ng.botRating} Elo`;
+    if (label && named) {
+      // A bot with classes says which class the Time chip makes it play: "Your Student · Blitz · Solid · 1425 Elo"
+      const classPart = named.classes ? `${CLASS_LABELS[botClassOfTimeControl(ng.timeControlId)]} · ` : '';
+      label.textContent = `${named.name} · ${classPart}${styleLabel} · ${ng.botRating} Elo`;
+    }
     for (const el of this.customBotsEl.querySelectorAll<HTMLElement>('.wc-custom-bot')) {
       // The bot stays highlighted when only the style changes
       const chosen = named !== null && el.dataset.rating === String(named.rating) && el.dataset.style === named.style;
@@ -669,9 +688,14 @@ export class PlayController {
     if (back) back.hidden = !this.isGameInProgress();
   }
 
-  /** The profile's named bots as buttons above the rating slider: one tap sets that bot's rating and style. */
+  /**
+   * The profile's named bots as buttons above the rating slider: one tap sets that bot's rating and style. A bot with
+   * classes shows the rating of the class the Time chip makes and a tap sets that rating; the list keeps its order (it
+   * is sorted by the bot's own, Rapid, rating), so a chip tap never moves a button.
+   */
   private renderCustomBots(): void {
     const bots = this.profile.get().bots;
+    const timeClass = botClassOfTimeControl(this.settings.get().newGame.timeControlId);
     this.customBotsEl.replaceChildren();
     this.customBotsEl.hidden = bots.length === 0;
     // Lowest rating first. The test id keeps the bot's place in the profile's list, so ids do not move with the sort.
@@ -688,10 +712,11 @@ export class PlayController {
       name.textContent = bot.name;
       const rating = document.createElement('span');
       rating.className = 'wc-custom-bot-rating';
-      rating.textContent = String(bot.rating);
+      rating.textContent = String(resolveBotForClass(bot, timeClass).rating);
       button.append(name, rating);
       button.addEventListener('click', () => {
-        this.settings.set({ newGame: { botRating: bot.rating, botStyle: bot.style } });
+        const chipClass = botClassOfTimeControl(this.settings.get().newGame.timeControlId);
+        this.settings.set({ newGame: { botRating: resolveBotForClass(bot, chipClass).rating, botStyle: bot.style } });
       });
       this.customBotsEl.appendChild(button);
     });
@@ -701,6 +726,41 @@ export class PlayController {
   private botName(): string {
     const named = namedBotForRating(this.profile.get(), this.botRating, this.botStyle);
     return named ? named.name : `Stockfish ${getTierForRating(this.botRating)}`;
+  }
+
+  /**
+   * The named bot as it plays this game: found by its rating (any class's), then resolved to the class of the game's
+   * time control, so its books are that class's. Null when no named bot has this rating.
+   */
+  private namedBotForGame(): CustomBot | null {
+    const named = namedBotForRating(this.profile.get(), this.botRating, this.botStyle);
+    return named ? resolveBotForClass(named, botClassOfTimeControl(this.timeControlId)) : null;
+  }
+
+  /**
+   * What the card's choices become when the Time chip is `timeControlId`: the chip alone, plus the rating of that class
+   * when the chosen bot has classes. One patch, so the bot and the clock change together in one settings change.
+   */
+  private timeChoicePatch(timeControlId: TimeControlPresetId): {
+    timeControlId: TimeControlPresetId;
+    botRating?: number;
+  } {
+    const ng = this.settings.get().newGame;
+    const named = namedBotForRating(this.profile.get(), ng.botRating, ng.botStyle);
+    if (!named?.classes) return { timeControlId };
+    const rating = resolveBotForClass(named, botClassOfTimeControl(timeControlId)).rating;
+    return rating === ng.botRating ? { timeControlId } : { timeControlId, botRating: rating };
+  }
+
+  /**
+   * Sets the card's rating to the chip's class rating when it is another class of the same bot (a restored saved rating,
+   * a profile that arrived after the choice). Called where a choice is read or the profile changes, never from the
+   * settings listener, so it cannot start a change loop: once aligned, the next call changes nothing.
+   */
+  private alignBotRatingToTimeClass(): void {
+    const { timeControlId } = this.settings.get().newGame;
+    const patch = this.timeChoicePatch(timeControlId);
+    if (patch.botRating !== undefined) this.settings.set({ newGame: { botRating: patch.botRating } });
   }
 
   /** The opponent as the player bars show it: the bot's name and its style, "Warm-up Bot · Solid". */
@@ -785,7 +845,7 @@ export class PlayController {
     }
     bindChoiceGroups(q('new-game-card'), (name, value) => {
       if (name === 'style') this.settings.set({ newGame: { botStyle: value as BotStyleId } });
-      else if (name === 'time') this.settings.set({ newGame: { timeControlId: value as TimeControlPresetId } });
+      else if (name === 'time') this.settings.set({ newGame: this.timeChoicePatch(value as TimeControlPresetId) });
       else if (name === 'color') this.settings.set({ newGame: { color: value as Color | 'random' } });
     });
     const minInput = q<HTMLInputElement>('input-bot-min-delay');
@@ -843,6 +903,9 @@ export class PlayController {
     }
     if (next.playLiveEval !== this.infiniteAnalysisEnabled) this.setInfiniteAnalysis(next.playLiveEval);
     if (next.newGame !== prev.newGame) {
+      // A bot with classes shows the rating of the class the Time chip makes
+      if (next.newGame.timeControlId !== prev.newGame.timeControlId && this.profile.get().bots.some((b) => b.classes))
+        this.renderCustomBots();
       this.renderNewGameCard();
       this.previewPendingChoices();
     }
@@ -1005,9 +1068,10 @@ export class PlayController {
   public startNewGame(options?: { fen?: string; playerColor?: Color }): void {
     this.cancelInFlightBotSearch();
     this.cancelInfiniteAnalysis();
+    this.alignBotRatingToTimeClass();
     this.applyNewGameOptions(this.settings.get().newGame);
     // A named bot with opening books: parse them in idle moments, so its first book move does not wait for the parse
-    warmBotBooks(namedBotForRating(this.profile.get(), this.botRating, this.botStyle), scheduleIdle, this.bookLoader);
+    warmBotBooks(this.namedBotForGame(), scheduleIdle, this.bookLoader);
 
     const startFen = options?.fen?.trim() || DEFAULT_POSITION;
     this.adapter = new RulesAdapter(startFen);
@@ -1186,10 +1250,7 @@ export class PlayController {
     try {
       // A custom bot with opening books plays from them first. Books it refers to may still be loading (read from the
       // database in an idle moment since the game began): wait for them for 1.5 s at most, then play as the usual bot
-      const books = await awaitBotBooks(
-        namedBotForRating(this.profile.get(), this.botRating, this.botStyle),
-        this.bookLoader,
-      );
+      const books = await awaitBotBooks(this.namedBotForGame(), this.bookLoader);
       if (gen !== this.gameGeneration || ac.signal.aborted || this.gameOver) {
         return;
       }

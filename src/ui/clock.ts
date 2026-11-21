@@ -1,4 +1,5 @@
 import type { Color } from '../core/rules';
+import { INCREMENT_WEIGHT, classOfSeconds } from '../story/stats';
 
 export type TimeControlPresetId =
   'unlimited' | '1+0' | '2+1' | '3+0' | '3+2' | '5+0' | '5+3' | '10+0' | '10+5' | '15+10';
@@ -83,6 +84,22 @@ export const TIME_CONTROL_PRESETS: Record<TimeControlPresetId, TimeControlConfig
     unlimited: false,
   },
 };
+
+/** The time classes a Play bot can have its own rating and book for (the same names as `BotClass` in preset.ts). */
+export type TimeControlBotClass = 'bullet' | 'blitz' | 'rapid';
+
+/**
+ * The class a Time chip makes: bullet and blitz by the Story's own rule (`classOfSeconds`: base plus 40 times the
+ * increment, in seconds), and everything else, Unlimited included, rapid. Every chip's label names the class this gives.
+ * (Declared here, not in preset.ts, because preset.ts reads the app settings, which read this file.)
+ */
+export function botClassOfTimeControl(id: TimeControlPresetId): TimeControlBotClass {
+  const config = TIME_CONTROL_PRESETS[id];
+  if (config.unlimited) return 'rapid';
+  const seconds = config.initialMs / 1000 + (INCREMENT_WEIGHT * config.incrementMs) / 1000;
+  const timeClass = classOfSeconds(seconds);
+  return timeClass === 'bullet' || timeClass === 'blitz' ? timeClass : 'rapid';
+}
 
 export interface ClockSnapshot {
   whiteMs: number;

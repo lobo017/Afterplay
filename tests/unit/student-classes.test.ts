@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { RulesAdapter } from '../../src/core/rules';
 import { buildBook, lookupBook, serializeBook, type Book } from '../../src/engine/bot-profile';
+import { TIME_CONTROL_PRESETS, botClassOfTimeControl, type TimeControlPresetId } from '../../src/ui/clock';
 import { parseBots, parsePreset, parseBotsRevision, type CustomBot } from '../../src/preset/preset';
 import {
   PROFILE_STORAGE_KEY,
@@ -366,5 +367,29 @@ describe('resolving the bot for a class', () => {
     warmBotBooks(resolveBotForClass(bot, 'bullet'), (task) => task(), load);
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(asked.sort()).toEqual(['pooled', 'pupil-bullet']);
+  });
+});
+
+describe('the class a Time chip makes', () => {
+  const EXPECTED: Record<TimeControlPresetId, 'bullet' | 'blitz' | 'rapid'> = {
+    '1+0': 'bullet',
+    '2+1': 'bullet',
+    '3+0': 'blitz',
+    '3+2': 'blitz',
+    '5+0': 'blitz',
+    '5+3': 'blitz',
+    '10+0': 'rapid',
+    '10+5': 'rapid',
+    '15+10': 'rapid',
+    unlimited: 'rapid',
+  };
+
+  it('gives every chip the class its label names, and Unlimited Rapid', () => {
+    for (const [id, config] of Object.entries(TIME_CONTROL_PRESETS)) {
+      expect(botClassOfTimeControl(id as TimeControlPresetId), id).toBe(EXPECTED[id as TimeControlPresetId]);
+      const word = config.label.split(' · ')[1]?.toLowerCase();
+      if (word) expect(botClassOfTimeControl(id as TimeControlPresetId), config.label).toBe(word);
+    }
+    expect(Object.keys(TIME_CONTROL_PRESETS).sort()).toEqual(Object.keys(EXPECTED).sort());
   });
 });
