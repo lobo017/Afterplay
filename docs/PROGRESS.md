@@ -351,6 +351,12 @@ player's side only), so the Story can show accuracy and mistakes. The plan is "S
 - **Rollback:** re-promote the previous deployment (`f434adae.afterplay-c0x.pages.dev`, build `baa01d4f77f7`, commit `ee0ecf1`). That is a full rollback for this release: the preset and the data are the same files in both builds, and the diff changes no stored data, so devices have nothing to undo. The preset backup `gift.local/backup/preset.production-2026-11-21.json` (`adc14ba3`) still exists.
 - **Next:** (1) the Phase 0 restore fix; (2) the sync spike and phases 1 to 3; (3) the same-list update cost (the 4.5 MB preset is fetched once per new build on installed devices; consider a small marker file with the revision, which needs the network-rule decision in AGENTS.md); (4) the Lichess import; (5) the personal edition.
 
+**Phase 0 of the sync plan: Restore keeps newer progress (2026-11-22, branch `feat/phase0-restore-newer`, worktree `wizard-chess-restore0` off `298e55d`; no push, no Juno, no preview, no deploy).** Plan approved by the user with answers 1 to 9 (rule G for games, decision A for reviews, newest last rated attempt for the rating, worker + one transaction + no main-thread fallback, settings untouched, no backup-first prompt, newer-schema files refused, export path a follow-up, older-bots caveat documented).
+- **Layers:** (1) `src/storage/backup-merge.ts`, pure rules; (2) `src/storage/backup-restore.ts` (validation, one transaction, report), `importBackupJson` delegating, dialog and status wording; checkpoint; (3) worker, client, `perf-tasks.mjs` flow, e2e; (4) this entry's result.
+- **Files:** add `backup-merge.ts`, `backup-restore.ts`, `tests/unit/backup-merge.test.ts`, `tests/unit/backup-restore.test.ts`; change `db.ts`, `settings-data-section.ts`. Later: worker, client, `scripts/perf-tasks.mjs`, `tests/e2e/phase11-restore-newer.spec.ts`.
+- **Risks:** one ~15k-put transaction on WebKit/iOS (if unreliable: stop and ask, never per-store transactions silently); existing pinned shapes (`importBackupJson`'s seven keys, `summarizeBackup`'s six fields) must not change.
+- **Not touched:** `review-game.ts`, `selectHumanLikeMove`, `hpc/`, `bot-profile-store.ts`, `bot-profile-store.test.ts`, the DB schema.
+
 ## Open items from earlier phases
 
 - **Scenario-2 `perf:drag`** (analysis board, MultiPV 5, ghosts, navigation sweep) passed clean on Juno on the final code (p95 16.67 ms, 0 dropped).
