@@ -467,6 +467,10 @@ export class EngineLinesPanel {
             slot.formatted = null;
             slot.pvEl.textContent = '';
             slot.evalEl.textContent = '';
+            // What the row shows is now nothing: forget the text and side it last wrote, or the same score sent
+            // again is taken for "already shown" and never written back
+            slot.evalText = '';
+            slot.evalWhite = null;
             slot.rowEl.setAttribute('data-empty', 'true');
             wrote = true;
           }
