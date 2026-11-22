@@ -4,7 +4,13 @@ import type { GameTermination, SerializedGameTree } from '../core/game-tree';
 import type { StoredGameSource } from '../capture/game-id';
 import type { SavedReview } from '../library/saved-review';
 import type { PhaseNumbers } from '../review/phase-numbers';
-import { legacyCounts, parseBackupText, restoreBackupPayload, type RestoreReport } from './backup-restore';
+import {
+  legacyCounts,
+  parseBackupText,
+  restoreBackupPayload,
+  type RestoreList,
+  type RestoreReport,
+} from './backup-restore';
 
 export const DEFAULT_DB_NAME = 'wizards-chess-db';
 export const LATEST_SCHEMA_VERSION = 4;
@@ -764,8 +770,8 @@ export class WizardChessStorage {
   }
 
   /** Restores an already parsed backup (the work behind `restoreBackupJson`). */
-  public async restoreBackup(parsed: unknown): Promise<RestoreReport> {
-    return restoreBackupPayload(this.db, parsed, LATEST_SCHEMA_VERSION);
+  public async restoreBackup(parsed: unknown, onProgress?: (list: RestoreList) => void): Promise<RestoreReport> {
+    return restoreBackupPayload(this.db, parsed, LATEST_SCHEMA_VERSION, onProgress);
   }
 
   /** `restoreBackupJson`, reduced to the number of records written in each store. */

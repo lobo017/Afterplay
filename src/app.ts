@@ -12,6 +12,7 @@ import {
 import { AppSettingsStore, type AppSettings } from './ui/app-settings';
 import { SETTINGS_ORDER, mountAppSettingsSections } from './ui/settings-sections';
 import { mountBoardFeelSection } from './ui/settings-feel-section';
+import { BackupRestoreClient } from './storage/backup-restore-client';
 import { mountDataSection } from './ui/settings-data-section';
 import {
   abortableSleep,
@@ -1351,6 +1352,8 @@ export function mountAppShell(container: HTMLElement): {
     panel: settings,
     order: SETTINGS_ORDER.data,
     getBackend: () => storageReady,
+    // (the worker behind Restore starts when a file is chosen, never before)
+    restoreClient: new BackupRestoreClient(),
     beforeBackup: () => preferences.mirrorNow(),
     applyPreferences: (snapshot) => preferences.apply(snapshot),
     afterRestore: () => afterRestore(),

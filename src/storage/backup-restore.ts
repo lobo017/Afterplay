@@ -129,6 +129,9 @@ const STORES = [
   'reviews',
 ] as const satisfies readonly StoreNames<WizardChessDBSchema>[];
 
+/** The lists of a backup, in the order they are merged (what the progress callback names). */
+export type RestoreList = (typeof STORES)[number];
+
 /** Merges one list of records (each has a string `id`) into its store. `pick` is null for a list that always overwrites. */
 async function mergeList<T extends { id: string }>(
   store: LooseStore,
@@ -216,6 +219,7 @@ export async function restoreBackupPayload(
   db: IDBPDatabase<WizardChessDBSchema>,
   parsed: unknown,
   latestSchemaVersion: number,
+  onProgress?: (list: RestoreList) => void,
 ): Promise<RestoreReport> {
   assertRestorable(parsed, latestSchemaVersion);
   const file = parsed as Partial<BackupPayload>;
@@ -237,15 +241,20 @@ export async function restoreBackupPayload(
   const tx = db.transaction(names, 'readwrite');
   const store = (name: (typeof STORES)[number]): LooseStore => tx.objectStore(name) as unknown as LooseStore;
   try {
+    onProgress?.('settings');
     await mergeSettings(store('settings'), listOf<StoredSettingRecord>(file.settings), report);
+    onProgress?.('games');
     await mergeList(store('games'), listOf<StoredGameRecord>(file.games), pickGame, report.games);
     if (names.includes('puzzles')) {
+      onProgress?.('puzzles');
       await mergeList(store('puzzles'), listOf<StoredPuzzleRecord>(file.puzzles), pickPuzzle, report.puzzles);
     }
     if (names.includes('srs_cards')) {
+      onProgress?.('srs_cards');
       await mergeList(store('srs_cards'), listOf<StoredSrsCardRecord>(file.srsCards), pickCard, report.srsCards);
     }
     if (names.includes('repertoires')) {
+      onProgress?.('repertoires');
       await mergeList(
         store('repertoires'),
         listOf<StoredRepertoireRecord>(file.repertoires),
@@ -254,6 +263,7 @@ export async function restoreBackupPayload(
       );
     }
     if (names.includes('endgame_progress')) {
+      onProgress?.('endgame_progress');
       await mergeList(
         store('endgame_progress'),
         listOf<StoredEndgameProgressRecord>(file.endgameProgress),
@@ -262,6 +272,7 @@ export async function restoreBackupPayload(
       );
     }
     if (names.includes('reviews')) {
+      onProgress?.('reviews');
       await mergeList(store('reviews'), listOf<StoredReviewRecord>(file.reviews), pickReview, report.reviews);
     }
     await tx.done;

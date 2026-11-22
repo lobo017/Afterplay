@@ -1,4 +1,4 @@
-import { written, type RestoreReport } from '../storage/backup-restore';
+import { written, type RestoreList, type RestoreReport } from '../storage/backup-restore';
 
 /** The words of the restore dialog and its result line (pure, so they are unit-tested). */
 
@@ -72,3 +72,17 @@ export function restoreFailedText(err: unknown): string {
 
 /** The status line when the data was restored but a screen could not follow. */
 export const RESTORED_BUT_STALE_TEXT = 'Restored, but some screens could not refresh: reload the app.';
+
+/** The status line while a restore runs, for the list being merged. */
+export function restoreProgressText(list: RestoreList): string {
+  const what: Record<RestoreList, string> = {
+    settings: 'settings',
+    games: 'games',
+    puzzles: 'puzzles',
+    srs_cards: 'puzzle schedule',
+    repertoires: 'repertoires',
+    endgame_progress: 'endgame progress',
+    reviews: 'reviews',
+  };
+  return `Restoring ${what[list]}…`;
+}
