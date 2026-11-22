@@ -4,6 +4,13 @@
 //
 //   npm run perf:tasks            (PERF_PORT=4182, PERF_TASKS_GAMES=300 games in the library)
 //
+// The last flow restores an invented 16 MB backup (4,640 games with summaries, puzzle progress, some records newer on
+// this device) through the real Settings dialog, in two windows: choosing the file, and pressing Restore. It prints the
+// elapsed time, the longest task, the tasks of 50 ms or more and the time they blocked, and, where the page can see
+// them, the cost of the steps (reading the file, parsing it, the one write transaction, what follows the commit).
+//   PERF_TASKS_ONLY=restore       runs only that flow (a fresh browser profile, an empty library)
+//   PERF_CPU_THROTTLE=4           slows the page's CPU 4x (Chrome DevTools Protocol) for that flow, as a phone would be
+//
 // Page load is reported apart and not counted: the browser's one-time audio start (the first AudioContext of a
 // process: 60-340 ms, not avoidable, built by the app in an idle moment after start-up) and its one-time font
 // start-up (~35-50 ms on the first layout of a cold process) happen there. What the tour covers: Play (a game with the bot, takeback), Review (opening it,
@@ -19,6 +26,7 @@ import process from 'node:process';
 import { chromium } from '@playwright/test';
 import { formatGb, formatProcesses, freeMemoryBytes, installCleanup, killAllChildTrees } from './lib/process-guard.mjs';
 import { browserLaunchOptions, skipStoryLanding } from './lib/browser.mjs';
+import { asBackupText, buildInventedBackups } from './lib/invented-backup.mjs';
 
 const PORT = Number(process.env.PERF_PORT || 4182);
 const BASE_URL = `http://127.0.0.1:${PORT}`;
@@ -27,6 +35,8 @@ const REVIEWED_GAMES = Number(process.env.PERF_TASKS_REVIEWED || 12);
 const MIN_FREE_MEMORY_BYTES = 2.5 * 1024 ** 3;
 const MAX_RUN_MS = Number(process.env.PERF_MAX_RUN_MS) || 20 * 60 * 1000;
 const LIMIT_MS = 50;
+const ONLY = process.env.PERF_TASKS_ONLY || '';
+const CPU_THROTTLE = Number(process.env.PERF_CPU_THROTTLE || 1);
 
 const LOG_DIR = path.join('test-results', 'perf-logs');
 fs.mkdirSync(LOG_DIR, { recursive: true });
@@ -150,10 +160,44 @@ async function run() {
     const page = await context.newPage();
     page.on('pageerror', (err) => logError('[page error]', err.message));
     await page.addInitScript(() => {
-      window.__tour = { windows: [], tasks: [], open: null };
+      window.__tour = { windows: [], tasks: [], open: null, marks: [] };
       new PerformanceObserver((list) => {
         for (const e of list.getEntries()) window.__tour.tasks.push({ start: e.startTime, dur: e.duration });
       }).observe({ entryTypes: ['longtask'] });
+      // Marks for the restore flow's steps, as far as the page itself can see them: a parse of more than 1 MB of text,
+      // reading a file, and a readwrite transaction over five stores or more (a restore). Work in a worker is not seen.
+      const mark = (name, start, end, extra) => window.__tour.marks.push({ name, start, end, ...extra });
+      const jsonParse = JSON.parse;
+      JSON.parse = function (text, reviver) {
+        if (typeof text !== 'string' || text.length < 1_000_000) return jsonParse.call(this, text, reviver);
+        const start = performance.now();
+        try {
+          return jsonParse.call(this, text, reviver);
+        } finally {
+          mark('JSON.parse', start, performance.now(), { chars: text.length });
+        }
+      };
+      const blobText = window.Blob.prototype.text;
+      window.Blob.prototype.text = function () {
+        const start = performance.now();
+        const promise = blobText.call(this);
+        void promise.then((text) => {
+          if (text.length >= 1_000_000)
+            mark('file.text() (async read)', start, performance.now(), { chars: text.length });
+        });
+        return promise;
+      };
+      const transaction = window.IDBDatabase.prototype.transaction;
+      window.IDBDatabase.prototype.transaction = function (stores, mode, options) {
+        const tx = transaction.call(this, stores, mode, options);
+        if (mode === 'readwrite' && Array.isArray(stores) && stores.length >= 5) {
+          const start = performance.now();
+          const end = (outcome) => mark(`one readwrite transaction (${outcome})`, start, performance.now());
+          tx.addEventListener('complete', () => end('committed'));
+          tx.addEventListener('abort', () => end('aborted'));
+        }
+        return tx;
+      };
     });
     await page.goto(`${BASE_URL}/`, { waitUntil: 'domcontentloaded' });
     await page.locator('[data-testid="chess-board"]').waitFor({ state: 'visible' });
@@ -184,6 +228,178 @@ async function run() {
       log(`[flow] ${label}`);
     };
     const settle = (ms = 400) => page.waitForTimeout(ms);
+
+    // The restore of an invented 16 MB backup (scripts/lib/invented-backup.mjs): a second page of this browser first
+    // restores what "this device" already holds (the same library, records only it has, newer progress), then the
+    // measured page chooses the file and presses Restore. Two windows, so a long task says which step it was in.
+    const restoreLines = [];
+    const bigRestore = async () => {
+      const { file, local, expect } = buildInventedBackups();
+      const fileText = asBackupText(file);
+      const fileName = path.join('test-results', `perf-tasks-big-${process.pid}-file.json`);
+      const localName = path.join('test-results', `perf-tasks-big-${process.pid}-local.json`);
+      fs.writeFileSync(fileName, fileText);
+      fs.writeFileSync(localName, asBackupText(local));
+      const fileMb = (Buffer.byteLength(fileText) / 1024 ** 2).toFixed(1);
+      try {
+        const seed = await context.newPage();
+        seed.on('pageerror', (err) => logError('[page error, seeding page]', err.message));
+        await seed.goto(`${BASE_URL}/`, { waitUntil: 'domcontentloaded' });
+        await seed.getByTestId('btn-settings').click();
+        await seed.getByTestId('backup-file-input').setInputFiles(localName);
+        await seed.getByTestId('btn-backup-confirm').click();
+        await seed
+          .getByTestId('backup-status')
+          .filter({ hasText: /^Restored/ })
+          .waitFor({ timeout: 600_000 });
+        await seed.close();
+        log(
+          `[restore] this device holds ${local.games.length} games, ${local.puzzles.length} puzzles, ${local.reviews.length} reviews`,
+        );
+
+        if (CPU_THROTTLE > 1) {
+          const cdp = await context.newCDPSession(page);
+          await cdp.send('Emulation.setCPUThrottlingRate', { rate: CPU_THROTTLE });
+        }
+        if (!(await page.getByTestId('btn-backup-restore').isVisible())) await page.getByTestId('btn-settings').click();
+        await page.getByTestId('btn-backup-restore').waitFor({ state: 'visible' });
+        await page.evaluate(() => {
+          const input = document.querySelector('[data-testid="backup-file-input"]');
+          const confirmButton = document.querySelector('[data-testid="btn-backup-confirm"]');
+          const status = document.querySelector('[data-testid="backup-status"]');
+          const stamps = (window.__restore = { pickStart: 0, pickDone: 0, confirmStart: 0, done: 0, text: '' });
+          input.addEventListener('change', () => (stamps.pickStart = performance.now()), true);
+          // The dialog is shown when the button's box appears (its container loses `hidden`)
+          new window.MutationObserver(() => {
+            if (!stamps.pickDone && stamps.pickStart && confirmButton.offsetParent !== null) {
+              stamps.pickDone = performance.now();
+            }
+          }).observe(document.body, { attributes: true, subtree: true, attributeFilter: ['hidden'] });
+          confirmButton.addEventListener('click', () => (stamps.confirmStart = performance.now()), true);
+          new window.MutationObserver(() => {
+            const text = status.textContent ?? '';
+            if (stamps.confirmStart && !stamps.done && /^(Restored|Nothing to restore|The restore failed)/.test(text)) {
+              stamps.done = performance.now();
+              stamps.text = text;
+            }
+          }).observe(status, { childList: true, characterData: true, subtree: true });
+        });
+
+        await flow(`settings: choose a ${fileMb} MB backup file (until the dialog is shown)`, async () => {
+          await page.getByTestId('backup-file-input').setInputFiles(fileName);
+          await page.getByTestId('btn-backup-confirm').waitFor({ state: 'visible', timeout: 300_000 });
+          await settle();
+        });
+        await flow(`settings: restore a ${fileMb} MB backup (Restore pressed until the result is shown)`, async () => {
+          await page.getByTestId('btn-backup-confirm').click();
+          await page.waitForFunction(() => window.__restore.done > 0, undefined, { timeout: 600_000, polling: 250 });
+          await settle(800);
+        });
+
+        const stamps = await page.evaluate(() => window.__restore);
+        if (/could not refresh|failed/.test(stamps.text) || !/^Restored 40 games/.test(stamps.text)) {
+          throw new Error(`the big restore did not say what was expected: "${stamps.text}"`);
+        }
+        if (!stamps.text.includes('Kept what was newer here')) {
+          throw new Error(`the big restore did not report what it kept: "${stamps.text}"`);
+        }
+        const kept = await page.evaluate(
+          (id) =>
+            new Promise((resolve, reject) => {
+              const open = window.indexedDB.open('wizards-chess-db');
+              open.onerror = () => reject(open.error);
+              open.onsuccess = () => {
+                const get = open.result.transaction('puzzles', 'readonly').objectStore('puzzles').get(id);
+                get.onsuccess = () => {
+                  open.result.close();
+                  resolve(get.result?.attempts ?? null);
+                };
+                get.onerror = () => reject(get.error);
+              };
+            }),
+          expect.keptPuzzleId,
+        );
+        if (kept !== expect.keptPuzzleAttempts) {
+          throw new Error(
+            `a puzzle that was newer on this device was replaced (attempts ${kept}, expected ${expect.keptPuzzleAttempts})`,
+          );
+        }
+        log(`[restore] result line: ${stamps.text}`);
+        log('[restore] a puzzle with newer progress on this device kept it');
+
+        const tour = await page.evaluate(() => window.__tour);
+        const marks = tour.marks.slice().sort((x, y) => x.start - y.start);
+        const rate = `${CPU_THROTTLE}x`;
+        const describe = (label, from, to, windowLabel) => {
+          const w = tour.windows.find((x) => x.label.startsWith(windowLabel));
+          const tasks = tour.tasks.filter((t) => t.start >= w.start - 1 && t.start <= w.end + 1);
+          const longest = tasks.reduce((m, t) => Math.max(m, t.dur), 0);
+          const blocked = tasks.reduce((sum, t) => sum + t.dur, 0);
+          restoreLines.push(
+            `[restore] ${label}: elapsed ${Math.round(to - from)} ms, longest task ${tasks.length ? `${Math.round(longest)} ms` : `none of ${LIMIT_MS} ms or more`}, tasks of ${LIMIT_MS} ms or more ${tasks.length}, blocked ${Math.round(blocked)} ms (cpu ${rate})`,
+          );
+          restoreLines.push(
+            `RESTORE_TABLE cpu=${rate} step=${label} elapsedMs=${Math.round(to - from)} longestMs=${Math.round(longest)} over50=${tasks.length} blockedMs=${Math.round(blocked)}`,
+          );
+          for (const t of tasks) {
+            const inside = marks.filter(
+              (m) => m.start - 5 <= t.start + t.dur && m.end + 5 >= t.start && !m.name.startsWith('file.text'),
+            );
+            restoreLines.push(
+              `[restore]   task ${Math.round(t.dur)} ms at +${Math.round(t.start - from)} ms${inside.length ? ` during: ${inside.map((m) => m.name).join(', ')}` : ' (no marked step)'}`,
+            );
+          }
+        };
+        describe('pick', stamps.pickStart, stamps.pickDone, 'settings: choose a');
+        describe('confirm', stamps.confirmStart, stamps.done, 'settings: restore a');
+        for (const m of marks) {
+          restoreLines.push(
+            `[restore] step ${m.name}: ${Math.round(m.end - m.start)} ms${m.chars ? ` (${(m.chars / 1e6).toFixed(1)} M chars)` : ''}, from ${Math.round(m.start - stamps.pickStart)} ms after choosing the file`,
+          );
+        }
+        const commit = marks.find((m) => m.name.startsWith('one readwrite transaction'));
+        restoreLines.push(
+          commit
+            ? `[restore] step after the commit until the result is shown (settings parse, apply, screens refreshed): ${Math.round(stamps.done - commit.end)} ms`
+            : '[restore] steps inside a worker are not visible to the page: only the page-side tasks above are counted',
+        );
+      } finally {
+        fs.rmSync(fileName, { force: true });
+        fs.rmSync(localName, { force: true });
+      }
+    };
+
+    /** The audit: every window's tasks of 50 ms or more, the restore flow's detail, the verdict. */
+    const report = async () => {
+      const tour = await page.evaluate(() => window.__tour);
+      // Page load is reported apart: the browser's one-time audio and font start-up land there (see the header)
+      const startup = tour.tasks.filter((t) => t.dur >= LIMIT_MS && t.start < tour.startupEnd);
+      const over = tour.tasks.filter((t) => t.dur >= LIMIT_MS && t.start >= tour.startupEnd);
+      const where = (t) =>
+        tour.windows.find((w) => t.start >= w.start - 1 && t.start <= w.end + 1)?.label ?? '(between flows)';
+      log('\n=== Main-thread task audit (perf:tasks) ===');
+      log(
+        `${startup.length === 0 ? 'ok  ' : 'note'} page load, until the audio context exists${startup.length ? `  → ${startup.map((t) => `${Math.round(t.dur)} ms at ${Math.round(t.start)} ms`).join(', ')} (browser start-up, see the header)` : ''}`,
+      );
+      for (const w of tour.windows) {
+        const mine = tour.tasks.filter((t) => t.dur >= LIMIT_MS && t.start >= w.start - 1 && t.start <= w.end + 1);
+        log(
+          `${mine.length === 0 ? 'ok  ' : 'LONG'} ${w.label}${mine.length ? `  → ${mine.map((t) => `${Math.round(t.dur)} ms`).join(', ')}` : ''}`,
+        );
+      }
+      for (const t of over.filter((t) => where(t) === '(between flows)'))
+        log(`LONG (between flows) ${Math.round(t.dur)} ms at ${Math.round(t.start)}`);
+      log(`tasks of ${LIMIT_MS} ms or more after page load: ${over.length}`);
+      log(over.length === 0 ? 'budgetPassed: true' : 'budgetPassed: false');
+      if (over.length > 0) process.exitCode = 1;
+      for (const line of restoreLines) log(line);
+    };
+
+    if (ONLY === 'restore') {
+      await bigRestore();
+      await report();
+      return;
+    }
 
     // ---- Play
     await flow('play: a game against the bot (6 moves), takeback, resign', async () => {
@@ -422,28 +638,10 @@ async function run() {
       throw new Error(`the sync flow made ${syncRequests.length} API requests, expected ${SYNC_MONTHS.length + 2}`);
     }
 
-    // ---- report
-    const tour = await page.evaluate(() => window.__tour);
-    // Page load is reported apart: the browser's one-time audio and font start-up land there (see the header)
-    const startup = tour.tasks.filter((t) => t.dur >= LIMIT_MS && t.start < tour.startupEnd);
-    const over = tour.tasks.filter((t) => t.dur >= LIMIT_MS && t.start >= tour.startupEnd);
-    const where = (t) =>
-      tour.windows.find((w) => t.start >= w.start - 1 && t.start <= w.end + 1)?.label ?? '(between flows)';
-    log('\n=== Main-thread task audit (perf:tasks) ===');
-    log(
-      `${startup.length === 0 ? 'ok  ' : 'note'} page load, until the audio context exists${startup.length ? `  → ${startup.map((t) => `${Math.round(t.dur)} ms at ${Math.round(t.start)} ms`).join(', ')} (browser start-up, see the header)` : ''}`,
-    );
-    for (const w of tour.windows) {
-      const mine = tour.tasks.filter((t) => t.dur >= LIMIT_MS && t.start >= w.start - 1 && t.start <= w.end + 1);
-      log(
-        `${mine.length === 0 ? 'ok  ' : 'LONG'} ${w.label}${mine.length ? `  → ${mine.map((t) => `${Math.round(t.dur)} ms`).join(', ')}` : ''}`,
-      );
-    }
-    for (const t of over.filter((t) => where(t) === '(between flows)'))
-      log(`LONG (between flows) ${Math.round(t.dur)} ms at ${Math.round(t.start)}`);
-    log(`tasks of ${LIMIT_MS} ms or more after page load: ${over.length}`);
-    log(over.length === 0 ? 'budgetPassed: true' : 'budgetPassed: false');
-    if (over.length > 0) process.exitCode = 1;
+    // ---- A restore of 16 MB, the last flow (it leaves 4,600 games in the library, so it comes after the others)
+    await bigRestore();
+
+    await report();
   } finally {
     await Promise.race([browser?.close().catch(() => undefined), new Promise((r) => setTimeout(r, 10_000))]);
     server?.kill();
