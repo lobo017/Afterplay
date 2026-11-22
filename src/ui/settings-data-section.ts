@@ -1,19 +1,19 @@
-import type { BackupPayload } from '../storage/db';
+import { assertRestorable, parseBackupText, type RestoreReport } from '../storage/backup-restore';
+import { LATEST_SCHEMA_VERSION, type BackupPayload } from '../storage/db';
 import type { SyncProgress, SyncReport } from '../sync/chesscom-sync';
 import { icon } from './components/icons';
+import { RESTORED_BUT_STALE_TEXT, restoreConfirmText, restoreFailedText, restoreResultText } from './restore-text';
 import type { SettingsPanel } from './settings-panel';
 import { PREFERENCES_SETTING_KEY, parsePreferences, type PreferencesSnapshot } from './settings-persistence';
 
 export interface BackupBackend {
   /** Everything in the database as backup JSON (games, reviews, puzzles, cards, settings…). */
   exportBackupJson(): Promise<string>;
-  importBackupJson(json: string): Promise<{
-    gamesImported: number;
-    settingsImported: number;
-    puzzlesImported: number;
-    srsCardsImported: number;
-    reviewsImported: number;
-  }>;
+  /**
+   * Restores a backup in one transaction: progress that is newer here is kept, the rest of the file is merged in. Throws,
+   * with nothing changed, for a file that is damaged or from a newer version of the app.
+   */
+  restoreBackupJson(json: string): Promise<RestoreReport>;
 }
 
 export interface DataSectionOptions {
@@ -68,6 +68,10 @@ export function summarizeBackup(json: string): BackupSummary {
   if (parsed.format !== 'wizards-chess-backup') {
     throw new Error('This file is not an Afterplay backup.');
   }
+  return summarizeParsed(parsed);
+}
+
+function summarizeParsed(parsed: Partial<BackupPayload>): BackupSummary {
   const len = (v: unknown) => (Array.isArray(v) ? v.length : 0);
   const settings = Array.isArray(parsed.settings) ? parsed.settings : [];
   return {
@@ -78,6 +82,21 @@ export function summarizeBackup(json: string): BackupSummary {
     hasPreferences: settings.some((s) => s?.key === PREFERENCES_SETTING_KEY && parsePreferences(s.value) !== null),
     exportedAt: typeof parsed.exportedAt === 'number' ? parsed.exportedAt : null,
   };
+}
+
+/** What the confirmation shows of a backup file: its counts, and whether it brings settings and bots. */
+export interface BackupInspection extends BackupSummary {
+  hasBots: boolean;
+}
+
+/**
+ * Checks a backup file's text before the confirmation: throws a `BackupRefusedError` (readable message) when it is not
+ * JSON, not a backup, from a newer version of the app, or has damaged records. Nothing is written either way.
+ */
+export function inspectBackup(json: string): BackupInspection {
+  const parsed = parseBackupText(json);
+  const check = assertRestorable(parsed, LATEST_SCHEMA_VERSION);
+  return { ...summarizeParsed(parsed as Partial<BackupPayload>), hasBots: check.hasBotRows };
 }
 
 /** The preferences a backup carries, if any. */
@@ -167,12 +186,10 @@ export function mountDataSection(options: DataSectionOptions): DataSection {
     if (!file) return;
     void file.text().then((text) => {
       try {
-        const s = summarizeBackup(text);
+        const s = inspectBackup(text);
         pending = text;
         const when = s.exportedAt ? ` from ${new Date(s.exportedAt).toLocaleDateString()}` : '';
-        confirmText.textContent = `Restore this backup${when}? It adds ${plural(s.games, 'game')}, ${plural(s.reviews, 'review')} and ${plural(s.puzzles, 'puzzle')}${
-          s.hasPreferences ? ', and replaces your settings' : ''
-        }. Anything with the same name here is overwritten.`;
+        confirmText.textContent = restoreConfirmText(s, when);
         confirm.hidden = false;
         say('');
         q<HTMLButtonElement>('btn-backup-cancel').focus();
@@ -244,20 +261,23 @@ export function mountDataSection(options: DataSectionOptions): DataSection {
     confirm.hidden = true;
     q<HTMLButtonElement>('btn-backup-restore').focus();
     void (async () => {
+      // Two stages, because they fail differently: before the database changed (nothing was changed), and after it (the
+      // data is restored, a screen could not follow)
+      let report: RestoreReport;
       try {
         say('Restoring…');
-        const counts = await (await options.getBackend()).importBackupJson(text);
+        report = await (await options.getBackend()).restoreBackupJson(text);
+      } catch (err) {
+        say(restoreFailedText(err), 'bad');
+        return;
+      }
+      try {
         const prefs = backupPreferences(text);
         if (prefs) options.applyPreferences(prefs);
         await options.afterRestore();
-        say(
-          `Restored ${plural(counts.gamesImported, 'game')}, ${plural(counts.reviewsImported, 'review')}, ${plural(counts.puzzlesImported, 'puzzle')}${
-            prefs ? ' and your settings' : ''
-          }.`,
-          'ok',
-        );
-      } catch (err) {
-        say(`The restore failed: ${err instanceof Error ? err.message : String(err)}`, 'bad');
+        say(restoreResultText(report, prefs !== null), 'ok');
+      } catch {
+        say(RESTORED_BUT_STALE_TEXT, 'bad');
       }
     })();
   });

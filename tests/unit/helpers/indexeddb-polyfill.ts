@@ -283,6 +283,7 @@ export class FakeIDBObjectStore {
       if (resolvedKey === undefined) {
         throw new Error(`Missing key for object store ${this.storeData.name}`);
       }
+      this.tx.rememberForUndo(this.storeData, resolvedKey);
       this.storeData.records.set(resolvedKey, structuredClone(value));
       return resolvedKey;
     });
@@ -297,6 +298,7 @@ export class FakeIDBObjectStore {
       if (this.storeData.records.has(resolvedKey)) {
         throw new Error(`ConstraintError: key ${String(resolvedKey)} already exists`);
       }
+      this.tx.rememberForUndo(this.storeData, resolvedKey);
       this.storeData.records.set(resolvedKey, structuredClone(value));
       return resolvedKey;
     });
@@ -304,6 +306,7 @@ export class FakeIDBObjectStore {
 
   public delete(key: unknown): FakeIDBRequest {
     return this.tx.scheduleRequest(() => {
+      this.tx.rememberForUndo(this.storeData, key);
       this.storeData.records.delete(key);
       return undefined;
     });
@@ -311,6 +314,7 @@ export class FakeIDBObjectStore {
 
   public clear(): FakeIDBRequest {
     return this.tx.scheduleRequest(() => {
+      this.tx.rememberAllForUndo(this.storeData);
       this.storeData.records.clear();
       return undefined;
     });
@@ -328,6 +332,8 @@ export class FakeIDBTransaction extends SimpleEventTarget {
   private dbRecord: DatabaseRecord;
   private pendingCount = 0;
   private completed = false;
+  private aborted = false;
+  private undoLog: Array<() => void> = [];
   private autoCompleteEnabled: boolean;
 
   public constructor(
@@ -355,12 +361,52 @@ export class FakeIDBTransaction extends SimpleEventTarget {
     return new FakeIDBObjectStore(storeData, this);
   }
 
+  /** Remembers how a record looked before a write, so abort() can put it back. */
+  public rememberForUndo(storeData: StoreData, key: unknown): void {
+    const had = storeData.records.has(key);
+    const before = storeData.records.get(key);
+    this.undoLog.push(() => {
+      if (had) storeData.records.set(key, before);
+      else storeData.records.delete(key);
+    });
+  }
+
+  /** Remembers a whole store before it is cleared. */
+  public rememberAllForUndo(storeData: StoreData): void {
+    const before = new Map(storeData.records);
+    this.undoLog.push(() => {
+      storeData.records = before;
+    });
+  }
+
+  /**
+   * Undoes every write of this transaction (newest first), refuses the requests still waiting, and reports the abort, as
+   * a real database does. A transaction that has already completed on its own (these fakes complete early) is rolled
+   * back all the same, which is what a test of "nothing is stored when the work fails" needs.
+   */
+  public abort(): void {
+    if (this.aborted) return;
+    this.aborted = true;
+    for (const undo of this.undoLog.reverse()) undo();
+    this.undoLog = [];
+    if (!this.completed) {
+      this.completed = true;
+      this.error = new Error('AbortError: the transaction was aborted');
+      this.dispatchEvent('abort');
+    }
+  }
+
   public scheduleRequest<T>(work: () => T): FakeIDBRequest<T> {
     const req = new FakeIDBRequest<T>();
     req.transaction = this;
     this.pendingCount++;
 
     queueMicrotask(() => {
+      if (this.aborted) {
+        this.pendingCount--;
+        req.fail(new Error('AbortError: the transaction was aborted'));
+        return;
+      }
       try {
         const res = work();
         req.succeed(res);

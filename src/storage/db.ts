@@ -4,6 +4,7 @@ import type { GameTermination, SerializedGameTree } from '../core/game-tree';
 import type { StoredGameSource } from '../capture/game-id';
 import type { SavedReview } from '../library/saved-review';
 import type { PhaseNumbers } from '../review/phase-numbers';
+import { legacyCounts, parseBackupText, restoreBackupPayload, type RestoreReport } from './backup-restore';
 
 export const DEFAULT_DB_NAME = 'wizards-chess-db';
 export const LATEST_SCHEMA_VERSION = 4;
@@ -753,6 +754,21 @@ export class WizardChessStorage {
     return JSON.stringify(payload, null, 2);
   }
 
+  /**
+   * Restores a backup file's text: validates it, then merges it in one transaction (see backup-restore.ts and
+   * backup-merge.ts: progress that is newer here is kept). Throws a `BackupRefusedError` for a file that is not a backup,
+   * is from a newer version of the app or has damaged records; any failure leaves the database as it was.
+   */
+  public async restoreBackupJson(jsonString: string): Promise<RestoreReport> {
+    return this.restoreBackup(parseBackupText(jsonString));
+  }
+
+  /** Restores an already parsed backup (the work behind `restoreBackupJson`). */
+  public async restoreBackup(parsed: unknown): Promise<RestoreReport> {
+    return restoreBackupPayload(this.db, parsed, LATEST_SCHEMA_VERSION);
+  }
+
+  /** `restoreBackupJson`, reduced to the number of records written in each store. */
   public async importBackupJson(jsonString: string): Promise<{
     gamesImported: number;
     settingsImported: number;
@@ -762,45 +778,6 @@ export class WizardChessStorage {
     endgameProgressImported: number;
     reviewsImported: number;
   }> {
-    const parsed = JSON.parse(jsonString) as Partial<BackupPayload>;
-    if (parsed.format !== 'wizards-chess-backup') {
-      throw new Error('Invalid backup format: expected wizards-chess-backup');
-    }
-
-    const games = Array.isArray(parsed.games) ? parsed.games : [];
-    const settings = Array.isArray(parsed.settings) ? parsed.settings : [];
-    const puzzles = Array.isArray(parsed.puzzles) ? parsed.puzzles : [];
-    const srsCards = Array.isArray(parsed.srsCards) ? parsed.srsCards : [];
-    const repertoires = Array.isArray(parsed.repertoires) ? parsed.repertoires : [];
-    const endgameProgress = Array.isArray(parsed.endgameProgress) ? parsed.endgameProgress : [];
-
-    for (const g of games) await this.db.put('games', g);
-    for (const s of settings) await this.db.put('settings', s);
-    if (this.db.objectStoreNames.contains('puzzles')) {
-      for (const p of puzzles) await this.db.put('puzzles', p);
-    }
-    if (this.db.objectStoreNames.contains('srs_cards')) {
-      for (const c of srsCards) await this.db.put('srs_cards', c);
-    }
-    if (this.db.objectStoreNames.contains('repertoires')) {
-      for (const r of repertoires) await this.db.put('repertoires', r);
-    }
-    if (this.db.objectStoreNames.contains('endgame_progress')) {
-      for (const e of endgameProgress) await this.db.put('endgame_progress', e);
-    }
-    const reviews = Array.isArray(parsed.reviews) ? parsed.reviews : [];
-    if (this.db.objectStoreNames.contains('reviews')) {
-      for (const r of reviews) await this.db.put('reviews', r);
-    }
-
-    return {
-      gamesImported: games.length,
-      settingsImported: settings.length,
-      puzzlesImported: puzzles.length,
-      srsCardsImported: srsCards.length,
-      repertoiresImported: repertoires.length,
-      endgameProgressImported: endgameProgress.length,
-      reviewsImported: reviews.length,
-    };
+    return legacyCounts(await this.restoreBackupJson(jsonString));
   }
 }
