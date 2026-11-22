@@ -277,7 +277,7 @@ try {
     look.theme === 'green' &&
       look.pieces === 'classic' &&
       look.me === 'Ada (White)' &&
-      look.bot === 'Professor Rook (800)' &&
+      look.bot === 'Professor Rook · Solid (800)' &&
       look.title === "Ada's Chess",
     JSON.stringify(look),
   );

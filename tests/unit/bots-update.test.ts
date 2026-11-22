@@ -270,7 +270,8 @@ describe('the bots-only update: the revision', () => {
     const garbage = { ...NEW_PRESET, books: { student: 'not a book', 'student-blitz': 5 } };
     expect(await d.run({ answer: () => Promise.resolve(json(garbage)) })).toEqual({ kind: 'unchanged' });
     expect(d.state.botsBuild).toBe(BUILD_NEW);
-    // A newer list is read whole: its bad books are left out, so its bots would refer to books that are not there
+    // A newer list is checked before it is taken: bad names, types and sizes in the books table are left out, but the
+    // text of a table book is not parsed (a text that is not a book gives a bot without books when the bot is used)
     const d2 = device();
     expect(await d2.run({ answer: () => Promise.resolve(json(garbage)) })).toEqual({ kind: 'updated', revision: 1 });
   });
