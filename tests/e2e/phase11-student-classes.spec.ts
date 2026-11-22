@@ -101,16 +101,14 @@ test.describe('Phase 11 — one Student bot whose rating and book follow the tim
   test('every Time chip gives the Student its class rating: chip, card line and player bar', async ({ page }) => {
     // The preset opens on 10 + 0, so the first class is Rapid at the bot's own rating
     await expect(page.getByTestId(STUDENT)).toHaveAttribute('aria-pressed', 'true');
-    await expect(page.getByTestId('bot-rating-label')).toHaveText(`Test Student · Rapid · Solid · ${RATING.rapid} Elo`);
+    await expect(page.getByTestId('bot-rating-label')).toHaveText(`Rapid · Solid · ${RATING.rapid} Elo`);
     const order = await botOrder(page);
     expect(order).toEqual(['Plain Bot', 'Test Student']);
 
     for (const [id, cls] of CHIPS) {
       await press(page, `time-control-${id}`);
       const label = cls[0]!.toUpperCase() + cls.slice(1);
-      await expect(page.getByTestId('bot-rating-label')).toHaveText(
-        `Test Student · ${label} · Solid · ${RATING[cls]} Elo`,
-      );
+      await expect(page.getByTestId('bot-rating-label')).toHaveText(`${label} · Solid · ${RATING[cls]} Elo`);
       await expect(page.getByTestId(STUDENT).locator('.wc-custom-bot-rating')).toHaveText(String(RATING[cls]));
       await expect(page.getByTestId('top-player-name')).toHaveText(`Test Student · Solid (${RATING[cls]})`);
       await expect(page.getByTestId(STUDENT)).toHaveAttribute('aria-pressed', 'true');
@@ -132,9 +130,8 @@ test.describe('Phase 11 — one Student bot whose rating and book follow the tim
     await expect(page.getByTestId('top-player-name')).toHaveText('Plain Bot · Solid (1000)');
 
     await press(page, STUDENT);
-    await expect(page.getByTestId('bot-rating-label')).toHaveText(
-      `Test Student · Bullet · Solid · ${RATING.bullet} Elo`,
-    );
+    await expect(page.getByTestId('bot-rating-label')).toHaveText(`Bullet · Solid · ${RATING.bullet} Elo`);
+    await expect(page.getByTestId(STUDENT)).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByTestId('top-player-name')).toHaveText(`Test Student · Solid (${RATING.bullet})`);
     await press(page, 'time-control-5+0');
     await expect(page.getByTestId('top-player-name')).toHaveText(`Test Student · Solid (${RATING.blitz})`);
@@ -149,14 +146,11 @@ test.describe('Phase 11 — one Student bot whose rating and book follow the tim
     page,
   }) => {
     const label = page.getByTestId('bot-rating-label');
-    await expect(label).toHaveText(`Test Student · Rapid · Solid · ${RATING.rapid} Elo`);
-    expect(await label.evaluate((el) => el.textContent)).toBe(
-      `Test Student · Rapid · Solid · ${RATING.rapid}\u00a0Elo`,
-    );
+    await expect(label).toHaveText(`Rapid · Solid · ${RATING.rapid} Elo`);
+    await expect(page.getByTestId(STUDENT)).toHaveAttribute('aria-pressed', 'true');
+    expect(await label.evaluate((el) => el.textContent)).toBe(`Rapid · Solid · ${RATING.rapid}\u00a0Elo`);
     await press(page, 'time-control-1+0');
-    expect(await label.evaluate((el) => el.textContent)).toBe(
-      `Test Student · Bullet · Solid · ${RATING.bullet}\u00a0Elo`,
-    );
+    expect(await label.evaluate((el) => el.textContent)).toBe(`Bullet · Solid · ${RATING.bullet}\u00a0Elo`);
     // A bot without classes keeps its plain space, byte for byte
     await press(page, 'custom-bot-0');
     expect(await label.evaluate((el) => el.textContent)).toBe('Plain Bot · Solid · 1000 Elo');
@@ -167,16 +161,15 @@ test.describe('Phase 11 — one Student bot whose rating and book follow the tim
     await expect(page.getByTestId('top-player-name')).toHaveText(`Test Student · Solid (${RATING.bullet})`);
     await press(page, 'time-control-unlimited');
     await expect(page.getByTestId('top-player-name')).toHaveText(`Test Student · Solid (${RATING.rapid})`);
-    await expect(page.getByTestId('bot-rating-label')).toHaveText(`Test Student · Rapid · Solid · ${RATING.rapid} Elo`);
+    await expect(page.getByTestId('bot-rating-label')).toHaveText(`Rapid · Solid · ${RATING.rapid} Elo`);
+    await expect(page.getByTestId(STUDENT)).toHaveAttribute('aria-pressed', 'true');
   });
 
   test('a style change keeps the bot and its class rating', async ({ page }) => {
     await press(page, 'time-control-3+2');
     await press(page, 'bot-style-aggressive');
     await expect(page.getByTestId('top-player-name')).toHaveText(`Test Student · Aggressive (${RATING.blitz})`);
-    await expect(page.getByTestId('bot-rating-label')).toHaveText(
-      `Test Student · Blitz · Aggressive · ${RATING.blitz} Elo`,
-    );
+    await expect(page.getByTestId('bot-rating-label')).toHaveText(`Blitz · Aggressive · ${RATING.blitz} Elo`);
     await expect(page.getByTestId(STUDENT)).toHaveAttribute('aria-pressed', 'true');
     await press(page, 'time-control-1+0');
     await expect(page.getByTestId('top-player-name')).toHaveText(`Test Student · Aggressive (${RATING.bullet})`);
@@ -216,7 +209,8 @@ test.describe('Phase 11 — one Student bot whose rating and book follow the tim
     await page.reload();
     await expect(board(page).getByTestId('chess-board')).toBeVisible();
     await expect(page.getByTestId('top-player-name')).toHaveText(`Test Student · Solid (${RATING.rapid})`);
-    await expect(page.getByTestId('bot-rating-label')).toHaveText(`Test Student · Rapid · Solid · ${RATING.rapid} Elo`);
+    await expect(page.getByTestId('bot-rating-label')).toHaveText(`Rapid · Solid · ${RATING.rapid} Elo`);
+    await expect(page.getByTestId(STUDENT)).toHaveAttribute('aria-pressed', 'true');
     expect(
       await page.evaluate(
         () =>
@@ -267,7 +261,8 @@ test.describe('Phase 11 — one Student bot whose rating and book follow the tim
     await press(page, 'play-menu');
     await press(page, 'menu-new-game');
     await press(page, 'time-control-10+0');
-    await expect(page.getByTestId('bot-rating-label')).toHaveText(`Test Student · Rapid · Solid · ${RATING.rapid} Elo`);
+    await expect(page.getByTestId('bot-rating-label')).toHaveText(`Rapid · Solid · ${RATING.rapid} Elo`);
+    await expect(page.getByTestId(STUDENT)).toHaveAttribute('aria-pressed', 'true');
     // The game on the board is still the Bullet one
     await expect(page.getByTestId('top-player-name')).toHaveText(`Test Student · Solid (${RATING.bullet})`);
     expect(await mainLine(page)).toEqual(['e4', REPLY.bullet]);
@@ -439,7 +434,7 @@ test.describe('Phase 11 — the opponent chips follow the Time class (six bots)'
     for (const [id, cls] of THERE_AND_BACK) {
       await press(page, `time-control-${id}`);
       await expect(page.getByTestId('bot-rating-label')).toHaveText(
-        `Your Student · ${cls[0]!.toUpperCase() + cls.slice(1)} · Solid · ${SIX_RATING[cls]} Elo`,
+        `${cls[0]!.toUpperCase() + cls.slice(1)} · Solid · ${SIX_RATING[cls]} Elo`,
       );
       await expect(page.getByTestId(SIX_STUDENT)).toHaveAttribute('aria-pressed', 'true');
       expect(await page.locator('[data-testid=custom-bots] .wc-custom-bot[aria-pressed=true]').count(), id).toBe(1);
@@ -472,4 +467,84 @@ test.describe('Phase 11 — the opponent chips follow the Time class (six bots)'
       );
     });
   }
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// The summary line above the opponent chips ("Bullet · Solid · 1116 Elo") is one line at phone widths in every class and
+// the card below does not move when a Time chip is tapped. It used to carry the bot's name too, which wrapped to two
+// lines at some widths for one class and not for another (the Blitz line is about 11 px shorter), so the card jumped
+// by a line. The line has no name now (the pressed chip below names the bot).
+
+/** How many lines of text the summary label has: the distinct tops of the boxes its text is drawn in. */
+const labelLines = (page: Page) =>
+  page.getByTestId('bot-rating-label').evaluate((el) => {
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    return new Set([...range.getClientRects()].map((r) => Math.round(r.top))).size;
+  });
+
+const classWord = (cls: keyof typeof SIX_RATING) => cls[0]!.toUpperCase() + cls.slice(1);
+
+test.describe('Phase 11 — the summary line of a bot with classes is one line (six bots)', () => {
+  for (const width of [360, 375, 390, 412]) {
+    test(`the summary line is one line for all ten Time chips, at ${width} px`, async ({ page }) => {
+      await openSix(page, width);
+      const seen: string[] = [];
+      for (const [id, cls] of CHIPS) {
+        await press(page, `time-control-${id}`);
+        await expect(page.getByTestId('bot-rating-label')).toHaveText(
+          `${classWord(cls)} · Solid · ${SIX_RATING[cls]} Elo`,
+        );
+        const lines = await labelLines(page);
+        expect(lines, `${width} px, chip ${id}`).toBe(1);
+        seen.push(`${id}:${lines}`);
+      }
+      console.log(`[label-lines] default font ${width}px: ${seen.join(' ')}`);
+    });
+  }
+
+  // A font injected into the page after it has loaded (the fonts are on the laptop; a machine without one falls back to
+  // its own sans, which is still a width the line has to fit in)
+  const FONTS = { Arial: 'Arial, sans-serif', Tahoma: 'Tahoma, sans-serif', Verdana: 'Verdana, sans-serif' };
+  for (const [fontName, family] of Object.entries(FONTS)) {
+    for (const width of [360, 375, 390, 412]) {
+      test(`with ${fontName} the line is one line and the card does not move for all ten Time chips, at ${width} px`, async ({
+        page,
+      }) => {
+        await openSix(page, width);
+        await page.addStyleTag({
+          content: `:root { --font-sans: ${family} !important } html, body, button, input { font-family: ${family} !important }`,
+        });
+        const first = await measureCard(page);
+        const seen: string[] = [];
+        for (const [id, cls] of CHIPS) {
+          await press(page, `time-control-${id}`);
+          await expect(page.getByTestId('bot-rating-label')).toHaveText(
+            `${classWord(cls)} · Solid · ${SIX_RATING[cls]} Elo`,
+          );
+          const lines = await labelLines(page);
+          expect(lines, `${fontName} ${width} px, chip ${id}`).toBe(1);
+          expect(await measureCard(page), `${fontName} ${width} px, chip ${id}`).toEqual(first);
+          seen.push(`${id}:${lines}`);
+        }
+        console.log(`[label-lines] ${fontName} ${width}px: ${seen.join(' ')}; row top ${first.rowTop}`);
+      });
+    }
+  }
+
+  test('a bot without classes keeps its summary line with its name; the Student line has no name', async ({ page }) => {
+    await openSix(page);
+    await press(page, 'custom-bot-0');
+    const label = page.getByTestId('bot-rating-label');
+    for (const [id] of CHIPS) {
+      await press(page, `time-control-${id}`);
+      // Byte for byte: the plain space before Elo, the name first
+      expect(await label.evaluate((el) => el.textContent), id).toBe('Your level · Solid · 1669 Elo');
+    }
+    await press(page, SIX_STUDENT);
+    await expect(page.getByTestId(SIX_STUDENT)).toHaveAttribute('aria-pressed', 'true');
+    // The last chip pressed was Unlimited (Rapid); the no-break space joins the number and Elo
+    expect(await label.evaluate((el) => el.textContent)).toBe(`Rapid · Solid · ${SIX_RATING.rapid}\u00a0Elo`);
+    await expect(label).not.toContainText('Your Student');
+  });
 });

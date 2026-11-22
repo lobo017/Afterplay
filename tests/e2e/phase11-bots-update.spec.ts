@@ -193,7 +193,8 @@ test.describe('Phase 11 — the bots-only update', () => {
     expect(served.requests).toHaveLength(2);
 
     // One Student with classes; the saved rating 1345 became the rating of the chip's class (5 + 0, Blitz)
-    await expect(page.getByTestId('bot-rating-label')).toHaveText('Your Student · Blitz · Solid · 1425 Elo');
+    await expect(page.getByTestId('bot-rating-label')).toHaveText('Blitz · Solid · 1425 Elo');
+    await expect(page.getByTestId('custom-bot-0')).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByTestId('top-player-name')).toHaveText('Your Student · Solid (1425)');
     await expect(page.getByTestId('custom-bot-0').locator('.wc-custom-bot-rating')).toHaveText('1425');
     for (const [chip, rating, cls] of [
@@ -202,7 +203,7 @@ test.describe('Phase 11 — the bots-only update', () => {
       ['3+2', 1425, 'Blitz'],
     ] as const) {
       await press(page, `time-control-${chip}`);
-      await expect(page.getByTestId('bot-rating-label')).toHaveText(`Your Student · ${cls} · Solid · ${rating} Elo`);
+      await expect(page.getByTestId('bot-rating-label')).toHaveText(`${cls} · Solid · ${rating} Elo`);
       await expect(page.getByTestId('custom-bot-0').locator('.wc-custom-bot-rating')).toHaveText(String(rating));
     }
 

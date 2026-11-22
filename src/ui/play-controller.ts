@@ -666,12 +666,17 @@ export class PlayController {
     }
     const named = namedBotForRating(this.profile.get(), ng.botRating, ng.botStyle);
     if (label && named) {
-      // A bot with classes says which class the Time chip makes it play: "Your Student · Blitz · Solid · 1425 Elo"
-      // (the number and "Elo" are joined by a no-break space there, so "Elo" never wraps alone on a phone; the line of
-      // a bot without classes is unchanged)
-      const classPart = named.classes ? `${CLASS_LABELS[botClassOfTimeControl(ng.timeControlId)]} · ` : '';
-      const elo = named.classes ? `${ng.botRating}\u00a0Elo` : `${ng.botRating} Elo`;
-      label.textContent = `${named.name} · ${classPart}${styleLabel} · ${elo}`;
+      // A bot with classes says which class the Time chip makes it play: "Blitz · Solid · 1425 Elo". It leaves the bot's
+      // name out (the pressed chip below names it), so the line is short enough to stay on one line at phone widths in
+      // the common fonts. A longer line wraps at some widths for one class and not for another (the "Blitz" line is
+      // about 11 px shorter), and the card below would jump by a line when a Time chip is tapped. The number and "Elo"
+      // are joined by a no-break space there, so "Elo" never wraps alone. The line of a bot without classes is
+      // unchanged: "Your level · Solid · 1450 Elo".
+      if (named.classes) {
+        label.textContent = `${CLASS_LABELS[botClassOfTimeControl(ng.timeControlId)]} · ${styleLabel} · ${ng.botRating}\u00a0Elo`;
+      } else {
+        label.textContent = `${named.name} · ${styleLabel} · ${ng.botRating} Elo`;
+      }
     }
     for (const el of this.customBotsEl.querySelectorAll<HTMLElement>('.wc-custom-bot')) {
       // The bot stays highlighted when only the style changes
