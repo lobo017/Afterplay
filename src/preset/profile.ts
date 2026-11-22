@@ -105,9 +105,21 @@ export function resolveBotForClass(bot: CustomBot, botClass: BotClass): CustomBo
   return resolved;
 }
 
-/** The bots lowest rating first (a tie keeps the list's order), each with its place in the profile's list. */
-export function botsByRating(bots: readonly CustomBot[]): Array<{ bot: CustomBot; index: number }> {
-  return bots.map((bot, index) => ({ bot, index })).sort((a, b) => a.bot.rating - b.bot.rating || a.index - b.index);
+/**
+ * The bots lowest rating first (a tie keeps the list's order), each with its place in the profile's list. With a time
+ * class the rating is the one each bot has there (`resolveBotForClass`, so a bot without classes, or without an entry
+ * for the class, counts at its own rating); without one it is every bot's own, top-level, rating. Display order only:
+ * the profile's list is not changed.
+ */
+export function botsByRating(
+  bots: readonly CustomBot[],
+  botClass?: BotClass,
+): Array<{ bot: CustomBot; index: number }> {
+  const ratingOf = (bot: CustomBot): number => (botClass ? resolveBotForClass(bot, botClass).rating : bot.rating);
+  return bots
+    .map((bot, index) => ({ bot, index, rating: ratingOf(bot) }))
+    .sort((a, b) => a.rating - b.rating || a.index - b.index)
+    .map(({ bot, index }) => ({ bot, index }));
 }
 
 /** Parsed books by their text, for the session (null: the text is not a book). */

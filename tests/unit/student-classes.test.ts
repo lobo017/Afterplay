@@ -7,6 +7,7 @@ import {
   PROFILE_STORAGE_KEY,
   ProfileStore,
   awaitBotBooks,
+  botsByRating,
   clearParsedBooks,
   namedBotForRating,
   resolveBotForClass,
@@ -391,5 +392,63 @@ describe('the class a Time chip makes', () => {
       if (word) expect(botClassOfTimeControl(id as TimeControlPresetId), config.label).toBe(word);
     }
     expect(Object.keys(TIME_CONTROL_PRESETS).sort()).toEqual(Object.keys(EXPECTED).sort());
+  });
+});
+
+describe('the order of the named bots follows the Time class', () => {
+  // Shaped like the production list, with invented names; the profile's order is not the rating order
+  const LIST = parseBots([
+    { name: 'Level Bot', rating: 1669, style: 'solid' },
+    { name: 'Peak Bot', rating: 1708, style: 'solid' },
+    {
+      name: 'Pupil',
+      rating: 1489,
+      style: 'solid',
+      classes: { bullet: { rating: 1116 }, blitz: { rating: 1425 }, rapid: { rating: 1489 } },
+    },
+    { name: 'Top Bot', rating: 1800, style: 'solid' },
+    { name: 'Warm Bot', rating: 800, style: 'solid' },
+    { name: 'Even Bot', rating: 1200, style: 'solid' },
+  ]);
+  const names = (botClass?: Parameters<typeof botsByRating>[1]) =>
+    botsByRating(LIST, botClass).map(({ bot }) => bot.name);
+
+  it('orders by the class rating: Bullet puts the Pupil after the 800 bot and before 1200', () => {
+    expect(LIST).toHaveLength(6);
+    expect(names('bullet')).toEqual(['Warm Bot', 'Pupil', 'Even Bot', 'Level Bot', 'Peak Bot', 'Top Bot']);
+  });
+
+  it('Blitz and Rapid keep the Pupil between 1200 and 1669', () => {
+    expect(names('blitz')).toEqual(['Warm Bot', 'Even Bot', 'Pupil', 'Level Bot', 'Peak Bot', 'Top Bot']);
+    expect(names('rapid')).toEqual(['Warm Bot', 'Even Bot', 'Pupil', 'Level Bot', 'Peak Bot', 'Top Bot']);
+  });
+
+  it('a bot without classes, or with no entry for the class, sorts by its own rating', () => {
+    const bots = parseBots([
+      { name: 'Plain', rating: 1000, style: 'solid' },
+      { name: 'Blitz only', rating: 1500, style: 'solid', classes: { blitz: { rating: 900 } } },
+    ]);
+    // Bullet has no entry for the second bot: it stays at its own 1500; Blitz moves it to 900
+    expect(botsByRating(bots, 'bullet').map((b) => b.bot.name)).toEqual(['Plain', 'Blitz only']);
+    expect(botsByRating(bots, 'blitz').map((b) => b.bot.name)).toEqual(['Blitz only', 'Plain']);
+    expect(botsByRating(bots, 'rapid').map((b) => b.bot.name)).toEqual(['Plain', 'Blitz only']);
+  });
+
+  it("ties keep the profile's order, indexes are the profile's places, and the list is not changed", () => {
+    const bots = parseBots([
+      { name: 'Solid twin', rating: 1200, style: 'solid' },
+      { name: 'Early', rating: 700, style: 'solid' },
+      { name: 'Aggressive twin', rating: 1200, style: 'aggressive' },
+    ]);
+    const sorted = botsByRating(bots, 'bullet');
+    expect(sorted.map((b) => b.bot.name)).toEqual(['Early', 'Solid twin', 'Aggressive twin']);
+    expect(sorted.map((b) => b.index)).toEqual([1, 0, 2]);
+    expect(bots.map((b) => b.name)).toEqual(['Solid twin', 'Early', 'Aggressive twin']);
+    expect(LIST.map((b) => b.name)[0]).toBe('Level Bot');
+  });
+
+  it('without a class it gives the old order (every bot by its own, top-level, rating)', () => {
+    expect(names()).toEqual(['Warm Bot', 'Even Bot', 'Pupil', 'Level Bot', 'Peak Bot', 'Top Bot']);
+    expect(botsByRating(LIST).map((b) => b.bot.rating)).toEqual([800, 1200, 1489, 1669, 1708, 1800]);
   });
 });

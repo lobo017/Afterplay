@@ -693,16 +693,18 @@ export class PlayController {
 
   /**
    * The profile's named bots as buttons above the rating slider: one tap sets that bot's rating and style. A bot with
-   * classes shows the rating of the class the Time chip makes and a tap sets that rating; the list keeps its order (it
-   * is sorted by the bot's own, Rapid, rating), so a chip tap never moves a button.
+   * classes shows the rating of the class the Time chip makes and a tap sets that rating. The buttons are in order of
+   * those ratings, so a Time chip tap can move such a bot's button among the others (display only: the selected bot,
+   * the saved rating and the test ids, which are the bot's place in the profile's list, do not change).
    */
   private renderCustomBots(): void {
     const bots = this.profile.get().bots;
     const timeClass = botClassOfTimeControl(this.settings.get().newGame.timeControlId);
     this.customBotsEl.replaceChildren();
     this.customBotsEl.hidden = bots.length === 0;
-    // Lowest rating first. The test id keeps the bot's place in the profile's list, so ids do not move with the sort.
-    botsByRating(bots).forEach(({ bot, index: i }) => {
+    // Lowest rating first, by each bot's rating in the Time chip's class. The test id keeps the bot's place in the
+    // profile's list, so ids do not move with the sort.
+    botsByRating(bots, timeClass).forEach(({ bot, index: i }) => {
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'wc-custom-bot';

@@ -114,7 +114,8 @@ test.describe('Phase 11 — one Student bot whose rating and book follow the tim
       await expect(page.getByTestId(STUDENT).locator('.wc-custom-bot-rating')).toHaveText(String(RATING[cls]));
       await expect(page.getByTestId('top-player-name')).toHaveText(`Test Student · Solid (${RATING[cls]})`);
       await expect(page.getByTestId(STUDENT)).toHaveAttribute('aria-pressed', 'true');
-      // The list keeps its order whatever the chip
+      // The list keeps its order here: in this list the Student is above the other bot (1000) in every class (the
+      // order follows the class rating in general, see the six-bot tests below)
       expect(await botOrder(page)).toEqual(order);
     }
     // The other bot never changes
@@ -313,4 +314,162 @@ test.describe('Phase 11 — one Student bot whose rating and book follow the tim
       }
     }
   });
+});
+
+// ---------------------------------------------------------------------------------------------------------------
+// Six named bots shaped like the real list (the same ratings, the repo's generic names): the chips are in order of each
+// bot's rating in the Time chip's class, so the Student moves between the others when the chip's class changes.
+
+const SIX_RATING = { bullet: 1116, blitz: 1425, rapid: 1489 } as const;
+
+const SIX_PRESET = {
+  version: 1,
+  profile: { displayName: 'Test Player' },
+  settings: { newGame: { botRating: SIX_RATING.rapid, botStyle: 'solid', color: 'w', timeControlId: '10+0' } },
+  // The profile's order is not the rating order; a test id is the bot's place in this list
+  bots: [
+    { name: 'Your level', rating: 1669, style: 'solid' },
+    { name: 'Peak you', rating: 1708, style: 'solid' },
+    {
+      name: 'Your Student',
+      rating: SIX_RATING.rapid,
+      style: 'solid',
+      classes: {
+        bullet: { rating: SIX_RATING.bullet },
+        blitz: { rating: SIX_RATING.blitz },
+        rapid: { rating: SIX_RATING.rapid },
+      },
+    },
+    { name: 'The Boss', rating: 1800, style: 'solid' },
+    { name: 'Warm-up Bot', rating: 800, style: 'solid' },
+    { name: 'Even Match', rating: 1200, style: 'solid' },
+  ],
+};
+const SIX_PLACE = {
+  'Your level': 0,
+  'Peak you': 1,
+  'Your Student': 2,
+  'The Boss': 3,
+  'Warm-up Bot': 4,
+  'Even Match': 5,
+} as const;
+const SIX_ORDER = {
+  bullet: ['Warm-up Bot', 'Your Student', 'Even Match', 'Your level', 'Peak you', 'The Boss'],
+  blitz: ['Warm-up Bot', 'Even Match', 'Your Student', 'Your level', 'Peak you', 'The Boss'],
+  rapid: ['Warm-up Bot', 'Even Match', 'Your Student', 'Your level', 'Peak you', 'The Boss'],
+} as const;
+const SIX_STUDENT = `custom-bot-${SIX_PLACE['Your Student']}`;
+/** Every chip up the list, then down it again (so Rapid to Bullet is a direct change too). */
+const THERE_AND_BACK = [...CHIPS, ...[...CHIPS].reverse()];
+
+async function openSix(page: Page, width?: number): Promise<void> {
+  if (width) await page.setViewportSize({ width, height: 800 });
+  await page.route('**/start/sample/preset.json', (route) =>
+    route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(SIX_PRESET) }),
+  );
+  await page.route('**/start/sample/history.json', (route) => route.fulfill({ status: 404, body: 'none' }));
+  await page.goto(SAMPLE);
+  await expect(board(page).getByTestId('chess-board')).toBeVisible();
+  await expect(page.getByTestId('app-shell')).toHaveAttribute('data-first-run', 'applied', { timeout: 15_000 });
+  await expect(page.getByTestId('custom-bots').locator('button')).toHaveCount(6);
+}
+
+const savedRating = (page: Page) =>
+  page.evaluate(
+    () =>
+      (JSON.parse(localStorage.getItem('wc.settings.v1') ?? '{}') as { newGame: { botRating: number } }).newGame
+        .botRating,
+  );
+
+/** Where the opponent row, the slider and every Time chip are on the page (CSS pixels, rounded to 0.01). */
+const measureCard = (page: Page) =>
+  page.evaluate(() => {
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    const box = (testId: string) =>
+      document.querySelector<HTMLElement>(`[data-testid="${testId}"]`)!.getBoundingClientRect();
+    const row = box('custom-bots');
+    const lines = new Set(
+      [...document.querySelectorAll<HTMLElement>('[data-testid=custom-bots] .wc-custom-bot')].map((b) =>
+        r2(b.getBoundingClientRect().top + window.scrollY),
+      ),
+    );
+    const chips: Record<string, [number, number]> = {};
+    for (const el of document.querySelectorAll<HTMLElement>('[data-testid^="time-control-"]')) {
+      const b = el.getBoundingClientRect();
+      chips[el.getAttribute('data-testid')!] = [r2(b.top + window.scrollY), r2(b.left)];
+    }
+    return {
+      rowTop: r2(row.top + window.scrollY),
+      rowHeight: r2(row.height),
+      lines: lines.size,
+      sliderTop: r2(box('slider-bot-rating').top + window.scrollY),
+      chips,
+      pageHeight: document.documentElement.scrollHeight,
+    };
+  });
+
+test.describe('Phase 11 — the opponent chips follow the Time class (six bots)', () => {
+  test("the chips are in rating order of the Time class's ratings, test ids keep the profile's places", async ({
+    page,
+  }) => {
+    await openSix(page);
+    expect(await botOrder(page)).toEqual(SIX_ORDER.rapid);
+    for (const [id, cls] of THERE_AND_BACK) {
+      await press(page, `time-control-${id}`);
+      await expect(page.getByTestId(SIX_STUDENT).locator('.wc-custom-bot-rating')).toHaveText(String(SIX_RATING[cls]));
+      expect(await botOrder(page), id).toEqual(SIX_ORDER[cls]);
+      // The buttons shown, by test id, in the same order: each name keeps its place in the profile's list
+      const ids = await page
+        .getByTestId('custom-bots')
+        .locator('button')
+        .evaluateAll((els) => els.map((el) => el.getAttribute('data-testid')));
+      expect(ids, id).toEqual(SIX_ORDER[cls].map((name) => `custom-bot-${SIX_PLACE[name]}`));
+      // The ratings shown run upward
+      const shown = (await page.getByTestId('custom-bots').locator('.wc-custom-bot-rating').allTextContents()).map(
+        Number,
+      );
+      expect(shown, id).toEqual([...shown].sort((a, b) => a - b));
+    }
+  });
+
+  test('the Student stays selected and the saved rating stays one of its class ratings through every chip', async ({
+    page,
+  }) => {
+    await openSix(page);
+    for (const [id, cls] of THERE_AND_BACK) {
+      await press(page, `time-control-${id}`);
+      await expect(page.getByTestId('bot-rating-label')).toHaveText(
+        `Your Student · ${cls[0]!.toUpperCase() + cls.slice(1)} · Solid · ${SIX_RATING[cls]} Elo`,
+      );
+      await expect(page.getByTestId(SIX_STUDENT)).toHaveAttribute('aria-pressed', 'true');
+      expect(await page.locator('[data-testid=custom-bots] .wc-custom-bot[aria-pressed=true]').count(), id).toBe(1);
+      expect(await savedRating(page), id).toBe(SIX_RATING[cls]);
+    }
+    // A bot without classes keeps its rating through the chips while the Student moves
+    await press(page, `custom-bot-${SIX_PLACE['Peak you']}`);
+    for (const id of ['1+0', '5+0', '10+0']) {
+      await press(page, `time-control-${id}`);
+      await expect(page.getByTestId(`custom-bot-${SIX_PLACE['Peak you']}`)).toHaveAttribute('aria-pressed', 'true');
+      expect(await savedRating(page), id).toBe(1708);
+    }
+  });
+
+  for (const width of [360, 375, 390, 412]) {
+    test(`the Time chips and the opponent row do not move when the row reorders, at ${width} px`, async ({ page }) => {
+      await openSix(page, width);
+      const first = await measureCard(page);
+      for (const [id, cls] of THERE_AND_BACK) {
+        await press(page, `time-control-${id}`);
+        await expect(page.getByTestId(SIX_STUDENT).locator('.wc-custom-bot-rating')).toHaveText(
+          String(SIX_RATING[cls]),
+        );
+        const now = await measureCard(page);
+        expect(now, `${width} px, chip ${id}`).toEqual(first);
+      }
+      // One line per width, for the record: the same numbers held through every chip change
+      console.log(
+        `[chip-layout] ${width}px: row top ${first.rowTop}, height ${first.rowHeight} (${first.lines} lines), slider ${first.sliderTop}, time chips ${first.chips['time-control-10+0']![0]}, page ${first.pageHeight}; unchanged through ${THERE_AND_BACK.length} chip changes`,
+      );
+    });
+  }
 });
