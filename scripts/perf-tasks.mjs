@@ -5,9 +5,12 @@
 //   npm run perf:tasks            (PERF_PORT=4182, PERF_TASKS_GAMES=300 games in the library)
 //
 // The last flow restores an invented 16 MB backup (4,640 games with summaries, puzzle progress, some records newer on
-// this device) through the real Settings dialog, in two windows: choosing the file, and pressing Restore. It prints the
-// elapsed time, the longest task, the tasks of 50 ms or more and the time they blocked, and, where the page can see
-// them, the cost of the steps (reading the file, parsing it, the one write transaction, what follows the commit).
+// this device) through the real Settings dialog, in three windows: (1) choosing the file, until the dialog is shown, and
+// (2) pressing Restore until the restore's report is in: both HARD (no task of 50 ms or more); and (3) the page's refresh
+// of its screens after the restore (afterRestore: the library is read back, the games list and Train are rebuilt), a NOTE:
+// measured and printed with the same fields, never failing the run (the library's load is its own item, see PROGRESS).
+// It prints the elapsed time, the longest task, the tasks of 50 ms or more and the time they blocked per window, and,
+// where the page can see them, the cost of the steps (reading the file, parsing it, the one write transaction).
 //   PERF_TASKS_ONLY=restore       runs only that flow (a fresh browser profile, an empty library)
 //   PERF_CPU_THROTTLE=4           slows the page's CPU 4x (Chrome DevTools Protocol) for that flow, as a phone would be
 //
@@ -164,40 +167,6 @@ async function run() {
       new PerformanceObserver((list) => {
         for (const e of list.getEntries()) window.__tour.tasks.push({ start: e.startTime, dur: e.duration });
       }).observe({ entryTypes: ['longtask'] });
-      // Marks for the restore flow's steps, as far as the page itself can see them: a parse of more than 1 MB of text,
-      // reading a file, and a readwrite transaction over five stores or more (a restore). Work in a worker is not seen.
-      const mark = (name, start, end, extra) => window.__tour.marks.push({ name, start, end, ...extra });
-      const jsonParse = JSON.parse;
-      JSON.parse = function (text, reviver) {
-        if (typeof text !== 'string' || text.length < 1_000_000) return jsonParse.call(this, text, reviver);
-        const start = performance.now();
-        try {
-          return jsonParse.call(this, text, reviver);
-        } finally {
-          mark('JSON.parse', start, performance.now(), { chars: text.length });
-        }
-      };
-      const blobText = window.Blob.prototype.text;
-      window.Blob.prototype.text = function () {
-        const start = performance.now();
-        const promise = blobText.call(this);
-        void promise.then((text) => {
-          if (text.length >= 1_000_000)
-            mark('file.text() (async read)', start, performance.now(), { chars: text.length });
-        });
-        return promise;
-      };
-      const transaction = window.IDBDatabase.prototype.transaction;
-      window.IDBDatabase.prototype.transaction = function (stores, mode, options) {
-        const tx = transaction.call(this, stores, mode, options);
-        if (mode === 'readwrite' && Array.isArray(stores) && stores.length >= 5) {
-          const start = performance.now();
-          const end = (outcome) => mark(`one readwrite transaction (${outcome})`, start, performance.now());
-          tx.addEventListener('complete', () => end('committed'));
-          tx.addEventListener('abort', () => end('aborted'));
-        }
-        return tx;
-      };
     });
     await page.goto(`${BASE_URL}/`, { waitUntil: 'domcontentloaded' });
     await page.locator('[data-testid="chess-board"]').waitFor({ state: 'visible' });
@@ -242,6 +211,9 @@ async function run() {
       fs.writeFileSync(localName, asBackupText(local));
       const fileMb = (Buffer.byteLength(fileText) / 1024 ** 2).toFixed(1);
       try {
+        // The seeding is set-up, not a flow: another tab of the same browser restores "this device's" library. Page 1's tasks
+        // in that time are printed as a note and not counted
+        const setupStart = await page.evaluate(() => performance.now());
         const seed = await context.newPage();
         seed.on('pageerror', (err) => logError('[page error, seeding page]', err.message));
         await seed.goto(`${BASE_URL}/`, { waitUntil: 'domcontentloaded' });
@@ -253,6 +225,10 @@ async function run() {
           .filter({ hasText: /^Restored/ })
           .waitFor({ timeout: 600_000 });
         await seed.close();
+        await page.evaluate(
+          ([start, label]) => window.__tour.windows.push({ label, start, end: performance.now(), kind: 'setup' }),
+          [setupStart, 'setup: a second tab restores the library of this device (not a flow; not counted)'],
+        );
         log(
           `[restore] this device holds ${local.games.length} games, ${local.puzzles.length} puzzles, ${local.reviews.length} reviews`,
         );
@@ -285,6 +261,53 @@ async function run() {
           }).observe(status, { childList: true, characterData: true, subtree: true });
         });
 
+        // Installed now, so no other flow is touched. Also: when the restore's report reaches the page (the boundary between the restore and the page's refresh)
+        await page.evaluate(() => {
+          // Marks for the restore flow's steps, as far as the page itself can see them: a parse of more than 1 MB of text,
+          // reading a file, and a readwrite transaction over five stores or more (a restore). Work in a worker is not seen.
+          const mark = (name, start, end, extra) => window.__tour.marks.push({ name, start, end, ...extra });
+          const jsonParse = JSON.parse;
+          JSON.parse = function (text, reviver) {
+            if (typeof text !== 'string' || text.length < 1_000_000) return jsonParse.call(this, text, reviver);
+            const start = performance.now();
+            try {
+              return jsonParse.call(this, text, reviver);
+            } finally {
+              mark('JSON.parse', start, performance.now(), { chars: text.length });
+            }
+          };
+          const blobText = window.Blob.prototype.text;
+          window.Blob.prototype.text = function () {
+            const start = performance.now();
+            const promise = blobText.call(this);
+            void promise.then((text) => {
+              if (text.length >= 1_000_000)
+                mark('file.text() (async read)', start, performance.now(), { chars: text.length });
+            });
+            return promise;
+          };
+          const transaction = window.IDBDatabase.prototype.transaction;
+          window.IDBDatabase.prototype.transaction = function (stores, mode, options) {
+            const tx = transaction.call(this, stores, mode, options);
+            if (mode === 'readwrite' && Array.isArray(stores) && stores.length >= 5) {
+              const start = performance.now();
+              const end = (outcome) => mark(`one readwrite transaction (${outcome})`, start, performance.now());
+              tx.addEventListener('complete', () => end('committed'));
+              tx.addEventListener('abort', () => end('aborted'));
+            }
+            return tx;
+          };
+          const NativeWorker = window.Worker;
+          window.Worker = class extends NativeWorker {
+            constructor(...args) {
+              super(...args);
+              this.addEventListener('message', (e) => {
+                if (e.data?.kind === 'restored' && !window.__restore.reportAt)
+                  window.__restore.reportAt = performance.now();
+              });
+            }
+          };
+        });
         await flow(`settings: choose a ${fileMb} MB backup file (until the dialog is shown)`, async () => {
           await page.getByTestId('backup-file-input').setInputFiles(fileName);
           await page.getByTestId('btn-backup-confirm').waitFor({ state: 'visible', timeout: 300_000 });
@@ -296,6 +319,37 @@ async function run() {
           await settle(800);
         });
 
+        // Split the confirm window at the boundary: with the worker, when its report reaches the page; without one (the
+        // layer-2 build, for a before/after), the end of the last parse of the file's text after the commit
+        const FLOW_PICK = `settings: choose a ${fileMb} MB backup file, until the dialog is shown [HARD: no task of ${LIMIT_MS} ms or more]`;
+        const FLOW_RESTORE = `settings: restore a ${fileMb} MB backup, Restore pressed until the restore's report is in [HARD: no task of ${LIMIT_MS} ms or more]`;
+        const FLOW_REFRESH = `settings: after the restore the page refreshes its screens (afterRestore) [NOTE: measured, never fails]`;
+        const boundary = await page.evaluate(
+          ([pickLabel, restoreLabel, refreshLabel]) => {
+            const t = window.__tour;
+            const r = window.__restore;
+            const w = t.windows.find((x) => x.label.startsWith('settings: restore a'));
+            const pick = t.windows.find((x) => x.label.startsWith('settings: choose a'));
+            let at = r.reportAt;
+            if (!at) {
+              const commit = t.marks.find((m) => m.name.startsWith('one readwrite transaction'));
+              const parses = t.marks.filter((m) => m.name === 'JSON.parse' && commit && m.start >= commit.end);
+              at = parses.length ? Math.max(...parses.map((m) => m.end)) : commit?.end;
+            }
+            if (!at) return null;
+            pick.label = pickLabel;
+            pick.kind = 'hard';
+            t.windows.splice(
+              t.windows.indexOf(w),
+              1,
+              { label: restoreLabel, start: w.start, end: at, kind: 'hard' },
+              { label: refreshLabel, start: at, end: w.end, kind: 'note' },
+            );
+            return at;
+          },
+          [FLOW_PICK, FLOW_RESTORE, FLOW_REFRESH],
+        );
+        if (boundary === null) throw new Error('the restore flow could not tell when the restore ended');
         const stamps = await page.evaluate(() => window.__restore);
         if (/could not refresh|failed/.test(stamps.text) || !/^Restored 40 games/.test(stamps.text)) {
           throw new Error(`the big restore did not say what was expected: "${stamps.text}"`);
@@ -330,16 +384,16 @@ async function run() {
         const tour = await page.evaluate(() => window.__tour);
         const marks = tour.marks.slice().sort((x, y) => x.start - y.start);
         const rate = `${CPU_THROTTLE}x`;
-        const describe = (label, from, to, windowLabel) => {
+        const describe = (label, from, to, windowLabel, verdict) => {
           const w = tour.windows.find((x) => x.label.startsWith(windowLabel));
           const tasks = tour.tasks.filter((t) => t.start >= w.start - 1 && t.start <= w.end + 1);
           const longest = tasks.reduce((m, t) => Math.max(m, t.dur), 0);
           const blocked = tasks.reduce((sum, t) => sum + t.dur, 0);
           restoreLines.push(
-            `[restore] ${label}: elapsed ${Math.round(to - from)} ms, longest task ${tasks.length ? `${Math.round(longest)} ms` : `none of ${LIMIT_MS} ms or more`}, tasks of ${LIMIT_MS} ms or more ${tasks.length}, blocked ${Math.round(blocked)} ms (cpu ${rate})`,
+            `[restore] ${label} (${verdict}): elapsed ${Math.round(to - from)} ms, longest task ${tasks.length ? `${Math.round(longest)} ms` : `none of ${LIMIT_MS} ms or more`}, tasks of ${LIMIT_MS} ms or more ${tasks.length}, blocked ${Math.round(blocked)} ms (cpu ${rate})`,
           );
           restoreLines.push(
-            `RESTORE_TABLE cpu=${rate} step=${label} elapsedMs=${Math.round(to - from)} longestMs=${Math.round(longest)} over50=${tasks.length} blockedMs=${Math.round(blocked)}`,
+            `RESTORE_TABLE cpu=${rate} step=${label} verdict=${verdict} elapsedMs=${Math.round(to - from)} longestMs=${Math.round(longest)} over50=${tasks.length} blockedMs=${Math.round(blocked)}`,
           );
           for (const t of tasks) {
             const inside = marks.filter(
@@ -350,8 +404,9 @@ async function run() {
             );
           }
         };
-        describe('pick', stamps.pickStart, stamps.pickDone, 'settings: choose a');
-        describe('confirm', stamps.confirmStart, stamps.done, 'settings: restore a');
+        describe('pick', stamps.pickStart, stamps.pickDone, 'settings: choose a', 'HARD');
+        describe('restore', stamps.confirmStart, boundary, 'settings: restore a', 'HARD');
+        describe('refresh', boundary, stamps.done, 'settings: after the restore', 'NOTE');
         for (const m of marks) {
           restoreLines.push(
             `[restore] step ${m.name}: ${Math.round(m.end - m.start)} ms${m.chars ? ` (${(m.chars / 1e6).toFixed(1)} M chars)` : ''}, from ${Math.round(m.start - stamps.pickStart)} ms after choosing the file`,
@@ -374,7 +429,14 @@ async function run() {
       const tour = await page.evaluate(() => window.__tour);
       // Page load is reported apart: the browser's one-time audio and font start-up land there (see the header)
       const startup = tour.tasks.filter((t) => t.dur >= LIMIT_MS && t.start < tour.startupEnd);
-      const over = tour.tasks.filter((t) => t.dur >= LIMIT_MS && t.start >= tour.startupEnd);
+      // A NOTE window is measured and printed, never counted; the HARD restore windows are counted at 1x only (a slowed
+      // CPU, PERF_CPU_THROTTLE, is a diagnostic run, not the budget)
+      const inWindow = (t, w) => t.start >= w.start - 1 && t.start <= w.end + 1;
+      const informational = (t) =>
+        tour.windows.some(
+          (w) => (w.kind === 'note' || w.kind === 'setup' || (w.kind === 'hard' && CPU_THROTTLE > 1)) && inWindow(t, w),
+        );
+      const over = tour.tasks.filter((t) => t.dur >= LIMIT_MS && t.start >= tour.startupEnd && !informational(t));
       const where = (t) =>
         tour.windows.find((w) => t.start >= w.start - 1 && t.start <= w.end + 1)?.label ?? '(between flows)';
       log('\n=== Main-thread task audit (perf:tasks) ===');
@@ -383,8 +445,10 @@ async function run() {
       );
       for (const w of tour.windows) {
         const mine = tour.tasks.filter((t) => t.dur >= LIMIT_MS && t.start >= w.start - 1 && t.start <= w.end + 1);
+        const informationalWindow = w.kind === 'note' || w.kind === 'setup' || (w.kind === 'hard' && CPU_THROTTLE > 1);
+        const mark = mine.length === 0 ? 'ok  ' : informationalWindow ? 'note' : 'LONG';
         log(
-          `${mine.length === 0 ? 'ok  ' : 'LONG'} ${w.label}${mine.length ? `  → ${mine.map((t) => `${Math.round(t.dur)} ms`).join(', ')}` : ''}`,
+          `${mark} ${w.label}${w.kind === 'hard' && CPU_THROTTLE > 1 ? ` (cpu ${CPU_THROTTLE}x: informational)` : ''}${mine.length ? `  → ${mine.map((t) => `${Math.round(t.dur)} ms`).join(', ')}` : ''}`,
         );
       }
       for (const t of over.filter((t) => where(t) === '(between flows)'))
