@@ -51,7 +51,7 @@ describe('the diagnostics of the perf:tasks audit', () => {
       { start: 1600, dur: 80, scripts: [{ url: 'http://x/other.js', dur: 5 }] },
     ];
     const [t] = diagnoseTasks({ tasks: [{ start: 1212, dur: 55 }], windows, frames });
-    expect(t.scripts).toEqual([
+    expect(t?.scripts).toEqual([
       {
         url: '/assets/index-x.js',
         fn: 'handler',
