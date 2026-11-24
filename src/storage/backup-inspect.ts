@@ -26,9 +26,21 @@ export function summarizeParsed(parsed: Partial<BackupPayload>): BackupSummary {
   };
 }
 
-/** What the confirmation shows of a backup file: its counts, and whether it brings settings and bots. */
+/**
+ * The day a backup was made, as the person reads dates (their locale and time zone), or null when the file has no usable
+ * date. The first date formatting of a page costs 20-90 ms (the browser loads its locale data), so the restore worker does
+ * it and the page only shows the text: the click on a file never waits for it.
+ */
+export function formatExportDate(exportedAt: number | null): string | null {
+  if (!exportedAt) return null;
+  const date = new Date(exportedAt);
+  return Number.isNaN(date.getTime()) ? null : date.toLocaleDateString();
+}
+
+/** What the confirmation shows of a backup file: its counts, whether it brings settings and bots, and its date as text. */
 export interface BackupInspection extends BackupSummary {
   hasBots: boolean;
+  exportedOn: string | null;
 }
 
 /**
@@ -38,5 +50,6 @@ export interface BackupInspection extends BackupSummary {
 export function inspectBackup(json: string): BackupInspection {
   const parsed = parseBackupText(json);
   const check = assertRestorable(parsed, LATEST_SCHEMA_VERSION);
-  return { ...summarizeParsed(parsed as Partial<BackupPayload>), hasBots: check.hasBotRows };
+  const summary = summarizeParsed(parsed as Partial<BackupPayload>);
+  return { ...summary, hasBots: check.hasBotRows, exportedOn: formatExportDate(summary.exportedAt) };
 }

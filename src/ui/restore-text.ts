@@ -2,8 +2,15 @@ import { written, type RestoreList, type RestoreReport } from '../storage/backup
 
 /** The words of the restore dialog and its result line (pure, so they are unit-tested). */
 
+/**
+ * A whole number with its thousands separated ("4,623"): the same text as `toLocaleString('en-US')` for the counts of a
+ * backup, without the browser's first-use cost of the number formatter (up to 20 ms on a slow CPU), which would sit on the
+ * click that chooses a backup file.
+ */
+export const groupThousands = (n: number): string => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+
 /** A count in words: thousands separated, "1 game", "4,623 games". */
-const count = (n: number, one: string) => `${n.toLocaleString('en-US')} ${one}${n === 1 ? '' : 's'}`;
+const count = (n: number, one: string) => `${groupThousands(n)} ${one}${n === 1 ? '' : 's'}`;
 
 const joinWords = (items: string[]) =>
   items.length <= 1 ? (items[0] ?? '') : `${items.slice(0, -1).join(', ')} and ${items[items.length - 1]}`;

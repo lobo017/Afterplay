@@ -164,7 +164,8 @@ export function mountDataSection(options: DataSectionOptions): DataSection {
       .inspect(file)
       .then((s) => {
         pending = file;
-        const when = s.exportedAt ? ` from ${new Date(s.exportedAt).toLocaleDateString()}` : '';
+        // (the worker formatted the date: the page's first Intl call would be a long task on this click)
+        const when = s.exportedOn ? ` from ${s.exportedOn}` : '';
         confirmText.textContent = restoreConfirmText(s, when);
         confirm.hidden = false;
         say('');
