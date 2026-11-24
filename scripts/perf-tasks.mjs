@@ -13,6 +13,11 @@
 // where the page can see them, the cost of the steps (reading the file, parsing it, the one write transaction).
 //   PERF_TASKS_ONLY=restore       runs only that flow (a fresh browser profile, an empty library)
 //   PERF_CPU_THROTTLE=4           slows the page's CPU 4x (Chrome DevTools Protocol) for that flow, as a phone would be
+//   PERF_TASKS_DIAG=1             prints the diagnostics line and writes the diagnostics JSON even when no task is long
+// Diagnostics (measurement only): when a task of 50 ms or more happens, a JSON file beside the log lists it with its window,
+// its offset from the window's start event, its duration, the scripts of its long animation frame (URL, function, invoker,
+// character position) where the browser provides them, and the time from the chosen file to the worker's reply; one line
+// "[diag] ..." is printed only when a window fails.
 //
 // Page load is reported apart and not counted: the browser's one-time audio start (the first AudioContext of a
 // process: 60-340 ms, not avoidable, built by the app in an idle moment after start-up) and its one-time font
@@ -30,6 +35,7 @@ import { chromium } from '@playwright/test';
 import { formatGb, formatProcesses, freeMemoryBytes, installCleanup, killAllChildTrees } from './lib/process-guard.mjs';
 import { browserLaunchOptions, skipStoryLanding } from './lib/browser.mjs';
 import { asBackupText, buildInventedBackups } from './lib/invented-backup.mjs';
+import { diagnoseTasks, restoreTimes } from './lib/task-diagnostics.mjs';
 
 const PORT = Number(process.env.PERF_PORT || 4182);
 const BASE_URL = `http://127.0.0.1:${PORT}`;
@@ -167,6 +173,30 @@ async function run() {
       new PerformanceObserver((list) => {
         for (const e of list.getEntries()) window.__tour.tasks.push({ start: e.startTime, dur: e.duration });
       }).observe({ entryTypes: ['longtask'] });
+      // Diagnostics only (nothing is counted from it): the scripts of every long animation frame (50 ms or more), where the
+      // browser provides them; an entry exists only when a frame is long, so a run with none costs nothing
+      window.__tour.frames = [];
+      try {
+        new PerformanceObserver((list) => {
+          for (const e of list.getEntries()) {
+            window.__tour.frames.push({
+              start: e.startTime,
+              dur: e.duration,
+              scripts: (e.scripts ?? []).map((s) => ({
+                url: s.sourceURL,
+                fn: s.sourceFunctionName,
+                invoker: s.invoker,
+                type: s.invokerType,
+                pos: s.sourceCharPosition,
+                dur: s.duration,
+                start: s.startTime,
+              })),
+            });
+          }
+        }).observe({ type: 'long-animation-frame', buffered: true });
+      } catch {
+        // a browser without the entry type: the tasks are reported without their scripts
+      }
     });
     await page.goto(`${BASE_URL}/`, { waitUntil: 'domcontentloaded' });
     await page.locator('[data-testid="chess-board"]').waitFor({ state: 'visible' });
@@ -304,6 +334,9 @@ async function run() {
               this.addEventListener('message', (e) => {
                 if (e.data?.kind === 'restored' && !window.__restore.reportAt)
                   window.__restore.reportAt = performance.now();
+                // diagnostics: when the worker's answer to the chosen file reaches the page
+                if (e.data?.kind === 'inspected' && !window.__restore.inspectedAt)
+                  window.__restore.inspectedAt = performance.now();
               });
             }
           };
@@ -339,11 +372,13 @@ async function run() {
             if (!at) return null;
             pick.label = pickLabel;
             pick.kind = 'hard';
+            // (diagnostics: the event each window's offsets are measured from)
+            pick.eventAt = r.pickStart;
             t.windows.splice(
               t.windows.indexOf(w),
               1,
-              { label: restoreLabel, start: w.start, end: at, kind: 'hard' },
-              { label: refreshLabel, start: at, end: w.end, kind: 'note' },
+              { label: restoreLabel, start: w.start, end: at, kind: 'hard', eventAt: r.confirmStart },
+              { label: refreshLabel, start: at, end: w.end, kind: 'note', eventAt: at },
             );
             return at;
           },
@@ -453,6 +488,25 @@ async function run() {
       }
       for (const t of over.filter((t) => where(t) === '(between flows)'))
         log(`LONG (between flows) ${Math.round(t.dur)} ms at ${Math.round(t.start)}`);
+      // Diagnostics, measurement only (nothing here changes a limit or a verdict): every task of 50 ms or more with the window
+      // it fell in, its offset from the window's start event, and the scripts of its frame where the browser says. A JSON
+      // file beside the log carries all of them; the one line printed below carries the tasks of the windows that FAILED.
+      // Nothing is computed or written when no task is long (PERF_TASKS_DIAG=1 asks for it anyway, for the restore timings)
+      const longTasks = diagnoseTasks({
+        tasks: tour.tasks.filter((t) => t.start >= tour.startupEnd),
+        windows: tour.windows,
+        frames: tour.frames ?? [],
+        limitMs: LIMIT_MS,
+      });
+      if (longTasks.length > 0 || process.env.PERF_TASKS_DIAG === '1') {
+        const restoreStamps = await page.evaluate(() => window.__restore ?? null);
+        const diag = { cpu: CPU_THROTTLE, longTasks, restoreTimes: restoreTimes(restoreStamps) };
+        fs.writeFileSync(LOG_PATH.replace(/\.log$/, '.json'), JSON.stringify(diag, null, 2));
+        const failed = longTasks.filter((lt) => over.some((o) => Math.round(o.start) === lt.startMs));
+        if (failed.length > 0 || process.env.PERF_TASKS_DIAG === '1') {
+          log(`[diag] ${JSON.stringify({ cpu: CPU_THROTTLE, failedTasks: failed, restoreTimes: diag.restoreTimes })}`);
+        }
+      }
       log(`tasks of ${LIMIT_MS} ms or more after page load: ${over.length}`);
       log(over.length === 0 ? 'budgetPassed: true' : 'budgetPassed: false');
       if (over.length > 0) process.exitCode = 1;
